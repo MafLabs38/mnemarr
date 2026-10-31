@@ -1,0 +1,50 @@
+# Build
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+publish/
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Tests
+/coverage
+TestResults/
+
+# User secrets
+secrets.json
+
+# Environment
+.env
+.env.local
+
+# System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Frontend / tooling
+node_modules/
+.yarn/
+dist/
+coverage/
+TestResults/
+.env
+.env.*
+!.env.example
