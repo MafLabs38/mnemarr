@@ -25,3 +25,4 @@ The organisation's repository template already describes Mnemarr as code (reposi
 - Some steps need the maintainer: the SonarQube token and the model login used by the review agents are repository secrets that only he creates.
 - Making checks required is a change to the template repository, which is a separate, deliberate step once the pipeline passes.
 - Divergence from Portarr's pipeline should be recorded: a fix to the shared chain is applied in both.
+- **Not in place yet, by design.** The workflow that runs the four review agents on every pull request (`ai-review.yml`) is added once the model login exists as a repository secret; until then the `review-vertical` skill runs them locally before each pull request. SonarQube, and with it the backend coverage threshold, wait for their server and token. The base images of the Dockerfile are pinned by tag; pinning them by digest is part of the release vertical, which publishes the image.
