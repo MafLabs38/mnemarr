@@ -1,0 +1,97 @@
+# Mnemarr on Kubernetes. Adjust the values marked <...>, then `kubectl apply -f`.
+# The ingest and MCP endpoints are meant to be reachable without the proxy's single sign-on
+# (Mnemarr authenticates every call itself, D-27): publish them on their own host name, not under the UI's.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mnemarr
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mnemarr-data
+  namespace: mnemarr
+spec:
+  accessModes: [ReadWriteOnce]
+  # A local, fast volume: not a network share (docs/adr/0004).
+  storageClassName: <local-storage-class>
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mnemarr
+  namespace: mnemarr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate        # one writer to the database and the data folder
+  selector:
+    matchLabels:
+      app: mnemarr
+  template:
+    metadata:
+      labels:
+        app: mnemarr
+    spec:
+      # Mnemarr never calls the Kubernetes API: do not hand a cluster credential to the pod.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mnemarr
+          image: ghcr.io/<owner>/mnemarr:<tag>   # pin a version
+          ports:
+            - containerPort: 8383
+          env:
+            - name: MNEMARR__DATAFOLDER
+              value: /config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8383
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8383
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /config
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mnemarr-data
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mnemarr
+  namespace: mnemarr
+spec:
+  selector:
+    app: mnemarr
+  ports:
+    - port: 8383
+      targetPort: 8383

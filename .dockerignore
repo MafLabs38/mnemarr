@@ -1,0 +1,16 @@
+**/bin
+**/obj
+**/node_modules
+_output
+coverage
+reports
+playwright-report
+test-results
+collector/target
+.git
+.github
+.claude
+docs
+tests
+deploy
+*.md

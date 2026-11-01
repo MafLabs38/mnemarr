@@ -1,0 +1,11 @@
+# The stack the end-to-end tests run against: the image built from this repository, with an empty data folder.
+name: mnemarr-e2e
+services:
+  mnemarr:
+    build:
+      context: ../../..
+    ports:
+      - "8383:8383"
+    # The image runs as a non-root user: give it a throw-away data folder it owns.
+    tmpfs:
+      - /config:uid=1654,gid=1654

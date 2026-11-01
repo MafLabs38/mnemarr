@@ -39,6 +39,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Local data folder for development
+.data/
+
 # Frontend / tooling
 node_modules/
 .yarn/
@@ -48,3 +51,13 @@ TestResults/
 .env
 .env.*
 !.env.example
+
+# Frontend
+node_modules/
+_output/
+playwright-report/
+test-results/
+reports/
+
+# Rust (collector)
+collector/target/
