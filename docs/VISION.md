@@ -1,7 +1,7 @@
 # Mnemarr — Vision
 
 > **Status**: inception. Gathered from the maintainer's notes on 2026-10-31; to be confirmed and refined in the first interview.
-> This document will feed `docs/SPEC.md`.
+> This document feeds [SPEC.md](SPEC.md), which now carries the decisions taken in the interviews; where the two differ, the spec wins.
 
 ## 1. Pitch
 
@@ -46,7 +46,7 @@ Out of scope (to confirm): hosting the assistants themselves, being a general do
 ## 4. How it plugs into the others
 
 - **Portarr (See)**: Mnemarr is registered in Portarr as a **companion**. Portarr's MCP server points assistants to Mnemarr, so any assistant connected to Portarr also finds the operator's memory. Portarr does not store that memory; it links to it.
-- **Orchestratarr (Act)**: workers read runbooks and past decisions before acting, and write back what they did and what happened.
+- **Orchestrarr (Act)**: workers read runbooks and past decisions before acting, and write back what they did and what happened.
 - **Assistants (MCP)**: any MCP-capable assistant connects directly. A short bootstrap instruction file can point to Mnemarr instead of carrying the knowledge itself.
 
 ### Knowledge base vs memory (clarified 2026-10-31)
