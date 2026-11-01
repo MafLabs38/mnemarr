@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <AssemblyName>Mnemarr</AssemblyName>
+    <RootNamespace>Mnemarr.Host</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <ProjectReference Include="..\Mnemarr.Api.V1\Mnemarr.Api.V1.csproj" />
+  </ItemGroup>
+</Project>
