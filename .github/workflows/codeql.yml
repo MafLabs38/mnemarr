@@ -1,0 +1,42 @@
+# Static analysis (SAST) with CodeQL, from the organization's github-template (quality option "codeql").
+# Alerts appear in Security > Code scanning; the repository ruleset blocks merges on high or critical alerts,
+# and waits for these results, so this workflow must exist before the first pull request can merge.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1" # weekly, to catch new queries on unchanged code
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only `actions` while the repository holds no application code: analysing a language with no source fails.
+        # Add csharp and javascript-typescript with the foundation vertical.
+        language: [actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}
