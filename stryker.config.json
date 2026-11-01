@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "vitest": { "configFile": "frontend/vite.config.ts" },
+  "mutate": [
+    "frontend/src/**/*.{ts,tsx}",
+    "!frontend/src/**/__tests__/**",
+    "!frontend/src/**/*.d.ts",
+    "!frontend/src/index.tsx",
+    "!frontend/src/setupTests.ts"
+  ],
+  "reporters": ["html", "clear-text", "progress"],
+  "htmlReporter": { "fileName": "reports/mutation/frontend.html" },
+  "concurrency": 2,
+  "thresholds": { "high": 80, "low": 60, "break": null }
+}

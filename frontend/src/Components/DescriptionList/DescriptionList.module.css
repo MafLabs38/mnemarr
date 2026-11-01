@@ -1,0 +1,24 @@
+.list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 32px;
+  margin: 0;
+}
+
+.row {
+  display: contents;
+}
+
+.title {
+  color: var(--inkMuted);
+  font-weight: 700;
+}
+
+.data {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--monoSpaceFontFamily);
+}

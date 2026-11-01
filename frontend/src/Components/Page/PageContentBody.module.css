@@ -1,0 +1,9 @@
+.body {
+  padding: var(--pageContentBodyPadding);
+}
+
+@media (width <= 768px) {
+  .body {
+    padding: var(--pageContentBodyPaddingSmall);
+  }
+}
