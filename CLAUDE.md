@@ -30,11 +30,12 @@ Same as Portarr, so the three products share conventions:
 3. ***arr patterns first.** A single container, API first (the UI consumes the REST API), settings as `[FieldDefinition]`-style providers, Sonarr-like screens. The UI follows the same design rules as Portarr; read [docs/DESIGN.md](docs/DESIGN.md) (it points to Portarr's) before writing any UI code.
 4. **The constellation** (below): Mnemarr remembers; it does not observe the fleet (Portarr) and does not act on it (Orchestrarr). Integrate through APIs and MCP, never by duplicating the other products.
 5. **Privacy by default.** Memories can hold sensitive content. Nothing leaves the host unless the operator configures it; secrets are never stored in memories nor returned by the API; any external embeddings API is opt-in and documented.
-6. **Sandbox first, PR after acceptance.** Develop each vertical in a local hot-reload sandbox (no commit, push, PR, CI or image). Give the maintainer the URL and what to try, iterate live, and open the PR only once the vertical is accepted. Then complete tests, lint, clean commits.
+6. **Sandbox first, PR after acceptance.** Develop each vertical in a local hot-reload sandbox (no commit, push, PR, CI or image). Give the maintainer the URL and what to try, iterate live, and open the PR only once the vertical is accepted. Then complete tests, lint, clean commits. Technical pull requests are not verticals and skip this (rule 11).
 7. **One vertical = one PR**, with its tests and documentation.
 8. **Ask, but build.** When gathering needs, ask open questions (never multiple-choice forms). Once the need is clear, code the vertical and ask only when it truly requires an answer.
 9. **Never** commit secrets. Use `dotnet user-secrets` locally and GitHub Secrets in CI.
 10. **Decisions** get an ADR in `docs/adr/NNNN-title.md` and a `D-xx` row in the spec.
+11. **Work autonomously; interrupt the maintainer only for a real advance** ([ADR 0014](docs/adr/0014-the-agent-merges-technical-pull-requests.md)). The agent prepares, has the review agents read, and merges technical pull requests (CI, dependencies, tool settings, documentation that records no decision, scaffolding, infrastructure as code, minus the guards and documents the ADR reserves to the maintainer); they are not submitted for validation. A vertical follows rule 6 and reaches the maintainer clean, with its demo, and they merge it. The ADR defines by role what only the maintainer merges (the trust anchor of the ADR: the rules and decisions, what decides whether a gate passes, what runs with a privilege or is built into the image, the settings that guard the project, the configuration of package managers, any new dependency; also the release pull request, and any doubt) and what the agent merges only after reading the whole diff. The agent never bypasses a guard: no admin or ruleset bypass, no merge with a required check failing or pending, no push to a protected branch.
 
 ## Quality gates
 
@@ -67,7 +68,7 @@ Branches `main` (stable releases) and `develop` (integration) are protected by G
 2. Commit with Conventional Commits
 3. git push origin feature/<issue>-<short-description>
 4. gh pr create --base develop
-5. CI green + review -> squash merge into develop (the PR title is a Conventional Commit: it decides the version)
+5. CI green + review -> squash merge into develop, by the agent for a technical pull request and by the maintainer for a vertical (rule 11; the PR title is a Conventional Commit: it decides the version)
 6. When develop is stable -> release PR develop -> main, merged with a **merge commit, never a squash** (semantic-release must see the commits; `main` refuses the other methods). The pipeline then tags and publishes the image; deployments pull it: [docs/releasing.md](docs/releasing.md)
 ```
 
