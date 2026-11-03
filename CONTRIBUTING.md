@@ -35,7 +35,9 @@ dotnet build src/Mnemarr.sln
 
 # Backend, then frontend with hot reload (the frontend proxies /api to the backend)
 # The data folder must exist and be writable (it defaults to /config, the image's volume)
-mkdir -p .data && MNEMARR__DATAFOLDER="$PWD/.data" dotnet run --project src/Mnemarr.Host   # http://localhost:8383
+mkdir -p .data && echo "a password of at least 12 characters" > .data/admin-password
+MNEMARR__DATAFOLDER="$PWD/.data" MNEMARR__AUTH__ADMINUSER=admin MNEMARR__AUTH__ADMINPASSWORDFILE="$PWD/.data/admin-password" \
+  MNEMARR__AUTH__COOKIESECURITY=SameAsRequest dotnet run --project src/Mnemarr.Host   # http://localhost:8383, sign in as admin
 yarn start                                   # http://localhost:5173
 
 # Checks, as CI runs them
