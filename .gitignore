@@ -68,3 +68,6 @@ collector/target/
 # Local overrides of the settings: they can hold secrets
 src/**/appsettings.*.json
 !src/**/appsettings.json
+
+# Drop folder for images the maintainer hands over: never committed as they are
+import-image/
