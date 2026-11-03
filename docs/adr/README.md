@@ -18,4 +18,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0011](0011-default-port.md) | Default port 8383 | D-29 |
 | [0012](0012-vector-store-and-embeddings-spikes.md) | Vector store and embeddings model: results of the two spikes | D-30, D-31 |
 | [0013](0013-releases-with-semantic-release-consumed-by-pulling.md) | Releases are decided by semantic-release from main, and consumed by pulling | D-33 |
-| [0014](0014-the-agent-merges-technical-pull-requests.md) | The agent merges technical pull requests; the maintainer decides verticals and releases | D-34 |
+| [0014](0014-the-agent-merges-technical-pull-requests.md) | The agent merges technical pull requests; the maintainer decides verticals, releases and the rules themselves | D-34 |
