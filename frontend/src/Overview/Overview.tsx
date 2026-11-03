@@ -21,16 +21,16 @@ function ApiState() {
 
   if (isError) {
     return (
-      <div role="status">
+      <output>
         <StatusLabel kind={kinds.DANGER}>{translate('Unreachable')}</StatusLabel>
-      </div>
+      </output>
     );
   }
   if (data) {
     return (
-      <div role="status">
+      <output>
         <StatusLabel kind={kinds.SUCCESS}>{translate('ApiReachable')}</StatusLabel>
-      </div>
+      </output>
     );
   }
   return <LoadingIndicator />;

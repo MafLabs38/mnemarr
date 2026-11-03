@@ -70,8 +70,10 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+              ephemeral-storage: 64Mi
             limits:
               memory: 512Mi
+              ephemeral-storage: 256Mi
           volumeMounts:
             - name: data
               mountPath: /config
@@ -82,7 +84,8 @@ spec:
           persistentVolumeClaim:
             claimName: mnemarr-data
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 64Mi
 ---
 apiVersion: v1
 kind: Service

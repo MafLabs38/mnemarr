@@ -28,6 +28,8 @@ COPY --from=frontend /build/_output/UI ./wwwroot
 # The chiseled image has no shell to create folders: copy an empty one owned by the app user.
 COPY --from=backend --chown=1654:1654 /config /config
 ENV MNEMARR__DATAFOLDER=/config
+# The app user of the chiseled image, stated so that nothing reads this image as running as root.
+USER 1654:1654
 VOLUME /config
 EXPOSE 8383
 ENTRYPOINT ["dotnet", "Mnemarr.dll"]
