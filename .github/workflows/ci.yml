@@ -1,6 +1,7 @@
 # Pipeline derived from Portarr's, itself derived from the organization's github-template (dotnet stack),
 # for Mnemarr's components: the .NET core, the React frontend and the Rust collector (ADR 0008).
-# Pull requests are built and tested here. Publishing the image comes with the release vertical.
+# Pull requests are built and tested here, but only develop and main publish an image. On main, semantic-release then decides
+# the version from the Conventional Commits since the last release, and the image is published under it (docs/releasing.md).
 name: CI
 
 on:
@@ -16,7 +17,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A run on main may be a release in flight (a tag, then the image): it is never cancelled by the next push.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NODE_VERSION: "22"
@@ -220,3 +222,71 @@ jobs:
           scan-type: fs
           severity: CRITICAL,HIGH
           exit-code: "1"
+
+  # The version of what was merged into main: semantic-release reads the Conventional Commits since the last tag, creates the tag
+  # and the GitHub release (its notes are the changelog), and says the version it chose ('' when nothing deserves a release).
+  # Nothing is committed back to main (the ruleset forbids a direct push): the version lives in the tag.
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.*.result, 'failure') }}
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+
+  # Integrated code only: pull requests never publish an image. On main the release job ran first (it is skipped on develop).
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    needs: [e2e-smoke, release]
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.e2e-smoke.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          # The branch name (develop, main) plus the commit; the version and latest only when a release was made.
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=${{ needs.release.outputs.version }},enable=${{ needs.release.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ needs.release.outputs.version != '' }}
+      # The build stages run on the runner's own architecture and the final stage only copies files (Dockerfile), so the arm64
+      # image needs no emulation.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ needs.release.outputs.version != '' && format('{0}.{1}', needs.release.outputs.version, github.run_number) || format('0.0.0-{0}', steps.meta.outputs.version) }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

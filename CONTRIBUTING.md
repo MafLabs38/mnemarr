@@ -13,7 +13,7 @@ Thanks for your interest! Mnemarr is at an early stage; the best way to help rig
 1. Open (or pick) an issue.
 2. Branch from `develop`: `feature/<issue>-<short-description>` (also `fix/`, `chore/`, `docs/`).
 3. Commit with [Conventional Commits](https://www.conventionalcommits.org/): `feat(api): add the system status endpoint`.
-4. Open a pull request against `develop` and complete the PR template.
+4. Open a pull request against `develop` and complete the PR template. Its title is a Conventional Commit too: it becomes the squash commit, and it decides the next version ([releasing](docs/releasing.md)).
 5. CI must be green: lint, unit, integration, E2E smoke, the collector on Linux and Windows, CodeQL, gitleaks, Trivy, and SonarQube once configured.
 
 Direct pushes to `main` and `develop` are blocked for everyone. One vertical (a feature end to end) is one pull request, with its tests and documentation. A structural decision gets an ADR in `docs/adr/` and a `D-xx` row in the spec.

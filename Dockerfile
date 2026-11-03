@@ -1,13 +1,15 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS frontend
+# The build stages run on the builder's own architecture (their output does not depend on the target one): only the last stage is
+# per architecture, and it only copies files, so a multi-architecture image is built without emulation.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 WORKDIR /build
 COPY package.json yarn.lock ./
 RUN corepack enable && yarn install --frozen-lockfile
 COPY frontend ./frontend
 RUN yarn build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
 ARG VERSION=0.0.0-dev
 WORKDIR /build
 COPY global.json Directory.Build.props Directory.Packages.props ./

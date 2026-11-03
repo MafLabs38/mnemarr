@@ -17,3 +17,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0010](0010-external-exposure-and-delegated-backups.md) | External exposure without single sign-on, and backups delegated to a backup tool | D-27, D-28 |
 | [0011](0011-default-port.md) | Default port 8383 | D-29 |
 | [0012](0012-vector-store-and-embeddings-spikes.md) | Vector store and embeddings model: results of the two spikes | D-30, D-31 |
+| [0013](0013-releases-with-semantic-release-and-gitops.md) | Releases are decided by semantic-release from main, and deployed by following the registry | D-33 |
