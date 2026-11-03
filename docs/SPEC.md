@@ -217,8 +217,8 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | # | Topic | Question | Status |
 |---|---|---|---|
 | Q-01 | Name | Is "Mnemarr" confirmed? Anything explicitly out of scope for v1? | ❓ |
-| Q-02 | Storage | Vector store | ✅ Embedded in SQLite behind an interface (D-25). Spike pending: `sqlite-vec` or in-process comparison |
-| Q-03 | Embeddings | Which embeddings model, and what happens to vectors when it changes? | ✅ Local, small, multilingual, behind an interface; model id stored with each vector (D-26). Comparison on the operator's notes pending |
+| Q-02 | Storage | Vector store | ✅ Embedded in SQLite behind an interface (D-25); `sqlite-vec`, pinned (D-30). Metadata filtering and concurrent writes are for the search vertical's tests |
+| Q-03 | Embeddings | Which embeddings model, and what happens to vectors when it changes? | ✅ Local, small, multilingual, behind an interface; model id stored with each vector (D-26); `granite-embedding-97m-multilingual-r2` by default (D-31) |
 | Q-04 | Consolidation model | Which model does the consolidation, and where does it run? | ✅ Claude Code through the operator's subscription, in the assistant runner (D-21, D-22); the adapter leaves room for others. Conversations are sent to the provider, after masking (D-10). Remaining points: Q-19 |
 | Q-05 | Writing model | Who writes the memory vault, and how are conflicts avoided? | ✅ Mnemarr's AI only, the operator reads (D-14) |
 | Q-06 | Note conventions | Which minimal conventions (front matter fields, naming) does the AI follow so that notes stay searchable and filterable by application? | ❓ |
@@ -266,6 +266,7 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | 2026-11-01 | Interview #1 (continued). D-25 to D-28, ADR 0009 and 0010: embedded vector search and local embeddings behind interfaces (spikes pending), exposure outside the proxy's sign-on with own authentication, snapshots shipped by the operator's backup tool. Q-02, Q-03, Q-07 resolved. Glossary: embedding, vector store. |
 | 2026-11-01 | Review of the shell (four agents). Fixes: one state on the Overview (a failed refresh no longer shows online and unreachable together), the API reachable label until F-HLT-01 exists, a single door to the API (`apiGet`, `useApiQuery`), fonts no longer inlined as `data:` (the Content-Security-Policy refuses them), a skip link, typed status icons. |
 | 2026-11-01 | Application shell on the foundation: header with the brain logo, left menu (Overview and System built; Sources, Agents and Settings shown as "Soon"), Portarr's theme and fonts, docs/DESIGN.md. F-UI-01 starts here. |
+| 2026-11-03 | The two spikes of ADR 0009, ADR 0012: D-30 (`sqlite-vec`, pinned) and D-31 (Granite 97M R2 by default). Q-02 and Q-03 resolved. |
 | 2026-11-01 | Foundation review (four agents). D-29 and ADR 0011: default port 8383 (8686 is Lidarr's). Rule on anonymous endpoints (section 6), health built on the probes' checks (F-HLT-01), Q-21 (URL base). Fixes: start time of the application, security headers on error responses. |
 | 2026-11-01 | Foundation vertical started (issue 3). Q-20 added: the license is not decided. |
 | 2026-11-01 | Interview #1 (continued). D-23, D-24, ADR 0008: same quality chain and infrastructure-as-code delivery as Portarr, foundation vertical first. Consolidation expected on a light model (Q-19). |
