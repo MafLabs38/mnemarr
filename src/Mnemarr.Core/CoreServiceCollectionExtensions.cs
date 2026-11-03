@@ -2,7 +2,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
 
 namespace Mnemarr.Core;
@@ -16,6 +18,17 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<MnemarrOptions>().Bind(configuration).ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISystemStatusService, SystemStatusService>();
+
+        services.AddOptions<AuthOptions>().Bind(configuration.GetSection("Auth")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();
+        services.AddSingleton<IDatabase, Database>();
+        services.AddSingleton<IAccountStore, SqliteAccountStore>();
+        services.AddSingleton<IApiKeyStore, SqliteApiKeyStore>();
+        services.AddSingleton<IAuditLog, SqliteAuditLog>();
+        services.AddSingleton<LoginThrottle>();
+        services.AddSingleton<AccountService>();
+        services.AddSingleton<ApiKeyService>();
+        services.AddSingleton<AdminAccountSeeder>();
         return services;
     }
 }

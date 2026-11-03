@@ -9,7 +9,7 @@ public sealed class UptimeFixture
     public async Task should_measure_uptime_from_the_start_of_the_application_not_from_the_first_request()
     {
         await using var factory = new MnemarrFactory();
-        using var client = factory.CreateClient();
+        using var client = await factory.SignedInClientAsync();
 
         factory.Clock.Advance(TimeSpan.FromMinutes(90));
         var status = await client.GetFromJsonAsync<JsonElement>("/api/v1/system/status", TestContext.Current.CancellationToken);

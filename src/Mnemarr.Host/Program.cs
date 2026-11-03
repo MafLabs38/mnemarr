@@ -1,9 +1,11 @@
 using Microsoft.OpenApi;
 using Mnemarr.Api.V1;
 using Mnemarr.Core;
+using Mnemarr.Core.Accounts;
 using Mnemarr.Core.SystemInfo;
 using Mnemarr.Host.Health;
 using Mnemarr.Host.Http;
+using Mnemarr.Host.Security;
 
 // The content root is the binary's folder, whatever the working directory (like the *arr apps).
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -17,6 +19,7 @@ builder.Configuration.AddEnvironmentVariables(prefix: "MNEMARR__");
 
 builder.Services.AddMnemarrCore(builder.Configuration);
 builder.Services.AddMnemarrHealthChecks();
+builder.Services.AddMnemarrSecurity();
 builder.Services.AddMnemarrApiV1();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
@@ -35,12 +38,14 @@ var app = builder.Build();
 // Singletons are created on first use: resolve the status service now, so that "started at" is the start of
 // the application and not the time of the first request for its status.
 _ = app.Services.GetRequiredService<ISystemStatusService>();
+app.Services.GetRequiredService<AdminAccountSeeder>().Run();
 
 app.UseExceptionHandler();
 app.UseMnemarrSecurityHeaders();
 app.UseStatusCodePages();
 app.UseMnemarrFrontendFiles();
 app.UseRouting();
+app.UseMnemarrSecurity();
 app.MapControllers();
 app.MapOpenApi();
 app.MapMnemarrHealthChecks();

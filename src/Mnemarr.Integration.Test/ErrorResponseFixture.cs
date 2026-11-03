@@ -2,13 +2,22 @@ using System.Net;
 
 namespace Mnemarr.Integration.Test;
 
-public sealed class ErrorResponseFixture : IClassFixture<FailingStatusFactory>
+public sealed class ErrorResponseFixture : IClassFixture<FailingStatusFactory>, IAsyncLifetime
 {
-    private readonly HttpClient _client;
+    private readonly FailingStatusFactory _factory;
+    private HttpClient _client = null!;
 
     public ErrorResponseFixture(FailingStatusFactory factory)
     {
-        _client = factory.CreateClient();
+        _factory = factory;
+    }
+
+    public async ValueTask InitializeAsync() => _client = await _factory.SignedInClientAsync();
+
+    public ValueTask DisposeAsync()
+    {
+        _client.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     [Fact]
