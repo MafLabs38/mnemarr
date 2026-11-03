@@ -31,8 +31,8 @@ async function failure(response: Response): Promise<ApiError> {
 }
 
 /**
- * The one place the API is addressed. A URL base (docs/SPEC.md, Q-21), the header of a write and the handling of a 401 are
- * added here, and nowhere else. A success whose body is not JSON (a proxy's page) is an error, not a value.
+ * The one place the API is addressed. A URL base (docs/SPEC.md, Q-21) and the header of a write are added here, and nowhere else;
+ * a 401 is handled by the query client (App/queryClient.ts), which ends the session. A success whose body is not JSON (a proxy's page) is an error, not a value.
  */
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { signal });

@@ -1,12 +1,11 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 
 import Alert from 'Components/Alert/Alert';
 import BrandLogo from 'Components/BrandLogo';
 import Button from 'Components/Form/Button';
 import TextField from 'Components/Form/TextField';
-import { ApiError, apiSend } from 'Helpers/Api/apiGet';
-import { forgetSessionData, type Session, sessionKey } from 'Session/session';
+import { ApiError } from 'Helpers/Api/apiGet';
+import { useSignIn } from 'Session/session';
 import translate from 'Utilities/String/translate';
 
 import styles from './Login.module.css';
@@ -23,21 +22,13 @@ function failureText(error: Error): string {
 }
 
 export default function Login() {
-  const client = useQueryClient();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
-  const signIn = useMutation({
-    mutationFn: () => apiSend<Session>('POST', '/auth/login', { name, password }),
-    onSuccess: (session) => {
-      // Whatever an earlier session left in this tab is not for the person who signs in now.
-      forgetSessionData(client);
-      client.setQueryData(sessionKey, session);
-    },
-  });
+  const signIn = useSignIn();
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    signIn.mutate();
+    signIn.mutate({ name, password });
   }
 
   return (

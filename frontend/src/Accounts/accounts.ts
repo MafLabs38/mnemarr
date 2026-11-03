@@ -1,3 +1,6 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { apiSend } from 'Helpers/Api/apiGet';
 import { useApiQuery } from 'Helpers/Hooks/useApiQuery';
 
 export interface AccountItem {
@@ -77,4 +80,67 @@ export function leastPrivilegedRole(roles: ReadonlyArray<RoleItem>): string | un
     (least, role) => (!least || role.permissions.length < least.permissions.length ? role : least),
     undefined,
   )?.name;
+}
+
+export interface NewAccount {
+  name: string;
+  kind: AccountItem['kind'];
+  role: string;
+  /** A person has a password; a service has keys. */
+  password?: string;
+}
+
+/** Writes go through here, next to the reads and the keys they refresh: a component keeps its form and nothing of the API. */
+export function useCreateAccount() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (account: NewAccount) => apiSend('POST', '/accounts', account),
+    onSuccess: () => client.invalidateQueries({ queryKey: accountsKey }),
+  });
+}
+
+export function useUpdateAccount(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (change: { role: string; enabled: boolean }) => apiSend('PUT', `/accounts/${id}`, change),
+    onSuccess: () => client.invalidateQueries({ queryKey: accountsKey }),
+  });
+}
+
+export function useDeleteAccount(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend('DELETE', `/accounts/${id}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: accountsKey }),
+  });
+}
+
+/** An administrator sets the password of a person. */
+export function useSetPassword(id: string) {
+  return useMutation({ mutationFn: (password: string) => apiSend('PUT', `/accounts/${id}/password`, { password }) });
+}
+
+/** A person changes their own password, with the current one. */
+export function useChangeOwnPassword() {
+  return useMutation({
+    mutationFn: (passwords: { currentPassword: string; newPassword: string }) =>
+      apiSend('PUT', '/auth/password', passwords),
+  });
+}
+
+export function useCreateApiKey(accountId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (key: { name: string; expiresAt?: string }) =>
+      apiSend<CreatedApiKey>('POST', `/accounts/${accountId}/keys`, key),
+    onSuccess: () => client.invalidateQueries({ queryKey: keysQueryKey(accountId) }),
+  });
+}
+
+export function useRevokeApiKey(accountId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (keyId: string) => apiSend('DELETE', `/accounts/${accountId}/keys/${keyId}`),
+    onSuccess: () => client.invalidateQueries({ queryKey: keysQueryKey(accountId) }),
+  });
 }

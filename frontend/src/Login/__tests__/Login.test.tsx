@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { adminSession, sentBody, stubApi } from '__tests__/render';
+import { createQueryClient } from 'App/queryClient';
 import Login from 'Login/Login';
 import { sessionKey } from 'Session/session';
 
@@ -70,5 +71,22 @@ describe('Login', () => {
     await signInWith('admin', 'x');
 
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled();
+  });
+
+  it('keeps the form and says so when the application is run with its own query client and the answer is 401', async () => {
+    stubApi((method, path) =>
+      method === 'POST' && path === '/auth/login' ? { status: 401 } : { body: undefined, status: 401 },
+    );
+    const client = createQueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <Login />
+      </QueryClientProvider>,
+    );
+
+    await signInWith('alice', 'not the password');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The name or the password is wrong.');
+    expect(screen.getByLabelText('Name')).toHaveValue('alice');
   });
 });

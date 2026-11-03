@@ -96,4 +96,15 @@ public sealed class SessionServiceFixture : IDisposable
 
         _h.Sessions.AccountOf(session).Should().BeNull();
     }
+
+    [Fact]
+    public void should_keep_only_a_hash_of_the_session_id_so_that_a_copy_of_the_database_is_not_a_cookie()
+    {
+        var alice = _h.Reader();
+
+        var id = _h.Sessions.Start(alice.Id);
+
+        _h.SessionStore.AccountOf(id, _h.Clock.GetUtcNow()).Should().BeNull();
+        _h.SessionStore.AccountOf(SessionService.Hash(id), _h.Clock.GetUtcNow()).Should().Be(alice.Id);
+    }
 }

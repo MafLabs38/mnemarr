@@ -51,13 +51,13 @@ public sealed class AdminAccountSeederFixture : IDisposable
     }
 
     [Theory]
-    [InlineData("short", "refused")]
-    [InlineData("", "refused")]
-    public void should_stop_the_start_with_a_message_when_the_password_is_not_acceptable(string content, string reason)
+    [InlineData("short")]
+    [InlineData("")]
+    public void should_stop_the_start_with_a_message_when_the_password_is_not_acceptable(string content)
     {
         var run = () => Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile(content) }).Run();
 
-        run.Should().Throw<InvalidOperationException>().WithMessage($"*first administrator was {reason}*");
+        run.Should().Throw<InvalidOperationException>().WithMessage("*first administrator was refused*");
         _h.Accounts.Count().Should().Be(0);
     }
 

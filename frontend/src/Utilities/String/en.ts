@@ -39,6 +39,7 @@ const en = {
   SignInUnavailable: 'Signing in is not possible right now.',
   TooManyAttempts: 'Too many failed attempts. Try again later.',
   SignOut: 'Sign out',
+  SignOutFailed: 'Could not sign out. Try again.',
   SessionError: 'Could not check who is signed in.',
   Actions: 'Actions',
   Action: 'Action',

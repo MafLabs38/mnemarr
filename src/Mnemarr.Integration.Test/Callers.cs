@@ -14,10 +14,24 @@ public sealed class Callers : IAsyncDisposable
     private readonly Dictionary<string, HttpClient> _clients = [];
     private readonly Dictionary<string, Guid> _ids = [];
 
-    public Callers(MnemarrFactory factory)
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MnemarrFactory, Lazy<Task<Callers>>> Shared = [];
+
+    private Callers(MnemarrFactory factory)
     {
         _factory = factory;
     }
+
+    /// <summary>
+    /// The callers of a factory, built once for all the tests that use it: signing in costs a password hash, and a test class builds
+    /// one instance per test.
+    /// </summary>
+    public static Task<Callers> ForAsync(MnemarrFactory factory) =>
+        Shared.GetValue(factory, f => new Lazy<Task<Callers>>(async () =>
+        {
+            var callers = new Callers(f);
+            await callers.StartAsync();
+            return callers;
+        })).Value;
 
     public HttpClient Admin { get; private set; } = null!;
 
@@ -29,7 +43,7 @@ public sealed class Callers : IAsyncDisposable
 
     public static string Unique(string prefix) => $"{prefix}-{Guid.NewGuid():N}"[..24];
 
-    public async Task StartAsync()
+    private async Task StartAsync()
     {
         Admin = await _factory.SignedInClientAsync();
         foreach (var role in new[] { "Operator", "Reader" })

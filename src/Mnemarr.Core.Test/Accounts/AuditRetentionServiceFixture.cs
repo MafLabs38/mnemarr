@@ -24,22 +24,19 @@ public sealed class AuditRetentionServiceFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_prune_at_start_and_stop_when_asked()
+    public async Task should_prune_at_start_without_holding_the_start_back_and_again_every_period()
     {
-        _h.Audit.Append("root", "old", "x");
-        _h.Clock.Advance(TimeSpan.FromDays(100));
-        var service = Subject(_h);
+        var pruned = new SemaphoreSlim(0);
+        var audit = new CountingAuditLog(pruned);
+        var service = new AuditRetentionService(audit, _h.Options, _h.Clock, NullLogger<AuditRetentionService>.Instance);
         var token = TestContext.Current.CancellationToken;
 
         await service.StartAsync(token);
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (_h.Audit.Recent(10).Count > 0 && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(20, token);
-        }
+        (await pruned.WaitAsync(TimeSpan.FromSeconds(30), token)).Should().BeTrue("the first pass runs at start");
+        _h.Clock.Advance(TimeSpan.FromHours(7));
+        (await pruned.WaitAsync(TimeSpan.FromSeconds(30), token)).Should().BeTrue("and again once the period has passed");
 
         await service.StopAsync(token);
-        _h.Audit.Recent(10).Should().BeEmpty();
     }
 
     [Fact]
@@ -53,5 +50,28 @@ public sealed class AuditRetentionServiceFixture : IDisposable
         var prune = () => service.Prune();
 
         prune.Should().NotThrow();
+    }
+
+    /// <summary>An audit log that only says when it was pruned.</summary>
+    private sealed class CountingAuditLog : IAuditLog
+    {
+        private readonly SemaphoreSlim _pruned;
+
+        public CountingAuditLog(SemaphoreSlim pruned)
+        {
+            _pruned = pruned;
+        }
+
+        public void Append(string actor, string action, string target, string detail = "")
+        {
+        }
+
+        public int Prune(DateTimeOffset before)
+        {
+            _pruned.Release();
+            return 0;
+        }
+
+        public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null) => [];
     }
 }

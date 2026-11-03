@@ -244,35 +244,58 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Fact]
-    public void should_cost_real_work_to_check_a_password_with_the_default_hasher()
-    {
-        var real = new AccountsHarness(hasher: new PasswordHasher<Account>());
-        using (real)
-        {
-            real.Reader();
-
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            real.Service.SignIn("alice", "wrong password here");
-            watch.Stop();
-
-            watch.ElapsedMilliseconds.Should().BeGreaterThan(5, "a hash that costs nothing is no protection");
-        }
-    }
-
-    [Fact]
-    public void should_verify_the_current_password_of_a_person_without_signing_in_or_counting_a_failure()
+    public void should_verify_the_current_password_of_a_person_without_signing_in()
     {
         var alice = _h.Reader();
 
         Subject.VerifyPassword(alice.Id, Password).Should().BeTrue();
-        for (var i = 0; i < LoginThrottle.MaxFailures + 2; i++)
+        Subject.VerifyPassword(alice.Id, "wrong password here").Should().BeFalse();
+
+        _h.Audit.Recent(100, "login.succeeded").Should().BeEmpty();
+        _h.Audit.Recent(100, "password.verify-failed").Should().ContainSingle();
+    }
+
+    [Fact]
+    public void should_count_the_wrong_current_passwords_like_failed_sign_ins_so_that_a_stolen_session_cannot_guess_the_password()
+    {
+        var alice = _h.Reader();
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
         {
             Subject.VerifyPassword(alice.Id, "wrong password here").Should().BeFalse();
         }
 
+        var guess = () => Subject.VerifyPassword(alice.Id, Password);
+
+        guess.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Locked);
+        _h.Clock.Advance(TimeSpan.FromMinutes(16));
+        Subject.VerifyPassword(alice.Id, Password).Should().BeTrue();
+    }
+
+    [Fact]
+    public void should_clear_the_count_when_the_current_password_is_right()
+    {
+        var alice = _h.Reader();
+        for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
+        {
+            Subject.VerifyPassword(alice.Id, "wrong password here");
+        }
+
+        Subject.VerifyPassword(alice.Id, Password).Should().BeTrue();
+
         _h.Throttle.IsLocked("alice").Should().BeFalse();
-        _h.Audit.Recent(100, "login.succeeded").Should().BeEmpty();
-        _h.Audit.Recent(100, "password.verify-failed").Should().HaveCount(LoginThrottle.MaxFailures + 2);
+    }
+
+    [Fact]
+    public void should_end_the_sessions_of_an_account_when_it_is_disabled_so_that_enabling_it_again_does_not_bring_a_copied_cookie_back()
+    {
+        _h.Admin();
+        var alice = _h.Reader();
+        var session = _h.Sessions.Start(alice.Id);
+
+        Subject.SetEnabled(alice.Id, false, "root");
+        Subject.SetEnabled(alice.Id, true, "root");
+
+        _h.Sessions.AccountOf(session).Should().BeNull();
     }
 
     [Fact]

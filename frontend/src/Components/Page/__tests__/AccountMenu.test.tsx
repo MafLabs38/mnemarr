@@ -38,8 +38,18 @@ describe('AccountMenu', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/logout', expect.objectContaining({ method: 'POST' }));
   });
 
-  it('signs out of the interface even when the server could not be told', async () => {
+  it('stays signed in, and says so, when the server could not end the session: a reload would sign the person back in', async () => {
     stubApi(() => ({ status: 500 }));
+    const { client } = renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not sign out. Try again.');
+    expect(client.getQueryData(sessionKey)).toBeUndefined();
+  });
+
+  it('signs out when the server answers that nobody is signed in any more', async () => {
+    stubApi(() => ({ status: 401 }));
     const { client } = renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));

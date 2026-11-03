@@ -12,12 +12,12 @@ public sealed class AuditSamplerFixture
     {
         var subject = new AuditSampler(_clock);
 
-        subject.Allow("a").Should().BeTrue();
-        subject.Allow("a").Should().BeFalse();
-        subject.Allow("b").Should().BeTrue();
+        subject.Allow("x", "a").Should().BeTrue();
+        subject.Allow("x", "a").Should().BeFalse();
+        subject.Allow("x", "b").Should().BeTrue();
         _clock.Advance(TimeSpan.FromMinutes(1));
 
-        subject.Allow("a").Should().BeTrue();
+        subject.Allow("x", "a").Should().BeTrue();
     }
 
     [Fact]
@@ -25,9 +25,18 @@ public sealed class AuditSamplerFixture
     {
         var subject = new AuditSampler(_clock);
 
-        Enumerable.Range(0, AuditSampler.MaxPerMinute + 25).Count(i => subject.Allow($"key-{i}")).Should().Be(AuditSampler.MaxPerMinute);
+        Enumerable.Range(0, AuditSampler.MaxPerMinute + 25).Count(i => subject.Allow("x", $"key-{i}")).Should().Be(AuditSampler.MaxPerMinute);
         _clock.Advance(TimeSpan.FromMinutes(1));
 
-        subject.Allow("fresh").Should().BeTrue();
+        subject.Allow("x", "fresh").Should().BeTrue();
+    }
+
+    [Fact]
+    public void should_give_each_kind_of_event_its_own_ceiling_so_that_a_flood_of_one_cannot_hide_another()
+    {
+        var subject = new AuditSampler(_clock);
+        Enumerable.Range(0, AuditSampler.MaxPerMinute + 25).Count(i => subject.Allow("key.refused", $"prefix-{i}")).Should().Be(AuditSampler.MaxPerMinute);
+
+        subject.Allow("login.locked", "alice").Should().BeTrue();
     }
 }

@@ -78,7 +78,7 @@ public sealed partial class AccountService
 
         if (!_throttle.TryReserve(name))
         {
-            if (_sampler.Allow($"login.locked:{name.ToUpperInvariant()}"))
+            if (_sampler.Allow("login.locked", name.ToUpperInvariant()))
             {
                 _audit.Append(name, "login.locked", name);
             }
@@ -110,10 +110,18 @@ public sealed partial class AccountService
         return credentials.Account;
     }
 
-    /// <summary>Whether a person's password is the one they give, for a change of their own password. It neither signs in nor counts toward a lockout.</summary>
+    /// <summary>
+    /// Whether a person's password is the one they give, for a change of their own password. It does not sign in, but it counts like a
+    /// sign-in: whoever holds a stolen session must not be able to guess the password at the speed of the hash.
+    /// </summary>
     public bool VerifyPassword(Guid id, string password)
     {
         var account = Existing(id);
+        if (!_throttle.TryReserve(account.Name))
+        {
+            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
+        }
+
         var credentials = _accounts.GetCredentials(account.Name);
         if (credentials?.PasswordHash is null || password.Length > PasswordPolicy.MaxLength
             || _hasher.VerifyHashedPassword(account, credentials.PasswordHash, password) == PasswordVerificationResult.Failed)
@@ -122,6 +130,7 @@ public sealed partial class AccountService
             return false;
         }
 
+        _throttle.Succeeded(account.Name);
         return true;
     }
 
@@ -141,16 +150,18 @@ public sealed partial class AccountService
 
             if (enabled != account.Enabled)
             {
+                if (!enabled)
+                {
+                    // A disabled account is the answer to a stolen cookie: enabling it again must not bring the cookie back.
+                    _sessions.EndAll(id);
+                }
+
                 _audit.Append(actor, enabled ? "account.enabled" : "account.disabled", account.Name);
             }
 
             return account with { Role = role, Enabled = enabled };
         }
     }
-
-    public Account ChangeRole(Guid id, string role, string actor) => Update(id, role, (Existing(id)).Enabled, actor);
-
-    public Account SetEnabled(Guid id, bool enabled, string actor) => Update(id, Existing(id).Role, enabled, actor);
 
     /// <summary>Sets a password and ends the sessions of the account, except the one given (the person who changes their own keeps theirs).</summary>
     public void SetPassword(Guid id, string password, string actor, string? keepSession = null)
@@ -201,7 +212,7 @@ public sealed partial class AccountService
         }
     }
 
-    private Account Existing(Guid id) =>
+    internal Account Existing(Guid id) =>
         _accounts.Get(id) ?? throw new AccountRejectedException(AccountProblem.NotFound, "There is no such account.");
 
     /// <summary>Refuses a change that would leave no enabled administrator. Called with the administrators lock held.</summary>

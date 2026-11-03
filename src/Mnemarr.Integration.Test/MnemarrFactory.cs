@@ -14,11 +14,12 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
 {
     private readonly bool _createFolder;
 
-    protected MnemarrFactoryBase(bool createFolder)
+    protected MnemarrFactoryBase(bool createFolder, string? existingFolder = null)
     {
-        _createFolder = createFolder;
-        DataFolder = Path.Combine(Path.GetTempPath(), $"mnemarr-test-{Guid.NewGuid():N}");
-        if (createFolder)
+        // A host started again on the folder of another one does not own it: whoever made it removes it.
+        _createFolder = createFolder && existingFolder is null;
+        DataFolder = existingFolder ?? Path.Combine(Path.GetTempPath(), $"mnemarr-test-{Guid.NewGuid():N}");
+        if (_createFolder)
         {
             Directory.CreateDirectory(DataFolder);
         }
@@ -29,6 +30,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     /// <summary>The cookie of the test hosts is not <c>Secure</c> (they speak plain HTTP) unless a test asks for the default.</summary>
     protected virtual CookieSecurityMode CookieSecurity => CookieSecurityMode.SameAsRequest;
 
+    /// <summary>The password that a break-glass reset gives to <see cref="AdminName"/> at start, when a test restarts a host with one.</summary>
+    protected virtual string? ResetPassword => null;
+
     /// <summary>Whether the host starts with a first administrator. A test of an empty Mnemarr turns it off.</summary>
     protected virtual bool HasAdministrator => true;
 
@@ -38,6 +42,7 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     public const string AdminPassword = "integration-test-password";
 
     private readonly string _passwordFile = Path.Combine(Path.GetTempPath(), $"mnemarr-admin-{Guid.NewGuid():N}");
+    private readonly string _resetFile = Path.Combine(Path.GetTempPath(), $"mnemarr-reset-{Guid.NewGuid():N}");
 
     /// <summary>The application's clock, so that a test can let time pass without waiting.</summary>
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero));
@@ -46,6 +51,11 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     {
         builder.UseSetting("DataFolder", DataFolder);
         File.WriteAllText(_passwordFile, AdminPassword);
+        if (ResetPassword is { } reset)
+        {
+            File.WriteAllText(_resetFile, reset);
+        }
+
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<TimeProvider>(Clock);
@@ -56,6 +66,8 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
                 options.AdminUser = HasAdministrator ? AdminName : null;
                 options.AdminPasswordFile = HasAdministrator ? _passwordFile : null;
                 options.CookieSecurity = CookieSecurity;
+                options.ResetPasswordUser = ResetPassword is null ? null : AdminName;
+                options.ResetPasswordFile = ResetPassword is null ? null : _resetFile;
             });
             ConfigureServices(services);
         });
@@ -97,6 +109,7 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
         if (disposing)
         {
             File.Delete(_passwordFile);
+            File.Delete(_resetFile);
         }
 
         if (disposing && _createFolder && Directory.Exists(DataFolder))
@@ -161,4 +174,18 @@ public sealed class NoAdministratorFactory : MnemarrFactoryBase
     }
 
     protected override bool HasAdministrator => false;
+}
+
+/// <summary>An application started again on the data folder of another one: what a restart of a real instance is.</summary>
+public sealed class RestartedFactory : MnemarrFactoryBase
+{
+    private readonly string? _resetPassword;
+
+    public RestartedFactory(MnemarrFactory first, string? resetPassword = null)
+        : base(createFolder: true, existingFolder: first.DataFolder)
+    {
+        _resetPassword = resetPassword;
+    }
+
+    protected override string? ResetPassword => _resetPassword;
 }

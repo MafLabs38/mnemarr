@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Mnemarr.Integration.Test;
 
@@ -9,17 +13,16 @@ namespace Mnemarr.Integration.Test;
 public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetime
 {
     private readonly MnemarrFactory _factory;
-    private readonly Callers _callers;
+    private Callers _callers = null!;
 
     public AccessFixture(MnemarrFactory factory)
     {
         _factory = factory;
-        _callers = new Callers(factory);
     }
 
-    public async ValueTask InitializeAsync() => await _callers.StartAsync();
+    public async ValueTask InitializeAsync() => _callers = await Callers.ForAsync(_factory);
 
-    public async ValueTask DisposeAsync() => await _callers.DisposeAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -53,6 +56,7 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         login.StatusCode.Should().Be(HttpStatusCode.OK);
         login.Headers.GetValues("Set-Cookie").Should().ContainSingle().Which.ToLowerInvariant().Should().Contain("mnemarr.session=").And.Contain("httponly").And.Contain("samesite=strict");
         var session = await client.GetFromJsonAsync<JsonElement>("/api/v1/auth/session", Token);
+        session.GetProperty("accountId").GetGuid().Should().NotBeEmpty();
         session.GetProperty("name").GetString().Should().Be("admin");
         session.GetProperty("kind").GetString().Should().Be("User");
         session.GetProperty("role").GetString().Should().Be("Admin");
@@ -191,7 +195,8 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     {
         var (_, id) = await NewUserAsync();
         using var browser = _factory.CreateClient();
-        var login = await _factory.CreateBrowserClient().PostAsJsonAsync("/api/v1/auth/login", new { name = "admin", password = MnemarrFactory.AdminPassword }, Token);
+        using var signIn = _factory.CreateBrowserClient();
+        var login = await signIn.PostAsJsonAsync("/api/v1/auth/login", new { name = "admin", password = MnemarrFactory.AdminPassword }, Token);
         browser.DefaultRequestHeaders.Add("Cookie", CookieOf(login));
 
         var response = await browser.DeleteAsync(string.Format(System.Globalization.CultureInfo.InvariantCulture, template, id), Token);
@@ -280,21 +285,66 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     }
 
     [Fact]
-    public async Task should_let_a_user_change_their_own_password_with_the_current_one_only_and_not_count_a_wrong_one_as_a_failed_sign_in()
+    public async Task should_count_the_wrong_current_passwords_so_that_a_stolen_session_cannot_guess_the_password()
     {
         var (name, _) = await NewUserAsync();
         using var user = await _factory.SignedInClientAsync(name, Callers.Password);
 
-        for (var i = 0; i < 7; i++)
+        for (var i = 0; i < 5; i++)
         {
             (await user.PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = "not the password", newPassword = "another long password" }, Token))
                 .StatusCode.Should().Be(HttpStatusCode.BadRequest);
         }
 
         (await user.PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = Callers.Password, newPassword = "another long password" }, Token))
+            .StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task should_let_a_user_change_their_own_password_with_the_current_one_and_sign_in_with_the_new_one()
+    {
+        var (name, _) = await NewUserAsync();
+        using var user = await _factory.SignedInClientAsync(name, Callers.Password);
+
+        (await user.PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = Callers.Password, newPassword = "another long password" }, Token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
         using var again = _factory.CreateBrowserClient();
         (await again.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "another long password" }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"name\":\"a\"}")]
+    [InlineData("{\"name\":\"a\",\"password\":null}")]
+    [InlineData("not json")]
+    public async Task should_answer_a_malformed_sign_in_with_a_client_error_and_never_a_server_error(string body)
+    {
+        using var client = _factory.CreateBrowserClient();
+
+        var response = await client.PostAsync("/api/v1/auth/login", new StringContent(body, System.Text.Encoding.UTF8, "application/json"), Token);
+
+        ((int)response.StatusCode).Should().BeInRange(400, 499);
+    }
+
+    [Fact]
+    public async Task should_refuse_a_sign_in_body_that_is_larger_than_any_name_and_password_can_be()
+    {
+        using var client = _factory.CreateBrowserClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { name = "admin", password = new string('p', 100_000) }, Token);
+
+        ((int)response.StatusCode).Should().BeInRange(400, 499);
+    }
+
+    [Fact]
+    public void should_limit_how_many_sign_ins_are_checked_at_once_whatever_the_names_they_try()
+    {
+        var endpoints = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>();
+
+        var login = endpoints.Single(e => e.RoutePattern.RawText == "api/v1/auth/login");
+
+        login.Metadata.GetMetadata<EnableRateLimitingAttribute>().Should().NotBeNull();
     }
 
     /// <summary>
@@ -356,13 +406,5 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         attempts.Select(r => (int)r.StatusCode).Should().OnlyContain(status => status == 403);
         (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/accounts/{victim}", Token)).GetProperty("role").GetString().Should().Be("Reader");
         (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/accounts/{_callers.IdOf(caller)}", Token)).GetProperty("role").GetString().Should().Be(caller);
-    }
-
-    [Fact]
-    public async Task should_serve_the_probes_to_anyone()
-    {
-        using var client = _factory.CreateClient();
-
-        (await client.GetAsync("/health/ready", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

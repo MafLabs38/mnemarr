@@ -1,6 +1,6 @@
-import { type QueryClient, useQuery } from '@tanstack/react-query';
+import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError, apiGet } from 'Helpers/Api/apiGet';
+import { ApiError, apiGet, apiSend } from 'Helpers/Api/apiGet';
 
 /** Who is signed in and what they may do. The interface shows or hides by `permissions`; the server decides on its own. */
 export interface Session {
@@ -45,4 +45,32 @@ export function forgetSessionData(client: QueryClient) {
 export function endSession(client: QueryClient) {
   client.setQueryData(sessionKey, null);
   forgetSessionData(client);
+}
+
+export function useSignIn() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (credentials: { name: string; password: string }) =>
+      apiSend<Session>('POST', '/auth/login', credentials),
+    onSuccess: (session) => {
+      // Whatever an earlier session left in this tab is not for the person who signs in now.
+      forgetSessionData(client);
+      client.setQueryData(sessionKey, session);
+    },
+  });
+}
+
+/** Signs out. The interface leaves the session only once the server has ended it: a failed call would leave it valid, and a reload would sign the person back in. */
+export function useSignOut() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend('POST', '/auth/logout'),
+    onSuccess: () => endSession(client),
+    // A 401 says the session was over already: nothing is left to end.
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 401) {
+        endSession(client);
+      }
+    },
+  });
 }

@@ -1,4 +1,3 @@
-import { useMutation } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 
 import Alert from 'Components/Alert/Alert';
@@ -8,10 +7,10 @@ import TextField from 'Components/Form/TextField';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
-import { apiSend } from 'Helpers/Api/apiGet';
 import { useSession } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
+import { useChangeOwnPassword } from './accounts';
 import styles from './Accounts.module.css';
 
 /** The signed-in person, and the one thing they may change about themselves: their password. */
@@ -19,17 +18,19 @@ export default function MyAccount() {
   const session = useSession();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const change = useMutation({
-    mutationFn: () => apiSend('PUT', '/auth/password', { currentPassword, newPassword }),
-    onSuccess: () => {
-      setCurrentPassword('');
-      setNewPassword('');
-    },
-  });
+  const change = useChangeOwnPassword();
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    change.mutate();
+    change.mutate(
+      { currentPassword, newPassword },
+      {
+        onSuccess: () => {
+          setCurrentPassword('');
+          setNewPassword('');
+        },
+      },
+    );
   }
 
   return (

@@ -1,4 +1,3 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -8,24 +7,28 @@ import SelectField from 'Components/Form/SelectField';
 import TextField from 'Components/Form/TextField';
 import LoadingIndicator from 'Components/LoadingIndicator';
 import StatusLabel from 'Components/Status/StatusLabel';
-import { apiSend } from 'Helpers/Api/apiGet';
 import { kinds } from 'Helpers/Props/kinds';
 import { useSession } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
-import { type AccountItem, accountsKey, type RoleItem, useAccounts, useRoles } from './accounts';
+import {
+  type AccountItem,
+  type RoleItem,
+  useAccounts,
+  useDeleteAccount,
+  useRoles,
+  useSetPassword,
+  useUpdateAccount,
+} from './accounts';
 import styles from './Accounts.module.css';
 
 function PasswordForm({ account, onDone }: Readonly<{ account: AccountItem; onDone: () => void }>) {
   const [password, setPassword] = useState('');
-  const save = useMutation({
-    mutationFn: () => apiSend('PUT', `/accounts/${account.id}/password`, { password }),
-    onSuccess: onDone,
-  });
+  const save = useSetPassword(account.id);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    save.mutate();
+    save.mutate(password, { onSuccess: onDone });
   }
 
   return (
@@ -53,24 +56,16 @@ interface RowProps {
   account: AccountItem;
   roles: ReadonlyArray<RoleItem>;
   isSelf: boolean;
-  onError: (error: Error) => void;
+  /** What the list shows of the last change: its failure, or nothing once a change has worked. */
+  onResult: (error: Error | null) => void;
 }
 
-function AccountRow({ account, roles, isSelf, onError }: Readonly<RowProps>) {
-  const client = useQueryClient();
+function AccountRow({ account, roles, isSelf, onResult }: Readonly<RowProps>) {
   const [editingPassword, setEditingPassword] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const done = () => client.invalidateQueries({ queryKey: accountsKey });
-  const update = useMutation({
-    mutationFn: (change: { role: string; enabled: boolean }) => apiSend('PUT', `/accounts/${account.id}`, change),
-    onSuccess: done,
-    onError,
-  });
-  const remove = useMutation({
-    mutationFn: () => apiSend('DELETE', `/accounts/${account.id}`),
-    onSuccess: done,
-    onError,
-  });
+  const update = useUpdateAccount(account.id);
+  const remove = useDeleteAccount(account.id);
+  const outcome = { onSuccess: () => onResult(null), onError: onResult };
   const roleOptions = roles
     .filter((role) => (account.kind === 'User' ? role.forUsers : role.forServices))
     .map((role) => ({ value: role.name, label: role.name }));
@@ -85,7 +80,7 @@ function AccountRow({ account, roles, isSelf, onError }: Readonly<RowProps>) {
             aria-label={translate('RoleOf', { name: account.name })}
             disabled={update.isPending}
             label=""
-            onChange={(event) => update.mutate({ role: event.target.value, enabled: account.enabled })}
+            onChange={(event) => update.mutate({ role: event.target.value, enabled: account.enabled }, outcome)}
             options={roleOptions}
             value={account.role}
           />
@@ -98,7 +93,7 @@ function AccountRow({ account, roles, isSelf, onError }: Readonly<RowProps>) {
         <td className={styles.actions}>
           <Button
             disabled={update.isPending}
-            onClick={() => update.mutate({ role: account.role, enabled: !account.enabled })}
+            onClick={() => update.mutate({ role: account.role, enabled: !account.enabled }, outcome)}
             variant="quiet"
           >
             {translate(account.enabled ? 'Disable' : 'Enable')}
@@ -114,13 +109,20 @@ function AccountRow({ account, roles, isSelf, onError }: Readonly<RowProps>) {
             </Link>
           )}
           {!isSelf && (
-            <Button
-              disabled={remove.isPending}
-              onClick={() => (confirmingDelete ? remove.mutate() : setConfirmingDelete(true))}
-              variant="danger"
-            >
-              {confirmingDelete ? translate('ConfirmDelete', { name: account.name }) : translate('Delete')}
-            </Button>
+            <>
+              <Button
+                disabled={remove.isPending}
+                onClick={() => (confirmingDelete ? remove.mutate(undefined, outcome) : setConfirmingDelete(true))}
+                variant="danger"
+              >
+                {confirmingDelete ? translate('ConfirmDelete', { name: account.name }) : translate('Delete')}
+              </Button>
+              {confirmingDelete && (
+                <Button onClick={() => setConfirmingDelete(false)} variant="quiet">
+                  {translate('Cancel')}
+                </Button>
+              )}
+            </>
           )}
         </td>
       </tr>
@@ -167,7 +169,7 @@ export default function AccountList() {
               account={account}
               isSelf={account.id === session.accountId}
               key={account.id}
-              onError={setError}
+              onResult={setError}
               roles={roles}
             />
           ))}

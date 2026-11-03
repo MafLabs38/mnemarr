@@ -86,7 +86,7 @@ public sealed class ApiKeyService
         if (key is null || key.RevokedAt is not null || key.ExpiresAt <= now)
         {
             var prefix = secret[..Math.Min(PrefixLength, secret.Length)];
-            if (_sampler.Allow($"key.refused:{prefix}"))
+            if (_sampler.Allow("key.refused", prefix))
             {
                 _audit.Append("unknown", "key.refused", prefix);
             }

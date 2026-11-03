@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 
 namespace Mnemarr.Core.Accounts;
@@ -22,7 +23,8 @@ public interface ISessionStore
 /// <summary>
 /// The sessions of the people who signed in (ADR 0016). The cookie carries a session id and the server keeps the session: signing out,
 /// changing a password and the end of its absolute lifetime end it for real, and a cookie that was forged or copied from a backup of the
-/// key ring has no session behind it.
+/// key ring has no session behind it. The store keeps only a hash of the id: a copy of the database and of the key ring together does not
+/// make a cookie either.
 /// </summary>
 public sealed class SessionService
 {
@@ -43,14 +45,17 @@ public sealed class SessionService
         var now = _clock.GetUtcNow();
         _store.RemoveExpired(now);
         var id = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        _store.Add(id, accountId, now, now.AddDays(_options.Value.SessionMaxDays));
+        _store.Add(Hash(id), accountId, now, now.AddDays(_options.Value.SessionMaxDays));
         return id;
     }
 
     /// <summary>The account a session belongs to, while it is valid.</summary>
-    public Guid? AccountOf(string sessionId) => _store.AccountOf(sessionId, _clock.GetUtcNow());
+    public Guid? AccountOf(string sessionId) => _store.AccountOf(Hash(sessionId), _clock.GetUtcNow());
 
-    public void End(string sessionId) => _store.Remove(sessionId);
+    public void End(string sessionId) => _store.Remove(Hash(sessionId));
 
-    public void EndAll(Guid accountId, string? except = null) => _store.RemoveAll(accountId, except);
+    public void EndAll(Guid accountId, string? except = null) => _store.RemoveAll(accountId, except is null ? null : Hash(except));
+
+    /// <summary>What the store holds for an id: a session id is 256 random bits, so a plain hash cannot be guessed back.</summary>
+    internal static string Hash(string sessionId) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sessionId)));
 }

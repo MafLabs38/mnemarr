@@ -1,18 +1,15 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 
 import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import SelectField from 'Components/Form/SelectField';
 import TextField from 'Components/Form/TextField';
-import { apiSend } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
-import { accountsKey, leastPrivilegedRole, useRoles } from './accounts';
+import { leastPrivilegedRole, useCreateAccount, useRoles } from './accounts';
 import styles from './Accounts.module.css';
 
 export default function CreateAccount() {
-  const client = useQueryClient();
   const { data: roles = [] } = useRoles();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'User' | 'Service'>('User');
@@ -21,15 +18,7 @@ export default function CreateAccount() {
   const rolesOfKind = roles.filter((item) => (kind === 'User' ? item.forUsers : item.forServices));
   const roleOptions = rolesOfKind.map((item) => ({ value: item.name, label: item.name }));
   const role = rolesOfKind.some((item) => item.name === chosenRole) ? chosenRole : leastPrivilegedRole(rolesOfKind);
-  const create = useMutation({
-    mutationFn: () =>
-      apiSend('POST', '/accounts', { name, kind, role, password: kind === 'User' ? password : undefined }),
-    onSuccess: () => {
-      setName('');
-      setPassword('');
-      return client.invalidateQueries({ queryKey: accountsKey });
-    },
-  });
+  const create = useCreateAccount();
 
   function chooseKind(next: 'User' | 'Service') {
     setKind(next);
@@ -38,7 +27,15 @@ export default function CreateAccount() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    create.mutate();
+    create.mutate(
+      { name, kind, role: role ?? '', password: kind === 'User' ? password : undefined },
+      {
+        onSuccess: () => {
+          setName('');
+          setPassword('');
+        },
+      },
+    );
   }
 
   return (

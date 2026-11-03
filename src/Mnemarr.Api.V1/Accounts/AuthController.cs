@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 
@@ -16,6 +17,12 @@ public sealed class AuthController : ControllerBase
     /// <summary>The name of the cookie scheme, known to the host that adds it.</summary>
     public const string CookieScheme = "Mnemarr.Cookie";
 
+    /// <summary>The name of the rate-limiting policy of the sign-in call, defined by the host.</summary>
+    public const string LoginLimit = "login";
+
+    /// <summary>A name and a password are short: a body larger than this is not a sign-in.</summary>
+    private const int MaxBodyBytes = 8 * 1024;
+
     private readonly AccountService _accounts;
     private readonly SessionService _sessions;
 
@@ -28,6 +35,8 @@ public sealed class AuthController : ControllerBase
     /// <summary>Signs a user in with a name and a password and starts a session. The answer is the same for a wrong name and a wrong password.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting(LoginLimit)]
+    [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType<SessionResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
@@ -72,7 +81,9 @@ public sealed class AuthController : ControllerBase
 
     /// <summary>A user changes their own password, with the current one.</summary>
     [HttpPut("password")]
+    [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult ChangeOwnPassword(ChangeOwnPasswordRequest request)
     {
         var name = User.Identity?.Name ?? string.Empty;

@@ -164,6 +164,39 @@ describe('Accounts', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The last enabled administrator cannot be removed.');
   });
 
+  it('disarms a deletion that was started and then given up', async () => {
+    const fetchMock = server();
+    renderWithProviders(<Accounts />);
+    const alice = rowOf(await screen.findByRole('rowheader', { name: 'alice' }));
+
+    await userEvent.click(within(alice).getByRole('button', { name: 'Delete' }));
+    await userEvent.click(within(alice).getByRole('button', { name: 'Cancel' }));
+
+    expect(within(alice).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(within(alice).queryByRole('button', { name: /Confirm/ })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')).toBe(false);
+  });
+
+  it('stops showing a refusal once a later change has worked', async () => {
+    let refuse = true;
+    server((method, path) => {
+      if (method !== 'PUT' || path !== '/accounts/r2') {
+        return undefined;
+      }
+      const answer = refuse ? { status: 409, body: { title: 'Refused for now.' } } : { status: 204 };
+      refuse = false;
+      return answer;
+    });
+    renderWithProviders(<Accounts />);
+    const roleOfAlice = await screen.findByRole('combobox', { name: 'Role of alice' });
+
+    await userEvent.selectOptions(roleOfAlice, 'Operator');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Refused for now.');
+    await userEvent.selectOptions(roleOfAlice, 'Reader');
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
   it('sets the password of a user, and has no such button for a service', async () => {
     const fetchMock = server();
     renderWithProviders(<Accounts />);
@@ -202,14 +235,6 @@ describe('Accounts', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(screen.queryByLabelText('New password for alice')).not.toBeInTheDocument();
-  });
-
-  it('links each account to its keys', async () => {
-    server();
-
-    renderWithProviders(<Accounts />);
-
-    expect(await screen.findByRole('link', { name: 'Keys of laptop' })).toHaveAttribute('href', '/accounts/s3/keys');
   });
 
   it('creates a user with a password, then empties the form', async () => {

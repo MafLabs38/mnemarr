@@ -23,6 +23,8 @@ public sealed partial class AuditRetentionService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Start does not wait for the first pass: a slow or locked database must not hold the host back.
+        await Task.Yield();
         using var timer = new PeriodicTimer(Every, _clock);
         do
         {

@@ -1,4 +1,3 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
@@ -10,11 +9,17 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
-import { apiSend } from 'Helpers/Api/apiGet';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
-import { type ApiKeyItem, type CreatedApiKey, keysQueryKey, useAccount, useApiKeys } from './accounts';
+import {
+  type ApiKeyItem,
+  type CreatedApiKey,
+  useAccount,
+  useApiKeys,
+  useCreateApiKey,
+  useRevokeApiKey,
+} from './accounts';
 import styles from './Accounts.module.css';
 
 /** The secret of a key that has just been created. This is the only time it is shown: it is kept nowhere. */
@@ -59,35 +64,30 @@ function keyState(key: ApiKeyItem): string {
 
 export default function AccountKeys() {
   const { id = '' } = useParams();
-  const client = useQueryClient();
-  const keysKey = keysQueryKey(id);
   const account = useAccount(id);
   const keys = useApiKeys(id);
   const [name, setName] = useState('');
   const [expires, setExpires] = useState('');
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
-  const create = useMutation({
-    mutationFn: () =>
-      apiSend<CreatedApiKey>('POST', `/accounts/${id}/keys`, {
-        name,
-        // The last day counts: the key works until the end of it, in UTC.
-        expiresAt: expires ? new Date(`${expires}T23:59:59.999Z`).toISOString() : undefined,
-      }),
-    onSuccess: (result) => {
-      setCreated(result);
-      setName('');
-      setExpires('');
-      return client.invalidateQueries({ queryKey: keysKey });
-    },
-  });
-  const revoke = useMutation({
-    mutationFn: (keyId: string) => apiSend('DELETE', `/accounts/${id}/keys/${keyId}`),
-    onSuccess: () => client.invalidateQueries({ queryKey: keysKey }),
-  });
+  const create = useCreateApiKey(id);
+  const revoke = useRevokeApiKey(id);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    create.mutate();
+    create.mutate(
+      {
+        name,
+        // The last day counts: the key works until the end of it, in UTC.
+        expiresAt: expires ? new Date(`${expires}T23:59:59.999Z`).toISOString() : undefined,
+      },
+      {
+        onSuccess: (result) => {
+          setCreated(result);
+          setName('');
+          setExpires('');
+        },
+      },
+    );
   }
 
   if (account.isError || keys.isError) {

@@ -95,23 +95,37 @@ public sealed class LoginThrottleFixture
     }
 
     [Fact]
-    public void should_forget_the_names_whose_attempts_have_all_expired_before_forgetting_any_that_is_recent()
+    public void should_never_forget_a_name_that_is_locked_to_make_room()
     {
         var subject = new LoginThrottle(_clock);
-        for (var i = 0; i < LoginThrottle.MaxTracked; i++)
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
         {
-            subject.TryReserve($"old-{i}");
+            subject.TryReserve("target");
         }
 
-        _clock.Advance(TimeSpan.FromMinutes(20));
-        subject.TryReserve("recent");
-        subject.TryReserve("brand-new");
-
-        for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
+        for (var i = 0; i < LoginThrottle.MaxTracked + 2_000; i++)
         {
-            subject.TryReserve("recent");
+            _clock.Advance(TimeSpan.FromMilliseconds(1));
+            subject.TryReserve($"noise-{i}");
         }
 
-        subject.IsLocked("recent").Should().BeTrue();
+        subject.IsLocked("target").Should().BeTrue();
+        subject.TryReserve("target").Should().BeFalse();
+    }
+
+    [Fact]
+    public void should_refuse_a_new_name_rather_than_forget_a_lockout_when_every_tracked_name_is_locked()
+    {
+        var subject = new LoginThrottle(_clock);
+        for (var name = 0; name < LoginThrottle.MaxTracked; name++)
+        {
+            for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+            {
+                subject.TryReserve($"n{name}");
+            }
+        }
+
+        subject.TryReserve("newcomer").Should().BeFalse();
+        subject.IsLocked("n0").Should().BeTrue();
     }
 }

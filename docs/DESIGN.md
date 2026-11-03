@@ -9,7 +9,7 @@
 - The **theme tokens**: same names and same values (`--paper`, `--paperCard`, `--ink`, `--accent`, `--shadowCard`…), so the products of the family look alike. They live in `frontend/src/Styles/Themes/themes.css`. A component never carries a hard-coded color, font, radius or shadow.
 - The **fonts** (Fredoka, Nunito, JetBrains Mono), self-hosted through `@fontsource`: the interface makes no request to a third party.
 - The **code conventions**: CSS Modules, one component per file, absolute imports from `src`, icons only through `Helpers/Props/icons.ts`, the `kind` vocabulary (`size` joins when a component needs it), every text through `translate()`.
-- **Server data only through `useApiQuery`** (`Helpers/Hooks`), which goes through `apiGet` (`Helpers/Api`): never a `fetch` in a component. `apiGet` is the one place where a URL base (SPEC Q-21), an authentication header and the handling of a 401 will be added. The query client retries once, and not at all after a 401, 403 or 404.
+- **Server data only through `useApiQuery`** (`Helpers/Hooks`), which goes through `apiGet` (`Helpers/Api`): never a `fetch` in a component. `apiGet` and `apiSend` are the one place where a URL base (SPEC Q-21) and the header of a write are added; a 401 is handled by the query client, which ends the session and forgets what it had read. **Writes** go through `apiSend` in a mutation hook written next to the feature's query hooks (`useCreateAccount`, `useSignIn`…), which also refreshes the queries it changes: a component keeps its form, never a path or a query key. The query client retries once, and not at all after a 401, 403 or 404.
 
 ## 2. What is specific to Mnemarr
 
