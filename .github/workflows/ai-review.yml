@@ -171,7 +171,7 @@ jobs:
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@body.md > /dev/null
           else
-            gh pr comment "$PR" --body-file body.md
+            gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file body.md
           fi
 
           if [ "$withheld" = true ]; then

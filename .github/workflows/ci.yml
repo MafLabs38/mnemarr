@@ -178,15 +178,14 @@ jobs:
       - run: dotnet tool install --global dotnet-sonarscanner --version 11.3.0
       # Roslyn/IDE analyzers are already enforced by the build and dotnet format: importing them into
       # Sonar only duplicates them.
-      # The token goes through the environment of the two steps that need it (the scanner reads SONAR_TOKEN), not through a
-      # command line, where any process of the job could read it, and not through the build step in between.
+      # The .NET scanner does not read SONAR_TOKEN for `begin`, so the token is an argument. It is only on the command lines of
+      # `begin` and `end`: the build in between, which runs the pull request's code, has no token in its environment.
       - name: Begin SonarQube analysis
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
           dotnet sonarscanner begin
           /k:"${{ github.repository_owner }}_${{ github.event.repository.name }}"
           /d:sonar.host.url="${{ vars.SONAR_HOST_URL }}"
+          /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
           /d:sonar.cs.vscoveragexml.reportsPaths="coverage/**/*.xml"
           /d:sonar.javascript.lcov.reportPaths="coverage/coverage-frontend/lcov.info"
           /d:sonar.coverage.exclusions="**/obj/**,**/*.g.cs,**/__tests__/**,tests/**"
@@ -194,9 +193,7 @@ jobs:
           /d:sonar.qualitygate.wait=true
       - run: dotnet build src/Mnemarr.sln
       - name: End SonarQube analysis
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: dotnet sonarscanner end
+        run: dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
 
   security:
     name: security
