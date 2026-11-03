@@ -34,14 +34,16 @@ Constraints:
 - `main` is a little noisier than a squash would leave it. It is the price of letting the analyzer see each change.
 - If the release succeeds and the image build fails, the tag exists without an image. Re-running the failed `image` job in the same run fixes it (the version output is kept).
 - The collector (ADR 0005) is not part of this release yet: it is released as binaries for Windows and Linux in its own vertical.
-- **The published image is rebuilt, not the one that was tested**, and the arm64 image is never started. Acceptable while the output is portable and framework-dependent; **it stops being acceptable with the first native dependency per architecture**, and a smoke test of the pushed digest for each platform comes with it.
+- **The published image is rebuilt, not the one that was tested**, and the arm64 image is never started. Acceptable while the output is portable and framework-dependent; **it stops being acceptable with the first native dependency per architecture**. That dependency is already decided (the `sqlite-vec` binary of D-30): a smoke test of the pushed digest for each platform is a precondition of the search vertical, tracked in issue #24 and as Q-39 in the specification.
 - The image is not scanned or signed after the build (Trivy scans the repository, not the image). To plan with the vector search vertical.
-- The version the application shows is `X.Y.Z.<run>` like Portarr's, which is not SemVer: a compatibility check (Q-28) compares `X.Y.Z` only.
+- The version the application shows is `X.Y.Z.<run>` like Portarr's, which is not SemVer: a compatibility check (Q-28) compares `X.Y.Z` only, and Q-28 records that the status resource should expose the version and the build as separate fields before the ingestion vertical makes the string a contract.
+- A merged Dependabot bump titled `chore(deps)` releases a patch (a dependency of the image that fixes a vulnerability must reach a version); `chore(deps-dev)` and `ci(deps)` do not.
+- CodeQL gates the pull request, not the release: it runs in its own workflow, which the release does not wait for.
 - There is no separate hotfix path: a fix goes through `develop` like any other, and the release pull request is cheap. A branch cut from `main` would need `main` merged back into `develop`.
 
 ## Differences from Portarr's ADR 0014
 
-Same design, with these differences, which Portarr has not received (ADR 0008: a fix to the shared chain is applied in both): the release tooling in its own package with an install that runs no script and a checkout without credential; the image gated on every job and a release gated on Sonar; a release built without layer cache; the guard on the seed tag; base images pinned by digest; a single multi-architecture image; the title check and the squash commit title. Portarr's workflow and Dockerfile are the ones to bring up to date.
+Same design, with these differences, which Portarr has not received (ADR 0008: a fix to the shared chain is applied in both): the release tooling in its own package with an install that runs no script and a checkout without credential; the image gated on every job and a release gated on Sonar; a release built without layer cache; the guard on the seed tag; base images pinned by digest; a single multi-architecture image; the title check and the squash commit title. Portarr's workflow and Dockerfile are the ones to bring up to date (issue #25).
 
 ## Alternatives considered
 

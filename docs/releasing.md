@@ -11,7 +11,10 @@ On every push to `main`, after the whole pipeline is green, the `release` job re
 | `feat(…): …` | minor: `0.1.0` → `0.2.0` |
 | `fix(…)`, `perf(…)`, `revert(…)` | patch: `0.1.0` → `0.1.1` |
 | a breaking change (`feat(…)!:` or a `BREAKING CHANGE:` footer) | minor while below 1.0, major from 1.0 |
-| `chore`, `docs`, `test`, `refactor`, `style`, `ci` | no release |
+| `chore(deps)` (a dependency of the image, as Dependabot titles it) | patch: a fixed vulnerability must reach a version |
+| `chore`, `docs`, `test`, `refactor`, `style`, `build`, `ci`, `chore(deps-dev)` | no release, even when marked breaking |
+
+The rules are in [`tools/release/.releaserc.json`](../tools/release/.releaserc.json) (the last matching rule wins, so the specific `chore(deps)` rule comes after the general `chore` one) and are tested by `release-tooling` in the CI.
 
 It then creates the tag `vX.Y.Z` and a GitHub release whose notes are the changelog. Because the title of a squash-merged pull request becomes the commit on `develop`, **the title of the pull request decides the version**: write `fix:` for a fix and `feat:` for something new. The `PR title` check fails a title that is not a Conventional Commit, so a fix cannot silently drop out of a release.
 
@@ -29,11 +32,23 @@ The image is built with the version `X.Y.Z.<n>`, where `<n>` is the number of th
 
 A run on `main` that finds nothing worth releasing (only `chore`, `docs`…) publishes no version: the `main` and commit images are built, and nothing is deployed.
 
+What the jobs do, by the result of the gates (`release` and `image` are skipped on a pull request):
+
+| Push to | Gates | `release` | `image` |
+|---|---|---|---|
+| `develop` | all passed (Sonar passed or not configured) | skipped | `develop` and `sha-` tags |
+| `develop` | one failed or was cancelled | skipped | skipped |
+| `main` | all passed, Sonar included | runs, tags if a commit deserves it | `main` and `sha-` tags, plus `X.Y.Z` and `latest` after a release |
+| `main` | one failed or was cancelled | skipped | skipped |
+| `main` | Sonar not configured | skipped | skipped: **`main` publishes nothing without Sonar** |
+
+CodeQL runs in its own workflow and gates the pull request (once it is a required check), not the release.
+
 ## What is published
 
 `ghcr.io/<owner>/mnemarr`, for `linux/amd64` and `linux/arm64`. Tags: `X.Y.Z`, `latest`, the branch (`develop`, `main`) and `sha-<commit>`. Pull requests publish nothing, and neither does a push whose tests, scans or Sonar analysis failed. The base images of the Dockerfile are pinned by digest, and a release is built without the layer cache.
 
-The end-to-end test runs the amd64 image. The arm64 image is built (without emulation) and **not started in CI**: that is acceptable while the application is portable, framework-dependent code, and it must change with the first native dependency per architecture (ADR 0013).
+The end-to-end test runs the amd64 image (a precondition for the vector search vertical is tracked in issue #24). The arm64 image is built (without emulation) and **not started in CI**: that is acceptable while the application is portable, framework-dependent code, and it must change with the first native dependency per architecture (ADR 0013).
 
 ## Following the releases
 

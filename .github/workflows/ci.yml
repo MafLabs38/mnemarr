@@ -228,13 +228,29 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
 
+  # The things that decide a version: the release rules, the version of an image and the guard on the seed tag (tools/release/test).
+  release-tooling:
+    name: release-tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: yarn install --frozen-lockfile --ignore-scripts
+        working-directory: tools/release
+      - run: yarn test
+        working-directory: tools/release
+
   # The version of what was merged into main: semantic-release reads the Conventional Commits since the last tag, creates the tag
   # and the GitHub release (its notes are the changelog), and says the version it chose ('' when nothing deserves a release).
   # Nothing is committed back to main (the ruleset forbids a direct push): the version lives in the tag.
   release:
     name: release
     runs-on: ubuntu-latest
-    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security]
+    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling]
     # The tag cannot be undone, so the gate is the strictest one: nothing failed or was cancelled, the end-to-end test ran and passed, and the
     # Sonar analysis ran and passed (a skipped analysis, because the server is not configured, does not release).
     if: >-
@@ -256,16 +272,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-      # No package cache either: a cache entry written by an earlier job of the push would be restored here, in the job that can write.
+          # No package cache either: a cache entry written by an earlier job of the push would be restored here, in the job that can write.
+          # Stated, because setup-node may turn the cache on by itself when package.json declares a package manager.
+          package-manager-cache: false
       - run: yarn install --frozen-lockfile --ignore-scripts
         working-directory: tools/release
       # Without a tag to count from, the first release would be 1.0.0 and could not be undone (docs/releasing.md, "The seed tag").
       - name: A release tag to count from exists
-        run: |
-          if [ -z "$(git tag --list 'v*')" ]; then
-            echo "::error title=No release tag::No v* tag found: create v0.0.0 on the initial commit of main first (docs/releasing.md)."
-            exit 1
-          fi
+        run: bash tools/release/scripts/require-release-tag.sh
       - id: release
         working-directory: tools/release
         env:
@@ -278,7 +292,7 @@ jobs:
   image:
     name: image
     runs-on: ubuntu-latest
-    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release]
+    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling, release]
     if: >-
       ${{ !cancelled() && github.event_name == 'push' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
       && needs.e2e-smoke.result == 'success'
@@ -302,12 +316,7 @@ jobs:
           RELEASE: ${{ needs.release.outputs.version }}
           RUN: ${{ github.run_number }}
           REF: ${{ github.ref_name }}
-        run: |
-          if [ -n "$RELEASE" ]; then
-            echo "value=$RELEASE.$RUN" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=0.0.0-${REF//[^A-Za-z0-9]/-}.$RUN" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "value=$(bash tools/release/scripts/version.sh)" >> "$GITHUB_OUTPUT"
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
