@@ -69,7 +69,8 @@ test('semantic-release tells the next job the version it chose', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'release-output-'));
   try {
     const output = path.join(directory, 'github-output');
-    // The command is a template of semantic-release: its only placeholder is the version it chose.
+    // The command is a template of semantic-release: its only placeholder is the version it chose. This replaces it by hand; the
+    // templating of semantic-release itself is not exercised here, only the shell command that comes out of it.
     const command = exec.successCmd.replaceAll('${nextRelease.version}', '0.1.0');
     assert.doesNotMatch(command, /nextRelease/);
     execFileSync('bash', ['-c', command], { env: { PATH: process.env.PATH, GITHUB_OUTPUT: output } });
@@ -104,6 +105,23 @@ test('the jobs that release and publish have the same gates', () => {
   assert.match(condition('image'), /github\.ref != 'refs\/heads\/main' && needs\.release\.result == 'skipped'/);
   assert.match(condition('release'), /github\.ref == 'refs\/heads\/main'/);
   assert.match(condition('release'), /!cancelled\(\)/);
+});
+
+test('the properties that keep the privileged job small', () => {
+  const workflow = readFileSync(path.join(here, '..', '..', '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+  const jobs = workflow.split(/^jobs:$/m)[1].split(/^  (?=[a-z0-9_-]+:$)/m).filter(Boolean);
+  const named = (name) => jobs.find((job) => job.startsWith(`${name}:`));
+
+  // Only the release job can write to the repository, and no checkout keeps a credential.
+  assert.deepEqual(jobs.filter((job) => job.includes('contents: write')).map((job) => job.split(':')[0]), ['release']);
+  for (const checkout of workflow.matchAll(/uses: actions\/checkout@[\s\S]*?(?=\n      - |\n  [a-z]|$)/g)) {
+    assert.match(checkout[0], /persist-credentials: false/, 'a checkout keeps its credential');
+  }
+  assert.match(named('release'), /package-manager-cache: false/);
+  // A release image neither reads nor writes the layer cache.
+  for (const key of ['no-cache', 'cache-from', 'cache-to']) {
+    assert.match(named('image'), new RegExp(`${key}: .*needs\\.release\\.outputs\\.version`), `${key} must depend on the release`);
+  }
 });
 
 test('the title check and the release rules know the same types', () => {

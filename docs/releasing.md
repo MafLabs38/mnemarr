@@ -48,7 +48,7 @@ CodeQL runs in its own workflow and gates the pull request (once it is a require
 
 ## What is published
 
-`ghcr.io/<owner>/mnemarr`, for `linux/amd64` and `linux/arm64`. Tags: `X.Y.Z`, `latest`, the branch (`develop`, `main`) and `sha-<commit>`. Pull requests publish nothing, and neither does a push whose tests, scans or Sonar analysis failed. The base images of the Dockerfile are pinned by digest, and a release is built without the layer cache.
+`ghcr.io/<owner>/mnemarr`, for `linux/amd64` and `linux/arm64`. Only an `X.Y.Z` image (and `latest`) carries a meaningful version; the `main`, `develop` and `sha-` images of a push that released nothing show `0.0.0-<branch>.<run>`. Tags: `X.Y.Z`, `latest`, the branch (`develop`, `main`) and `sha-<commit>`. Pull requests publish nothing, and neither does a push whose tests, scans or Sonar analysis failed. The base images of the Dockerfile are pinned by digest, and a release is built without the layer cache.
 
 The end-to-end test runs the amd64 image (a precondition for the vector search vertical is tracked in issue #24). The arm64 image is built (without emulation) and **not started in CI**: that is acceptable while the application is portable, framework-dependent code, and it must change with the first native dependency per architecture (ADR 0013).
 
