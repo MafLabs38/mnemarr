@@ -1,6 +1,6 @@
 # 0009 — Embedded vector search and local embeddings, both behind interfaces
 
-- **Status**: accepted
+- **Status**: accepted; the two choices it left to spikes are settled in [0012](0012-vector-store-and-embeddings-spikes.md)
 - **Date**: 2026-11-01
 - **Spec**: D-25, D-26
 

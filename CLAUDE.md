@@ -2,7 +2,7 @@
 
 > Self-hosted long-term memory for people and AI assistants, in the spirit of the *arr suite.
 
-**Project stage: foundation.** The architecture is decided: the decisions are in [docs/SPEC.md](docs/SPEC.md) and [docs/adr/](docs/adr/README.md) (see [docs/VISION.md](docs/VISION.md) for the original need). The foundation vertical (pipeline, quality chain and a walking skeleton, ADR 0008) comes first, then the first functional vertical. Two spikes come before the search vertical: the vector store implementation and the embeddings model (ADR 0009).
+**Project stage: foundation.** The architecture is decided: the decisions are in [docs/SPEC.md](docs/SPEC.md) and [docs/adr/](docs/adr/README.md) (see [docs/VISION.md](docs/VISION.md) for the original need). The foundation vertical (pipeline, quality chain and a walking skeleton, ADR 0008) comes first, then the first functional vertical. The two spikes that came before the search vertical are done (ADR 0012): `sqlite-vec` for the vectors, Granite 97M R2 for the embeddings.
 
 This file is read automatically by Claude Code. It applies to every task in this repository.
 
