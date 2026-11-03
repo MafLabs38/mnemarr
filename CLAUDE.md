@@ -67,8 +67,8 @@ Branches `main` (stable releases) and `develop` (integration) are protected by G
 2. Commit with Conventional Commits
 3. git push origin feature/<issue>-<short-description>
 4. gh pr create --base develop
-5. CI green + review -> squash merge into develop
-6. When develop is stable -> release PR develop -> main
+5. CI green + review -> squash merge into develop (the PR title is a Conventional Commit: it decides the version)
+6. When develop is stable -> release PR develop -> main, merged with a **merge commit, never a squash** (semantic-release must see the commits; `main` refuses the other methods). The pipeline then tags and publishes the image; deployments pull it: [docs/releasing.md](docs/releasing.md)
 ```
 
 Prefixes: `feature/`, `fix/`, `chore/`, `docs/`. Conventional Commits: `feat(api): ...`, `fix(search): ...`, `docs(spec): ...`, `chore(ci): ...`.

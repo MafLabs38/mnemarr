@@ -1,13 +1,20 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS frontend
+# The base images are pinned by digest (the tag says what they are, the digest what they were when a release was built); Dependabot moves both.
+# Tag and digest together are on purpose, an exception to SonarQube's docker:S8431 stated in ci.yml and ADR 0013: do not "fix" it.
+
+# The build stages run on the builder's own architecture (their output does not depend on the target one): only the last stage is
+# per architecture, and it only copies files, so a multi-architecture image is built without emulation.
+# The constraint that comes with it: an asset that differs per architecture (a native library) must be chosen with ARG TARGETARCH
+# (or `dotnet publish -a`), never by the architecture of the builder, or the arm64 image gets amd64 files and fails only when it runs.
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS frontend
 WORKDIR /build
 COPY package.json yarn.lock ./
 RUN corepack enable && yarn install --frozen-lockfile
 COPY frontend ./frontend
 RUN yarn build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS backend
 ARG VERSION=0.0.0-dev
 WORKDIR /build
 COPY global.json Directory.Build.props Directory.Packages.props ./
@@ -21,7 +28,7 @@ RUN dotnet publish src/Mnemarr.Host/Mnemarr.Host.csproj -c Release --no-restore 
     && mkdir /config
 
 # Chiseled image: no shell, no package manager, non-root user by default.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:c89a6a61f494f20a5ae302990e814627a8d91b332fd4a8e7c1707c2d4da9555d
 WORKDIR /app
 COPY --from=backend /app ./
 COPY --from=frontend /build/_output/UI ./wwwroot
