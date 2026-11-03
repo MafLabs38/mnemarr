@@ -26,6 +26,8 @@ test('the release rules', async (t) => {
     ['revert: undo the change', 'patch'],
     ['feat(api)!: rename a field', 'minor'], // below 1.0 a breaking change is a minor
     ['fix!: change a default', 'minor'],
+    ['perf!: change the index format', 'minor'],
+    ['revert!: undo with a new contract', 'minor'],
     ['feat: x\n\nBREAKING CHANGE: the field is gone', 'minor'],
     ['chore(deps): Bump a from 1 to 2', 'patch'], // a dependency of the image is a patch: a fixed vulnerability must be released
     ['feat(deps): x', 'minor'], // the scoped rule must not downgrade a feat
@@ -33,8 +35,13 @@ test('the release rules', async (t) => {
     ['chore(deps-dev): Bump a from 1 to 2', null],
     ['ci(deps): Bump an action', null],
     ['docs(adr): explain', null],
-    ['docs!: rewrite', null], // a breaking change of a type that does not release does not release
-    ['ci!: change the pipeline', null],
+    ['docs!: rewrite', 'minor'], // a breaking change releases a minor whatever its type: it must not ride in a patch
+    ['ci!: change the pipeline', 'minor'],
+    ['chore!: rename a setting', 'minor'],
+    ['refactor!: reshape a response', 'minor'],
+    ['docs: x\n\nBREAKING CHANGE: the field is gone', 'minor'],
+    ['chore(deps)!: Bump a to a breaking version', 'minor'],
+    ['fix(deps): x', 'patch'],
     ['chore: tidy', null],
     ['test: add a case', null],
     ['refactor: rename', null],
@@ -55,11 +62,36 @@ test('the highest release of several commits wins', async () => {
   assert.equal(await release(['docs: a', 'fix: b', 'feat: c', 'chore: d']), 'minor');
   assert.equal(await release(['fix: a', 'fix!: b']), 'minor'); // a breaking fix beside a fix
   assert.equal(await release(['docs: a', 'chore: b']), null);
+  assert.equal(await release(['fix: a', 'refactor!: b']), 'minor'); // a breaking refactor beside a fix is not a patch
+});
+
+test('the branch and the tag format', () => {
+  assert.deepEqual(config.branches, ['main']);
+  assert.equal(config.tagFormat, 'v${version}');
 });
 
 test('semantic-release tells the next job the version it chose', () => {
   const exec = config.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/exec')[1];
-  assert.match(exec.successCmd, /version=\$\{nextRelease\.version\}.*GITHUB_OUTPUT/);
+  const directory = mkdtempSync(path.join(tmpdir(), 'release-output-'));
+  try {
+    const output = path.join(directory, 'github-output');
+    // The command is a template of semantic-release: its only placeholder is the version it chose.
+    const command = exec.successCmd.replace('${nextRelease.version}', '0.1.0');
+    execFileSync('bash', ['-c', command], { env: { PATH: process.env.PATH, GITHUB_OUTPUT: output } });
+    assert.equal(readFileSync(output, 'utf8'), 'version=0.1.0\n');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('the jobs that release and publish have the same gates', () => {
+  // A gate added to one and not to the other would let an image out without it (the `image` job also waits for `release`).
+  const workflow = readFileSync(path.join(here, '..', '..', '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+  const needs = (job) => {
+    const body = workflow.split(new RegExp(`^  ${job}:$`, 'm'))[1].split(/^  [a-z-]+:$/m)[0];
+    return [...body.match(/^    needs: \[(.*)\]$/m)[1].split(',').map((name) => name.trim())].sort();
+  };
+  assert.deepEqual(needs('image').filter((name) => name !== 'release'), needs('release'));
 });
 
 test('the version of an image', async (t) => {
@@ -72,10 +104,17 @@ test('the version of an image', async (t) => {
     assert.equal(version({ RELEASE: '', RUN: '7', REF: 'feature/3_x y' }), '0.0.0-feature-3-x-y.7'));
   await t.test('dots and dashes of a ref become dashes', () =>
     assert.equal(version({ RELEASE: '', RUN: '7', REF: 'feature/1.2-x' }), '0.0.0-feature-1-2-x.7'));
-  await t.test('a missing run number is an error, not a version', () => {
-    const result = spawnSync('bash', [path.join(scripts, 'version.sh')], { env: { PATH: process.env.PATH, RELEASE: '0.1.0' }, encoding: 'utf8' });
-    assert.notEqual(result.status, 0);
-  });
+  for (const [name, env] of [
+    ['a missing run number', { RELEASE: '0.1.0' }],
+    ['an empty run number', { RELEASE: '0.1.0', RUN: '' }],
+    ['a missing ref', { RELEASE: '', RUN: '7' }],
+    ['an empty ref', { RELEASE: '', RUN: '7', REF: '' }],
+  ]) {
+    await t.test(`${name} is an error, not a version`, () => {
+      const result = spawnSync('bash', [path.join(scripts, 'version.sh')], { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' });
+      assert.notEqual(result.status, 0);
+    });
+  }
 });
 
 test('the guard on the seed tag', async (t) => {
@@ -102,6 +141,11 @@ test('the guard on the seed tag', async (t) => {
     repo.git('tag', 'release-1');
     assert.equal(guard(repo).status, 1);
   });
+  await t.test('takes any v* tag: semantic-release ignores the ones that are not versions', () => {
+    const repo = repository();
+    repo.git('tag', 'vNext');
+    assert.equal(guard(repo).status, 0);
+  });
   await t.test('runs with the seed tag', () => {
     const repo = repository();
     repo.git('tag', 'v0.0.0');
@@ -110,7 +154,7 @@ test('the guard on the seed tag', async (t) => {
   await t.test('says that git failed when it is not in a repository', () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'release-guard-none-'));
     t.after(() => rmSync(cwd, { recursive: true, force: true }));
-    const result = guard({ cwd, env: { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CEILING_DIRECTORIES: tmpdir() } });
+    const result = guard({ cwd, env: { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_CEILING_DIRECTORIES: tmpdir() } });
     assert.notEqual(result.status, 0);
     assert.doesNotMatch(result.stdout, /No release tag/);
   });

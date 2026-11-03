@@ -13,8 +13,7 @@
 - [ ] Documentation update
 
 ## Issue
-<!-- `Closes #<number>` -->
-Closes #
+<!-- Write `Closes #<number>` here, or delete this section when there is no issue. -->
 
 ## How Has This Been Tested?
 <!-- Describe the tests that you ran to verify your changes -->

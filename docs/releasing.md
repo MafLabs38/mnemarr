@@ -1,6 +1,6 @@
 # Releasing
 
-Mnemarr's versions are decided by [semantic-release](https://semantic-release.org) (its configuration and tooling are in [`tools/release`](../tools/release)) from the Conventional Commits of the history ([ADR 0013](adr/0013-releases-with-semantic-release-and-gitops.md), D-33). Nobody types a version.
+Mnemarr's versions are decided by [semantic-release](https://semantic-release.org) (its configuration and tooling are in [`tools/release`](../tools/release)) from the Conventional Commits of the history ([ADR 0013](adr/0013-releases-with-semantic-release-consumed-by-pulling.md), D-33). Nobody types a version.
 
 ## How a version is decided
 
@@ -10,11 +10,11 @@ On every push to `main`, after the whole pipeline is green, the `release` job re
 |---|---|
 | `feat(…): …` | minor: `0.1.0` → `0.2.0` |
 | `fix(…)`, `perf(…)`, `revert(…)` | patch: `0.1.0` → `0.1.1` |
-| a breaking change (`feat(…)!:` or a `BREAKING CHANGE:` footer) | minor while below 1.0, major from 1.0 |
+| a breaking change (`!` after the type, or a `BREAKING CHANGE:` footer), **of any type** | minor while below 1.0, major from 1.0: a breaking `refactor!:` or `docs!:` must not ride in a patch |
 | `chore(deps)` (a non-development dependency, as Dependabot titles it) | patch: a fixed vulnerability must reach a version. A NuGet bump counts even when only the tests use the package (Dependabot cannot tell); the collector's crates (`build(deps)`) do not |
-| `chore`, `docs`, `test`, `refactor`, `style`, `build`, `ci`, `chore(deps-dev)` | no release, even when marked breaking |
+| `chore`, `docs`, `test`, `refactor`, `style`, `build`, `ci`, `chore(deps-dev)` | no release (unless marked breaking, above) |
 
-The rules are in [`tools/release/.releaserc.json`](../tools/release/.releaserc.json) (the last matching rule wins, so the specific `chore(deps)` rule comes after the general `chore` one) and are tested by `release-tooling` in the CI.
+The rules are in [`tools/release/.releaserc.json`](../tools/release/.releaserc.json) (the rules are applied in order: the highest release type among the matching ones wins, but a rule with `release: false` clears what matched before it. So the specific `chore(deps)` rule and the breaking rule come after the general `chore` one: moving them up silently stops those commits from releasing) and are tested by `release-tooling` in the CI.
 
 It then creates the tag `vX.Y.Z` and a GitHub release whose notes are the changelog. Because the title of a squash-merged pull request becomes the commit on `develop`, **the title of the pull request decides the version**: write `fix:` for a fix and `feat:` for something new. The `PR title` check fails a title that is not a Conventional Commit, so a fix cannot silently drop out of a release.
 
@@ -60,7 +60,7 @@ Mnemarr never deploys itself, and the CI has no access to your hosts: a version 
 image: ghcr.io/<owner>/mnemarr:0.1.0
 ```
 
-**A tool that follows the registry.** For example [Flux](https://fluxcd.io) image automation, which records the newest version in your own infrastructure repository (a deployment is then a commit there, and a rollback a `git revert`):
+**A tool that follows the registry.** For example [Flux](https://fluxcd.io) image automation, which records the newest version in your own infrastructure repository (a deployment is then a commit there, and a rollback a `git revert`). Below 1.0 a breaking change is a minor, and Mnemarr keeps a database and vectors: the example stays on one minor, and moving to the next one is a deliberate step until 1.0.
 
 ```yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -72,10 +72,10 @@ spec:
     name: mnemarr
   policy:
     semver:
-      range: ">=0.1.0" # develop, latest and sha-… are not versions: they are ignored
+      range: ">=0.1.0 <0.2.0" # develop, latest and sha-… are not versions: they are ignored
 ```
 
-with a marker on the `image:` line of the Deployment (`# {"$imagepolicy": "<namespace>:mnemarr"}`). See [deploy/](../deploy/README.md) for the manifests to start from.
+Images are not signed yet (Q-39): following the tags automatically trusts everyone who can push to the repository (D-32 states that boundary), so pin by digest if you do not. With a marker on the `image:` line of the Deployment (`# {"$imagepolicy": "<namespace>:mnemarr"}`). See [deploy/](../deploy/README.md) for the manifests to start from.
 
 ## The seed tag
 
@@ -100,6 +100,8 @@ There is no separate hotfix path. A fix goes through `develop` like any other ch
 - After the first image is published, set the package visibility to public if the registry does not inherit it from the repository, so that a deployment can pull it without a credential.
 
 ## Checking a release without publishing
+
+The tests of the release tooling (`yarn test` in `tools/release`: the rules, the version of an image, the guard on the seed tag) use `bash` and POSIX paths: Linux, macOS or WSL.
 
 ```bash
 cd tools/release
