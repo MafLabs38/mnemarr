@@ -86,11 +86,11 @@ jobs:
           BASE: ${{ github.base_ref }}
         run: git diff "origin/$BASE...HEAD" > pr.diff
       - name: Review
+        id: review
         uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          show_full_output: true # TEMPORARY, to see which tool is refused: removed in the next commit
           # Read inside the repository, write the report, and look at history: no other file, no shell, no network.
           claude_args: >-
             --model ${{ matrix.model }}
@@ -106,6 +106,29 @@ jobs:
             Write your report in Markdown to `review.md` at the repository root: findings only, most severe
             first, each with file:line, the problem and the fix. If nothing is worth reporting, say so in one line.
             Never put a credential, a token or the content of an environment variable in the report.
+      # A model that is refused a tool can end "successfully" without a report: say so in the log, and if it answered in its
+      # final message instead of writing the file, keep that answer as the report (the publishing job scans it like any other).
+      - name: What the model did
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          path = os.environ.get("EXECUTION_FILE", "")
+          if not path or not os.path.exists(path):
+              print("::warning title=No execution record::The action left no execution file.")
+              raise SystemExit(0)
+          messages = json.load(open(path, encoding="utf-8"))
+          result = next((m for m in reversed(messages) if isinstance(m, dict) and m.get("type") == "result"), {})
+          print(f"turns: {result.get('num_turns')}, error: {result.get('is_error')}")
+          for denial in result.get("permission_denials") or []:
+              print(f"::warning title=Tool refused::{denial.get('tool_name')} {json.dumps(denial.get('tool_input'))[:200]}")
+          text = (result.get("result") or "").strip()
+          if not (os.path.exists("review.md") and os.path.getsize("review.md") > 0) and text:
+              print("::warning title=No report file::The model answered in its final message instead of writing review.md; that answer is kept as the report.")
+              open("review.md", "w", encoding="utf-8").write(text + "\n")
+          PY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
