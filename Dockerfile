@@ -2,6 +2,8 @@
 
 # The build stages run on the builder's own architecture (their output does not depend on the target one): only the last stage is
 # per architecture, and it only copies files, so a multi-architecture image is built without emulation.
+# The constraint that comes with it: an asset that differs per architecture (a native library) must be chosen with ARG TARGETARCH
+# (or `dotnet publish -a`), never by the architecture of the builder, or the arm64 image gets amd64 files and fails only when it runs.
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 WORKDIR /build
 COPY package.json yarn.lock ./

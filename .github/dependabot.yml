@@ -18,6 +18,12 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
+  # The release tooling is its own package: only the release job installs it.
+  - package-ecosystem: "npm"
+    directory: "/tools/release"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "cargo"
     directory: "/collector"
     schedule:

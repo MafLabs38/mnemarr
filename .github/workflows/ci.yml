@@ -236,25 +236,36 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
     steps:
+      # The only job that can write to the repository, so it installs as little as it can: the release tooling alone (tools/release,
+      # its own lockfile), without running any install script, and the checkout keeps no credential in .git/config
+      # (semantic-release authenticates its push with the GITHUB_TOKEN of its environment).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: yarn
-      - run: yarn install --frozen-lockfile
+          cache-dependency-path: tools/release/yarn.lock
+      - run: yarn install --frozen-lockfile --ignore-scripts
+        working-directory: tools/release
       - id: release
+        working-directory: tools/release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+        run: yarn semantic-release
 
-  # Integrated code only: pull requests never publish an image. On main the release job ran first (it is skipped on develop).
+  # Integrated code only, and only code that passed every gate: pull requests never publish an image, and neither does a push
+  # whose tests, scans or Sonar analysis failed. On main the release job must have succeeded (with no version when nothing deserves
+  # one); on develop it is skipped.
   image:
     name: image
     runs-on: ubuntu-latest
-    needs: [e2e-smoke, release]
-    if: ${{ !cancelled() && github.event_name == 'push' && needs.e2e-smoke.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release]
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' && !contains(needs.*.result, 'failure') && needs.e2e-smoke.result == 'success'
+      && (needs.release.result == 'success' || (github.ref != 'refs/heads/main' && needs.release.result == 'skipped')) }}
     permissions:
       contents: read
       packages: write
@@ -268,6 +279,18 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # X.Y.Z.<run> for a release (the application shows it), 0.0.0-<tag> for any other build.
+      - id: version
+        env:
+          RELEASE: ${{ needs.release.outputs.version }}
+          RUN: ${{ github.run_number }}
+          REF: ${{ github.ref_name }}
+        run: |
+          if [ -n "$RELEASE" ]; then
+            echo "value=$RELEASE.$RUN" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.0.0-${REF//[^A-Za-z0-9]/-}.$RUN" >> "$GITHUB_OUTPUT"
+          fi
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
@@ -279,7 +302,7 @@ jobs:
             type=raw,value=${{ needs.release.outputs.version }},enable=${{ needs.release.outputs.version != '' }}
             type=raw,value=latest,enable=${{ needs.release.outputs.version != '' }}
       # The build stages run on the runner's own architecture and the final stage only copies files (Dockerfile), so the arm64
-      # image needs no emulation.
+      # image needs no emulation. It is built here and not started: the end-to-end test runs the amd64 image (docs/releasing.md).
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
@@ -287,6 +310,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: VERSION=${{ needs.release.outputs.version != '' && format('{0}.{1}', needs.release.outputs.version, github.run_number) || format('0.0.0-{0}', steps.meta.outputs.version) }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

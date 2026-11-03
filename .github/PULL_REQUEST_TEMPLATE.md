@@ -14,7 +14,7 @@
 
 ## Issue
 <!-- `Closes #<number>` -->
--
+Closes #
 
 ## How Has This Been Tested?
 <!-- Describe the tests that you ran to verify your changes -->
