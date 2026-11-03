@@ -45,7 +45,7 @@ export default function Overview() {
         <Card>
           <div className={styles.hero}>
             <div className={styles.logo}>
-              <BrandLogo size={160} />
+              <BrandLogo size={200} />
             </div>
             <div className={styles.text}>
               <ApiState />
