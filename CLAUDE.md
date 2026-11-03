@@ -35,7 +35,7 @@ Same as Portarr, so the three products share conventions:
 8. **Ask, but build.** When gathering needs, ask open questions (never multiple-choice forms). Once the need is clear, code the vertical and ask only when it truly requires an answer.
 9. **Never** commit secrets. Use `dotnet user-secrets` locally and GitHub Secrets in CI.
 10. **Decisions** get an ADR in `docs/adr/NNNN-title.md` and a `D-xx` row in the spec.
-11. **Work autonomously; interrupt the maintainer only for a real advance** ([ADR 0014](docs/adr/0014-the-agent-merges-technical-pull-requests.md)). The agent prepares, has the review agents read, and merges technical pull requests (CI, dependencies, settings, documentation, infrastructure as code); they are never proposed. A vertical follows rule 6 and reaches the maintainer clean, with its demo, and they merge it. The ADR lists what only the maintainer merges (this file, the decisions, the review agents, the privileged jobs, the release pull request) and what the agent merges only after reading the whole diff.
+11. **Work autonomously; interrupt the maintainer only for a real advance** ([ADR 0014](docs/adr/0014-the-agent-merges-technical-pull-requests.md)). The agent prepares, has the review agents read, and merges technical pull requests (CI, dependencies, tool settings, documentation that records no decision, scaffolding, infrastructure as code); they are not submitted for validation. A vertical follows rule 6 and reaches the maintainer clean, with its demo, and they merge it. The ADR defines by role what only the maintainer merges (the rules and decisions, what decides whether a gate passes, what runs with a privilege, the release pull request) and what the agent merges only after reading the whole diff.
 
 ## Quality gates
 
