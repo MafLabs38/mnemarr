@@ -41,6 +41,7 @@ updates:
     groups:
       release-tooling:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     # This code runs in the job that can write to the repository: same cooldown, and its lockfile diff is reviewed as privileged code.
     cooldown:
       default-days: 7

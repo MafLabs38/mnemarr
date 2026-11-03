@@ -9,6 +9,8 @@ if [ -n "${RELEASE:-}" ]; then
   echo "${RELEASE}.${RUN}"
 else
   : "${REF:?the branch is required}"
-  # (A ref made of digits only, such as 007, would give an invalid pre-release identifier: only main and develop publish.)
-  echo "0.0.0-${REF//[^A-Za-z0-9]/-}.${RUN}"
+  ref="${REF//[^A-Za-z0-9]/-}"
+  # An identifier of digits only, with a leading zero, is not valid in a SemVer pre-release: give it a letter.
+  case "$ref" in *[!0-9]*) ;; *) ref="r$ref" ;; esac
+  echo "0.0.0-${ref}.${RUN}"
 fi

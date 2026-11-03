@@ -259,7 +259,8 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-latest
-    # The same list as the `image` job below: a gate added to one is added to the other.
+    # The same list as the `image` job below: a gate added to one is added to the other (tools/release/test checks it, and reads
+    # `needs` as one inline list and `if` as a folded `>-` block: that format is load-bearing).
     needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling]
     # The tag cannot be undone, so the gate is the strictest one: nothing failed or was cancelled, the end-to-end test ran and passed, and the
     # Sonar analysis ran and passed (a skipped analysis, because the server is not configured, does not release).

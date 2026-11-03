@@ -37,6 +37,8 @@ test('the release rules', async (t) => {
     ['docs!: rewrite', 'minor'], // a breaking change releases a minor whatever its type: it must not ride in a patch
     ['docs: x\n\nBREAKING CHANGE: the field is gone', 'minor'],
     ['chore(deps)!: Bump a to a breaking version', 'minor'],
+    ['chore(deps): x\n\nBREAKING CHANGE: y', 'minor'],
+    ['fix: x\n\nBREAKING-CHANGE: y', 'minor'], // the hyphen form of the footer
     ['fix(deps): x', 'patch'],
     ['chore: tidy', null],
     ['test: add a case', null],
@@ -98,6 +100,10 @@ test('the jobs that release and publish have the same gates', () => {
   assert.match(condition('release'), /needs\.sonarqube\.result == 'success'/);
   assert.match(condition('image'), /needs\.e2e-smoke\.result == 'success'/);
   assert.match(condition('image'), /needs\.release\.result == 'success'/);
+  // An image leaves main only after a release; off main a skipped release is how develop publishes.
+  assert.match(condition('image'), /github\.ref != 'refs\/heads\/main' && needs\.release\.result == 'skipped'/);
+  assert.match(condition('release'), /github\.ref == 'refs\/heads\/main'/);
+  assert.match(condition('release'), /!cancelled\(\)/);
 });
 
 test('the title check and the release rules know the same types', () => {
@@ -116,6 +122,8 @@ test('the version of an image', async (t) => {
   await t.test('no release is 0.0.0-<ref>.<run>', () => assert.equal(version({ RELEASE: '', RUN: '7', REF: 'develop' }), '0.0.0-develop.7'));
   await t.test('a ref that is not a valid version part is cleaned', () =>
     assert.equal(version({ RELEASE: '', RUN: '7', REF: 'feature/3_x y' }), '0.0.0-feature-3-x-y.7'));
+  await t.test('a ref of digits only gets a letter, a leading zero is not valid in a pre-release', () =>
+    assert.equal(version({ RELEASE: '', RUN: '7', REF: '007' }), '0.0.0-r007.7'));
   await t.test('dots and dashes of a ref become dashes', () =>
     assert.equal(version({ RELEASE: '', RUN: '7', REF: 'feature/1.2-x' }), '0.0.0-feature-1-2-x.7'));
   for (const [name, env] of [
@@ -168,7 +176,7 @@ test('the guard on the seed tag', async (t) => {
   await t.test('says that git failed when it is not in a repository', (subtest) => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'release-guard-none-'));
     subtest.after(() => rmSync(cwd, { recursive: true, force: true }));
-    const result = guard({ cwd, env: { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_CEILING_DIRECTORIES: tmpdir() } });
+    const result = guard({ cwd, env: { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_CEILING_DIRECTORIES: tmpdir(), LC_ALL: 'C' } });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /not a git repository/i);
     assert.doesNotMatch(result.stdout, /No release tag/);

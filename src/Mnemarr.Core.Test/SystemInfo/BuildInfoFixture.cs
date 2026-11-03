@@ -9,6 +9,6 @@ public sealed class BuildInfoFixture
     {
         // Guards the IncludeSourceRevisionInInformationalVersion=false of Directory.Build.props, which applies to this project too.
         // 0.0.0-dev in a test build, X.Y.Z.<run> or 0.0.0-<ref>.<run> in the image: never followed by "+<commit>".
-        BuildInfo.Version.Should().MatchRegex(@"^\d+\.\d+\.\d+(\.\d+)?(-[0-9A-Za-z.-]+)?$");
+        BuildInfo.Version.Should().NotContain("+").And.MatchRegex(@"^\d+\.\d+\.\d+(\.\d+)?(-[0-9A-Za-z.-]+)?$");
     }
 }

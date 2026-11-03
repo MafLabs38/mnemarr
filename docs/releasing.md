@@ -105,10 +105,12 @@ There is no separate hotfix path. A fix goes through `develop` like any other ch
 
 The tests of the release tooling (`yarn test` in `tools/release`: the rules, the version of an image, the guard on the seed tag) use `bash` and POSIX paths: Linux, macOS or WSL.
 
+The release tooling (hundreds of packages) runs with that token in its environment: never use your everyday `gh` credential for it.
+
 ```bash
 cd tools/release
 yarn install --frozen-lockfile --ignore-scripts
-export GITHUB_TOKEN="$(gh auth token)" # a token limited to this repository, not typed on the command line
+export GITHUB_TOKEN=<a fine-grained token of this repository only, Contents: read-only (a dry run publishes nothing)>
 yarn semantic-release --dry-run --no-ci --branches develop
 ```
 
