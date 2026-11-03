@@ -20,6 +20,7 @@ Direct pushes to `main` and `develop` are blocked for everyone. One vertical (a 
 
 ## What a good PR contains
 
+- **Zero warnings.** The SonarQube rules run in the build and in ESLint, so `dotnet build` and `yarn lint` already say what the quality gate will say. Fix a smell rather than silence it; a justified exception is documented where it is made.
 - Tests at the right level of the pyramid ([TESTING.md](docs/TESTING.md)).
 - Documentation updates (spec, ADR when a decision is made).
 - A self-review with the four review agents of `.claude/agents/` (tests, quality, security, architecture): run the `review-vertical` skill before opening the PR.

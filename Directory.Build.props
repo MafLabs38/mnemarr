@@ -15,4 +15,9 @@
     <!-- Provisional, like the one in package.json and the collector: the license is not decided yet (docs/SPEC.md, Q-20). -->
     <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
   </PropertyGroup>
+  <!-- The SonarQube analyzer, with the rules of the server's profile (.editorconfig), in every project but the tests: what Sonar
+       would flag is seen at build time, not after the push. The server does not report issues in test code either. -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Test'))">
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers" />
+  </ItemGroup>
 </Project>

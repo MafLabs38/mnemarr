@@ -39,7 +39,8 @@ Later levels (Testcontainers for external services, a recorded fixture of the as
 | Integration | 100 % green |
 | E2E smoke | 100 % green on every pull request, with no accessibility violation |
 | Collector | `cargo fmt --check`, `cargo clippy -D warnings`, tests, on Linux and Windows |
-| Security | CodeQL (no new high or critical alert), gitleaks, Trivy |
+| Static analysis | The SonarQube rules run in the build (C# analyzer, warnings are errors) and in ESLint (SonarJS, unicorn, jsx-a11y): zero warnings, so a smell fails before the push. The server quality gate says the same thing after |
+| Security | CodeQL (security queries, no new high or critical alert), gitleaks, Trivy |
 | Mutation | Reported weekly, not enforced: a surviving mutant in code a feature relies on is a missing test |
 
 ## 5. Running the tests

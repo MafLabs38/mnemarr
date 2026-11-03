@@ -1,37 +1,29 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
-/** Requests that need no browser give the same answer in every one: they run once. */
-function runOnce(browserName: string) {
-  test.skip(browserName !== 'chromium', 'Does not depend on the browser');
-}
-
 /** The status endpoint answers 503, as when the server is unwell. */
 async function breakStatusEndpoint(page: Page) {
   await page.route('**/api/v1/system/status', (route) => route.fulfill({ status: 503 }));
 }
 
 test.describe('smoke @smoke', () => {
-  test('the application is alive and ready', async ({ request, browserName }) => {
-    runOnce(browserName);
-
+  test('the application is alive and ready', { tag: '@browserless' }, async ({ request }) => {
     expect((await request.get('/health/live')).status()).toBe(200);
     expect((await request.get('/health/ready')).status()).toBe(200);
   });
 
-  test('on the real image, an unknown API path or file is a 404 and not the HTML shell', async ({
-    request,
-    browserName,
-  }) => {
-    runOnce(browserName);
+  test(
+    'on the real image, an unknown API path or file is a 404 and not the HTML shell',
+    { tag: '@browserless' },
+    async ({ request }) => {
+      for (const path of ['/api/v1/nothing-here', '/missing.js']) {
+        const response = await request.get(path);
 
-    for (const path of ['/api/v1/nothing-here', '/missing.js']) {
-      const response = await request.get(path);
-
-      expect(response.status(), path).toBe(404);
-      expect(response.headers()['content-type'] ?? '', path).not.toContain('text/html');
-    }
-  });
+        expect(response.status(), path).toBe(404);
+        expect(response.headers()['content-type'] ?? '', path).not.toContain('text/html');
+      }
+    },
+  );
 
   test('the shell shows the brand, a logo that loaded, and the whole menu with the unbuilt pages marked as soon', async ({
     page,

@@ -12,6 +12,7 @@ export default defineConfig({
   use: { baseURL, trace: 'on-first-retry' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    // Requests that need no browser give the same answer in each: they run once, in the first project.
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] }, grepInvert: /@browserless/ },
   ],
 });

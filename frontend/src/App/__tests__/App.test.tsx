@@ -5,7 +5,7 @@ import { stubStatusOk } from '__tests__/render';
 import App from 'App/App';
 
 function openApp(path: string) {
-  window.history.pushState({}, '', path);
+  globalThis.history.pushState({}, '', path);
   return render(<App />);
 }
 
@@ -31,7 +31,7 @@ describe('App routing', () => {
     openApp('/system');
 
     expect(screen.getByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
-    expect(window.location.pathname).toBe('/system/status');
+    expect(globalThis.location.pathname).toBe('/system/status');
   });
 
   it('shows a page not found for an unknown address, with a way back and a title', () => {
