@@ -5,11 +5,13 @@
 const en = {
   About: 'About',
   Agents: 'Agents',
+  AppName: 'Mnemarr',
   ApiReachable: 'API reachable',
   BackToOverview: 'Back to the overview',
   Loading: 'Loading…',
   MainMenu: 'Main menu',
   NothingToRememberYet: 'Nothing to remember yet.',
+  NotFoundCode: '404',
   Overview: 'Overview',
   OverviewIntro: 'Connect a source and a collector agent, and Mnemarr starts building its memory.',
   PageNotFound: 'Page not found',

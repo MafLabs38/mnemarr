@@ -2,7 +2,6 @@ using System.Net;
 
 namespace Mnemarr.Integration.Test;
 
-[Trait("Category", "Integration")]
 public sealed class ErrorResponseFixture : IClassFixture<FailingStatusFactory>
 {
     private readonly HttpClient _client;
@@ -18,7 +17,8 @@ public sealed class ErrorResponseFixture : IClassFixture<FailingStatusFactory>
         var response = await _client.GetAsync("/api/v1/system/status", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        response.Content.Headers.ContentType.Should().NotBeNull();
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
     }
 
     [Fact]

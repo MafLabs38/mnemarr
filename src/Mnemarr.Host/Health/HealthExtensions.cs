@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Mnemarr.Core.Health;
 
 namespace Mnemarr.Host.Health;
@@ -9,6 +10,8 @@ public static class HealthExtensions
 
     public static IServiceCollection AddMnemarrHealthChecks(this IServiceCollection services)
     {
+        // One instance: it keeps its last result, and AddCheck would otherwise build a new one for every probe.
+        services.TryAddSingleton<DataFolderHealthCheck>();
         services.AddHealthChecks().AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag]);
         return services;
     }

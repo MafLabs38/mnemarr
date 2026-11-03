@@ -13,8 +13,9 @@ export default function About() {
   return (
     <Card title={translate('About')}>
       {isPending && <LoadingIndicator />}
+      {/* A failed refresh keeps the last good data in the query: show the error, never the stale values under it. */}
       {error && <Alert>{translate('SystemStatusError', { message: error.message })}</Alert>}
-      {data && (
+      {data && !error && (
         <DescriptionList
           items={[
             { title: translate('Version'), data: data.version, mono: true },

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Mnemarr.Core.Configuration;
 
 namespace Mnemarr.Integration.Test;
 
@@ -32,6 +33,8 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<TimeProvider>(Clock);
+            // Applied after every source, the MNEMARR__ variables of the machine included.
+            services.PostConfigure<MnemarrOptions>(options => options.DataFolder = DataFolder);
             ConfigureServices(services);
         });
     }

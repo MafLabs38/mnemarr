@@ -3,7 +3,6 @@ using System.Text.Json;
 
 namespace Mnemarr.Integration.Test;
 
-[Trait("Category", "Integration")]
 public sealed class UptimeFixture
 {
     [Fact]

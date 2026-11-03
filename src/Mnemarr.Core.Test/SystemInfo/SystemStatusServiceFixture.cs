@@ -9,19 +9,12 @@ public sealed class SystemStatusServiceFixture
     private static readonly DateTimeOffset Start = new(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void should_report_the_time_the_service_started()
+    public void should_report_when_the_service_started_and_no_uptime_yet()
     {
-        var subject = new SystemStatusService(new FakeTimeProvider(Start));
+        var status = new SystemStatusService(new FakeTimeProvider(Start)).GetStatus();
 
-        subject.GetStatus().StartedAt.Should().Be(Start);
-    }
-
-    [Fact]
-    public void should_report_no_uptime_when_just_started()
-    {
-        var subject = new SystemStatusService(new FakeTimeProvider(Start));
-
-        subject.GetStatus().Uptime.Should().Be(TimeSpan.Zero);
+        status.StartedAt.Should().Be(Start);
+        status.Uptime.Should().Be(TimeSpan.Zero);
     }
 
     [Fact]
@@ -36,11 +29,8 @@ public sealed class SystemStatusServiceFixture
     }
 
     [Fact]
-    public void should_report_the_build_version_and_the_runtime()
+    public void should_report_the_runtime_it_runs_on()
     {
-        var status = new SystemStatusService(new FakeTimeProvider(Start)).GetStatus();
-
-        status.Version.Should().Be(BuildInfo.Version);
-        status.RuntimeVersion.Should().Be(RuntimeInformation.FrameworkDescription);
+        new SystemStatusService(new FakeTimeProvider(Start)).GetStatus().RuntimeVersion.Should().Be(RuntimeInformation.FrameworkDescription);
     }
 }

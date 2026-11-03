@@ -63,9 +63,11 @@ spec:
               path: /health/live
               port: 8383
           readinessProbe:
+            # The data folder check is reused for 15 seconds, so a lost volume shows within that time plus one period.
             httpGet:
               path: /health/ready
               port: 8383
+            periodSeconds: 15
           resources:
             requests:
               cpu: 100m

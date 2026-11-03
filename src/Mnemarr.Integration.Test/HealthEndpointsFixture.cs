@@ -3,7 +3,6 @@ using System.Net;
 namespace Mnemarr.Integration.Test;
 
 [Collection("Host")]
-[Trait("Category", "Integration")]
 public sealed class HealthEndpointsFixture
 {
     private readonly MnemarrFactory _factory;
@@ -30,7 +29,6 @@ public sealed class HealthEndpointsFixture
     }
 }
 
-[Trait("Category", "Integration")]
 public sealed class MissingDataFolderFixture : IClassFixture<MissingDataFolderFactory>
 {
     private readonly MissingDataFolderFactory _factory;
