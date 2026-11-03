@@ -9,5 +9,6 @@ if [ -n "${RELEASE:-}" ]; then
   echo "${RELEASE}.${RUN}"
 else
   : "${REF:?the branch is required}"
+  # (A ref made of digits only, such as 007, would give an invalid pre-release identifier: only main and develop publish.)
   echo "0.0.0-${REF//[^A-Za-z0-9]/-}.${RUN}"
 fi

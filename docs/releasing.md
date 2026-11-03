@@ -14,6 +14,8 @@ On every push to `main`, after the whole pipeline is green, the `release` job re
 | `chore(deps)` (a non-development dependency, as Dependabot titles it) | patch: a fixed vulnerability must reach a version. A NuGet bump counts even when only the tests use the package (Dependabot cannot tell); the collector's crates (`build(deps)`) do not |
 | `chore`, `docs`, `test`, `refactor`, `style`, `build`, `ci`, `chore(deps-dev)` | no release (unless marked breaking, above) |
 
+Two consequences of this to know. The title is what counts: git's default `Revert "feat: x"` is not a Conventional Commit (the title check fails it), retitle the pull request `revert: …`. And a bump of a build tool such as `vite` or `typescript` is a development dependency (`chore(deps-dev)`) and releases nothing, although it changes the bundle in the image; a grouped Dependabot pull request that contains a production dependency is titled `chore(deps)` and releases a patch even when most of the group is test-only.
+
 The rules are in [`tools/release/.releaserc.json`](../tools/release/.releaserc.json) (the rules are applied in order: the highest release type among the matching ones wins, but a rule with `release: false` clears what matched before it. So the specific `chore(deps)` rule and the breaking rule come after the general `chore` one: moving them up silently stops those commits from releasing) and are tested by `release-tooling` in the CI.
 
 It then creates the tag `vX.Y.Z` and a GitHub release whose notes are the changelog. Because the title of a squash-merged pull request becomes the commit on `develop`, **the title of the pull request decides the version**: write `fix:` for a fix and `feat:` for something new. The `PR title` check fails a title that is not a Conventional Commit, so a fix cannot silently drop out of a release.
@@ -106,7 +108,8 @@ The tests of the release tooling (`yarn test` in `tools/release`: the rules, the
 ```bash
 cd tools/release
 yarn install --frozen-lockfile --ignore-scripts
-GITHUB_TOKEN=<a token> yarn semantic-release --dry-run --no-ci --branches develop
+export GITHUB_TOKEN="$(gh auth token)" # a token limited to this repository, not typed on the command line
+yarn semantic-release --dry-run --no-ci --branches develop
 ```
 
 prints the version it would choose and the notes, and publishes nothing.

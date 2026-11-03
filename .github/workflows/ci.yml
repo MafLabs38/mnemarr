@@ -348,9 +348,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ steps.version.outputs.value }}
-          # A release is built from nothing: a layer cache written by an earlier job of the push could carry a poisoned layer into the
-          # image that is published under the version. Other builds (develop, main without a release) use the cache.
+          # A release is built from nothing and reads no layer cache (a layer written by an earlier job of the push could carry a
+          # poisoned layer into the image published under the version), and writes none. Other builds use the cache.
           no-cache: ${{ needs.release.outputs.version != '' }}
-          cache-from: type=gha
+          cache-from: ${{ needs.release.outputs.version == '' && 'type=gha' || '' }}
           # Nor does a release write the cache that later builds read.
           cache-to: ${{ needs.release.outputs.version == '' && 'type=gha,mode=max' || '' }}
