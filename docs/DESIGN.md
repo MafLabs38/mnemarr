@@ -29,7 +29,7 @@ An entry whose page is not built is **shown, marked "Soon", and is not a link** 
 
 ### 2.2 The brand
 
-- The logo is a **cartoon brain with a friendly face** and a few neurons around it: `frontend/public/logo.svg`, one file used by the header, the home page and the favicon. Its colors are fixed (the brand), not tokens.
+- The logo is a **profile of Mnemosyne, the Greek goddess of memory, whose brain is a circuit board** (the name of the product comes from her), supplied by the maintainer: `frontend/public/logo.png` for the header and the home page, `frontend/public/favicon.png` for the browser tab. The background was removed with the light areas of the drawing kept (the folds of the tunic), the images carry no metadata, and its colors are fixed (the brand), not tokens.
 - It is **decorative** (`alt=""`): the product name is always next to it.
 - Playfulness is for the home page and empty states ("Nothing to remember yet."), never for errors or alerts, as in Portarr.
 
@@ -37,7 +37,7 @@ An entry whose page is not built is **shown, marked "Soon", and is not a link** 
 
 | Component | Role | Notes |
 |---|---|---|
-| `BrandLogo` | The brain, from `public/logo.svg` | Decorative (`alt=""`); height only, the drawing sets the width |
+| `BrandLogo` | The logo, from `public/logo.png` | Decorative (`alt=""`); height only, the drawing sets the width |
 | `StatusLabel` | A state as icon, text and color | Never color alone. Each `kind` has its icon in a typed table: a new kind does not compile until it has one |
 | Menu entry marked "Soon" | A page that is not built yet | Not a link; the word "Soon" stays for assistive technology on small screens |
 | Skip link | First stop of the keyboard, to the content | Visible only when focused |
