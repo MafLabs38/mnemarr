@@ -24,14 +24,14 @@ The image is built with the version `X.Y.Z.<n>`, where `<n>` is the number of th
 1. `develop` is green and holds what should ship.
 2. Open a pull request **`develop` → `main`**. Its title does not matter for the version (the commits do).
 3. A maintainer reviews it and merges it with a **merge commit**. `main` accepts nothing else: a squash would hide every `feat` and `fix` from the analyzer and the release would come out empty. This is a rule of the repository (the `main` ruleset and the merge settings are described as code in the organization's `github-template`, `repos/mnemarr.yaml`), not a habit. Every other pull request, into `develop`, is squash-merged.
-4. The pipeline runs on `main`: tests, scans, end-to-end smoke test, then `release` (tag and notes) and `image` (the image under the new version).
+4. The pipeline runs on `main`: tests, scans, end-to-end smoke test, then `release` (tag and notes) and `image` (the image under the new version). A release needs everything to have run **and passed**, Sonar included: a skipped Sonar analysis (server not configured) does not release. If `release` succeeded and `image` failed, use **Re-run failed jobs**, not "Re-run all jobs" (a full re-run would find nothing new to release and publish no version tag).
 5. A deployment that follows the version tags picks the new version up on its own (below).
 
 A run on `main` that finds nothing worth releasing (only `chore`, `docs`…) publishes no version: the `main` and commit images are built, and nothing is deployed.
 
 ## What is published
 
-`ghcr.io/<owner>/mnemarr`, for `linux/amd64` and `linux/arm64`. Tags: `X.Y.Z`, `latest`, the branch (`develop`, `main`) and `sha-<commit>`. Pull requests publish nothing, and neither does a push whose tests, scans or Sonar analysis failed.
+`ghcr.io/<owner>/mnemarr`, for `linux/amd64` and `linux/arm64`. Tags: `X.Y.Z`, `latest`, the branch (`develop`, `main`) and `sha-<commit>`. Pull requests publish nothing, and neither does a push whose tests, scans or Sonar analysis failed. The base images of the Dockerfile are pinned by digest, and a release is built without the layer cache.
 
 The end-to-end test runs the amd64 image. The arm64 image is built (without emulation) and **not started in CI**: that is acceptable while the application is portable, framework-dependent code, and it must change with the first native dependency per architecture (ADR 0013).
 
@@ -76,8 +76,9 @@ There is no separate hotfix path. A fix goes through `develop` like any other ch
 
 ## Before the first release
 
-- The tag `v0.0.0` exists on the initial commit of `main`.
-- The `main` ruleset allows merge commits only (check **Settings > Rules**).
+- The tag `v0.0.0` exists on the initial commit of `main` (the `release` job refuses to run without any `v*` tag).
+- The `main` ruleset allows merge commits only (check **Settings > Rules**), and the squash commit of the repository is the pull request title (**Settings > General > Pull Requests**): both are set by `repos/mnemarr.yaml` of the organization's `github-template`.
+- Decide whether `conventional-title` (and the other checks) are **required** checks of the repository. The `PR title` workflow reports a failure, but only a required check blocks the merge.
 - After the first image is published, set the package visibility to public if the registry does not inherit it from the repository, so that a deployment can pull it without a credential.
 
 ## Checking a release without publishing
@@ -89,3 +90,5 @@ GITHUB_TOKEN=<a token> yarn semantic-release --dry-run --no-ci --branches develo
 ```
 
 prints the version it would choose and the notes, and publishes nothing.
+
+semantic-release only counts the tags that are reachable from the branch it runs on. Release tags sit on the merge commits of `main`, which are never merged back into `develop`: once a first release exists, a dry run on `develop` counts from `v0.0.0` again and over-reports. To preview the next release, run it on a throwaway branch cut from `origin/main` with `origin/develop` merged in.

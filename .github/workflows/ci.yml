@@ -230,7 +230,12 @@ jobs:
     name: release
     runs-on: ubuntu-latest
     needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security]
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.*.result, 'failure') }}
+    # The tag cannot be undone, so the gate is the strictest one: nothing failed or was cancelled, the end-to-end test ran and passed, and the
+    # Sonar analysis ran and passed (a skipped analysis, because the server is not configured, does not release).
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+      && needs.e2e-smoke.result == 'success' && needs.sonarqube.result == 'success' }}
     permissions:
       contents: write
     outputs:
@@ -246,10 +251,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: yarn
-          cache-dependency-path: tools/release/yarn.lock
+      # No package cache either: a cache entry written by an earlier job of the push would be restored here, in the job that can write.
       - run: yarn install --frozen-lockfile --ignore-scripts
         working-directory: tools/release
+      # Without a tag to count from, the first release would be 1.0.0 and could not be undone (docs/releasing.md, "The seed tag").
+      - name: A release tag to count from exists
+        run: |
+          if [ -z "$(git tag --list 'v*')" ]; then
+            echo "::error title=No release tag::No v* tag found: create v0.0.0 on the initial commit of main first (docs/releasing.md)."
+            exit 1
+          fi
       - id: release
         working-directory: tools/release
         env:
@@ -264,7 +275,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release]
     if: >-
-      ${{ !cancelled() && github.event_name == 'push' && !contains(needs.*.result, 'failure') && needs.e2e-smoke.result == 'success'
+      ${{ !cancelled() && github.event_name == 'push' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+      && needs.e2e-smoke.result == 'success'
       && (needs.release.result == 'success' || (github.ref != 'refs/heads/main' && needs.release.result == 'skipped')) }}
     permissions:
       contents: read
@@ -311,5 +323,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: VERSION=${{ steps.version.outputs.value }}
+          # A release is built from nothing: a layer cache written by an earlier job of the push could carry a poisoned layer into the
+          # image that is published under the version. Other builds (develop, main without a release) use the cache.
+          no-cache: ${{ needs.release.outputs.version != '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
