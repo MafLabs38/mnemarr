@@ -63,14 +63,6 @@ export function useSignIn() {
 /** Signs out. The interface leaves the session only once the server has ended it: a failed call would leave it valid, and a reload would sign the person back in. */
 export function useSignOut() {
   const client = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiSend('POST', '/auth/logout'),
-    onSuccess: () => endSession(client),
-    // A 401 says the session was over already: nothing is left to end.
-    onError: (error) => {
-      if (error instanceof ApiError && error.status === 401) {
-        endSession(client);
-      }
-    },
-  });
+  // A 401 says the session was over already: the query client ends it, like for any call.
+  return useMutation({ mutationFn: () => apiSend('POST', '/auth/logout'), onSuccess: () => endSession(client) });
 }

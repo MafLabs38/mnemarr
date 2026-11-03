@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.DataProtection.Repositories;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Mnemarr.Api.V1.Accounts;
 using Mnemarr.Api.V1.Security;
@@ -16,9 +15,6 @@ namespace Mnemarr.Host.Security;
 public static class SecurityExtensions
 {
     private const string PolicyScheme = "Mnemarr";
-
-    /// <summary>How many sign-ins are checked at the same time.</summary>
-    public const int LoginConcurrency = 4;
 
     /// <summary>
     /// Sign-in by cookie for people and by API key for services and assistants, one policy per permission, and a fallback policy that
@@ -43,18 +39,6 @@ public static class SecurityExtensions
             .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyHeader.Scheme, _ => { });
 
         services.AddOptions<CookieAuthenticationOptions>(AuthController.CookieScheme).Configure<IOptions<AuthOptions>>((cookie, auth) => ConfigureCookie(cookie, auth.Value));
-
-        // Every attempt on a name that is not locked costs a password hash: a few at a time is plenty for people, and more would let anyone
-        // from the internet pin the cores of a small host with names that never lock.
-        services.AddRateLimiter(limiter =>
-        {
-            limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-            limiter.AddConcurrencyLimiter(AuthController.LoginLimit, options =>
-            {
-                options.PermitLimit = LoginConcurrency;
-                options.QueueLimit = 0;
-            });
-        });
 
         services.AddHttpContextAccessor();
         services.AddSingleton<IClaimsTransformation, AccountClaimsTransformation>();
@@ -128,7 +112,6 @@ public static class SecurityExtensions
     {
         app.UseAuthentication();
         app.UseMiddleware<RequestIntegrityMiddleware>();
-        app.UseRateLimiter();
         app.UseAuthorization();
         return app;
     }

@@ -11,6 +11,10 @@ namespace Mnemarr.Core.Accounts;
 public sealed partial class AccountService
 {
     public const int MaxNameLength = 64;
+
+    /// <summary>How many passwords are hashed at the same time: the scarce resource of a small host, and what a flood of sign-ins would exhaust.</summary>
+    public const int MaxConcurrentHashes = 4;
+    private readonly SemaphoreSlim _hashSlots = new(MaxConcurrentHashes, MaxConcurrentHashes);
     private readonly IAccountStore _accounts;
     private readonly IAuditLog _audit;
     private readonly LoginThrottle _throttle;
@@ -20,6 +24,9 @@ public sealed partial class AccountService
     private readonly TimeProvider _clock;
     private readonly Lock _administrators = new();
     private readonly string _decoyHash;
+
+    /// <summary>How long a sign-in waits for a place to hash its password before it is told to come back later.</summary>
+    internal TimeSpan HashWait { get; set; } = TimeSpan.FromSeconds(2);
 
     public AccountService(
         IAccountStore accounts, IAuditLog audit, LoginThrottle throttle, SessionService sessions, AuditSampler sampler, IPasswordHasher<Account> hasher, TimeProvider clock)
@@ -76,7 +83,10 @@ public sealed partial class AccountService
             return null;
         }
 
-        if (!_throttle.TryReserve(name))
+        var credentials = _accounts.GetCredentials(name);
+        var known = credentials is { Account.Kind: AccountKind.User, PasswordHash: not null };
+        using var slot = TakeHashSlot();
+        if (!_throttle.TryReserve(name, isAccount: credentials is not null))
         {
             if (_sampler.Allow("login.locked", name.ToUpperInvariant()))
             {
@@ -86,8 +96,6 @@ public sealed partial class AccountService
             throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
         }
 
-        var credentials = _accounts.GetCredentials(name);
-        var known = credentials is { Account.Kind: AccountKind.User, PasswordHash: not null };
         var result = _hasher.VerifyHashedPassword(credentials?.Account ?? Placeholder(name), known ? credentials!.PasswordHash! : _decoyHash, password);
         if (!known || result == PasswordVerificationResult.Failed || !credentials!.Account.Enabled)
         {
@@ -117,7 +125,9 @@ public sealed partial class AccountService
     public bool VerifyPassword(Guid id, string password)
     {
         var account = Existing(id);
-        if (!_throttle.TryReserve(account.Name))
+        using var slot = TakeHashSlot();
+        var budget = PasswordCheckKey(account.Name);
+        if (!_throttle.TryReserve(budget, isAccount: true))
         {
             throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
         }
@@ -130,8 +140,53 @@ public sealed partial class AccountService
             return false;
         }
 
-        _throttle.Succeeded(account.Name);
+        _throttle.Succeeded(budget);
         return true;
+    }
+
+    /// <summary>The counter of the wrong current passwords of a person is their own: whoever guesses their name at the sign-in cannot stop them changing it.</summary>
+    internal static string PasswordCheckKey(string name) => $"password-check:{name}";
+
+    /// <summary>A place to hash a password, or a refusal to come back later: the work waits for a few at a time, and not for long.</summary>
+    private SlotReleaser TakeHashSlot()
+    {
+        if (!_hashSlots.Wait(HashWait))
+        {
+            throw new AccountRejectedException(AccountProblem.Locked, "The server is busy checking passwords. Try again in a moment.");
+        }
+
+        return new SlotReleaser(_hashSlots);
+    }
+
+    private readonly struct SlotReleaser : IDisposable
+    {
+        private readonly SemaphoreSlim _slots;
+
+        public SlotReleaser(SemaphoreSlim slots)
+        {
+            _slots = slots;
+        }
+
+        public void Dispose() => _slots.Release();
+    }
+
+    /// <summary>Ends a session: the person signed out.</summary>
+    public void EndSession(string sessionId) => _sessions.End(sessionId);
+
+    /// <summary>
+    /// Starts the session of a user who has just signed in, and returns its id; null when the account was disabled in the meantime. The
+    /// check comes after the start, so that a disabling that ended the sessions a moment earlier cannot leave this one behind.
+    /// </summary>
+    public string? StartSession(Guid accountId)
+    {
+        var session = _sessions.Start(accountId);
+        if (_accounts.Get(accountId) is { Enabled: true })
+        {
+            return session;
+        }
+
+        _sessions.End(session);
+        return null;
     }
 
     /// <summary>Changes the role and the state of an account in one step: both are checked first, and nothing is written when one is refused.</summary>
@@ -175,6 +230,7 @@ public sealed partial class AccountService
         _accounts.SetPasswordHash(id, _hasher.HashPassword(account, CheckedPassword(password, account.Name)));
         _sessions.EndAll(id, keepSession);
         _throttle.Succeeded(account.Name);
+        _throttle.Succeeded(PasswordCheckKey(account.Name));
         _audit.Append(actor, "account.password-changed", account.Name);
     }
 
@@ -198,6 +254,7 @@ public sealed partial class AccountService
 
         _sessions.EndAll(account.Id);
         _throttle.Succeeded(account.Name);
+        _throttle.Succeeded(PasswordCheckKey(account.Name));
         _audit.Append("system", "account.reset", account.Name);
     }
 

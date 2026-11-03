@@ -2,8 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -328,7 +328,7 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     }
 
     [Fact]
-    public async Task should_refuse_a_sign_in_body_that_is_larger_than_any_name_and_password_can_be()
+    public async Task should_refuse_a_password_longer_than_any_password_can_be()
     {
         using var client = _factory.CreateBrowserClient();
 
@@ -337,14 +337,32 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         ((int)response.StatusCode).Should().BeInRange(400, 499);
     }
 
-    [Fact]
-    public void should_limit_how_many_sign_ins_are_checked_at_once_whatever_the_names_they_try()
+    /// <summary>The in-memory server does not enforce the limit of the body (Kestrel does): what is pinned here is that the calls carry it.</summary>
+    [Theory]
+    [InlineData("api/v1/auth/login")]
+    [InlineData("api/v1/auth/password")]
+    public void should_limit_the_size_of_the_body_of_the_calls_that_take_a_password(string route)
     {
         var endpoints = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>();
 
-        var login = endpoints.Single(e => e.RoutePattern.RawText == "api/v1/auth/login");
+        var endpoint = endpoints.First(e => e.RoutePattern.RawText == route);
 
-        login.Metadata.GetMetadata<EnableRateLimitingAttribute>().Should().NotBeNull();
+        endpoint.Metadata.GetMetadata<RequestSizeLimitAttribute>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task should_keep_the_counter_of_wrong_current_passwords_apart_from_the_one_of_the_sign_in()
+    {
+        var (name, _) = await NewUserAsync();
+        using var user = await _factory.SignedInClientAsync(name, Callers.Password);
+        for (var i = 0; i < 5; i++)
+        {
+            await user.PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = "not the password", newPassword = "another long password" }, Token);
+        }
+
+        using var again = _factory.CreateBrowserClient();
+
+        (await again.PostAsJsonAsync("/api/v1/auth/login", new { name, password = Callers.Password }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     /// <summary>

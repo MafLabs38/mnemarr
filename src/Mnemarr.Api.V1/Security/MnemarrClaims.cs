@@ -43,11 +43,11 @@ public static class MnemarrClaims
     }
 
     /// <summary>
-    /// The one way to ask whether a caller may touch a source. A key limited to sources may touch those; anyone else, all of them. Fails
-    /// closed: a scope that cannot be read is a scope of nothing.
+    /// The one way to ask whether a caller may touch a source. A key limited to sources may touch those; any other signed-in caller, all of
+    /// them; a caller who is not signed in, none. Fails closed: a scope that cannot be read is a scope of nothing.
     /// </summary>
     public static bool CanAccessSource(this ClaimsPrincipal user, Guid sourceId) =>
-        !user.HasClaim(Scoped, bool.TrueString) || user.HasClaim(Source, sourceId.ToString());
+        user.Identity?.IsAuthenticated == true && (!user.HasClaim(Scoped, bool.TrueString) || user.HasClaim(Source, sourceId.ToString()));
 
     public static Guid? AccountId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(Account), out var id) ? id : null;

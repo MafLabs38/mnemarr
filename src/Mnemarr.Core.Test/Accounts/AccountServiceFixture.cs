@@ -282,7 +282,80 @@ public sealed class AccountServiceFixture : IDisposable
 
         Subject.VerifyPassword(alice.Id, Password).Should().BeTrue();
 
-        _h.Throttle.IsLocked("alice").Should().BeFalse();
+        _h.Throttle.IsLocked(AccountService.PasswordCheckKey("alice")).Should().BeFalse();
+    }
+
+    [Fact]
+    public void should_not_let_wrong_current_passwords_lock_the_sign_in_of_the_person()
+    {
+        var alice = _h.Reader();
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            Subject.VerifyPassword(alice.Id, "wrong password here");
+        }
+
+        Subject.SignIn("alice", Password).Should().NotBeNull();
+    }
+
+    [Fact]
+    public void should_not_let_wrong_sign_ins_by_anybody_lock_the_person_out_of_changing_their_password()
+    {
+        var alice = _h.Reader();
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            Subject.SignIn("alice", "wrong password here");
+        }
+
+        Subject.VerifyPassword(alice.Id, Password).Should().BeTrue();
+    }
+
+    [Fact]
+    public void should_start_the_session_of_a_user_who_signed_in()
+    {
+        var alice = _h.Reader();
+
+        var session = Subject.StartSession(alice.Id);
+
+        session.Should().NotBeNull();
+        _h.Sessions.AccountOf(session!).Should().Be(alice.Id);
+    }
+
+    [Fact]
+    public void should_start_no_session_when_the_account_was_disabled_between_the_password_and_the_session_and_leave_none_behind()
+    {
+        _h.Admin();
+        var alice = _h.Reader();
+        _h.Accounts.Update(alice.Id, alice.Role, enabled: false);
+
+        var session = Subject.StartSession(alice.Id);
+
+        session.Should().BeNull();
+        using var connection = _h.Workspace.Database.Open();
+        using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM sessions";
+        ((long)count.ExecuteScalar()!).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task should_hash_at_most_a_few_passwords_at_a_time_and_tell_the_others_to_come_back_later()
+    {
+        var hasher = new BlockingHasher();
+        using var harness = new AccountsHarness(hasher: hasher);
+        harness.Reader();
+        var subject = harness.Service;
+        subject.HashWait = TimeSpan.Zero;
+        hasher.Block();
+
+        var running = Enumerable.Range(0, AccountService.MaxConcurrentHashes)
+            .Select(i => Task.Run(() => subject.SignIn($"someone-{i}", Password), TestContext.Current.CancellationToken))
+            .ToList();
+        hasher.WaitUntilEntered(AccountService.MaxConcurrentHashes);
+        var overflow = () => subject.SignIn("alice", Password);
+
+        overflow.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Locked);
+        hasher.Release();
+        await Task.WhenAll(running);
+        subject.SignIn("alice", Password).Should().NotBeNull();
     }
 
     [Fact]
@@ -516,5 +589,29 @@ public sealed class AccountServiceFixture : IDisposable
         _h.Robot();
 
         new Action(() => Subject.Reset(name, password)).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(problem);
+    }
+
+    /// <summary>A hasher whose checks wait until the test lets them go, to hold the places of the server.</summary>
+    private sealed class BlockingHasher : Microsoft.AspNetCore.Identity.IPasswordHasher<Account>
+    {
+        private readonly ManualResetEventSlim _open = new(initialState: true);
+        private int _entered;
+
+        public void Block() => _open.Reset();
+
+        public void Release() => _open.Set();
+
+        public void WaitUntilEntered(int count) => SpinWait.SpinUntil(() => Volatile.Read(ref _entered) >= count, TimeSpan.FromSeconds(30));
+
+        public string HashPassword(Account account, string password) => "hash:" + password;
+
+        public Microsoft.AspNetCore.Identity.PasswordVerificationResult VerifyHashedPassword(Account account, string hashedPassword, string providedPassword)
+        {
+            Interlocked.Increment(ref _entered);
+            _open.Wait(TimeSpan.FromSeconds(30));
+            return hashedPassword == "hash:" + providedPassword
+                ? Microsoft.AspNetCore.Identity.PasswordVerificationResult.Success
+                : Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed;
+        }
     }
 }

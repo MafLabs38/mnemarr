@@ -7,7 +7,7 @@ namespace Mnemarr.Integration.Test;
 /// One client per kind of caller, built once for a test class: signing in costs a password hash, and the matrix has dozens of rows.
 /// People are signed in with a cookie, services come with a key.
 /// </summary>
-public sealed class Callers : IAsyncDisposable
+public sealed class Callers
 {
     public const string Password = "a long enough password";
     private readonly MnemarrFactory _factory;
@@ -75,15 +75,5 @@ public sealed class Callers : IAsyncDisposable
         var response = await admin.PostAsJsonAsync($"/api/v1/accounts/{accountId}/keys", new { name = "test" }, TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).GetProperty("secret").GetString()!;
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        foreach (var client in _clients.Values)
-        {
-            client.Dispose();
-        }
-
-        await Task.CompletedTask;
     }
 }

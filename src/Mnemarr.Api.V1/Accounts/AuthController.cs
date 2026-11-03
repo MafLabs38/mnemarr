@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 
@@ -17,25 +16,19 @@ public sealed class AuthController : ControllerBase
     /// <summary>The name of the cookie scheme, known to the host that adds it.</summary>
     public const string CookieScheme = "Mnemarr.Cookie";
 
-    /// <summary>The name of the rate-limiting policy of the sign-in call, defined by the host.</summary>
-    public const string LoginLimit = "login";
-
     /// <summary>A name and a password are short: a body larger than this is not a sign-in.</summary>
     private const int MaxBodyBytes = 8 * 1024;
 
     private readonly AccountService _accounts;
-    private readonly SessionService _sessions;
 
-    public AuthController(AccountService accounts, SessionService sessions)
+    public AuthController(AccountService accounts)
     {
         _accounts = accounts;
-        _sessions = sessions;
     }
 
     /// <summary>Signs a user in with a name and a password and starts a session. The answer is the same for a wrong name and a wrong password.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
-    [EnableRateLimiting(LoginLimit)]
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType<SessionResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -48,9 +41,13 @@ public sealed class AuthController : ControllerBase
             return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
         }
 
+        if (_accounts.StartSession(account.Id) is not { } session)
+        {
+            return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
+        }
+
         var principal = new AccessPrincipal(account, account.Permissions, null, null);
-        var identity = new ClaimsIdentity(
-            [new Claim(MnemarrClaims.Account, account.Id.ToString()), new Claim(MnemarrClaims.Session, _sessions.Start(account.Id))], CookieScheme);
+        var identity = new ClaimsIdentity([new Claim(MnemarrClaims.Account, account.Id.ToString()), new Claim(MnemarrClaims.Session, session)], CookieScheme);
         await HttpContext.SignInAsync(CookieScheme, new ClaimsPrincipal(identity));
         return Session(principal);
     }
@@ -62,7 +59,7 @@ public sealed class AuthController : ControllerBase
     {
         if (User.FindFirstValue(MnemarrClaims.Session) is { } session)
         {
-            _sessions.End(session);
+            _accounts.EndSession(session);
         }
 
         await HttpContext.SignOutAsync(CookieScheme);

@@ -13,6 +13,12 @@ public sealed class SourceScopeFixture
         new(new ClaimsIdentity(MnemarrClaims.For(new AccessPrincipal(Service, Service.Permissions, sources, Guid.NewGuid())), "test"));
 
     [Fact]
+    public void should_let_a_caller_who_is_not_signed_in_touch_nothing()
+    {
+        new ClaimsPrincipal(new ClaimsIdentity()).CanAccessSource(Guid.NewGuid()).Should().BeFalse();
+    }
+
+    [Fact]
     public void should_let_a_caller_that_is_not_limited_touch_any_source()
     {
         Caller(null).CanAccessSource(Guid.NewGuid()).Should().BeTrue();
