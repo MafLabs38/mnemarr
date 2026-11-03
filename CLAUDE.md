@@ -30,7 +30,7 @@ Same as Portarr, so the three products share conventions:
 3. ***arr patterns first.** A single container, API first (the UI consumes the REST API), settings as `[FieldDefinition]`-style providers, Sonarr-like screens. The UI follows the same design rules as Portarr; read [docs/DESIGN.md](docs/DESIGN.md) (it points to Portarr's) before writing any UI code.
 4. **The constellation** (below): Mnemarr remembers; it does not observe the fleet (Portarr) and does not act on it (Orchestrarr). Integrate through APIs and MCP, never by duplicating the other products.
 5. **Privacy by default.** Memories can hold sensitive content. Nothing leaves the host unless the operator configures it; secrets are never stored in memories nor returned by the API; any external embeddings API is opt-in and documented.
-6. **Sandbox first, PR after acceptance.** Develop each vertical in a local hot-reload sandbox (no commit, push, PR, CI or image). Give the maintainer the URL and what to try, iterate live, and open the PR only once the vertical is accepted. Then complete tests, lint, clean commits.
+6. **Sandbox first, PR after acceptance.** Develop each vertical in a local hot-reload sandbox (no commit, push, PR, CI or image). Give the maintainer the URL and what to try, iterate live, and open the PR only once the vertical is accepted. Then complete tests, lint, clean commits. Technical pull requests are not verticals and skip this (rule 11).
 7. **One vertical = one PR**, with its tests and documentation.
 8. **Ask, but build.** When gathering needs, ask open questions (never multiple-choice forms). Once the need is clear, code the vertical and ask only when it truly requires an answer.
 9. **Never** commit secrets. Use `dotnet user-secrets` locally and GitHub Secrets in CI.
