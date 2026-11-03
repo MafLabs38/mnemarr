@@ -61,3 +61,6 @@ reports/
 
 # Rust (collector)
 collector/target/
+
+# Binding of the SonarQube for IDE extension to a server: per developer, it names the server
+.sonarlint/
