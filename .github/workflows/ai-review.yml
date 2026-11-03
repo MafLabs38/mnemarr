@@ -91,11 +91,13 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Read inside the repository, write the report, and look at history: no other file, no shell, no network.
+          # Read inside the repository, write the report, and look at history: no shell, no network. A path rule on Write
+          # (`Write(./review.md)`) is not matched against the absolute path the tool uses, so Write is allowed as such: the job
+          # has no write permission on GitHub, and only `review.md` leaves it, through the artifact.
           claude_args: >-
             --model ${{ matrix.model }}
             --max-turns 60
-            --allowedTools "Read(./**),Write(./review.md),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*)"
+            --allowedTools "Read(./**),Write,Bash(git log:*),Bash(git show:*),Bash(git ls-files:*)"
           prompt: |
             You are the `${{ matrix.agent }}` agent. Read `.claude/agents/${{ matrix.agent }}.md` and follow it.
             The change to review is in `pr.diff` at the repository root: it is the output of
