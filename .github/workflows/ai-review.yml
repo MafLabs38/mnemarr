@@ -9,7 +9,7 @@
 # message, a file): text written by someone who is not the one who wrote this workflow can try to steer it. So what the
 # model can reach is kept small, in two jobs:
 #   - `review` runs the model with no write permission on GitHub, its subprocesses isolated from the secrets, no shell, and
-#     one tool: reading the repository. It cannot write a file: its report is its final message, which a step of this
+#     reading and searching the repository as its tools. It cannot write a file: its report is its final message, which a step of this
 #     workflow, not the model, writes to a file. The diff is computed for it beforehand.
 #   - `publish` has no model. It refuses to post a report that carries something that looks like a secret (a defence in
 #     depth, not a guarantee: a token that is encoded would pass), and it only ever edits a comment of the Actions bot.
@@ -83,18 +83,32 @@ jobs:
         env:
           BASE: ${{ github.base_ref }}
         run: git diff "origin/$BASE...HEAD" > pr.diff
+      # A branch can commit a link that points outside the checkout (to the environment of a process, for example): the model
+      # must not be given a repository in which a path under `./` leads somewhere else.
+      - name: No link leaves the checkout
+        run: |
+          bad=$(find . -path ./.git -prune -o -type l -print0 | while IFS= read -r -d '' link; do
+            target=$(readlink -f -- "$link" || true)
+            case "$target" in "$GITHUB_WORKSPACE"/*) ;; *) echo "$link -> $target" ;; esac
+          done)
+          if [ -n "$bad" ]; then
+            echo "::error title=A link leaves the checkout::$bad"
+            exit 1
+          fi
       - name: Review
         id: review
         uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Read inside the repository, nothing else: no shell (git itself can run a program a repository configures), no write,
-          # no network. The model has no need to write: it returns its report as its final message.
+          # Read and search the repository, nothing else: no shell (git itself can run a program a repository configures), no
+          # write, no network. The model has no need to write: it returns its report as its final message. The deny rules name
+          # the places a process keeps what must not be read; Grep and Glob follow the Read rules.
           claude_args: >-
             --model ${{ matrix.model }}
             --max-turns 60
-            --allowedTools "Read(./**)"
+            --allowedTools "Read(./**),Grep,Glob"
+            --disallowedTools "Read(//proc/**),Read(//sys/**),Read(//etc/**),Read(//root/**),Read(~/.claude/**),Read(//home/runner/work/_temp/**)"
           prompt: |
             You are the `${{ matrix.agent }}` agent. Read `.claude/agents/${{ matrix.agent }}.md` and follow it.
             The change to review is in `pr.diff` at the repository root: it is the output of
@@ -119,6 +133,9 @@ jobs:
         run: |
           python3 -I - <<'PY'
           import json, os
+          # A branch can commit a review.md: only what this step writes is ever uploaded.
+          if os.path.exists(os.environ["REPORT"]):
+              os.remove(os.environ["REPORT"])
           path = os.environ.get("EXECUTION_FILE", "")
           if not path or not os.path.exists(path):
               print("::warning title=No execution record::The action left no execution file.")

@@ -7,6 +7,8 @@ tools: Read, Grep, Glob, Bash
 
 You review the **tests** of a Mnemarr change with a skeptical eye. More tests is not better: every test must protect a behavior someone relies on, run fast, and fail for one clear reason.
 
+> **In CI** there is no shell: the change is in the file `pr.diff` at the repository root (read it), and you search with `Grep` and `Glob`. Where this file says to run `git diff` or a command, read `pr.diff` and the files instead, and say what you could not check because nothing could be run. Return your report as your final message.
+
 Read `docs/TESTING.md` first (pyramid, conventions, gates). Then review the diff you are given (`git diff <base>...HEAD`).
 
 ## What to look for
