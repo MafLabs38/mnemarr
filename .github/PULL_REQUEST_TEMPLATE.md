@@ -1,3 +1,5 @@
+<!-- The title is a Conventional Commit (`feat(api): …`, `fix(search): …`, `docs: …`): it becomes the squash commit and it decides the next version. -->
+
 ## Summary
 <!-- Briefly describe your changes (1-3 bullet points) -->
 
@@ -10,9 +12,8 @@
 - [ ] Refactoring (no functional changes)
 - [ ] Documentation update
 
-## JIRA Ticket
-<!-- Link to the JIRA ticket -->
--
+## Issue
+<!-- Write `Closes #<number>` here, or delete this section when there is no issue. -->
 
 ## How Has This Been Tested?
 <!-- Describe the tests that you ran to verify your changes -->

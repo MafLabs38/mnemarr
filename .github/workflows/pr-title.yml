@@ -1,0 +1,35 @@
+# The title of a pull request into develop becomes the squash commit, and the Conventional Commits decide the next version
+# (docs/releasing.md): a title that is not one silently drops a fix from the release. No secret, no checkout, no third-party action.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    name: conventional-title
+    runs-on: ubuntu-latest
+    # The release pull request into main is merged with a merge commit: its title is not a commit.
+    if: github.event.pull_request.base.ref != 'main'
+    steps:
+      - name: The title is a Conventional Commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|revert|docs|style|refactor|test|build|ci|chore)(\([a-z0-9._/-]+\))?!?: [^ ].*'
+          # The pattern is the only logic of this check: it is tested before it judges the title.
+          # A failure here is a bug of this workflow, not of the title: the message says so.
+          # shellcheck disable=SC2016 # the single quotes are the point: a title with shell syntax must not be expanded
+          for title in 'feat(api): x' 'fix: x' 'feat!: x' 'revert: x' 'feat(a_b/c.d): x' 'chore(deps-dev): Bump y from 1 to 2' 'docs(adr): z' 'feat: $(id) `x`'; do
+            printf '%s' "$title" | grep -Eq "$pattern" || { echo "::error title=Internal error of the title check::The pattern rejects '$title' (fix pr-title.yml, not your title)"; exit 1; }
+          done
+          for title in 'Fix: x' 'feat(API): x' 'feat:x' 'feat(): x' 'Update stuff' 'feat: ' 'feat:  ' ' feat: x'; do
+            printf '%s' "$title" | grep -Eq "$pattern" && { echo "::error title=Internal error of the title check::The pattern accepts '$title' (fix pr-title.yml, not your title)"; exit 1; }
+          done
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "::error title=Not a Conventional Commit::\"$TITLE\" should look like 'feat(api): add the status endpoint' or 'fix: ...' (types: feat, fix, perf, revert, docs, style, refactor, test, build, ci, chore)."
+            exit 1
+          fi

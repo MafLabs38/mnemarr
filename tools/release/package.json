@@ -1,0 +1,19 @@
+{
+  "name": "mnemarr-release-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "description": "semantic-release, alone: only the release job installs it (docs/releasing.md)",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22.14"
+  },
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/exec": "7.1.0",
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.9"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}
