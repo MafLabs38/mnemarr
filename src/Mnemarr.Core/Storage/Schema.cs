@@ -54,10 +54,14 @@ public static class Schema
     /// <summary>The version of the schema this code expects: the number of steps.</summary>
     public static int Version => Steps.Length;
 
+    /// <summary>The version of the schema the database has: the steps that were applied to it.</summary>
+    public static int CurrentVersion(SqliteConnection connection) =>
+        Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), CultureInfo.InvariantCulture);
+
     public static void Apply(SqliteConnection connection)
     {
         Execute(connection, "PRAGMA journal_mode = WAL;");
-        var version = Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), CultureInfo.InvariantCulture);
+        var version = CurrentVersion(connection);
         if (version > Steps.Length)
         {
             // A rollback to an older image: its code would read and write a schema it does not know.

@@ -6,6 +6,9 @@ namespace Mnemarr.Core.Audit;
 public sealed class SqliteAuditLog : IAuditLog
 {
     private const int MaxText = 500;
+
+    /// <summary>The most events one read returns: a client reads the rest page by page with <c>before</c>.</summary>
+    public const int MaxPage = 500;
     private readonly IDatabase _database;
     private readonly TimeProvider _clock;
 
@@ -44,7 +47,7 @@ public sealed class SqliteAuditLog : IAuditLog
         command.CommandText = "SELECT id, at, actor, action, target, detail FROM audit_events WHERE ($action IS NULL OR action = $action) AND ($before IS NULL OR id < $before) ORDER BY id DESC LIMIT $limit";
         command.Parameters.AddWithValue("$action", action ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$before", before ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, MaxPage));
         using var reader = command.ExecuteReader();
         var events = new List<AuditEvent>();
         while (reader.Read())

@@ -16,31 +16,27 @@ public sealed class AccountRejectedFilter : IExceptionFilter
             return;
         }
 
-        var status = rejected.Problem switch
-        {
-            AccountProblem.Invalid => StatusCodes.Status400BadRequest,
-            AccountProblem.Conflict => StatusCodes.Status409Conflict,
-            AccountProblem.NotFound => StatusCodes.Status404NotFound,
-            AccountProblem.Locked or AccountProblem.Busy => StatusCodes.Status429TooManyRequests,
-            _ => throw new InvalidOperationException($"No status is chosen for {rejected.Problem}."),
-        };
+        var (status, kind) = Describe(rejected.Problem);
         if (rejected.RetryAfter is { } retryAfter)
         {
             context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
         }
 
-        context.Result = new ObjectResult(new ProblemDetails { Status = status, Title = rejected.Message, Type = $"urn:mnemarr:problem:{ProblemKind(rejected.Problem)}" }) { StatusCode = status, ContentTypes = { "application/problem+json" } };
+        context.Result = new ObjectResult(new ProblemDetails { Status = status, Title = rejected.Message, Type = $"urn:mnemarr:problem:{kind}" }) { StatusCode = status, ContentTypes = { "application/problem+json" } };
         context.ExceptionHandled = true;
     }
 
-    /// <summary>The stable name of a refusal, for clients that must tell "locked for a while" from "busy, try in a moment" without reading English.</summary>
-    private static string ProblemKind(AccountProblem problem) => problem switch
+    /// <summary>
+    /// The status of a refusal, and its stable name for clients that must tell "locked for a while" from "busy, try in a moment" without
+    /// reading English. One table: a refusal added to <see cref="AccountProblem"/> and not here is caught by a test over every value.
+    /// </summary>
+    public static (int Status, string Kind) Describe(AccountProblem problem) => problem switch
     {
-        AccountProblem.Invalid => "invalid",
-        AccountProblem.Conflict => "conflict",
-        AccountProblem.NotFound => "not-found",
-        AccountProblem.Locked => "locked",
-        AccountProblem.Busy => "busy",
-        _ => throw new InvalidOperationException($"No name is chosen for {problem}."),
+        AccountProblem.Invalid => (StatusCodes.Status400BadRequest, "invalid"),
+        AccountProblem.Conflict => (StatusCodes.Status409Conflict, "conflict"),
+        AccountProblem.NotFound => (StatusCodes.Status404NotFound, "not-found"),
+        AccountProblem.Locked => (StatusCodes.Status429TooManyRequests, "locked"),
+        AccountProblem.Busy => (StatusCodes.Status429TooManyRequests, "busy"),
+        _ => throw new InvalidOperationException($"No status is chosen for {problem}."),
     };
 }

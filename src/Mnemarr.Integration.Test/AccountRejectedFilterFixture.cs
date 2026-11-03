@@ -58,4 +58,16 @@ public sealed class AccountRejectedFilterFixture
 
         context.ExceptionHandled.Should().BeFalse();
     }
+
+    [Fact]
+    public void should_have_a_status_and_a_stable_name_for_every_refusal_that_exists()
+    {
+        foreach (var problem in Enum.GetValues<AccountProblem>())
+        {
+            var (status, kind) = AccountRejectedFilter.Describe(problem);
+
+            status.Should().BeInRange(400, 499);
+            kind.Should().MatchRegex("^[a-z-]+$");
+        }
+    }
 }

@@ -114,16 +114,23 @@ public sealed class DatabaseFixture : IDisposable
         var open = () => new Database(_workspace.Options).Open();
 
         open.Should().Throw<UnsupportedSchemaException>().Which.Message.Should().Contain($"{Schema.Version + 1}");
-        StorageErrors.IsUnavailable(new UnsupportedSchemaException(2, 1)).Should().BeTrue();
     }
 
     [Theory]
     [InlineData(typeof(IOException))]
     [InlineData(typeof(DirectoryNotFoundException))]
     [InlineData(typeof(UnauthorizedAccessException))]
-    public void should_call_a_missing_or_unreadable_database_unavailable_and_nothing_else(Type exception)
+    [InlineData(typeof(UnsupportedSchemaException))]
+    public void should_call_a_missing_unreadable_or_too_new_database_unavailable(Type exception)
     {
-        StorageErrors.IsUnavailable((Exception)Activator.CreateInstance(exception)!).Should().BeTrue();
+        var instance = exception == typeof(UnsupportedSchemaException) ? new UnsupportedSchemaException(2, 1) : (Exception)Activator.CreateInstance(exception)!;
+
+        StorageErrors.IsUnavailable(instance).Should().BeTrue();
+    }
+
+    [Fact]
+    public void should_not_call_a_bug_unavailable()
+    {
         StorageErrors.IsUnavailable(new InvalidOperationException()).Should().BeFalse();
     }
 }

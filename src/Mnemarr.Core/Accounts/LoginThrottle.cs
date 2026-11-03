@@ -47,6 +47,8 @@ public sealed class LoginThrottle
                 _entries[name] = entry;
             }
 
+            // A name that was a guess when it was first seen may be an account now: its count is not forgotten any more.
+            entry.IsAccount |= isAccount;
             Prune(entry.Attempts);
             if (entry.Attempts.Count >= MaxFailures)
             {
@@ -150,7 +152,7 @@ public sealed class LoginThrottle
             IsAccount = isAccount;
         }
 
-        public bool IsAccount { get; }
+        public bool IsAccount { get; set; }
 
         public List<DateTimeOffset> Attempts { get; } = [];
     }

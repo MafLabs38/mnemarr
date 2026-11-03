@@ -11,7 +11,7 @@ internal sealed class AccountsHarness : IDisposable
 {
     public const string Password = "correct horse battery";
 
-    public AccountsHarness(AuthOptions? options = null, IPasswordHasher<Account>? hasher = null)
+    public AccountsHarness(AuthOptions? options = null, IPasswordHasher<Account>? hasher = null, TimeSpan? hashWait = null)
     {
         Options = Microsoft.Extensions.Options.Options.Create(options ?? new AuthOptions());
         Accounts = new SqliteAccountStore(Workspace.Database);
@@ -21,7 +21,9 @@ internal sealed class AccountsHarness : IDisposable
         Throttle = new LoginThrottle(Clock);
         Sampler = new AuditSampler(Clock);
         Sessions = new SessionService(SessionStore, Clock, Options);
-        Service = new AccountService(Accounts, Audit, Throttle, Sessions, Sampler, hasher ?? CheapHasher(), Clock);
+        var passwordHasher = hasher ?? CheapHasher();
+        Service = new AccountService(Accounts, Audit, Throttle, Sessions, passwordHasher, Clock);
+        SignInService = new SignInService(Accounts, Audit, Throttle, Sessions, Sampler, passwordHasher) { HashWait = hashWait ?? TimeSpan.FromSeconds(2) };
         ApiKeys = new ApiKeyService(Accounts, Keys, Audit, Sampler, Clock);
     }
 
@@ -46,6 +48,8 @@ internal sealed class AccountsHarness : IDisposable
     public SessionService Sessions { get; }
 
     public AccountService Service { get; }
+
+    public SignInService SignInService { get; }
 
     public ApiKeyService ApiKeys { get; }
 

@@ -29,7 +29,7 @@ public sealed class AdminAccountSeederFixture : IDisposable
         Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile(content) }).Run();
 
         _h.Accounts.List().Should().ContainSingle().Which.Should().Match<Account>(a => a.Name == "root" && a.Role == Roles.Admin && a.Kind == AccountKind.User);
-        _h.Service.SignIn("root", "a long enough password").Should().NotBeNull();
+        _h.SignInService.SignIn("root", "a long enough password").Should().NotBeNull();
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class AdminAccountSeederFixture : IDisposable
 
         Seeder(new AuthOptions { ResetPasswordUser = "alice", ResetPasswordFile = PasswordFile("a brand new password", "reset") }).Run();
 
-        _h.Service.SignIn("alice", "a brand new password").Should().NotBeNull();
+        _h.SignInService.SignIn("alice", "a brand new password").Should().NotBeNull();
         _h.Audit.Recent(10, "account.reset").Should().ContainSingle();
     }
 

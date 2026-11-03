@@ -11,6 +11,9 @@ public enum AccountKind
 
 public sealed record Account(Guid Id, string Name, AccountKind Kind, string Role, bool Enabled, DateTimeOffset CreatedAt)
 {
+    /// <summary>A user that is not stored, for the hasher to bind a hash to a name: a new account's password, and the decoy.</summary>
+    public static Account Placeholder(string name) => new(Guid.Empty, name, AccountKind.User, Roles.Reader, false, DateTimeOffset.UnixEpoch);
+
     /// <summary>What the role of the account gives it, now. A role that no longer exists gives nothing.</summary>
     public IReadOnlySet<string> Permissions => Roles.Find(Role)?.Permissions ?? NoPermissions;
 

@@ -3,12 +3,12 @@ using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 
-namespace Mnemarr.Api.V1.Accounts;
+namespace Mnemarr.Api.V1.Audit;
 
 /// <summary>The audit log: who signed in, and who changed an account or a key.</summary>
 [ApiController]
 [Route("api/v1/audit")]
-[Authorize(Policy = Permissions.AccountsManage)]
+[Authorize(Policy = Permissions.AuditRead)]
 public sealed class AuditController : ControllerBase
 {
     private readonly IAuditLog _audit;

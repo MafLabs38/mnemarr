@@ -12,8 +12,9 @@ public static class Permissions
     public const string Search = "search";
     public const string SourcesManage = "sources.manage";
     public const string AccountsManage = "accounts.manage";
+    public const string AuditRead = "audit.read";
     public const string IngestWrite = "ingest.write";
 
     public static IReadOnlyList<string> All { get; } =
-        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, IngestWrite];
+        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite];
 }

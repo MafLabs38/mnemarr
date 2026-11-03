@@ -16,10 +16,12 @@ public sealed class AuthController : ControllerBase
     /// <summary>A name and a password are short: a body larger than this is not a sign-in.</summary>
     private const int MaxBodyBytes = 8 * 1024;
 
+    private readonly SignInService _signIn;
     private readonly AccountService _accounts;
 
-    public AuthController(AccountService accounts)
+    public AuthController(SignInService signIn, AccountService accounts)
     {
+        _signIn = signIn;
         _accounts = accounts;
     }
 
@@ -32,7 +34,7 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SessionResource>> Login(LoginRequest request)
     {
-        if (await _accounts.SignInAsync(request.Name, request.Password, HttpContext.RequestAborted) is not var (account, session))
+        if (await _signIn.SignInAsync(request.Name, request.Password, HttpContext.RequestAborted) is not var (account, session))
         {
             return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
         }
@@ -50,7 +52,7 @@ public sealed class AuthController : ControllerBase
     {
         if (User.FindFirstValue(MnemarrClaims.Session) is { } session)
         {
-            _accounts.EndSession(session);
+            _signIn.EndSession(session);
         }
 
         await HttpContext.SignOutAsync(MnemarrSchemes.Cookie);
@@ -71,7 +73,7 @@ public sealed class AuthController : ControllerBase
     {
         var name = User.Identity?.Name ?? string.Empty;
         var id = User.AccountId() ?? Guid.Empty;
-        if (!await _accounts.VerifyPasswordAsync(id, request.CurrentPassword, HttpContext.RequestAborted))
+        if (!await _signIn.VerifyPasswordAsync(id, request.CurrentPassword, HttpContext.RequestAborted))
         {
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The current password is wrong.");
         }

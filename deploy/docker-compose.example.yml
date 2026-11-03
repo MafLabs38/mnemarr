@@ -13,7 +13,8 @@ services:
     environment:
       MNEMARR__DATAFOLDER: /config
       # The first administrator, created only while there is no account: a name, and the password in a file (a secret).
-      MNEMARR__AUTH__ADMINUSER: admin
+      # Choose a name that is not obvious: whoever knows it can lock that account for fifteen minutes (five wrong passwords).
+      MNEMARR__AUTH__ADMINUSER: change-me-admin-name
       MNEMARR__AUTH__ADMINPASSWORDFILE: /run/secrets/mnemarr_admin_password
     secrets:
       - mnemarr_admin_password

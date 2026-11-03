@@ -1,57 +1,39 @@
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Accounts;
 
 /// <summary>
-/// The accounts: creating them, signing in, changing a role, a password or the state of an account. It keeps the rules of ADR 0016:
-/// a role is one of the built-in ones and fits the kind of account, a password is long enough, repeated failures lock a name, the last
-/// enabled administrator stays, a new password ends the other sessions, and what changes is audited.
+/// The accounts: creating them, changing a role, a password or the state of an account. It keeps the rules of ADR 0016: a role is one of
+/// the built-in ones and fits the kind of account, a password is long enough, the last enabled administrator stays, a new password ends
+/// the other sessions, and what changes is audited. Signing in is <see cref="SignInService"/>.
 /// </summary>
-public sealed partial class AccountService
+public sealed class AccountService
 {
-    public const int MaxNameLength = 64;
-
-    /// <summary>How many passwords are hashed at the same time: one per core, two to eight. The scarce resource of the host, and what a flood of sign-ins would exhaust.</summary>
-    public static readonly int MaxConcurrentHashes = Math.Clamp(Environment.ProcessorCount, 2, 8);
-    private static readonly TimeSpan BusyRetryAfter = TimeSpan.FromSeconds(5);
-    private readonly SemaphoreSlim _hashSlots = new(MaxConcurrentHashes, MaxConcurrentHashes);
+    public const int MaxNameLength = AccountNames.MaxLength;
     private readonly IAccountStore _accounts;
     private readonly IAuditLog _audit;
     private readonly LoginThrottle _throttle;
     private readonly SessionService _sessions;
-    private readonly AuditSampler _sampler;
     private readonly IPasswordHasher<Account> _hasher;
     private readonly TimeProvider _clock;
     private readonly Lock _administrators = new();
-    private readonly string _decoyHash;
-
-    /// <summary>How long a sign-in waits for a place to hash its password before it is told to come back later.</summary>
-    internal TimeSpan HashWait { get; set; } = TimeSpan.FromSeconds(2);
 
     public AccountService(
-        IAccountStore accounts, IAuditLog audit, LoginThrottle throttle, SessionService sessions, AuditSampler sampler, IPasswordHasher<Account> hasher, TimeProvider clock)
+        IAccountStore accounts, IAuditLog audit, LoginThrottle throttle, SessionService sessions, IPasswordHasher<Account> hasher, TimeProvider clock)
     {
         _accounts = accounts;
         _audit = audit;
         _throttle = throttle;
         _sessions = sessions;
-        _sampler = sampler;
         _hasher = hasher;
         _clock = clock;
-
-        // Checked when the name is unknown, so that a wrong name and a wrong password take the same time.
-        _decoyHash = hasher.HashPassword(Placeholder("decoy"), Guid.NewGuid().ToString("N"));
     }
-
-    [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$")]
-    private static partial Regex NamePattern();
 
     public Account Create(string name, AccountKind kind, string role, string? password, string actor)
     {
         name = name.Trim();
-        if (!NamePattern().IsMatch(name))
+        if (!AccountNames.IsValid(name))
         {
             throw Invalid($"A name is 2 to {MaxNameLength} letters, digits, dots, dashes or underscores, and starts with a letter or a digit.");
         }
@@ -60,7 +42,7 @@ public sealed partial class AccountService
         string? hash = null;
         if (kind == AccountKind.User)
         {
-            hash = _hasher.HashPassword(Placeholder(name), CheckedPassword(password, name));
+            hash = _hasher.HashPassword(Account.Placeholder(name), CheckedPassword(password, name));
         }
         else if (password is not null)
         {
@@ -72,144 +54,6 @@ public sealed partial class AccountService
         _audit.Append(actor, "account.created", name, $"{kind} with role {role}");
         return account;
     }
-
-    /// <summary>
-    /// The user who signed in, or null. A name or a password that cannot be one is refused before anything is counted, hashed or audited.
-    /// An attempt is counted before its password is checked; a locked name is refused without checking the password.
-    /// </summary>
-    internal Account? SignIn(string name, string password) => Check(name, password)?.Account;
-
-    /// <summary>The account that signed in and the password hash it was checked against, which is the one the sessions are bound to.</summary>
-    private (Account Account, string Hash)? Check(string name, string password)
-    {
-        name = name.Trim();
-        // Only what a name can be is counted: a counter is keyed by the name, and the other budgets cannot be reached with a forged one.
-        if (!NamePattern().IsMatch(name) || password.Length > PasswordPolicy.MaxLength)
-        {
-            return null;
-        }
-
-        var credentials = _accounts.GetCredentials(name);
-        if (!_throttle.TryReserve(name, isAccount: credentials is not null))
-        {
-            if (_sampler.Allow("login.locked", name.ToUpperInvariant()))
-            {
-                _audit.Append(name, "login.locked", name);
-            }
-
-            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(name) ?? LoginThrottle.Window);
-        }
-
-        // An unknown name, a service account and an account without a password are checked against the decoy: the answer takes the same time.
-        var (account, hash) = credentials is { Account.Kind: AccountKind.User, PasswordHash: { } stored } ? (credentials.Account, stored) : (Placeholder(name), _decoyHash);
-        var result = _hasher.VerifyHashedPassword(account, hash, password);
-        if (credentials is not { Account: { Enabled: true, Kind: AccountKind.User } } || hash == _decoyHash || result == PasswordVerificationResult.Failed)
-        {
-            // Only a name that exists is audited: an unknown name is anybody's guess, and anybody can send a million.
-            if (credentials is not null)
-            {
-                _audit.Append(name, "login.failed", name);
-            }
-
-            return null;
-        }
-
-        _throttle.Succeeded(name);
-        if (result == PasswordVerificationResult.SuccessRehashNeeded)
-        {
-            hash = _hasher.HashPassword(account, password);
-            _accounts.SetPasswordHash(account.Id, hash);
-        }
-
-        _audit.Append(account.Name, "login.succeeded", account.Name);
-        return (account, hash);
-    }
-
-    /// <summary>
-    /// Signs a user in, once a place to hash the password is free (waiting for one holds no thread, and not for long), and starts their
-    /// session. The session is checked after it is started: an account disabled, or a password changed, while the password was being
-    /// hashed ends it again, so that a new password or a disabling that ended the sessions a moment earlier cannot leave this one behind.
-    /// </summary>
-    public async Task<SignedIn?> SignInAsync(string name, string password, CancellationToken cancellationToken)
-    {
-        using var slot = await TakeHashSlotAsync(cancellationToken);
-        if (Check(name, password) is not var (account, hash))
-        {
-            return null;
-        }
-
-        var session = _sessions.Start(account.Id);
-        if (_accounts.GetCredentials(account.Name) is { Account.Enabled: true, PasswordHash: { } current } && current == hash)
-        {
-            return new SignedIn(account, session);
-        }
-
-        _sessions.End(session);
-        return null;
-    }
-
-    /// <summary>
-    /// Whether a person's password is the one they give, for a change of their own password. It does not sign in, but it counts like a
-    /// sign-in: whoever holds a stolen session must not be able to guess the password at the speed of the hash.
-    /// </summary>
-    internal bool VerifyPassword(Guid id, string password)
-    {
-        var account = Existing(id);
-        var budget = PasswordCheckKey(account.Name);
-        if (!_throttle.TryReserve(budget, isAccount: true))
-        {
-            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(budget) ?? LoginThrottle.Window);
-        }
-
-        var credentials = _accounts.GetCredentials(account.Name);
-        if (credentials?.PasswordHash is null || password.Length > PasswordPolicy.MaxLength
-            || _hasher.VerifyHashedPassword(account, credentials.PasswordHash, password) == PasswordVerificationResult.Failed)
-        {
-            _audit.Append(account.Name, "password.verify-failed", account.Name);
-            return false;
-        }
-
-        _throttle.Succeeded(budget);
-        return true;
-    }
-
-    public async Task<bool> VerifyPasswordAsync(Guid id, string password, CancellationToken cancellationToken)
-    {
-        using var slot = await TakeHashSlotAsync(cancellationToken);
-        return VerifyPassword(id, password);
-    }
-
-    /// <summary>
-    /// The counter of the wrong current passwords of a person is their own: whoever guesses their name at the sign-in cannot stop them
-    /// changing it. A name cannot hold the colon, and the sign-in refuses what a name cannot be, so the two kinds of key never meet.
-    /// </summary>
-    internal static string PasswordCheckKey(string name) => $"password-check:{name}";
-
-    /// <summary>A place to hash a password, or a refusal to come back later: the work waits for a few at a time, and not for long.</summary>
-    private async Task<SlotReleaser> TakeHashSlotAsync(CancellationToken cancellationToken)
-    {
-        if (!await _hashSlots.WaitAsync(HashWait, cancellationToken))
-        {
-            throw new AccountRejectedException(AccountProblem.Busy, "The server is busy checking passwords. Try again in a moment.", BusyRetryAfter);
-        }
-
-        return new SlotReleaser(_hashSlots);
-    }
-
-    private readonly struct SlotReleaser : IDisposable
-    {
-        private readonly SemaphoreSlim _slots;
-
-        public SlotReleaser(SemaphoreSlim slots)
-        {
-            _slots = slots;
-        }
-
-        public void Dispose() => _slots.Release();
-    }
-
-    /// <summary>Ends a session: the person signed out.</summary>
-    public void EndSession(string sessionId) => _sessions.End(sessionId);
 
     /// <summary>Changes the role and the state of an account in one step: both are checked first, and nothing is written when one is refused.</summary>
     public Account Update(Guid id, string role, bool enabled, string actor)
@@ -256,7 +100,7 @@ public sealed partial class AccountService
         _accounts.SetPasswordHash(id, hash);
         _sessions.EndAll(id, keepSession);
         _throttle.Succeeded(account.Name);
-        _throttle.Succeeded(PasswordCheckKey(account.Name));
+        _throttle.Succeeded(SignInService.PasswordCheckKey(account.Name));
         _audit.Append(actor, "account.password-changed", account.Name);
     }
 
@@ -283,7 +127,7 @@ public sealed partial class AccountService
         }
 
         _throttle.Succeeded(account.Name);
-        _throttle.Succeeded(PasswordCheckKey(account.Name));
+        _throttle.Succeeded(SignInService.PasswordCheckKey(account.Name));
         _audit.Append("system", "account.reset", account.Name);
     }
 
@@ -298,8 +142,7 @@ public sealed partial class AccountService
         }
     }
 
-    internal Account Existing(Guid id) =>
-        _accounts.Get(id) ?? throw new AccountRejectedException(AccountProblem.NotFound, "There is no such account.");
+    internal Account Existing(Guid id) => _accounts.Existing(id);
 
     /// <summary>Refuses a change that would leave no enabled administrator. Called with the administrators lock held.</summary>
     private void KeepOneAdmin(Account account, bool stillAdmin)
@@ -329,8 +172,6 @@ public sealed partial class AccountService
 
         return PasswordPolicy.Problem(password, name) is { } problem ? throw Invalid(problem) : password;
     }
-
-    private static Account Placeholder(string name) => new(Guid.Empty, name, AccountKind.User, Roles.Reader, false, DateTimeOffset.UnixEpoch);
 
     private static AccountRejectedException Invalid(string message) => new(AccountProblem.Invalid, message);
 }

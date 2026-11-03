@@ -39,11 +39,6 @@ public sealed record SessionResource(Guid AccountId, string Name, string Kind, s
         [.. user.FindAll(MnemarrClaims.Permission).Select(claim => claim.Value).Order(StringComparer.Ordinal)]);
 }
 
-public sealed record AuditEventResource(long Id, DateTimeOffset At, string Actor, string Action, string Target, string Detail)
-{
-    public static AuditEventResource From(AuditEvent e) => new(e.Id, e.At, e.Actor, e.Action, e.Target, e.Detail);
-}
-
 public sealed record LoginRequest(string Name, string Password);
 
 public sealed record ChangeOwnPasswordRequest(string CurrentPassword, string NewPassword);

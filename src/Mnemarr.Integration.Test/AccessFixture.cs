@@ -255,6 +255,32 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         (await client.PostAsync("/api/v1/auth/logout", null, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
+    [Theory]
+    [InlineData("Authorization", "Bearer mnm_not-a-key-that-exists")]
+    [InlineData("X-Api-Key", "mnm_not-a-key-that-exists")]
+    public async Task should_answer_401_to_a_key_that_is_not_one_of_ours_and_never_fall_back_to_a_cookie(string header, string value)
+    {
+        using var client = await _factory.SignedInClientAsync();
+        client.DefaultRequestHeaders.Add(header, value);
+
+        (await client.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Theory]
+    [InlineData("Bearer a.jwt.token")]
+    [InlineData("Bearer ")]
+    [InlineData("Basic YWRtaW46c2VjcmV0")]
+    public async Task should_leave_a_credential_that_is_not_a_key_to_the_other_ways_in_and_so_to_the_cookie_if_there_is_one(string authorization)
+    {
+        using var signedIn = await _factory.SignedInClientAsync();
+        signedIn.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authorization);
+        using var anonymous = _factory.CreateClient();
+        anonymous.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authorization);
+
+        (await signedIn.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await anonymous.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     [Fact]
     public async Task should_describe_a_service_as_a_service_with_the_permissions_of_its_role()
     {
@@ -380,13 +406,19 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [Fact]
     public async Task should_read_the_audit_log_page_by_page_over_http()
     {
-        var first = await _callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/audit?limit=2", Token);
-        var oldest = first[1].GetProperty("id").GetInt64();
+        var marker = Unique("paged");
+        for (var i = 0; i < 3; i++)
+        {
+            await _callers.Admin.PostAsJsonAsync("/api/v1/accounts", new { name = $"{marker}-{i}", kind = "Service", role = "Reader" }, Token);
+        }
 
-        var next = await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/audit?limit=2&before={oldest}", Token);
+        var first = await _callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/audit?limit=2&action=account.created", Token);
+        var second = await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/audit?limit=2&action=account.created&before={first[1].GetProperty("id").GetInt64()}", Token);
 
-        next.EnumerateArray().Select(e => e.GetProperty("id").GetInt64()).Should().OnlyContain(id => id < oldest);
+        first.EnumerateArray().Select(e => e.GetProperty("target").GetString()).Should().Equal($"{marker}-2", $"{marker}-1");
+        second.EnumerateArray().First().GetProperty("target").GetString().Should().Be($"{marker}-0");
     }
+
 
     [Fact]
     public async Task should_keep_the_counter_of_wrong_current_passwords_apart_from_the_one_of_the_sign_in()
@@ -460,6 +492,7 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("Reader")]
     [InlineData("Assistant")]
     [InlineData("Collector")]
+    [InlineData("Monitor")]
     public async Task should_refuse_every_write_of_accounts_to_whoever_is_not_an_administrator_and_change_nothing(string caller)
     {
         var victim = await Callers.CreateAsync(_callers.Admin, new { name = Unique("victim"), kind = "Service", role = "Reader" });

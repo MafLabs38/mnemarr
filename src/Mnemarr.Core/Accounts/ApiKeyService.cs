@@ -30,7 +30,7 @@ public sealed class ApiKeyService
 
     public CreatedApiKey Create(Guid accountId, string name, IReadOnlyList<Guid>? sources, DateTimeOffset? expiresAt, string actor)
     {
-        var account = _accounts.Get(accountId) ?? throw new AccountRejectedException(AccountProblem.NotFound, "There is no such account.");
+        var account = _accounts.Existing(accountId);
         if (account.Kind != AccountKind.Service)
         {
             // A person signs in with a password; a key on a user account would be a bearer credential that skips the lockout and the cookie's protections.
@@ -65,7 +65,7 @@ public sealed class ApiKeyService
 
     public void Revoke(Guid accountId, Guid keyId, string actor)
     {
-        var account = _accounts.Get(accountId) ?? throw new AccountRejectedException(AccountProblem.NotFound, "There is no such account.");
+        var account = _accounts.Existing(accountId);
         if (!_keys.Revoke(accountId, keyId, _clock.GetUtcNow()))
         {
             throw new AccountRejectedException(AccountProblem.NotFound, "There is no such key, or it is revoked already.");

@@ -178,4 +178,45 @@ public sealed class LoginThrottleFixture
         subject.Succeeded("alice");
         subject.LockedFor("alice").Should().BeNull();
     }
+
+    [Fact]
+    public void should_not_extend_a_lockout_by_the_attempts_that_are_refused_while_it_lasts()
+    {
+        var subject = new LoginThrottle(_clock);
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            subject.TryReserve("alice");
+        }
+
+        for (var minute = 0; minute < 14; minute++)
+        {
+            _clock.Advance(TimeSpan.FromMinutes(1));
+            subject.TryReserve("alice").Should().BeFalse();
+        }
+
+        _clock.Advance(TimeSpan.FromMinutes(2));
+
+        subject.TryReserve("alice").Should().BeTrue("fifteen minutes after the first attempts, however many were refused since");
+    }
+
+    [Fact]
+    public void should_keep_the_count_of_a_name_that_turns_out_to_be_an_account()
+    {
+        var subject = new LoginThrottle(_clock);
+        subject.TryReserve("later-an-account");
+        subject.TryReserve("later-an-account", isAccount: true);
+
+        for (var i = 0; i < 2 * LoginThrottle.MaxTracked; i++)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(1));
+            subject.TryReserve($"made-up-{i}");
+        }
+
+        for (var i = 0; i < LoginThrottle.MaxFailures - 2; i++)
+        {
+            subject.TryReserve("later-an-account", isAccount: true);
+        }
+
+        subject.IsLocked("later-an-account").Should().BeTrue("the two first attempts were not forgotten");
+    }
 }

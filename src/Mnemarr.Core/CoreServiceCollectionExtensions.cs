@@ -36,6 +36,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SessionService>();
         services.AddHostedService<AuditRetentionService>();
         services.AddSingleton<AccountService>();
+        services.AddSingleton<SignInService>();
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<AdminAccountSeeder>();
         return services;
