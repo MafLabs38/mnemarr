@@ -14,3 +14,11 @@ docs
 tests
 deploy
 *.md
+.data
+.sonarlint
+**/.env*
+**/appsettings.*.json
+**/secrets.json
+**/*.pfx
+**/*.key
+src/*.Test
