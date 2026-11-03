@@ -46,8 +46,6 @@ export interface AuditItem {
   detail: string;
 }
 
-export const accountsKey = ['api', '/accounts'] as const;
-
 /** What a change to an account makes stale: the list, the account itself, its keys, and the activity that records the change. */
 const isAccountsQuery = (query: { queryKey: readonly unknown[] }) =>
   typeof query.queryKey[1] === 'string' &&
@@ -60,9 +58,6 @@ export function useAccounts() {
 export function useAccount(id: string) {
   return useApiQuery<AccountItem>(`/accounts/${id}`);
 }
-
-/** The key of the keys of one account, for what has to refresh them. */
-export const keysQueryKey = (accountId: string) => ['api', `/accounts/${accountId}/keys`] as const;
 
 export function useApiKeys(accountId: string) {
   return useApiQuery<ApiKeyItem[]>(`/accounts/${accountId}/keys`);
@@ -122,7 +117,12 @@ export function useDeleteAccount(id: string) {
 
 /** An administrator sets the password of a person. */
 export function useSetPassword(id: string) {
-  return useMutation({ mutationFn: (password: string) => apiSend('PUT', `/accounts/${id}/password`, { password }) });
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (password: string) => apiSend('PUT', `/accounts/${id}/password`, { password }),
+    gcTime: 0,
+    onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
+  });
 }
 
 /** A person changes their own password, with the current one. */
@@ -130,6 +130,7 @@ export function useChangeOwnPassword() {
   return useMutation({
     mutationFn: (passwords: { currentPassword: string; newPassword: string }) =>
       apiSend('PUT', '/auth/password', passwords),
+    gcTime: 0,
   });
 }
 
@@ -138,7 +139,9 @@ export function useCreateApiKey(accountId: string) {
   return useMutation({
     mutationFn: (key: { name: string; expiresAt?: string }) =>
       apiSend<CreatedApiKey>('POST', `/accounts/${accountId}/keys`, key),
-    onSuccess: () => client.invalidateQueries({ queryKey: keysQueryKey(accountId) }),
+    // The secret is in the answer and nowhere else: the mutation does not keep it once the page lets go.
+    gcTime: 0,
+    onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
   });
 }
 
@@ -146,6 +149,6 @@ export function useRevokeApiKey(accountId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (keyId: string) => apiSend('DELETE', `/accounts/${accountId}/keys/${keyId}`),
-    onSuccess: () => client.invalidateQueries({ queryKey: keysQueryKey(accountId) }),
+    onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
   });
 }

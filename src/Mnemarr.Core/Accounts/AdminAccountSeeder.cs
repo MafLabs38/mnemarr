@@ -1,6 +1,6 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Audit;
 using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Accounts;
@@ -75,7 +75,7 @@ public sealed partial class AdminAccountSeeder
 
         try
         {
-            _service.Create(options.AdminUser, AccountKind.User, Roles.Admin, ReadPassword(options.AdminPasswordFile, "first administrator"), "system");
+            _service.Create(options.AdminUser, AccountKind.User, Roles.Admin, ReadPassword(options.AdminPasswordFile, "first administrator"), AuditActors.System);
         }
         catch (AccountRejectedException ex)
         {

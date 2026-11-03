@@ -61,7 +61,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
             return Task.FromResult(AuthenticateResult.Fail("The key is not valid."));
         }
 
-        var identity = new ClaimsIdentity(MnemarrClaims.For(principal), ApiKeyHeader.Scheme, ClaimTypes.Name, ClaimTypes.Role);
+        var identity = MnemarrClaims.Identity(principal, ApiKeyHeader.Scheme);
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), ApiKeyHeader.Scheme)));
     }
 }

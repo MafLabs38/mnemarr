@@ -316,6 +316,8 @@ public sealed class SignInServiceFixture : IDisposable
     [InlineData("password-check:alice")]
     [InlineData("al ice")]
     [InlineData("a")]
+    [InlineData("system")]
+    [InlineData("Unknown")]
     public void should_refuse_what_a_name_cannot_be_without_counting_it_so_that_a_forged_name_reaches_no_other_budget(string name)
     {
         var alice = _h.Reader();
@@ -378,31 +380,47 @@ public sealed class SignInServiceFixture : IDisposable
     private sealed class BlockingHasher : Microsoft.AspNetCore.Identity.IPasswordHasher<Account>, IDisposable
     {
         private readonly ManualResetEventSlim _open = new(initialState: true);
-        private int _entered;
+        private readonly SemaphoreSlim _entered = new(0);
 
         public void Block() => _open.Reset();
 
         public void Release() => _open.Set();
 
-        public void WaitUntilEntered(int count) =>
-            SpinWait.SpinUntil(() => Volatile.Read(ref _entered) >= count, TimeSpan.FromSeconds(30)).Should().BeTrue("the checks reach the hasher");
+        public void WaitUntilEntered(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                _entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the checks reach the hasher");
+            }
+        }
 
         /// <summary>A test that fails first must not leave threads parked on the gate.</summary>
         public void Dispose()
         {
             _open.Set();
             _open.Dispose();
+            _entered.Dispose();
         }
 
         public string HashPassword(Account account, string password) => "hash:" + password;
 
         public Microsoft.AspNetCore.Identity.PasswordVerificationResult VerifyHashedPassword(Account account, string hashedPassword, string providedPassword)
         {
-            Interlocked.Increment(ref _entered);
-            _open.Wait(TimeSpan.FromSeconds(30));
+            _entered.Release();
+            _open.Wait(TimeSpan.FromSeconds(10));
             return hashedPassword == "hash:" + providedPassword
                 ? Microsoft.AspNetCore.Identity.PasswordVerificationResult.Success
                 : Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed;
         }
+    }
+
+    [Theory]
+    [InlineData("ab\n", false)]
+    [InlineData("ab", true)]
+    [InlineData("a", false)]
+    [InlineData("system", false)]
+    public void should_know_what_a_name_is_down_to_the_last_character(string name, bool valid)
+    {
+        AccountNames.IsValid(name).Should().Be(valid);
     }
 }

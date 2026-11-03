@@ -40,7 +40,10 @@ public sealed class AccountClaimsTransformation : IClaimsTransformation
             return Task.FromResult(new ClaimsPrincipal(new ClaimsIdentity()));
         }
 
-        var claims = MnemarrClaims.For(new AccessPrincipal(account, account.Permissions, null, null)).Append(new Claim(MnemarrClaims.Session, session.FindFirst(MnemarrClaims.Session)?.Value ?? string.Empty));
-        return Task.FromResult(new ClaimsPrincipal(new ClaimsIdentity(claims, MnemarrSchemes.Cookie, ClaimTypes.Name, ClaimTypes.Role)));
+        var identity = MnemarrClaims.Identity(
+            new AccessPrincipal(account, account.Permissions, null, null),
+            MnemarrSchemes.Cookie,
+            new Claim(MnemarrClaims.Session, session.FindFirst(MnemarrClaims.Session)?.Value ?? string.Empty));
+        return Task.FromResult(new ClaimsPrincipal(identity));
     }
 }

@@ -110,7 +110,15 @@ export default function AccountKeys() {
         <p>
           <Link to="/accounts">{translate('BackToAccounts')}</Link>
         </p>
-        {created && <NewKey created={created} onDismiss={() => setCreated(null)} />}
+        {created && (
+          <NewKey
+            created={created}
+            onDismiss={() => {
+              setCreated(null);
+              create.reset();
+            }}
+          />
+        )}
         <Card title={translate('Keys')}>
           {keys.data.length === 0 ? (
             <p>{translate('NoKeys')}</p>

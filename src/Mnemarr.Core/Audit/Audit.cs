@@ -8,6 +8,9 @@ public static class AuditActors
 {
     /// <summary>A call that no account made: a key nobody knows.</summary>
     public const string Unknown = "unknown";
+
+    /// <summary>The application itself: the first administrator created at start, a break-glass reset.</summary>
+    public const string System = "system";
 }
 
 public interface IAuditLog

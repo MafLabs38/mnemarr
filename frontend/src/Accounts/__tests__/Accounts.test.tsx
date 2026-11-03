@@ -1,7 +1,15 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { type ApiAnswer, findCall, renderWithProviders, rowOf, sentBody, stubApi } from '__tests__/render';
+import {
+  adminSession,
+  type ApiAnswer,
+  findCall,
+  renderWithProviders,
+  rowOf,
+  sentBody,
+  stubApi,
+} from '__tests__/render';
 import Accounts from 'Accounts/Accounts';
 import type { AccountItem, AuditItem, RoleItem } from 'Accounts/accounts';
 
@@ -192,6 +200,25 @@ describe('Accounts', () => {
     renderWithProviders(<Accounts />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not read the accounts.');
+  });
+
+  it('has no password button on the row of the signed-in administrator, who has My account for that', async () => {
+    server();
+    renderWithProviders(<Accounts />);
+    const self = rowOf(await screen.findByRole('rowheader', { name: 'admin' }));
+
+    expect(within(self).queryByRole('button', { name: 'Set a password' })).not.toBeInTheDocument();
+    expect(
+      within(rowOf(screen.getByRole('rowheader', { name: 'alice' }))).getByRole('button', { name: 'Set a password' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the recent activity only to somebody who may read the audit log', async () => {
+    server();
+    renderWithProviders(<Accounts />, '/', { ...adminSession, permissions: ['accounts.manage'] });
+    await screen.findByRole('rowheader', { name: 'alice' });
+
+    expect(screen.queryByRole('region', { name: 'Recent activity' })).not.toBeInTheDocument();
   });
 
   it('disarms a deletion that was started and then given up', async () => {

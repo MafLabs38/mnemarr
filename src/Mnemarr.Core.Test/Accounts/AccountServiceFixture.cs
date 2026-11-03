@@ -99,6 +99,17 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Theory]
+    [InlineData("system")]
+    [InlineData("SYSTEM")]
+    [InlineData("unknown")]
+    public void should_refuse_a_name_that_the_audit_log_gives_to_what_is_not_an_account(string name)
+    {
+        var create = () => Subject.Create(name, AccountKind.Service, Roles.Reader, null, "root");
+
+        create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+    }
+
+    [Theory]
     [InlineData(null, "needs a password")]
     [InlineData("short", "at least 12")]
     public void should_refuse_a_user_without_a_good_password(string? password, string reason)

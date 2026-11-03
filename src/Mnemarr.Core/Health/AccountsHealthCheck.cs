@@ -38,19 +38,23 @@ public sealed class AccountsHealthCheck : IHealthCheck
         var accounts = _accounts.List();
         if (accounts.Count == 0)
         {
-            return HealthCheckResult.Degraded("No account exists: the first administrator is not configured, nobody can sign in.");
+            return Degraded("no-account", "No account exists: the first administrator is not configured, nobody can sign in.");
         }
 
         // A role is a name in code and a word in the database: one that was renamed or removed gives its accounts no permission at all.
         var unknownRoles = accounts.Count(account => Roles.Find(account.Role) is null);
         if (unknownRoles > 0)
         {
-            return HealthCheckResult.Degraded($"{unknownRoles} account(s) have a role that this version does not know, so they can do nothing.");
+            return Degraded("unknown-role", $"{unknownRoles} account(s) have a role that this version does not know, so they can do nothing.");
         }
 
         // Left set, the break-glass reset puts the password back at every start: it is for one start only.
         return string.IsNullOrWhiteSpace(_auth.Value.ResetPasswordUser)
             ? HealthCheckResult.Healthy()
-            : HealthCheckResult.Degraded("The break-glass password reset is still set: remove it, it resets the password at every start.");
+            : Degraded("break-glass-set", "The break-glass password reset is still set: remove it, it resets the password at every start.");
     }
+
+    /// <summary>A degraded result with a stable reason code, which the health resource of the API will carry (F-HLT-01), next to the words.</summary>
+    private static HealthCheckResult Degraded(string reason, string description) =>
+        HealthCheckResult.Degraded(description, data: new Dictionary<string, object> { ["reason"] = reason });
 }

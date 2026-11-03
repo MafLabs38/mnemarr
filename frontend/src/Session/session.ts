@@ -17,6 +17,7 @@ export const sessionKey = ['api', '/auth/session'] as const;
 export const permissions = {
   systemRead: 'system.read',
   accountsManage: 'accounts.manage',
+  auditRead: 'audit.read',
 } as const;
 
 /** The session, or null when nobody is signed in (the API answers 401). Any other failure is an error. */
@@ -39,6 +40,8 @@ export function useSessionQuery() {
 /** Forgets everything that was read for the previous session: whoever signs in next, on this tab, must not see it. */
 export function forgetSessionData(client: QueryClient) {
   client.removeQueries({ predicate: (query) => query.queryKey[1] !== sessionKey[1] });
+  // The mutations remember what they were given and what they returned: a password, the secret of a key. None of it outlives the session.
+  client.getMutationCache().clear();
 }
 
 /** Nobody is signed in any more. Nobody first, so that the gate leaves the pages; then what they had read goes. */

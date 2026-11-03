@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { adminSession, stubApi } from '__tests__/render';
 import { createQueryClient } from 'App/queryClient';
 import { ApiError } from 'Helpers/Api/apiGet';
-import { sessionKey } from 'Session/session';
+import { endSession, sessionKey } from 'Session/session';
 import { useSession } from 'Session/SessionContext';
 import SessionGate from 'Session/SessionGate';
 
@@ -97,5 +97,20 @@ describe('SessionGate', () => {
 
     expect(await screen.findByRole('heading', { name: 'Sign in to Mnemarr' })).toBeInTheDocument();
     expect(client.getQueryData(sessionKey)).toBeNull();
+  });
+
+  it('forgets what the mutations were given and returned when the session ends, so that no password or key secret outlives it', async () => {
+    stubApi(() => ({ body: adminSession }));
+    const client = renderGate();
+    await screen.findByText('inside as admin');
+    await client
+      .getMutationCache()
+      .build(client, { mutationFn: () => Promise.resolve({ secret: 'mnm_secret' }) })
+      .execute(undefined);
+    expect(client.getMutationCache().getAll()).toHaveLength(1);
+
+    endSession(client);
+
+    expect(client.getMutationCache().getAll()).toHaveLength(0);
   });
 });

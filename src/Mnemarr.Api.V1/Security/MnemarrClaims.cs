@@ -43,6 +43,10 @@ public static class MnemarrClaims
         }
     }
 
+    /// <summary>The identity of a caller who is signed in: the one way it is built, for a session and for a key, whatever the scheme.</summary>
+    public static ClaimsIdentity Identity(AccessPrincipal principal, string authenticationType, params Claim[] more) =>
+        new([.. For(principal), .. more], authenticationType, ClaimTypes.Name, ClaimTypes.Role);
+
     /// <summary>
     /// What a caller may touch, rebuilt from its claims: the one way a handler gets the scope to pass to Core. A key limited to sources
     /// is limited to those (even to none); any other signed-in caller reaches all; a caller who is not signed in, none.

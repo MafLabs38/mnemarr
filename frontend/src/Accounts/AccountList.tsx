@@ -99,7 +99,7 @@ function AccountRow({ account, roles, isSelf, onResult }: Readonly<RowProps>) {
             >
               {translate(account.enabled ? 'Disable' : 'Enable')}
             </Button>
-            {account.kind === 'User' && (
+            {account.kind === 'User' && !isSelf && (
               <Button onClick={() => setEditingPassword(true)} variant="quiet">
                 {translate('SetPassword')}
               </Button>

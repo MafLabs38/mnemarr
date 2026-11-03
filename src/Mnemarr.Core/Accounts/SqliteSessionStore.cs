@@ -1,4 +1,3 @@
-using System.Globalization;
 using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Accounts;

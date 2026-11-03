@@ -29,6 +29,7 @@ public sealed class AccountsHealthCheckFixture : IDisposable
         var result = await Check();
 
         result.Status.Should().Be(HealthStatus.Degraded);
+        result.Data["reason"].Should().Be("no-account");
         result.Description.Should().Contain("first administrator");
     }
 
@@ -40,6 +41,7 @@ public sealed class AccountsHealthCheckFixture : IDisposable
         var result = await Check(new AuthOptions { ResetPasswordUser = "root", ResetPasswordFile = "/run/reset" });
 
         result.Status.Should().Be(HealthStatus.Degraded);
+        result.Data["reason"].Should().Be("break-glass-set");
         result.Description.Should().Contain("break-glass").And.NotContain("/run/reset");
     }
 
@@ -58,6 +60,7 @@ public sealed class AccountsHealthCheckFixture : IDisposable
         var result = await Check();
 
         result.Status.Should().Be(HealthStatus.Degraded);
+        result.Data["reason"].Should().Be("unknown-role");
         result.Description.Should().StartWith("1 account(s)").And.NotContain("alice");
     }
 

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 namespace Mnemarr.Host.Security;
 
 /// <summary>
@@ -23,7 +24,7 @@ public sealed class RequestIntegrityMiddleware
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return context.Response.WriteAsJsonAsync(
-                new Microsoft.AspNetCore.Mvc.ProblemDetails { Status = StatusCodes.Status403Forbidden, Title = $"A write needs the {HeaderName} header." },
+                new ProblemDetails { Status = StatusCodes.Status403Forbidden, Title = $"A write needs the {HeaderName} header." },
                 options: null,
                 contentType: "application/problem+json",
                 cancellationToken: context.RequestAborted);

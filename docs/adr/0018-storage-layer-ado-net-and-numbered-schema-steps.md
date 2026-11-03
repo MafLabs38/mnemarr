@@ -20,6 +20,7 @@ The accounts vertical (ADR 0016) was the first to keep data, so it had to settle
 ## Consequences
 
 - Every vertical adds a step and its store interface, and tests it against a real SQLite file in a temporary folder (`TestWorkspace`), not a mock.
+- `IDatabase.Open()` is where loading the `sqlite-vec` extension and sharing the one writer will go: the vectors vertical changes `Database`, not the stores, which only ever see an open connection.
 - Writers: SQLite allows one at a time. The way ingestion, embedding, re-embedding and snapshots share it, and who loads `sqlite-vec` into the connection, remain Q-22, decided with the vectors vertical.
 - Raw SQL is written in the store classes and in `Schema` (the version and the steps) only; controllers, services and health checks never see a connection.
 - Every call opens a connection (two to four per authenticated request): cheap on a local file, and measured when it is not. A shared connection or a unit of work is a change inside the stores.

@@ -42,7 +42,7 @@ public sealed class AuthController : ControllerBase
         var principal = new AccessPrincipal(account, account.Permissions, null, null);
         var identity = new ClaimsIdentity([new Claim(MnemarrClaims.Account, account.Id.ToString()), new Claim(MnemarrClaims.Session, session)], MnemarrSchemes.Cookie);
         await HttpContext.SignInAsync(MnemarrSchemes.Cookie, new ClaimsPrincipal(identity));
-        return SessionResource.From(new ClaimsPrincipal(new ClaimsIdentity(MnemarrClaims.For(principal), MnemarrSchemes.Cookie, ClaimTypes.Name, ClaimTypes.Role)));
+        return SessionResource.From(new ClaimsPrincipal(MnemarrClaims.Identity(principal, MnemarrSchemes.Cookie)));
     }
 
     /// <summary>Ends the session.</summary>

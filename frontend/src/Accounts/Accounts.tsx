@@ -2,6 +2,8 @@ import Card from 'Components/Card';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
+import { permissions } from 'Session/session';
+import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
 import AccountList from './AccountList';
@@ -10,6 +12,7 @@ import CreateAccount from './CreateAccount';
 
 /** Who can sign in, with what role, and who holds keys. Only an administrator reaches it. */
 export default function Accounts() {
+  const { can } = usePermissions();
   return (
     <PageContent title={translate('Accounts')}>
       <PageContentBody>
@@ -20,9 +23,11 @@ export default function Accounts() {
         <Card title={translate('CreateAccount')}>
           <CreateAccount />
         </Card>
-        <Card title={translate('RecentActivity')}>
-          <Activity />
-        </Card>
+        {can(permissions.auditRead) && (
+          <Card title={translate('RecentActivity')}>
+            <Activity />
+          </Card>
+        )}
       </PageContentBody>
     </PageContent>
   );

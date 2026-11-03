@@ -35,7 +35,7 @@ public sealed class Callers
 
     public HttpClient Admin { get; private set; } = null!;
 
-    public HttpClient Anonymous => _factory.CreateBrowserClient();
+    public HttpClient Anonymous { get; private set; } = null!;
 
     public HttpClient this[string role] => _clients[role];
 
@@ -61,6 +61,7 @@ public sealed class Callers
         }
 
         _clients["Admin"] = Admin;
+        Anonymous = _factory.CreateBrowserClient();
     }
 
     public static async Task<Guid> CreateAsync(HttpClient admin, object account)

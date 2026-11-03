@@ -63,7 +63,11 @@ public sealed class AccountService
             var account = Existing(id);
             CheckRole(role, account.Kind);
             KeepOneAdmin(account, stillAdmin: enabled && role == Roles.Admin);
-            _accounts.Update(id, role, enabled);
+            if (!_accounts.Update(id, role, enabled))
+            {
+                throw NoSuchAccount();
+            }
+
             if (role != account.Role)
             {
                 _audit.Append(actor, "account.role-changed", account.Name, $"{account.Role} to {role}");
@@ -97,7 +101,11 @@ public sealed class AccountService
         // The sessions end before the password changes (if the process stopped between the two, nobody keeps a session) and after (a sign-in
         // that checked the old password and started its session in between does not keep it).
         _sessions.EndAll(id, keepSession);
-        _accounts.SetPasswordHash(id, hash);
+        if (!_accounts.SetPasswordHash(id, hash))
+        {
+            throw NoSuchAccount();
+        }
+
         _sessions.EndAll(id, keepSession);
         _throttle.Succeeded(account.Name);
         _throttle.Succeeded(SignInService.PasswordCheckKey(account.Name));
@@ -128,7 +136,7 @@ public sealed class AccountService
 
         _throttle.Succeeded(account.Name);
         _throttle.Succeeded(SignInService.PasswordCheckKey(account.Name));
-        _audit.Append("system", "account.reset", account.Name);
+        _audit.Append(AuditActors.System, "account.reset", account.Name);
     }
 
     public void Delete(Guid id, string actor)
@@ -172,6 +180,8 @@ public sealed class AccountService
 
         return PasswordPolicy.Problem(password, name) is { } problem ? throw Invalid(problem) : password;
     }
+
+    private static AccountRejectedException NoSuchAccount() => new(AccountProblem.NotFound, "There is no such account.");
 
     private static AccountRejectedException Invalid(string message) => new(AccountProblem.Invalid, message);
 }

@@ -47,6 +47,7 @@ test.describe('smoke @smoke', () => {
         expect(response.status(), path).toBe(404);
         expect(response.headers()['content-type'] ?? '', path).not.toContain('text/html');
       }
+      await request.dispose();
     },
   );
 
@@ -63,11 +64,15 @@ test.describe('smoke @smoke', () => {
     },
   );
 
-  test('nothing of the API is open to somebody who is not signed in', { tag: '@browserless' }, async ({ request }) => {
-    // The matrix of every endpoint is in the integration tests; here, only that the real image closes the doors it does not know.
-    expect((await request.get('/api/v1/nothing-here')).status()).toBe(401);
-    expect((await request.get('/health/live')).status()).toBe(200);
-  });
+  test(
+    'the real image applies the closed-by-default rule to an unknown API path and keeps the probes anonymous',
+    { tag: '@browserless' },
+    async ({ request }) => {
+      // The matrix of every endpoint is in the integration tests; here, only that the real image closes the doors it does not know.
+      expect((await request.get('/api/v1/nothing-here')).status()).toBe(401);
+      expect((await request.get('/health/live')).status()).toBe(200);
+    },
+  );
 
   test(
     'the application shell of the real image carries the security headers',
@@ -203,6 +208,7 @@ test.describe('smoke @smoke', () => {
     expect((await admin.post('/api/v1/accounts', { data: { ...person, kind: 'User', role: 'Reader' } })).status()).toBe(
       201,
     );
+    await admin.dispose();
     await page.goto('/');
     await page.getByLabel('Name').fill(person.name);
     await page.getByLabel('Password').fill('not the password');
@@ -217,16 +223,14 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('heading', { name: 'Sign in to Mnemarr' })).toBeVisible();
   });
 
-  test('a reader is shown the notes menu only, without the system or the accounts', async ({
-    page,
-    playwright,
-    baseURL,
-  }) => {
+  test('a reader does not see the System or Accounts entries of the menu', async ({ page, playwright, baseURL }) => {
     const admin = await signedInRequest(playwright, baseURL ?? '');
     const reader = { name: unique('reader'), password: 'a long enough password' };
     expect((await admin.post('/api/v1/accounts', { data: { ...reader, kind: 'User', role: 'Reader' } })).status()).toBe(
       201,
     );
+
+    await admin.dispose();
 
     await signIn(page, '/', reader);
 
@@ -268,5 +272,6 @@ test.describe('smoke @smoke', () => {
     await page.getByRole('button', { name: 'Revoke the key laptop' }).click();
     await expect(page.getByText('Revoked')).toBeVisible();
     expect((await agent.get('/api/v1/auth/session')).status()).toBe(401);
+    await agent.dispose();
   });
 });
