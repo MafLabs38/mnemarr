@@ -8,6 +8,8 @@ on:
     branches: [main, develop]
   # Every pull request, including stacked ones whose base is another feature branch.
   pull_request:
+  # On demand: the Actions tab, "Run workflow", or `gh workflow run ci.yml --ref <branch>`.
+  workflow_dispatch:
 
 permissions:
   contents: read
