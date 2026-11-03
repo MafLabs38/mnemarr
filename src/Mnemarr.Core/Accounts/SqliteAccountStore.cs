@@ -122,6 +122,21 @@ public sealed class SqliteAccountStore : IAccountStore
         return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
+    public IReadOnlyDictionary<string, int> CountByRole()
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT role, COUNT(*) FROM accounts GROUP BY role";
+        using var reader = command.ExecuteReader();
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        while (reader.Read())
+        {
+            counts[reader.GetString(0)] = reader.GetInt32(1);
+        }
+
+        return counts;
+    }
+
     private int Scalar(string sql)
     {
         using var connection = _database.Open();

@@ -48,14 +48,14 @@ public sealed class AccountServiceFixture : IDisposable
     [Fact]
     public void should_refuse_a_name_one_character_too_long()
     {
-        var create = () => Subject.Create(new string('a', AccountService.MaxNameLength + 1), AccountKind.User, Roles.Reader, Password, "root");
+        var create = () => Subject.Create(new string('a', AccountNames.MaxLength + 1), AccountKind.User, Roles.Reader, Password, "root");
 
         create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
     }
 
     [Theory]
     [InlineData(2)]
-    [InlineData(AccountService.MaxNameLength)]
+    [InlineData(AccountNames.MaxLength)]
     public void should_accept_a_name_at_the_limits(int length)
     {
         var name = "a" + new string('b', length - 1);

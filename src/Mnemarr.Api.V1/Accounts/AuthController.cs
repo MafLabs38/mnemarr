@@ -69,8 +69,14 @@ public sealed class AuthController : ControllerBase
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> ChangeOwnPassword(ChangeOwnPasswordRequest request)
     {
+        if (User.FindFirstValue(MnemarrClaims.Kind) != nameof(AccountKind.User))
+        {
+            return Problem(statusCode: StatusCodes.Status403Forbidden, title: "Only a person has a password: a service account has keys.");
+        }
+
         var name = User.Identity?.Name ?? string.Empty;
         var id = User.AccountId() ?? Guid.Empty;
         if (!await _signIn.VerifyPasswordAsync(id, request.CurrentPassword, HttpContext.RequestAborted))

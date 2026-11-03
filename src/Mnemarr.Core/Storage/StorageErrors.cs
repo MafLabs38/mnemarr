@@ -10,5 +10,5 @@ public static class StorageErrors
     /// go on without it (a hosted service, a probe) catches exactly this; anything else is a bug and propagates.
     /// </summary>
     public static bool IsUnavailable(Exception exception) =>
-        exception is SqliteException or IOException or UnauthorizedAccessException;
+        exception is SqliteException or IOException or UnauthorizedAccessException or UnsupportedSchemaException;
 }

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiSend } from 'Helpers/Api/apiGet';
-import { useApiQuery } from 'Helpers/Hooks/useApiQuery';
+import { isApiPath, useApiQuery } from 'Helpers/Hooks/useApiQuery';
 
 export interface AccountItem {
   id: string;
@@ -47,9 +47,7 @@ export interface AuditItem {
 }
 
 /** What a change to an account makes stale: the list, the account itself, its keys, and the activity that records the change. */
-const isAccountsQuery = (query: { queryKey: readonly unknown[] }) =>
-  typeof query.queryKey[1] === 'string' &&
-  (query.queryKey[1].startsWith('/accounts') || query.queryKey[1].startsWith('/audit'));
+const isAccountsQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/accounts', '/audit');
 
 export function useAccounts() {
   return useApiQuery<AccountItem[]>('/accounts');
@@ -95,6 +93,7 @@ export function useCreateAccount() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (account: NewAccount) => apiSend('POST', '/accounts', account),
+    gcTime: 0,
     onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
   });
 }

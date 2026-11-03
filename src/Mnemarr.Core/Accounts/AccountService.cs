@@ -10,7 +10,6 @@ namespace Mnemarr.Core.Accounts;
 /// </summary>
 public sealed class AccountService
 {
-    public const int MaxNameLength = AccountNames.MaxLength;
     private readonly IAccountStore _accounts;
     private readonly IAuditLog _audit;
     private readonly LoginThrottle _throttle;
@@ -35,7 +34,7 @@ public sealed class AccountService
         name = name.Trim();
         if (!AccountNames.IsValid(name))
         {
-            throw Invalid($"A name is 2 to {MaxNameLength} letters, digits, dots, dashes or underscores, and starts with a letter or a digit.");
+            throw Invalid($"A name is 2 to {AccountNames.MaxLength} letters, digits, dots, dashes or underscores, and starts with a letter or a digit.");
         }
 
         CheckRole(role, kind);
@@ -128,9 +127,10 @@ public sealed class AccountService
         lock (_administrators)
         {
             // The sessions go first: a reset is for the day a cookie may be stolen, and it must not leave one if it stops half way.
+            var current = _accounts.Existing(account.Id);
             _sessions.EndAll(account.Id);
             _accounts.SetPasswordHash(account.Id, hash);
-            _accounts.Update(account.Id, account.Role, enabled: true);
+            _accounts.Update(account.Id, current.Role, enabled: true);
             _sessions.EndAll(account.Id);
         }
 

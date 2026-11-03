@@ -35,14 +35,14 @@ public sealed class AccountsHealthCheck : IHealthCheck
 
     private HealthCheckResult Check()
     {
-        var accounts = _accounts.List();
-        if (accounts.Count == 0)
+        var byRole = _accounts.CountByRole();
+        if (byRole.Count == 0)
         {
             return Degraded("no-account", "No account exists: the first administrator is not configured, nobody can sign in.");
         }
 
         // A role is a name in code and a word in the database: one that was renamed or removed gives its accounts no permission at all.
-        var unknownRoles = accounts.Count(account => Roles.Find(account.Role) is null);
+        var unknownRoles = byRole.Where(pair => Roles.Find(pair.Key) is null).Sum(pair => pair.Value);
         if (unknownRoles > 0)
         {
             return Degraded("unknown-role", $"{unknownRoles} account(s) have a role that this version does not know, so they can do nothing.");

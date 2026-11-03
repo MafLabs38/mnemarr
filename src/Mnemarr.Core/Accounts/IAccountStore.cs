@@ -22,4 +22,7 @@ public interface IAccountStore
 
     /// <summary>How many enabled accounts hold the Admin role: the last one must stay.</summary>
     int CountEnabledAdmins();
+
+    /// <summary>How many accounts hold each role (a role nobody holds is absent): one grouped read, however many accounts there are.</summary>
+    IReadOnlyDictionary<string, int> CountByRole();
 }

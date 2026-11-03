@@ -59,11 +59,12 @@ public static class SecurityExtensions
 
     private static void ConfigureCookie(CookieAuthenticationOptions cookie, AuthOptions auth)
     {
+        var always = auth.CookieSecurity == CookieSecurityMode.Always;
         // The __Host- prefix makes the browser refuse a cookie of that name set by a sibling host or with a Domain: it needs Secure.
-        cookie.Cookie.Name = auth.CookieSecurity == CookieSecurityMode.Always ? "__Host-mnemarr.session" : "mnemarr.session";
+        cookie.Cookie.Name = always ? "__Host-mnemarr.session" : "mnemarr.session";
         cookie.Cookie.HttpOnly = true;
         cookie.Cookie.SameSite = SameSiteMode.Strict;
-        cookie.Cookie.SecurePolicy = auth.CookieSecurity == CookieSecurityMode.Always ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+        cookie.Cookie.SecurePolicy = always ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
         cookie.ExpireTimeSpan = TimeSpan.FromHours(auth.SessionHours);
         cookie.SlidingExpiration = true;
         cookie.Events.OnValidatePrincipal = ValidateSession;

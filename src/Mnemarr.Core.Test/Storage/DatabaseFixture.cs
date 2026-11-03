@@ -23,7 +23,7 @@ public sealed class DatabaseFixture : IDisposable
     [Fact]
     public void should_create_the_schema_in_the_data_folder_with_its_version()
     {
-        Scalar("PRAGMA user_version").Should().Be(1L);
+        Scalar("PRAGMA user_version").Should().Be((long)Schema.Version);
         File.Exists(Path.Combine(_workspace.DataFolder, "mnemarr.db")).Should().BeTrue();
         Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('accounts', 'api_keys', 'sessions', 'audit_events')").Should().Be(4L);
     }

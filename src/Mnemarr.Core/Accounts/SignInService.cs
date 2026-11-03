@@ -80,13 +80,11 @@ public sealed class SignInService
     /// <summary>Ends a session: the person signed out.</summary>
     public void EndSession(string sessionId) => _sessions.End(sessionId);
 
-    internal Account? SignIn(string name, string password) => Check(name, password)?.Account;
-
-    internal bool VerifyPassword(Guid id, string password)
+    private bool VerifyPassword(Guid id, string password)
     {
         var account = _accounts.Existing(id);
         var budget = PasswordCheckKey(account.Name);
-        Reserve(budget, isAccount: true);
+        Reserve(budget, isAccount: true, actor: account.Name, action: "password.locked");
         var credentials = _accounts.GetCredentials(account.Name);
         if (credentials?.PasswordHash is null || password.Length > PasswordPolicy.MaxLength
             || _hasher.VerifyHashedPassword(account, credentials.PasswordHash, password) == PasswordVerificationResult.Failed)
@@ -110,7 +108,7 @@ public sealed class SignInService
         }
 
         var credentials = _accounts.GetCredentials(name);
-        Reserve(name, isAccount: credentials is not null);
+        Reserve(name, isAccount: credentials is not null, actor: name, action: "login.locked");
 
         // An unknown name, a service account and an account without a password are checked against the decoy: the answer takes the same time.
         var isDecoy = credentials is not { Account.Kind: AccountKind.User, PasswordHash: not null };
@@ -131,16 +129,16 @@ public sealed class SignInService
     }
 
     /// <summary>Counts an attempt before its password is checked, or refuses it: a locked name is not checked at all.</summary>
-    private void Reserve(string counter, bool isAccount)
+    private void Reserve(string counter, bool isAccount, string actor, string action)
     {
         if (_throttle.TryReserve(counter, isAccount))
         {
             return;
         }
 
-        if (_sampler.Allow("login.locked", counter.ToUpperInvariant()))
+        if (_sampler.Allow(action, counter.ToUpperInvariant()))
         {
-            _audit.Append(counter, "login.locked", counter);
+            _audit.Append(actor, action, actor);
         }
 
         throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(counter) ?? LoginThrottle.Window);

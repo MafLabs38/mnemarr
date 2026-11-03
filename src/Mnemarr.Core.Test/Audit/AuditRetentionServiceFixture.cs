@@ -35,6 +35,7 @@ public sealed class AuditRetentionServiceFixture : IDisposable
         var service = new AuditRetentionService(audit, _options, _h.Clock, NullLogger<AuditRetentionService>.Instance);
         var token = TestContext.Current.CancellationToken;
 
+        // The service makes its timer before its first pass, so once the first pass is signalled the fake clock can be moved: keep it so.
         await service.StartAsync(token);
         (await pruned.WaitAsync(TimeSpan.FromSeconds(30), token)).Should().BeTrue("the first pass runs at start");
         _h.Clock.Advance(TimeSpan.FromHours(7));

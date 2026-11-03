@@ -29,3 +29,16 @@ Mnemarr reads its settings from `appsettings.json`, then environment variables (
 | `MNEMARR__AUDIT__RETENTIONDAYS` | `90` | How long the audit log keeps its events (1 to 3650). The log is shared by every vertical, so it has its own section. |
 
 See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each protects.
+
+## Service accounts and keys
+
+Anything that is not a person (an assistant, a collector, a companion such as Portarr) signs in with a **key** that belongs to a **service account**, created in the interface (Accounts, then Keys) or through the API:
+
+| Use | Role of the service account |
+|---|---|
+| A companion that watches the status of the system | `Monitor` (`system.read` only) |
+| An assistant that reads and searches notes | `Reader` |
+| An assistant that also writes notes | `Assistant` |
+| A collector that sends conversations (later) | `Collector` |
+
+Send the key as `X-Api-Key: <key>` or `Authorization: Bearer <key>`. It is shown **once**, when it is created, and only a hash of it is kept: if it is lost, create another and revoke the old one. A key can be limited to some sources and can expire. `/health/live` and `/health/ready` need no key.

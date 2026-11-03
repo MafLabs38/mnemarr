@@ -414,6 +414,23 @@ public sealed class SignInServiceFixture : IDisposable
         }
     }
 
+    [Fact]
+    public void should_audit_a_lockout_under_the_name_of_the_account_and_a_distinct_action_for_each_budget()
+    {
+        var alice = _h.Reader();
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            Credentials.SignIn("alice", "wrong password here");
+            Credentials.VerifyPassword(alice.Id, "wrong password here");
+        }
+
+        new Action(() => Credentials.SignIn("alice", Password)).Should().Throw<AccountRejectedException>();
+        new Action(() => Credentials.VerifyPassword(alice.Id, Password)).Should().Throw<AccountRejectedException>();
+
+        _h.Audit.Recent(10, "login.locked").Should().ContainSingle().Which.Actor.Should().Be("alice");
+        _h.Audit.Recent(10, "password.locked").Should().ContainSingle().Which.Actor.Should().Be("alice");
+    }
+
     [Theory]
     [InlineData("ab\n", false)]
     [InlineData("ab", true)]

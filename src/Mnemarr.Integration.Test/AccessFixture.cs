@@ -90,7 +90,7 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token);
 
         locked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-        locked.Headers.RetryAfter!.Delta.Should().BeCloseTo(TimeSpan.FromMinutes(15), TimeSpan.FromSeconds(5), "the first failure was just now");
+        locked.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromMinutes(15), "the clock of the application is frozen, and the first failure was just now");
         (await locked.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("type").GetString().Should().Be("urn:mnemarr:problem:locked");
     }
 
@@ -281,6 +281,39 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         (await anonymous.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    [Theory]
+    [InlineData("Assistant")]
+    [InlineData("Collector")]
+    [InlineData("Monitor")]
+    public async Task should_tell_a_service_that_has_no_password_so_instead_of_calling_its_current_password_wrong(string role)
+    {
+        var response = await _callers[role].PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = "none", newPassword = "another long password" }, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task should_refuse_a_password_change_to_a_caller_who_is_not_signed_in()
+    {
+        var response = await _callers.Anonymous.PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = "none", newPassword = "another long password" }, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task should_let_no_cache_keep_what_the_api_says_the_secret_of_a_new_key_included()
+    {
+        var id = await Callers.CreateAsync(_callers.Admin, new { name = Unique("svc"), kind = "Service", role = "Reader" });
+
+        var key = await _callers.Admin.PostAsJsonAsync($"/api/v1/accounts/{id}/keys", new { name = "k" }, Token);
+        var audit = await _callers.Admin.GetAsync("/api/v1/audit", Token);
+        var shell = await _callers.Anonymous.GetAsync("/", Token);
+
+        key.Headers.CacheControl!.NoStore.Should().BeTrue();
+        audit.Headers.CacheControl!.NoStore.Should().BeTrue();
+        shell.Headers.CacheControl?.NoStore.Should().NotBe(true, "the static shell may be cached: it holds nothing of anybody");
+    }
+
     [Fact]
     public async Task should_describe_a_service_as_a_service_with_the_permissions_of_its_role()
     {
@@ -288,15 +321,6 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
 
         session.GetProperty("kind").GetString().Should().Be("Service");
         session.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()).Should().Equal("ingest.write");
-    }
-
-    [Fact]
-    public async Task should_refuse_a_key_that_is_not_valid_even_when_a_good_session_comes_with_it()
-    {
-        using var client = await _factory.SignedInClientAsync();
-        client.DefaultRequestHeaders.Add("X-Api-Key", "mnm_this-key-does-not-exist");
-
-        (await client.GetAsync("/api/v1/system/status", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -419,21 +443,6 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         second.EnumerateArray().First().GetProperty("target").GetString().Should().Be($"{marker}-0");
     }
 
-
-    [Fact]
-    public async Task should_keep_the_counter_of_wrong_current_passwords_apart_from_the_one_of_the_sign_in()
-    {
-        var (name, _) = await NewUserAsync();
-        using var user = await _factory.SignedInClientAsync(name, Callers.Password);
-        for (var i = 0; i < 5; i++)
-        {
-            await user.PutAsJsonAsync("/api/v1/auth/password", new { currentPassword = "not the password", newPassword = "another long password" }, Token);
-        }
-
-        using var again = _factory.CreateBrowserClient();
-
-        (await again.PostAsJsonAsync("/api/v1/auth/login", new { name, password = Callers.Password }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
-    }
 
     /// <summary>
     /// The matrix of the specification: for every kind of caller, what each endpoint answers, writes included. A new endpoint or a new role

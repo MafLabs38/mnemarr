@@ -21,6 +21,8 @@ public sealed class DatabaseHealthCheck : IHealthCheck
         try
         {
             using var connection = _database.Open();
+            // A database that was opened by this instance has the schema it applied; one changed under a running instance, by a restore or a
+            // newer version started on the same folder, does not.
             return Task.FromResult(Schema.CurrentVersion(connection) == Schema.Version
                 ? HealthCheckResult.Healthy()
                 : HealthCheckResult.Unhealthy("The database does not have the schema of this version."));
