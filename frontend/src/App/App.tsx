@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
 import Page from 'Components/Page/Page';
+import SessionGate from 'Session/SessionGate';
 
 import AppRoutes from './AppRoutes';
 import { createQueryClient } from './queryClient';
@@ -13,9 +14,11 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Page>
-          <AppRoutes />
-        </Page>
+        <SessionGate>
+          <Page>
+            <AppRoutes />
+          </Page>
+        </SessionGate>
       </BrowserRouter>
     </QueryClientProvider>
   );

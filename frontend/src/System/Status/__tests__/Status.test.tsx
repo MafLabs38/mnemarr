@@ -71,7 +71,11 @@ describe('Status', () => {
       renderWithProviders(<Status />);
       expect(await screen.findByText('2h 10m')).toBeInTheDocument();
 
-      fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ...status, uptimeSeconds: 7860 }) });
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ ...status, uptimeSeconds: 7860 }),
+      });
       await act(() => vi.advanceTimersByTimeAsync(STATUS_REFRESH_MS));
 
       expect(await screen.findByText('2h 11m')).toBeInTheDocument();

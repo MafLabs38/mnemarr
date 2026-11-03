@@ -9,3 +9,16 @@ services:
     # The image runs as a non-root user: give it a throw-away data folder it owns.
     tmpfs:
       - /config:uid=1654,gid=1654
+    # The first administrator, as a real deployment gives it: a name and the password in a mounted file (a test-only value).
+    environment:
+      MNEMARR__AUTH__ADMINUSER: admin
+      MNEMARR__AUTH__ADMINPASSWORDFILE: /run/admin-password
+      # The tests speak plain HTTP: the session cookie cannot be Secure here.
+      MNEMARR__AUTH__COOKIESECURITY: SameAsRequest
+    configs:
+      - source: admin_password
+        target: /run/admin-password
+        mode: 0444
+configs:
+  admin_password:
+    content: e2e-admin-password

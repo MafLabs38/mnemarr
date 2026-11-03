@@ -1,0 +1,32 @@
+.button {
+  padding: 8px 16px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusPill);
+  font-family: var(--defaultFontFamily);
+  font-size: var(--fontSizeBody);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.primary {
+  border-color: var(--accentDeep);
+  background-color: var(--accent);
+  box-shadow: var(--shadowButton);
+  color: var(--inkOnAccent);
+}
+
+.quiet {
+  background-color: transparent;
+  color: var(--ink);
+}
+
+.danger {
+  border-color: var(--dangerColor);
+  background-color: transparent;
+  color: var(--dangerColor);
+}

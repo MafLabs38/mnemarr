@@ -9,6 +9,6 @@ export interface SystemStatus {
 
 export const STATUS_REFRESH_MS = 30_000;
 
-export function useSystemStatus() {
-  return useApiQuery<SystemStatus>('/system/status', { refetchInterval: STATUS_REFRESH_MS });
+export function useSystemStatus(enabled = true) {
+  return useApiQuery<SystemStatus>('/system/status', { refetchInterval: STATUS_REFRESH_MS, enabled });
 }

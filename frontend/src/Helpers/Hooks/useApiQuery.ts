@@ -5,6 +5,8 @@ import { apiGet } from 'Helpers/Api/apiGet';
 interface ApiQueryOptions {
   /** Milliseconds between two automatic refreshes. */
   refetchInterval?: number;
+  /** False: nothing is asked (the person may not read it). */
+  enabled?: boolean;
 }
 
 /** Server data goes through here, never through a direct `fetch` in a component. */

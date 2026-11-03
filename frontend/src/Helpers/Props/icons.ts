@@ -1,7 +1,8 @@
-import { CircleCheck, CircleX, GitBranch, LayoutDashboard, Radio, Server, Settings } from 'lucide-react';
+import { CircleCheck, CircleX, GitBranch, LayoutDashboard, Radio, Server, Settings, Users } from 'lucide-react';
 
 /** The only place icons are chosen: components import names from here, never from the icon library. */
 export const icons = {
+  ACCOUNTS: Users,
   AGENTS: Radio,
   OVERVIEW: LayoutDashboard,
   SETTINGS: Settings,

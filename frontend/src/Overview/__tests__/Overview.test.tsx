@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 
-import { renderWithProviders, stubNetworkError, stubPending, stubStatusOk } from '__tests__/render';
+import { readerSession, renderWithProviders, stubNetworkError, stubPending, stubStatusOk } from '__tests__/render';
 import Overview from 'Overview/Overview';
 
 describe('Overview', () => {
@@ -42,5 +42,15 @@ describe('Overview', () => {
 
     await waitFor(() => expect(screen.getByText('Unreachable')).toBeInTheDocument());
     expect(screen.queryByText('API reachable')).not.toBeInTheDocument();
+  });
+
+  it('does not ask for the status, nor show it, to somebody who may not read it', () => {
+    const fetchMock = stubStatusOk();
+
+    renderWithProviders(<Overview />, '/', readerSession);
+
+    expect(screen.getByText('Nothing to remember yet.')).toBeInTheDocument();
+    expect(screen.queryByText('API reachable')).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
