@@ -12,8 +12,8 @@ public static class CoreServiceCollectionExtensions
     public static IServiceCollection AddMnemarrCore(this IServiceCollection services, IConfiguration configuration)
     {
         // DataFolder stays at the root for compatibility; the settings that come with later verticals get sections of their own.
-        services.AddOptions<MnemarrOptions>().Bind(configuration).ValidateOnStart();
         services.AddSingleton<IValidateOptions<MnemarrOptions>, MnemarrOptionsValidator>();
+        services.AddOptions<MnemarrOptions>().Bind(configuration).ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISystemStatusService, SystemStatusService>();
         return services;

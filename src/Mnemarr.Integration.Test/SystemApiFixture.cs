@@ -23,9 +23,9 @@ public sealed class SystemApiFixture
             .Should().BeEquivalentTo("version", "runtimeVersion", "startedAt", "uptimeSeconds");
         status.GetProperty("version").GetString().Should().NotBeNullOrWhiteSpace();
         status.GetProperty("runtimeVersion").GetString().Should().NotBeNullOrWhiteSpace();
-        // The interface reads this with `new Date(...)`: UTC, ISO 8601. The clock of the shared host never moves.
-        status.GetProperty("startedAt").GetString().Should().Be("2026-11-01T08:00:00+00:00");
-        status.GetProperty("uptimeSeconds").GetInt64().Should().Be(0);
+        // The interface reads this with `new Date(...)`: UTC, ISO 8601. The exact values are in UptimeFixture.
+        status.GetProperty("startedAt").GetString().Should().MatchRegex(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?\+00:00$");
+        status.GetProperty("uptimeSeconds").GetInt64().Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]

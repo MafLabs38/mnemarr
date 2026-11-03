@@ -69,6 +69,8 @@ describe('StatusLabel', () => {
     expect(screen.getByText('Fine')).toBeInTheDocument();
     expect(screen.getByText('Broken')).toBeInTheDocument();
     expect(container.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(2);
+    expect(screen.getByText('Fine').className).toContain('success');
+    expect(screen.getByText('Broken').className).toContain('danger');
   });
 });
 

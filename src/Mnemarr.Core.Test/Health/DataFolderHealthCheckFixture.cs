@@ -64,6 +64,21 @@ public sealed class DataFolderHealthCheckFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_reuse_an_unhealthy_result_too_and_see_the_repaired_folder_once_the_time_has_passed()
+    {
+        var folder = Path.Combine(_folder, "volume");
+        var subject = Subject(folder);
+        (await Check(subject)).Status.Should().Be(HealthStatus.Unhealthy);
+
+        Directory.CreateDirectory(folder);
+        _clock.Advance(DataFolderHealthCheck.ReuseFor - TimeSpan.FromSeconds(1));
+        (await Check(subject)).Status.Should().Be(HealthStatus.Unhealthy);
+
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        (await Check(subject)).Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    [Fact]
     public async Task should_probe_once_when_many_requests_arrive_together_after_the_result_expired()
     {
         var subject = Subject(_folder);
