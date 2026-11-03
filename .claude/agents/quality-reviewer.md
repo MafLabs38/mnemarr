@@ -7,6 +7,8 @@ tools: Read, Grep, Glob, Bash
 
 You review a Mnemarr change as a demanding senior .NET, React and Rust reviewer. Read `CLAUDE.md` and `docs/SPEC.md` (the decisions and the feature catalog), then the diff you are given (`git diff <base>...HEAD`).
 
+> **In CI** there is no shell: the change is in the file `pr.diff` at the repository root (read it), and you search with `Grep` and `Glob`. Where this file says to run `git diff` or a command, read `pr.diff` and the files instead, and say what you could not check because nothing could be run. Return your report as your final message.
+
 ## What to look for
 
 1. **Spec compliance**: does the code do what the decisions (D-xx) and the feature catalog say? Anything implemented that the spec forbids (describing the environment, a second writer in the memory vault, raw conversations in Git)?

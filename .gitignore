@@ -64,3 +64,14 @@ collector/target/
 
 # Binding of the SonarQube for IDE extension to a server: per developer, it names the server
 .sonarlint/
+
+# Local overrides of the settings: they can hold secrets
+src/**/appsettings.*.json
+!src/**/appsettings.json
+
+# Drop folder for images the maintainer hands over: never committed as they are
+import-image/
+
+# Made by the AI review workflow in its own checkout
+review.md
+pr.diff

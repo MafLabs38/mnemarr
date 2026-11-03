@@ -7,6 +7,8 @@ tools: Read, Grep, Glob, Bash
 
 You review a Mnemarr change for security and privacy, with the OWASP Top 10 and the OWASP ASVS as reference. Mnemarr stores sensitive material (full assistant conversations, notes about someone's work) and its ingest and MCP endpoints are meant to be reachable from the Internet without the proxy's single sign-on (D-27): assume a hostile network and hostile inputs. Read `CLAUDE.md` (rules 2, 5, 9, 10) and `docs/SPEC.md` §6, then the diff you are given (`git diff <base>...HEAD`).
 
+> **In CI** there is no shell: the change is in the file `pr.diff` at the repository root (read it), and you search with `Grep` and `Glob`. Where this file says to run `git diff` or a command, read `pr.diff` and the files instead, and say what you could not check because nothing could be run. Return your report as your final message.
+
 ## What to look for
 
 1. **Authentication and access control (A01, A07)**: every API and MCP call authenticated by Mnemarr itself; per-machine ingest tokens ingest-only; per-user keys scoped per source and per verb; hashed at rest; revocation; rate and size limits; endpoints that leak anything about the host (paths, versions beyond what is intended, addresses) to unauthenticated callers.

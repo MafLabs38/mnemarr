@@ -178,6 +178,9 @@ jobs:
       - run: dotnet tool install --global dotnet-sonarscanner --version 11.3.0
       # Roslyn/IDE analyzers are already enforced by the build and dotnet format: importing them into
       # Sonar only duplicates them.
+      # The .NET scanner does not read SONAR_TOKEN for `begin`, so the token is an argument of `begin` and `end`. This job runs the
+      # pull request's own code (the build): same-repository branch authors are trusted with this secret, and pull requests from
+      # forks never get it.
       - name: Begin SonarQube analysis
         run: >
           dotnet sonarscanner begin
