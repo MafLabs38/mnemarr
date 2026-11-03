@@ -90,6 +90,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          show_full_output: true # TEMPORARY, to see which tool is refused: removed in the next commit
           # Read inside the repository, write the report, and look at history: no other file, no shell, no network.
           claude_args: >-
             --model ${{ matrix.model }}
