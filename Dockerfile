@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS frontend
+FROM node:26-alpine AS frontend
 WORKDIR /build
 COPY package.json yarn.lock ./
 RUN corepack enable && yarn install --frozen-lockfile
