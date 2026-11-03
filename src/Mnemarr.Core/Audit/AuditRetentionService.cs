@@ -34,8 +34,8 @@ public sealed partial class AuditRetentionService : BackgroundService
         while (await WaitAsync(timer, stoppingToken));
     }
 
-    /// <summary>One pass. Public so that a test can run it.</summary>
-    public void Prune()
+    /// <summary>One pass.</summary>
+    internal void Prune()
     {
         try
         {

@@ -136,5 +136,5 @@ public sealed class SqliteAccountStore : IAccountStore
         Enum.Parse<AccountKind>(reader.GetString(2)),
         reader.GetString(3),
         reader.GetInt32(4) == 1,
-        DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture));
+        StorageText.Parse(reader.GetString(5)));
 }

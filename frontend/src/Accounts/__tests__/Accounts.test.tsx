@@ -29,6 +29,7 @@ const roles: RoleItem[] = [
     forServices: true,
   },
   { name: 'Collector', description: '', permissions: ['ingest.write'], forUsers: false, forServices: true },
+  { name: 'Monitor', description: '', permissions: ['system.read'], forUsers: false, forServices: true },
 ];
 
 const accounts: AccountItem[] = [
@@ -92,7 +93,7 @@ describe('Accounts', () => {
       within(service)
         .getAllByRole('option')
         .map((option) => option.textContent),
-    ).toEqual(['Operator', 'Reader', 'Assistant', 'Collector']);
+    ).toEqual(['Operator', 'Reader', 'Assistant', 'Collector', 'Monitor']);
   });
 
   it('changes a role at once, keeping the state of the account', async () => {

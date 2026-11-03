@@ -71,7 +71,7 @@ public sealed class LoginThrottleFixture
     }
 
     [Fact]
-    public void should_never_track_more_names_than_the_cap_and_forget_the_oldest_first()
+    public void should_never_track_more_names_than_the_cap_and_forget_the_oldest_names_that_are_not_accounts_first()
     {
         var subject = new LoginThrottle(_clock);
         subject.TryReserve("first");
@@ -95,12 +95,31 @@ public sealed class LoginThrottleFixture
     }
 
     [Fact]
-    public void should_never_forget_a_name_that_is_locked_to_make_room()
+    public void should_not_give_back_the_attempts_of_an_account_to_whoever_floods_it_with_made_up_names()
+    {
+        var subject = new LoginThrottle(_clock);
+        for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
+        {
+            subject.TryReserve("admin", isAccount: true);
+        }
+
+        for (var i = 0; i < 2 * LoginThrottle.MaxTracked; i++)
+        {
+            _clock.Advance(TimeSpan.FromMilliseconds(1));
+            subject.TryReserve($"made-up-{i}");
+        }
+
+        subject.TryReserve("admin", isAccount: true).Should().BeTrue("the fifth failure is still counted");
+        subject.IsLocked("admin").Should().BeTrue();
+    }
+
+    [Fact]
+    public void should_never_forget_a_lockout_of_an_account_to_make_room()
     {
         var subject = new LoginThrottle(_clock);
         for (var i = 0; i < LoginThrottle.MaxFailures; i++)
         {
-            subject.TryReserve("target");
+            subject.TryReserve("target", isAccount: true);
         }
 
         for (var i = 0; i < LoginThrottle.MaxTracked + 2_000; i++)
@@ -110,11 +129,11 @@ public sealed class LoginThrottleFixture
         }
 
         subject.IsLocked("target").Should().BeTrue();
-        subject.TryReserve("target").Should().BeFalse();
+        subject.TryReserve("target", isAccount: true).Should().BeFalse();
     }
 
     [Fact]
-    public void should_refuse_a_new_name_rather_than_forget_a_lockout_when_every_tracked_name_is_locked()
+    public void should_make_room_for_a_new_name_by_forgetting_made_up_names_even_when_they_are_locked()
     {
         var subject = new LoginThrottle(_clock);
         for (var name = 0; name < LoginThrottle.MaxTracked; name++)
@@ -125,44 +144,38 @@ public sealed class LoginThrottleFixture
             }
         }
 
-        subject.TryReserve("newcomer").Should().BeFalse();
-        subject.IsLocked("n0").Should().BeTrue();
+        subject.TryReserve("administrator", isAccount: true).Should().BeTrue("a real name always finds a place");
     }
 
     [Fact]
-    public void should_make_room_for_an_account_by_forgetting_the_oldest_locked_name_that_is_not_one()
+    public void should_refuse_a_new_name_when_every_tracked_name_is_an_account_and_not_scan_again_for_a_second()
     {
         var subject = new LoginThrottle(_clock);
         for (var name = 0; name < LoginThrottle.MaxTracked; name++)
         {
-            for (var i = 0; i < LoginThrottle.MaxFailures; i++)
-            {
-                subject.TryReserve($"n{name}", isAccount: name == 0);
-            }
-
-            _clock.Advance(TimeSpan.FromMilliseconds(1));
-        }
-
-        subject.TryReserve("newcomer").Should().BeFalse("a name that is not an account is refused");
-        subject.TryReserve("administrator", isAccount: true).Should().BeTrue("an account always finds a place");
-        subject.IsLocked("n0").Should().BeTrue("a lockout of an account is never the one forgotten");
-    }
-
-    [Fact]
-    public void should_not_scan_the_table_again_for_every_new_name_when_there_is_no_room()
-    {
-        var subject = new LoginThrottle(_clock);
-        for (var name = 0; name < LoginThrottle.MaxTracked; name++)
-        {
-            for (var i = 0; i < LoginThrottle.MaxFailures; i++)
-            {
-                subject.TryReserve($"n{name}");
-            }
+            subject.TryReserve($"account-{name}", isAccount: true);
         }
 
         subject.TryReserve("one").Should().BeFalse();
+        subject.TryReserve("two").Should().BeFalse("the refusal is remembered for a second");
         _clock.Advance(TimeSpan.FromMinutes(16));
 
-        subject.TryReserve("two").Should().BeTrue("the lockouts have aged out, and the refusal was only remembered for a second");
+        subject.TryReserve("three").Should().BeTrue("the attempts have aged out");
+    }
+
+    [Fact]
+    public void should_say_how_long_a_locked_name_stays_locked()
+    {
+        var subject = new LoginThrottle(_clock);
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            subject.TryReserve("alice");
+            _clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        subject.LockedFor("alice").Should().Be(TimeSpan.FromMinutes(10), "the first of the five attempts was five minutes ago, in a window of fifteen");
+        subject.LockedFor("nobody").Should().BeNull();
+        subject.Succeeded("alice");
+        subject.LockedFor("alice").Should().BeNull();
     }
 }

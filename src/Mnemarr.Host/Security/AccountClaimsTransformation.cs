@@ -27,7 +27,7 @@ public sealed class AccountClaimsTransformation : IClaimsTransformation
 
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
     {
-        var session = principal.Identities.FirstOrDefault(identity => identity.AuthenticationType == AuthController.CookieScheme);
+        var session = principal.Identities.FirstOrDefault(identity => identity.AuthenticationType == MnemarrSchemes.Cookie);
         if (session is null)
         {
             return Task.FromResult(principal);
@@ -41,6 +41,6 @@ public sealed class AccountClaimsTransformation : IClaimsTransformation
         }
 
         var claims = MnemarrClaims.For(new AccessPrincipal(account, account.Permissions, null, null)).Append(new Claim(MnemarrClaims.Session, session.FindFirst(MnemarrClaims.Session)?.Value ?? string.Empty));
-        return Task.FromResult(new ClaimsPrincipal(new ClaimsIdentity(claims, AuthController.CookieScheme, ClaimTypes.Name, ClaimTypes.Role)));
+        return Task.FromResult(new ClaimsPrincipal(new ClaimsIdentity(claims, MnemarrSchemes.Cookie, ClaimTypes.Name, ClaimTypes.Role)));
     }
 }

@@ -257,6 +257,18 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Fact]
+    public void should_refuse_a_current_password_for_an_account_that_has_none_and_one_that_is_too_long_and_audit_both()
+    {
+        var robot = _h.Robot("svc");
+        var alice = _h.Reader();
+
+        Subject.VerifyPassword(robot.Id, Password).Should().BeFalse();
+        Subject.VerifyPassword(alice.Id, new string('p', PasswordPolicy.MaxLength + 1)).Should().BeFalse();
+
+        _h.Audit.Recent(10, "password.verify-failed").Should().HaveCount(2);
+    }
+
+    [Fact]
     public void should_count_the_wrong_current_passwords_like_failed_sign_ins_so_that_a_stolen_session_cannot_guess_the_password()
     {
         var alice = _h.Reader();
@@ -383,7 +395,7 @@ public sealed class AccountServiceFixture : IDisposable
         hasher.WaitUntilEntered(AccountService.MaxConcurrentHashes);
         var overflow = async () => await subject.SignInAsync("alice", Password, token);
 
-        (await overflow.Should().ThrowAsync<AccountRejectedException>()).Which.Problem.Should().Be(AccountProblem.Locked);
+        (await overflow.Should().ThrowAsync<AccountRejectedException>()).Which.Problem.Should().Be(AccountProblem.Busy);
         hasher.Release();
         await Task.WhenAll(running);
         (await subject.SignInAsync("alice", Password, token)).Should().NotBeNull();
@@ -485,6 +497,7 @@ public sealed class AccountServiceFixture : IDisposable
 
         Subject.Delete(root.Id, "x");
         _h.Accounts.CountEnabledAdmins().Should().Be(1);
+        _h.Audit.Recent(10, "account.deleted").Should().ContainSingle().Which.Target.Should().Be("root");
     }
 
     [Fact]

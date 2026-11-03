@@ -82,7 +82,7 @@ public sealed class SqliteApiKeyStore : IApiKeyStore
 
 
     private static DateTimeOffset? Date(SqliteDataReader reader, int column) =>
-        reader.IsDBNull(column) ? null : DateTimeOffset.Parse(reader.GetString(column), CultureInfo.InvariantCulture);
+        reader.IsDBNull(column) ? null : StorageText.Parse(reader.GetString(column));
 
     private static ApiKey Read(SqliteDataReader reader) => new(
         Guid.Parse(reader.GetString(0)),
@@ -90,7 +90,7 @@ public sealed class SqliteApiKeyStore : IApiKeyStore
         reader.GetString(2),
         reader.GetString(3),
         reader.IsDBNull(4) ? null : JsonSerializer.Deserialize<List<Guid>>(reader.GetString(4)),
-        DateTimeOffset.Parse(reader.GetString(5), CultureInfo.InvariantCulture),
+        StorageText.Parse(reader.GetString(5)),
         Date(reader, 6),
         Date(reader, 7),
         Date(reader, 8));

@@ -48,4 +48,20 @@ public sealed class AuditSamplerFixture
 
         Enumerable.Range(0, AuditSampler.MaxKinds + 10).Count(i => subject.Allow($"kind-{i}", "k")).Should().Be(AuditSampler.MaxKinds);
     }
+
+    [Fact]
+    public void should_stop_at_a_ceiling_an_hour_for_each_kind_of_event_however_the_minutes_go()
+    {
+        var subject = new AuditSampler(_clock);
+        var allowed = 0;
+        for (var minute = 0; minute < 60; minute++)
+        {
+            allowed += Enumerable.Range(0, AuditSampler.MaxPerMinute).Count(i => subject.Allow("key.refused", $"m{minute}-{i}"));
+            _clock.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        allowed.Should().Be(AuditSampler.MaxPerHour);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        subject.Allow("key.refused", "next-hour").Should().BeTrue();
+    }
 }

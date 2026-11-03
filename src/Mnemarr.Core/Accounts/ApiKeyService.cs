@@ -56,7 +56,7 @@ public sealed class ApiKeyService
 
         var secret = SecretPrefix + Base64Url(RandomNumberGenerator.GetBytes(32));
         var key = new ApiKey(Guid.NewGuid(), accountId, name, secret[..PrefixLength], sources?.Distinct().ToList(), now, expiresAt, null, null);
-        _keys.Add(key, Hash(secret));
+        _keys.Add(key, SecretHash.Of(secret));
         _audit.Append(actor, "key.created", account.Name, $"{key.Name} ({key.Prefix})");
         return new CreatedApiKey(key, secret);
     }
@@ -82,7 +82,7 @@ public sealed class ApiKeyService
             return null;
         }
 
-        var key = _keys.FindByHash(Hash(secret));
+        var key = _keys.FindByHash(SecretHash.Of(secret));
         var now = _clock.GetUtcNow();
         if (key is null || key.RevokedAt is not null || key.ExpiresAt <= now)
         {
@@ -109,7 +109,6 @@ public sealed class ApiKeyService
         return new AccessPrincipal(account, account.Permissions, key.Sources, key.Id);
     }
 
-    private static string Hash(string secret) => SecretHash.Of(secret);
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

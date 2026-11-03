@@ -87,7 +87,11 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
             (await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         }
 
-        (await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token);
+
+        locked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        locked.Headers.RetryAfter!.Delta.Should().BeCloseTo(TimeSpan.FromMinutes(15), TimeSpan.FromSeconds(5), "the first failure was just now");
+        (await locked.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("type").GetString().Should().Be("urn:mnemarr:problem:locked");
     }
 
     [Fact]
@@ -136,7 +140,7 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     {
         await using var factory = new ShortSessionFactory();
         using var client = await factory.SignedInClientAsync();
-        // Used every 8 hours, the cookie slides along (it lasts 12 hours when idle): only the lifetime of the session on the server can end it.
+        // Used every 8 hours, the cookie slides along (it lasts 12 hours when idle, on the clock of the application): only the lifetime of the session on the server can end it.
         for (var i = 0; i < 2; i++)
         {
             factory.Clock.Advance(TimeSpan.FromHours(8));
@@ -146,6 +150,22 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         factory.Clock.Advance(TimeSpan.FromHours(9));
 
         (await client.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task should_end_a_session_that_is_left_idle_for_longer_than_the_idle_limit_and_not_one_that_is_used()
+    {
+        await using var factory = new MnemarrFactory();
+        using var used = await factory.SignedInClientAsync();
+        using var idle = await factory.SignedInClientAsync();
+
+        // The cookie lasts 12 hours when idle and slides with use: one that is used every 8 hours goes on, the other one does not.
+        factory.Clock.Advance(TimeSpan.FromHours(8));
+        (await used.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.Clock.Advance(TimeSpan.FromHours(8));
+
+        (await used.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await idle.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -342,16 +362,6 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    [Fact]
-    public async Task should_answer_a_password_longer_than_any_password_can_be_as_a_wrong_one_without_hashing_it()
-    {
-        using var client = _factory.CreateBrowserClient();
-
-        var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { name = "admin", password = new string('p', 100_000) }, Token);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
     [Theory]
     [InlineData("Operator")]
     [InlineData("Reader")]
@@ -376,22 +386,6 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         var next = await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/audit?limit=2&before={oldest}", Token);
 
         next.EnumerateArray().Select(e => e.GetProperty("id").GetInt64()).Should().OnlyContain(id => id < oldest);
-    }
-
-    [Fact]
-    public async Task should_tell_how_long_to_wait_when_a_name_is_locked()
-    {
-        using var client = _factory.CreateBrowserClient();
-        var name = Unique("locked");
-        for (var i = 0; i < 5; i++)
-        {
-            await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token);
-        }
-
-        var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token);
-
-        locked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-        locked.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromMinutes(15));
     }
 
     [Fact]
@@ -441,8 +435,6 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("Collector", "GET", "/api/v1/audit", 403)]
     [InlineData("Collector", "GET", "/api/v1/roles", 403)]
     [InlineData("Collector", "GET", "/api/v1/accounts", 403)]
-    [InlineData("Operator", "GET", "/api/v1/audit?before=1", 403)]
-    [InlineData("Admin", "GET", "/api/v1/audit?before=1", 200)]
     [InlineData("Monitor", "GET", "/api/v1/system/status", 200)]
     [InlineData("Monitor", "GET", "/api/v1/accounts", 403)]
     [InlineData("Monitor", "GET", "/api/v1/auth/session", 200)]

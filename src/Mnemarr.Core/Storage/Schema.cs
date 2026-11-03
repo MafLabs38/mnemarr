@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 namespace Mnemarr.Core.Storage;
@@ -56,7 +57,7 @@ public static class Schema
     public static void Apply(SqliteConnection connection)
     {
         Execute(connection, "PRAGMA journal_mode = WAL;");
-        var version = Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), System.Globalization.CultureInfo.InvariantCulture);
+        var version = Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), CultureInfo.InvariantCulture);
         if (version > Steps.Length)
         {
             // A rollback to an older image: its code would read and write a schema it does not know.

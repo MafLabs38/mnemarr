@@ -73,4 +73,23 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Contain("break-glass").And.NotContain("/run/reset");
     }
+
+    [Fact]
+    public async Task should_be_degraded_with_the_count_when_accounts_have_a_role_this_version_does_not_know()
+    {
+        _h.Admin();
+        var alice = _h.Reader();
+        using (var connection = _h.Workspace.Database.Open())
+        {
+            using var rename = connection.CreateCommand();
+            rename.CommandText = "UPDATE accounts SET role = 'Retired' WHERE name = 'alice'";
+            rename.ExecuteNonQuery();
+        }
+
+        var result = await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts, _h.Options));
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().StartWith("1 account(s)").And.NotContain("alice");
+        alice.Should().NotBeNull();
+    }
 }

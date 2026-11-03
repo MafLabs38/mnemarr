@@ -100,7 +100,7 @@ public sealed partial class AdminAccountSeeder
     [LoggerMessage(Level = LogLevel.Warning, Message = "There is no account and no first administrator is configured: set MNEMARR__AUTH__ADMINUSER and MNEMARR__AUTH__ADMINPASSWORDFILE, or nobody can sign in.")]
     private partial void LogNoAdmin();
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "The database cannot be opened, so no account could be checked or created.")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "The database cannot be opened, or was written by a newer version, so no account could be checked or created.")]
     private partial void LogUnavailable(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created the first administrator {Name}.")]

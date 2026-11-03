@@ -97,7 +97,7 @@ public sealed partial class AccountService
                 _audit.Append(name, "login.locked", name);
             }
 
-            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", LoginThrottle.Window);
+            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(name) ?? LoginThrottle.Window);
         }
 
         // An unknown name, a service account and an account without a password are checked against the decoy: the answer takes the same time.
@@ -158,7 +158,7 @@ public sealed partial class AccountService
         var budget = PasswordCheckKey(account.Name);
         if (!_throttle.TryReserve(budget, isAccount: true))
         {
-            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", LoginThrottle.Window);
+            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(budget) ?? LoginThrottle.Window);
         }
 
         var credentials = _accounts.GetCredentials(account.Name);
@@ -190,7 +190,7 @@ public sealed partial class AccountService
     {
         if (!await _hashSlots.WaitAsync(HashWait, cancellationToken))
         {
-            throw new AccountRejectedException(AccountProblem.Locked, "The server is busy checking passwords. Try again in a moment.", BusyRetryAfter);
+            throw new AccountRejectedException(AccountProblem.Busy, "The server is busy checking passwords. Try again in a moment.", BusyRetryAfter);
         }
 
         return new SlotReleaser(_hashSlots);

@@ -6,9 +6,9 @@ namespace Mnemarr.Core.Accounts;
 /// pass before the fifth failure is recorded. It counts per name, whether the account exists or not, so that it tells nothing about
 /// which names exist, and it never tracks more than <see cref="MaxTracked"/> names. In memory: one instance.
 /// <para>
-/// At the cap, what has expired goes first, then the names that are not locked, oldest first. A lockout is never forgotten to make
-/// room: when every tracked name is locked, a name that is not an account is refused, and a name that is one displaces the oldest
-/// locked name that is not, so that garbage names can neither lift a lockout nor keep a real account from signing in.
+/// At the cap, what has expired goes first, then the names that are not accounts, oldest first. The count of an account is never
+/// forgotten to make room, so that a flood of made-up names can neither lift a lockout nor give back attempts: when only accounts are
+/// left, a name that is not one is refused.
 /// </para>
 /// </summary>
 public sealed class LoginThrottle
@@ -30,7 +30,7 @@ public sealed class LoginThrottle
 
     /// <summary>
     /// Counts an attempt, unless the name is locked or there is no room left for it. False means the attempt is refused and not counted.
-    /// <paramref name="isAccount"/> says that the name is an account: the table makes room for those.
+    /// <paramref name="isAccount"/> says that the name is an account, whose count is not forgotten to make room.
     /// </summary>
     public bool TryReserve(string name, bool isAccount = false)
     {
@@ -38,7 +38,7 @@ public sealed class LoginThrottle
         {
             if (!_entries.TryGetValue(name, out var entry))
             {
-                if (_entries.Count >= MaxTracked && !MakeRoom(isAccount))
+                if (_entries.Count >= MaxTracked && !MakeRoom())
                 {
                     return false;
                 }
@@ -87,14 +87,29 @@ public sealed class LoginThrottle
         attempts.RemoveAll(at => at < limit);
     }
 
-    /// <summary>
-    /// At the cap: forget what has expired, then the tenth of the names, not locked, whose last attempt is the oldest, and, for an
-    /// account, the oldest locked names that are not accounts. False when nothing could be forgotten. A failure is remembered for a
-    /// second, so that a flood of new names does not scan the table at every request.
-    /// </summary>
-    private bool MakeRoom(bool forAccount)
+    /// <summary>How long a locked name stays locked: until its oldest counted attempt ages out. Null when it is not locked.</summary>
+    public TimeSpan? LockedFor(string name)
     {
-        if (!forAccount && _clock.GetUtcNow() < _noRoomUntil)
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(name, out var entry))
+            {
+                return null;
+            }
+
+            Prune(entry.Attempts);
+            return entry.Attempts.Count >= MaxFailures ? entry.Attempts[0] + Window - _clock.GetUtcNow() : null;
+        }
+    }
+
+    /// <summary>
+    /// At the cap: forget what has expired, then the tenth of the names that are not accounts whose last attempt is the oldest. False when
+    /// nothing could be forgotten, which means every tracked name is an account. A failure is remembered for a second, so that a flood of
+    /// new names does not scan the table at every request.
+    /// </summary>
+    private bool MakeRoom()
+    {
+        if (_clock.GetUtcNow() < _noRoomUntil)
         {
             return false;
         }
@@ -108,8 +123,7 @@ public sealed class LoginThrottle
             }
         }
 
-        if (_entries.Count < MaxTracked || Forget(entry => entry.Attempts.Count < MaxFailures)
-            || (forAccount && Forget(entry => !entry.IsAccount)))
+        if (_entries.Count < MaxTracked || Forget(entry => !entry.IsAccount))
         {
             return true;
         }

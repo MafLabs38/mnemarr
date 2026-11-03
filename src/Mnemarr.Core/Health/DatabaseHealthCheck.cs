@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
@@ -30,7 +31,7 @@ public sealed class DatabaseHealthCheck : IHealthCheck
             using var connection = _database.Open();
             using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA user_version";
-            if (Convert.ToInt32(command.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) != Schema.Version)
+            if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != Schema.Version)
             {
                 return Task.FromResult(HealthCheckResult.Unhealthy("The database does not have the schema of this version."));
             }
@@ -38,6 +39,13 @@ public sealed class DatabaseHealthCheck : IHealthCheck
             if (_accounts.Count() == 0)
             {
                 return Task.FromResult(HealthCheckResult.Degraded("No account exists: the first administrator is not configured, nobody can sign in."));
+            }
+
+            // A role is a name in code and a word in the database: one that was renamed or removed gives its accounts no permission at all.
+            var unknownRoles = _accounts.List().Count(account => Roles.Find(account.Role) is null);
+            if (unknownRoles > 0)
+            {
+                return Task.FromResult(HealthCheckResult.Degraded($"{unknownRoles} account(s) have a role that this version does not know, so they can do nothing."));
             }
 
             // Left set, the break-glass reset puts the password back at every start: it is for one start only.

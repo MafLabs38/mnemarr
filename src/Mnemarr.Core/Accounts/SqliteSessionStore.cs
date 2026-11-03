@@ -31,7 +31,7 @@ public sealed class SqliteSessionStore : ISessionStore
         command.CommandText = "SELECT account_id, expires_at FROM sessions WHERE id = $id";
         command.Parameters.AddWithValue("$id", id);
         using var reader = command.ExecuteReader();
-        if (!reader.Read() || DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture) <= now)
+        if (!reader.Read() || StorageText.Parse(reader.GetString(1)) <= now)
         {
             return null;
         }

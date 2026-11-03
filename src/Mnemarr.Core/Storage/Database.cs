@@ -24,13 +24,14 @@ public sealed class Database : IDatabase
 
     public SqliteConnection Open()
     {
-        // SQLite would create the file with the umask of the process and the WAL files after it: it is made for its owner first.
-        CreateRestrictedFile();
         // SQLite would create the folder itself: a volume that was never mounted would then look like a fresh, empty one.
         if (!Directory.Exists(_folder))
         {
             throw new DirectoryNotFoundException("The data folder does not exist.");
         }
+
+        // SQLite would create the file with the umask of the process and the WAL files after it: it is made for its owner first.
+        CreateRestrictedFile();
 
         var connection = new SqliteConnection(_connectionString);
         try

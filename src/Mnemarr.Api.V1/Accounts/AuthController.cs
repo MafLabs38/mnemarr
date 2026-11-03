@@ -13,9 +13,6 @@ namespace Mnemarr.Api.V1.Accounts;
 [Route("api/v1/auth")]
 public sealed class AuthController : ControllerBase
 {
-    /// <summary>The name of the cookie scheme, known to the host that adds it.</summary>
-    public const string CookieScheme = "Mnemarr.Cookie";
-
     /// <summary>A name and a password are short: a body larger than this is not a sign-in.</summary>
     private const int MaxBodyBytes = 8 * 1024;
 
@@ -41,9 +38,9 @@ public sealed class AuthController : ControllerBase
         }
 
         var principal = new AccessPrincipal(account, account.Permissions, null, null);
-        var identity = new ClaimsIdentity([new Claim(MnemarrClaims.Account, account.Id.ToString()), new Claim(MnemarrClaims.Session, session)], CookieScheme);
-        await HttpContext.SignInAsync(CookieScheme, new ClaimsPrincipal(identity));
-        return Session(principal);
+        var identity = new ClaimsIdentity([new Claim(MnemarrClaims.Account, account.Id.ToString()), new Claim(MnemarrClaims.Session, session)], MnemarrSchemes.Cookie);
+        await HttpContext.SignInAsync(MnemarrSchemes.Cookie, new ClaimsPrincipal(identity));
+        return SessionResource.From(new ClaimsPrincipal(new ClaimsIdentity(MnemarrClaims.For(principal), MnemarrSchemes.Cookie, ClaimTypes.Name, ClaimTypes.Role)));
     }
 
     /// <summary>Ends the session.</summary>
@@ -56,19 +53,14 @@ public sealed class AuthController : ControllerBase
             _accounts.EndSession(session);
         }
 
-        await HttpContext.SignOutAsync(CookieScheme);
+        await HttpContext.SignOutAsync(MnemarrSchemes.Cookie);
         return NoContent();
     }
 
     /// <summary>Who is signed in, and what they may do: what the interface shows or hides follows it.</summary>
     [HttpGet("session")]
     [ProducesResponseType<SessionResource>(StatusCodes.Status200OK)]
-    public SessionResource GetSession() => new(
-        User.AccountId() ?? Guid.Empty,
-        User.Identity?.Name ?? string.Empty,
-        User.FindFirstValue(MnemarrClaims.Kind) ?? string.Empty,
-        User.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
-        [.. User.FindAll(MnemarrClaims.Permission).Select(claim => claim.Value).Order(StringComparer.Ordinal)]);
+    public SessionResource GetSession() => SessionResource.From(User);
 
     /// <summary>A user changes their own password, with the current one.</summary>
     [HttpPut("password")]
@@ -88,11 +80,4 @@ public sealed class AuthController : ControllerBase
         _accounts.SetPassword(id, request.NewPassword, name, keepSession: User.FindFirstValue(MnemarrClaims.Session));
         return NoContent();
     }
-
-    private static SessionResource Session(AccessPrincipal principal) => new(
-        principal.Account.Id,
-        principal.Account.Name,
-        principal.Account.Kind.ToString(),
-        principal.Account.Role,
-        [.. principal.Permissions.Order(StringComparer.Ordinal)]);
 }

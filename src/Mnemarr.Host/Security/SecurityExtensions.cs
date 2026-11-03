@@ -34,11 +34,15 @@ public static class SecurityExtensions
 
         services.AddAuthentication(PolicyScheme)
             .AddPolicyScheme(PolicyScheme, displayName: null, options =>
-                options.ForwardDefaultSelector = context => ApiKeyHeader.Read(context.Request) is null ? AuthController.CookieScheme : ApiKeyHeader.Scheme)
-            .AddCookie(AuthController.CookieScheme)
+                options.ForwardDefaultSelector = context => ApiKeyHeader.Read(context.Request) is null ? MnemarrSchemes.Cookie : ApiKeyHeader.Scheme)
+            .AddCookie(MnemarrSchemes.Cookie)
             .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyHeader.Scheme, _ => { });
 
-        services.AddOptions<CookieAuthenticationOptions>(AuthController.CookieScheme).Configure<IOptions<AuthOptions>>((cookie, auth) => ConfigureCookie(cookie, auth.Value));
+        services.AddOptions<CookieAuthenticationOptions>(MnemarrSchemes.Cookie).Configure<IOptions<AuthOptions>, TimeProvider>((cookie, auth, clock) =>
+        {
+            ConfigureCookie(cookie, auth.Value);
+            cookie.TimeProvider = clock;
+        });
 
         services.AddHttpContextAccessor();
         services.AddSingleton<IClaimsTransformation, AccountClaimsTransformation>();
@@ -80,7 +84,7 @@ public static class SecurityExtensions
     /// A cookie is valid while its session is: signing out, a new password and the end of the absolute lifetime end the session on the
     /// server, and a cookie made from a copy of the key ring has no session behind it. An account that is gone or disabled has none either.
     /// </summary>
-    private static Task ValidateSession(CookieValidatePrincipalContext context)
+    private static async Task ValidateSession(CookieValidatePrincipalContext context)
     {
         var services = context.HttpContext.RequestServices;
         var accountId = context.Principal?.AccountId();
@@ -90,11 +94,12 @@ public static class SecurityExtensions
             || services.GetRequiredService<SessionService>().AccountOf(sessionId) != account.Id)
         {
             context.RejectPrincipal();
-            return Task.CompletedTask;
+            // The browser is told to drop the cookie, so that it does not send a dead one (two reads of the database) until it expires.
+            await context.HttpContext.SignOutAsync(MnemarrSchemes.Cookie);
+            return;
         }
 
         context.HttpContext.Items[AccountClaimsTransformation.AccountItem] = account;
-        return Task.CompletedTask;
     }
 
     /// <summary>The folder of the key ring: a credential (a copy of it, with an account id, is a cookie), so only its owner may read it.</summary>

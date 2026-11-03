@@ -36,12 +36,15 @@ docs/           specification, decisions, testing strategy
 
 ```bash
 docker build -t mnemarr:dev .
-echo 'a password of at least 12 characters' > /tmp/mnemarr-admin-password   # the first administrator's password: a file, never a variable
+secrets="$(mktemp -d)"                               # a folder only you can enter
+openssl rand -base64 24 > "$secrets/admin-password"  # the first administrator's password: a file, never a variable
+chmod 644 "$secrets/admin-password"                  # the container's user must read it; the folder keeps everybody else out
 docker run --rm -p 8383:8383 --tmpfs /config:uid=1654,gid=1654 \
-  -v /tmp/mnemarr-admin-password:/run/admin-password:ro \
+  -v "$secrets/admin-password:/run/admin-password:ro" \
   -e MNEMARR__AUTH__ADMINUSER=admin -e MNEMARR__AUTH__ADMINPASSWORDFILE=/run/admin-password \
   -e MNEMARR__AUTH__COOKIESECURITY=SameAsRequest mnemarr:dev   # SameAsRequest: this is plain HTTP; behind TLS leave the default
-# http://localhost:8383: sign in as admin (health: /health/live and /health/ready)
+# http://localhost:8383: sign in as admin, with the password of `cat "$secrets/admin-password"` (health: /health/live and /health/ready)
+# afterwards: rm -r "$secrets"
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md#development-setup) for the development setup.

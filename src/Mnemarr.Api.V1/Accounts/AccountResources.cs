@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using System.Text.Json.Serialization;
+using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 
@@ -26,7 +28,16 @@ public sealed record ApiKeyResource(
 /// <summary>A key that has just been created: the secret is in this answer and nowhere else, ever.</summary>
 public sealed record CreatedApiKeyResource(ApiKeyResource Key, string Secret);
 
-public sealed record SessionResource(Guid AccountId, string Name, string Kind, string Role, IReadOnlyList<string> Permissions);
+public sealed record SessionResource(Guid AccountId, string Name, string Kind, string Role, IReadOnlyList<string> Permissions)
+{
+    /// <summary>The session of whoever is signed in, from their claims: the one way it is built, at sign-in and on every read.</summary>
+    public static SessionResource From(ClaimsPrincipal user) => new(
+        user.AccountId() ?? Guid.Empty,
+        user.Identity?.Name ?? string.Empty,
+        user.FindFirstValue(MnemarrClaims.Kind) ?? string.Empty,
+        user.FindFirstValue(ClaimTypes.Role) ?? string.Empty,
+        [.. user.FindAll(MnemarrClaims.Permission).Select(claim => claim.Value).Order(StringComparer.Ordinal)]);
+}
 
 public sealed record AuditEventResource(long Id, DateTimeOffset At, string Actor, string Action, string Target, string Detail)
 {

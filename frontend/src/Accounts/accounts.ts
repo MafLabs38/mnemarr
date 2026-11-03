@@ -48,6 +48,11 @@ export interface AuditItem {
 
 export const accountsKey = ['api', '/accounts'] as const;
 
+/** What a change to an account makes stale: the list, the account itself, its keys, and the activity that records the change. */
+const isAccountsQuery = (query: { queryKey: readonly unknown[] }) =>
+  typeof query.queryKey[1] === 'string' &&
+  (query.queryKey[1].startsWith('/accounts') || query.queryKey[1].startsWith('/audit'));
+
 export function useAccounts() {
   return useApiQuery<AccountItem[]>('/accounts');
 }
@@ -95,7 +100,7 @@ export function useCreateAccount() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (account: NewAccount) => apiSend('POST', '/accounts', account),
-    onSuccess: () => client.invalidateQueries({ queryKey: accountsKey }),
+    onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
   });
 }
 
@@ -103,7 +108,7 @@ export function useUpdateAccount(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (change: { role: string; enabled: boolean }) => apiSend('PUT', `/accounts/${id}`, change),
-    onSuccess: () => client.invalidateQueries({ queryKey: accountsKey }),
+    onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
   });
 }
 
@@ -111,7 +116,7 @@ export function useDeleteAccount(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => apiSend('DELETE', `/accounts/${id}`),
-    onSuccess: () => client.invalidateQueries({ queryKey: accountsKey }),
+    onSuccess: () => client.invalidateQueries({ predicate: isAccountsQuery }),
   });
 }
 

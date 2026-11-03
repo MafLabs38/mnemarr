@@ -54,6 +54,7 @@ public enum AccountProblem
     Conflict,
     NotFound,
     Locked,
+    Busy,
 }
 
 /// <summary>An account operation that cannot be done, with the reason to give to the person who tried.</summary>

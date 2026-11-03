@@ -50,7 +50,7 @@ public sealed class SqliteAuditLog : IAuditLog
         while (reader.Read())
         {
             events.Add(new AuditEvent(
-                reader.GetInt64(0), DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture),
+                reader.GetInt64(0), StorageText.Parse(reader.GetString(1)),
                 reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
         }
 
