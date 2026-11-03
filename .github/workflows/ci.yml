@@ -183,6 +183,8 @@ jobs:
       # The .NET scanner does not read SONAR_TOKEN for `begin`, so the token is an argument of `begin` and `end`. This job runs the
       # pull request's own code (the build): same-repository branch authors are trusted with this secret, and pull requests from
       # forks never get it.
+      # Documented exception (CLAUDE.md): docker:S8431 asks for the tag or the digest of a base image, not both. The Dockerfile keeps
+      # both on purpose: the digest makes a build reproducible, the tag is what Dependabot follows to move the digest (ADR 0013).
       - name: Begin SonarQube analysis
         run: >
           dotnet sonarscanner begin
@@ -194,6 +196,9 @@ jobs:
           /d:sonar.coverage.exclusions="**/obj/**,**/*.g.cs,**/__tests__/**,tests/**"
           /d:sonar.cs.roslyn.ignoreIssues=true
           /d:sonar.qualitygate.wait=true
+          /d:sonar.issue.ignore.multicriteria=e1
+          /d:sonar.issue.ignore.multicriteria.e1.ruleKey="docker:S8431"
+          /d:sonar.issue.ignore.multicriteria.e1.resourceKey="Dockerfile"
       - run: dotnet build src/Mnemarr.sln
       - name: End SonarQube analysis
         run: dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
