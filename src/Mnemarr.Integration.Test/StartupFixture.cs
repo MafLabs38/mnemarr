@@ -22,4 +22,17 @@ public sealed class StartupFixture
 
         start.Should().Throw<OptionsValidationException>().WithMessage("*MNEMARR__DATAFOLDER*");
     }
+
+    [Theory]
+    [InlineData("Auth:SessionHours", "0")]
+    [InlineData("Auth:AdminUser", "admin")]
+    [InlineData("Auth:ResetPasswordFile", "/run/reset")]
+    public void should_refuse_to_start_on_an_access_setting_that_cannot_work(string key, string value)
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder => builder.UseSetting(key, value).UseSetting("DataFolder", Path.GetTempPath()));
+
+        var start = () => factory.CreateClient();
+
+        start.Should().Throw<OptionsValidationException>();
+    }
 }

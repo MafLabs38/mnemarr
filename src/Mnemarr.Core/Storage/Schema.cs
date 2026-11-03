@@ -3,11 +3,11 @@ using Microsoft.Data.Sqlite;
 namespace Mnemarr.Core.Storage;
 
 /// <summary>The schema, versioned with <c>PRAGMA user_version</c>: a step is applied once, in order.</summary>
-internal static class Schema
+public static class Schema
 {
     private static readonly string[] Steps =
     [
-        // 1: accounts, their API keys, and the audit log.
+        // 1: accounts, their API keys, their sessions, and the audit log.
         """
         CREATE TABLE accounts (
             id TEXT PRIMARY KEY,
@@ -31,6 +31,13 @@ internal static class Schema
             revoked_at TEXT
         );
         CREATE INDEX api_keys_by_account ON api_keys (account_id);
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        );
+        CREATE INDEX sessions_by_account ON sessions (account_id);
         CREATE TABLE audit_events (
             id INTEGER PRIMARY KEY,
             at TEXT NOT NULL,
@@ -42,6 +49,9 @@ internal static class Schema
         CREATE INDEX audit_events_by_action ON audit_events (action, id);
         """,
     ];
+
+    /// <summary>The version of the schema this code expects: the number of steps.</summary>
+    public static int Version => Steps.Length;
 
     public static void Apply(SqliteConnection connection)
     {

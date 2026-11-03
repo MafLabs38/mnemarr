@@ -12,7 +12,9 @@ public static class HealthExtensions
     {
         // One instance: it keeps its last result, and AddCheck would otherwise build a new one for every probe.
         services.TryAddSingleton<DataFolderHealthCheck>();
-        services.AddHealthChecks().AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag]);
+        services.AddHealthChecks()
+            .AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag])
+            .AddCheck<DatabaseHealthCheck>("database", tags: [ReadyTag]);
         return services;
     }
 

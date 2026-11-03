@@ -20,7 +20,8 @@ public sealed class AccountRejectedFilter : IExceptionFilter
             AccountProblem.Invalid => StatusCodes.Status400BadRequest,
             AccountProblem.Conflict => StatusCodes.Status409Conflict,
             AccountProblem.NotFound => StatusCodes.Status404NotFound,
-            _ => StatusCodes.Status429TooManyRequests,
+            AccountProblem.Locked => StatusCodes.Status429TooManyRequests,
+            _ => throw new InvalidOperationException($"No status is chosen for {rejected.Problem}."),
         };
         context.Result = new ObjectResult(new ProblemDetails { Status = status, Title = rejected.Message }) { StatusCode = status, ContentTypes = { "application/problem+json" } };
         context.ExceptionHandled = true;

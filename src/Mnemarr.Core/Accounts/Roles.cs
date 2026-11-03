@@ -16,8 +16,8 @@ public static class Roles
         new(Admin, "Everything, accounts included.", Permissions.All.ToHashSet(StringComparer.Ordinal), ForUsers: true, ForServices: false),
         new(
             Operator,
-            "Reads and writes notes, searches, manages sources, reads the status of the system.",
-            Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.SourcesManage, Permissions.SystemRead),
+            "Reads notes, searches, manages sources, reads the status of the system. Notes are written by assistants, not by people.",
+            Set(Permissions.NotesRead, Permissions.Search, Permissions.SourcesManage, Permissions.SystemRead),
             ForUsers: true,
             ForServices: true),
         new(Reader, "Reads notes and searches, nothing else.", Set(Permissions.NotesRead, Permissions.Search), ForUsers: true, ForServices: true),

@@ -8,19 +8,25 @@ public sealed class LoginThrottleFixture
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero));
 
     [Fact]
-    public void should_lock_at_the_fifth_failure_and_not_before()
+    public void should_count_an_attempt_when_it_is_reserved_and_refuse_the_sixth()
     {
         var subject = new LoginThrottle(_clock);
-        for (var i = 0; i < 4; i++)
-        {
-            subject.Failed("alice");
-            subject.IsLocked("alice").Should().BeFalse();
-        }
 
-        subject.Failed("alice");
+        Enumerable.Range(0, LoginThrottle.MaxFailures).Should().OnlyContain(_ => subject.TryReserve("alice"));
 
         subject.IsLocked("alice").Should().BeTrue();
+        subject.TryReserve("alice").Should().BeFalse();
         subject.IsLocked("bob").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task should_let_no_more_than_five_of_a_burst_of_parallel_attempts_through()
+    {
+        var subject = new LoginThrottle(_clock);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 200).Select(_ => Task.Run(() => subject.TryReserve("admin"), TestContext.Current.CancellationToken)));
+
+        results.Count(allowed => allowed).Should().Be(LoginThrottle.MaxFailures);
     }
 
     [Fact]
@@ -29,24 +35,24 @@ public sealed class LoginThrottleFixture
         var subject = new LoginThrottle(_clock);
         foreach (var name in new[] { "alice", "ALICE", "Alice", "aLiCe", "alice" })
         {
-            subject.Failed(name);
+            subject.TryReserve(name);
         }
 
         subject.IsLocked("ALICE").Should().BeTrue();
     }
 
     [Fact]
-    public void should_only_count_the_failures_of_the_last_fifteen_minutes()
+    public void should_only_count_the_attempts_of_the_last_fifteen_minutes()
     {
         var subject = new LoginThrottle(_clock);
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
         {
-            subject.Failed("alice");
+            subject.TryReserve("alice");
         }
 
         _clock.Advance(TimeSpan.FromMinutes(16));
-        subject.Failed("alice");
 
+        subject.TryReserve("alice").Should().BeTrue();
         subject.IsLocked("alice").Should().BeFalse();
     }
 
@@ -54,9 +60,9 @@ public sealed class LoginThrottleFixture
     public void should_forget_a_name_that_succeeds()
     {
         var subject = new LoginThrottle(_clock);
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
         {
-            subject.Failed("alice");
+            subject.TryReserve("alice");
         }
 
         subject.Succeeded("alice");
@@ -65,22 +71,47 @@ public sealed class LoginThrottleFixture
     }
 
     [Fact]
-    public void should_stay_bounded_when_many_names_fail_and_forget_the_old_ones()
+    public void should_never_track_more_names_than_the_cap_and_forget_the_oldest_first()
     {
         var subject = new LoginThrottle(_clock);
-        for (var i = 0; i < 10_000; i++)
+        subject.TryReserve("first");
+        for (var i = 0; i < LoginThrottle.MaxTracked + 500; i++)
         {
-            subject.Failed($"name-{i}");
+            _clock.Advance(TimeSpan.FromMilliseconds(1));
+            subject.TryReserve($"name-{i}");
+        }
+
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            subject.TryReserve("last");
+        }
+
+        subject.IsLocked("last").Should().BeTrue();
+        // "first" was the oldest: it was forgotten to make room, so it starts again from nothing.
+        for (var i = 0; i < LoginThrottle.MaxFailures; i++)
+        {
+            subject.TryReserve("first").Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public void should_forget_the_names_whose_attempts_have_all_expired_before_forgetting_any_that_is_recent()
+    {
+        var subject = new LoginThrottle(_clock);
+        for (var i = 0; i < LoginThrottle.MaxTracked; i++)
+        {
+            subject.TryReserve($"old-{i}");
         }
 
         _clock.Advance(TimeSpan.FromMinutes(20));
-        subject.Failed("fresh");
-        for (var i = 0; i < 5; i++)
+        subject.TryReserve("recent");
+        subject.TryReserve("brand-new");
+
+        for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
         {
-            subject.Failed("fresh");
+            subject.TryReserve("recent");
         }
 
-        subject.IsLocked("fresh").Should().BeTrue();
-        subject.IsLocked("name-1").Should().BeFalse();
+        subject.IsLocked("recent").Should().BeTrue();
     }
 }

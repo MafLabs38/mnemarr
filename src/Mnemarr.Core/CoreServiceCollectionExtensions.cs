@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -26,6 +27,11 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IApiKeyStore, SqliteApiKeyStore>();
         services.AddSingleton<IAuditLog, SqliteAuditLog>();
         services.AddSingleton<LoginThrottle>();
+        services.AddSingleton<AuditSampler>();
+        services.AddSingleton<IPasswordHasher<Account>, PasswordHasher<Account>>();
+        services.AddSingleton<ISessionStore, SqliteSessionStore>();
+        services.AddSingleton<SessionService>();
+        services.AddHostedService<AuditRetentionService>();
         services.AddSingleton<AccountService>();
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<AdminAccountSeeder>();

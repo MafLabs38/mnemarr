@@ -31,7 +31,7 @@ public sealed class ApiKeysController : ControllerBase
     [ProducesResponseType<CreatedApiKeyResource>(StatusCodes.Status201Created)]
     public ActionResult<CreatedApiKeyResource> CreateKey(Guid accountId, CreateApiKeyRequest request)
     {
-        var created = _keys.Create(accountId, request.Name ?? string.Empty, request.Sources, request.ExpiresAt, Actor);
+        var created = _keys.Create(accountId, request.Name, request.Sources, request.ExpiresAt, Actor);
         return StatusCode(StatusCodes.Status201Created, new CreatedApiKeyResource(ApiKeyResource.From(created.Key), created.Secret));
     }
 

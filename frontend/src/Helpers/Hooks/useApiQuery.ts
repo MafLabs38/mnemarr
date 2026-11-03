@@ -7,6 +7,8 @@ interface ApiQueryOptions {
   refetchInterval?: number;
   /** False: nothing is asked (the person may not read it). */
   enabled?: boolean;
+  /** Milliseconds during which the answer is not asked again; `Infinity` for what never changes while the page is open. */
+  staleTime?: number;
 }
 
 /** Server data goes through here, never through a direct `fetch` in a component. */

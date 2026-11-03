@@ -3,6 +3,7 @@ import translate from 'Utilities/String/translate';
 /**
  * The API answered, but not with a success. The status tells the caller what to do (a 401 means "sign in again"); `problem` is the
  * reason the server gave in its problem document, when it gave one.
+ * The reason is shown as the server worded it, in English: the server does not know the language of the interface.
  */
 export class ApiError extends Error {
   constructor(

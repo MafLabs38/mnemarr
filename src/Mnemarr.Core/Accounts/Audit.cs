@@ -7,6 +7,9 @@ public interface IAuditLog
 {
     void Append(string actor, string action, string target, string detail = "");
 
+    /// <summary>Forgets the events older than this moment. Returns how many.</summary>
+    int Prune(DateTimeOffset before);
+
     /// <summary>The latest events, newest first, optionally of one action.</summary>
     IReadOnlyList<AuditEvent> Recent(int limit, string? action = null);
 }

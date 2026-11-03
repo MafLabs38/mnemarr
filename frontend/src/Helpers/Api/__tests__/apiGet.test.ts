@@ -103,10 +103,9 @@ describe('apiSend', () => {
       }),
     );
 
-    await expect(apiSend('POST', '/accounts', {})).rejects.toBeInstanceOf(ApiError);
-    await expect(apiSend('POST', '/accounts', {})).rejects.toMatchObject({
-      status: 409,
-      message: 'An account named x already exists.',
-    });
+    const failure = await apiSend('POST', '/accounts', {}).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({ status: 409, message: 'An account named x already exists.' });
   });
 });

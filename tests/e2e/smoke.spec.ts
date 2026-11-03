@@ -1,8 +1,12 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, type PlaywrightWorkerArgs, test } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 /** The administrator of the e2e stack (tests/e2e/stack/docker-compose.yml): a test-only value. */
 const ADMIN = { name: 'admin', password: 'e2e-admin-password' };
+
+/** A name that no other run, and no other test, has used: the stack keeps its accounts for the whole run. */
+const unique = (prefix: string) => `${prefix}-${randomUUID().slice(0, 8)}`;
 
 /** A request context that has signed in: it keeps the session cookie, and sends the header a write needs. */
 async function signedInRequest(playwright: PlaywrightWorkerArgs['playwright'], baseURL: string) {
@@ -47,9 +51,8 @@ test.describe('smoke @smoke', () => {
   );
 
   test('nothing of the API is open to somebody who is not signed in', { tag: '@browserless' }, async ({ request }) => {
-    for (const path of ['/api/v1/system/status', '/api/v1/accounts', '/openapi/v1.json', '/api/v1/nothing-here']) {
-      expect((await request.get(path)).status(), path).toBe(401);
-    }
+    // The matrix of every endpoint is in the integration tests; here, only that the real image closes the doors it does not know.
+    expect((await request.get('/api/v1/nothing-here')).status()).toBe(401);
     expect((await request.get('/health/live')).status()).toBe(200);
   });
 
@@ -191,7 +194,7 @@ test.describe('smoke @smoke', () => {
     baseURL,
   }) => {
     const admin = await signedInRequest(playwright, baseURL ?? '');
-    const reader = { name: `reader-${Date.now()}`, password: 'a long enough password' };
+    const reader = { name: unique('reader'), password: 'a long enough password' };
     expect((await admin.post('/api/v1/accounts', { data: { ...reader, kind: 'User', role: 'Reader' } })).status()).toBe(
       201,
     );
@@ -209,18 +212,22 @@ test.describe('smoke @smoke', () => {
     playwright,
     baseURL,
   }) => {
-    const service = `agent-${Date.now()}`;
+    const service = unique('agent');
     await signIn(page, '/accounts');
     const form = page.getByRole('region', { name: 'Create an account' });
     await form.getByLabel('Name').fill(service);
     await form.getByLabel('Kind').selectOption('Service');
+    await form.getByLabel('Role').selectOption('Assistant');
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await form.getByRole('button', { name: 'Create' }).click();
     await page.getByRole('link', { name: `Keys of ${service}` }).click();
 
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.getByLabel('Name of the key').fill('laptop');
     await page.getByRole('button', { name: 'Create' }).click();
     const secret = (await page.getByRole('region', { name: 'New key' }).locator('code').textContent()) ?? '';
     expect(secret).toMatch(/^mnm_/);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     await page.getByRole('button', { name: 'Done' }).click();
     await expect(page.getByText(secret)).toHaveCount(0);
 

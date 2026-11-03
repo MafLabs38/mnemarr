@@ -15,23 +15,36 @@ public sealed class ApiKeyService
     private readonly IAccountStore _accounts;
     private readonly IApiKeyStore _keys;
     private readonly IAuditLog _audit;
+    private readonly AuditSampler _sampler;
     private readonly TimeProvider _clock;
 
-    public ApiKeyService(IAccountStore accounts, IApiKeyStore keys, IAuditLog audit, TimeProvider clock)
+    public ApiKeyService(IAccountStore accounts, IApiKeyStore keys, IAuditLog audit, AuditSampler sampler, TimeProvider clock)
     {
         _accounts = accounts;
         _keys = keys;
         _audit = audit;
+        _sampler = sampler;
         _clock = clock;
     }
 
     public CreatedApiKey Create(Guid accountId, string name, IReadOnlyList<Guid>? sources, DateTimeOffset? expiresAt, string actor)
     {
         var account = _accounts.Get(accountId) ?? throw new AccountRejectedException(AccountProblem.NotFound, "There is no such account.");
+        if (account.Kind != AccountKind.Service)
+        {
+            // A person signs in with a password; a key on a user account would be a bearer credential that skips the lockout and the cookie's protections.
+            throw new AccountRejectedException(AccountProblem.Invalid, "Only a service account has keys: a person signs in with a password.");
+        }
+
         name = name.Trim();
         if (name.Length is 0 or > MaxName)
         {
             throw new AccountRejectedException(AccountProblem.Invalid, $"The name of a key is 1 to {MaxName} characters.");
+        }
+
+        if (sources is { Count: 0 })
+        {
+            throw new AccountRejectedException(AccountProblem.Invalid, "A key limited to sources needs at least one: leave the limit out for all of them.");
         }
 
         var now = _clock.GetUtcNow();
@@ -72,12 +85,17 @@ public sealed class ApiKeyService
         var now = _clock.GetUtcNow();
         if (key is null || key.RevokedAt is not null || key.ExpiresAt <= now)
         {
-            _audit.Append("unknown", "key.refused", secret[..Math.Min(PrefixLength, secret.Length)]);
+            var prefix = secret[..Math.Min(PrefixLength, secret.Length)];
+            if (_sampler.Allow($"key.refused:{prefix}"))
+            {
+                _audit.Append("unknown", "key.refused", prefix);
+            }
+
             return null;
         }
 
         var account = _accounts.Get(key.AccountId);
-        if (account is not { Enabled: true })
+        if (account is not { Enabled: true, Kind: AccountKind.Service })
         {
             return null;
         }

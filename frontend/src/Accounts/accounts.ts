@@ -1,6 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
-
-import { apiGet } from 'Helpers/Api/apiGet';
+import { useApiQuery } from 'Helpers/Hooks/useApiQuery';
 
 export interface AccountItem {
   id: string;
@@ -48,13 +46,35 @@ export interface AuditItem {
 export const accountsKey = ['api', '/accounts'] as const;
 
 export function useAccounts() {
-  return useQuery({ queryKey: accountsKey, queryFn: ({ signal }) => apiGet<AccountItem[]>('/accounts', signal) });
+  return useApiQuery<AccountItem[]>('/accounts');
+}
+
+export function useAccount(id: string) {
+  return useApiQuery<AccountItem>(`/accounts/${id}`);
+}
+
+/** The key of the keys of one account, for what has to refresh them. */
+export const keysQueryKey = (accountId: string) => ['api', `/accounts/${accountId}/keys`] as const;
+
+export function useApiKeys(accountId: string) {
+  return useApiQuery<ApiKeyItem[]>(`/accounts/${accountId}/keys`);
+}
+
+export function useAudit(limit: number) {
+  return useApiQuery<AuditItem[]>(`/audit?limit=${limit}`);
 }
 
 export function useRoles() {
-  return useQuery({
-    queryKey: ['api', '/roles'],
-    queryFn: ({ signal }) => apiGet<RoleItem[]>('/roles', signal),
-    staleTime: Infinity,
-  });
+  return useApiQuery<RoleItem[]>('/roles', { staleTime: Infinity });
+}
+
+/**
+ * The role a new account starts with: the one that can do the least, the first of the list on a tie. The server owns the list of roles;
+ * a default that could not be read from it would have to be kept in step with it.
+ */
+export function leastPrivilegedRole(roles: ReadonlyArray<RoleItem>): string | undefined {
+  return roles.reduce<RoleItem | undefined>(
+    (least, role) => (!least || role.permissions.length < least.permissions.length ? role : least),
+    undefined,
+  )?.name;
 }

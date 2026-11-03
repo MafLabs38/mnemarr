@@ -1,51 +1,45 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Core.Test.Accounts;
 
 public sealed class AdminAccountSeederFixture : IDisposable
 {
-    private readonly TestWorkspace _workspace = new();
-    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero));
-    private readonly SqliteAccountStore _accounts;
-    private readonly AccountService _service;
+    private readonly AccountsHarness _h = new();
 
-    public AdminAccountSeederFixture()
+    public void Dispose() => _h.Dispose();
+
+    private AdminAccountSeeder Seeder(AuthOptions options) => new(_h.Accounts, _h.Service, Options.Create(options), NullLogger<AdminAccountSeeder>.Instance);
+
+    private string PasswordFile(string content, string name = "admin-password")
     {
-        _accounts = new SqliteAccountStore(_workspace.Database);
-        _service = new AccountService(_accounts, new SqliteAuditLog(_workspace.Database, _clock), new LoginThrottle(_clock), _clock);
-    }
-
-    public void Dispose() => _workspace.Dispose();
-
-    private AdminAccountSeeder Seeder(AuthOptions options) => new(_accounts, _service, Options.Create(options), NullLogger<AdminAccountSeeder>.Instance);
-
-    private string PasswordFile(string content)
-    {
-        var path = Path.Combine(_workspace.Root, "admin-password");
+        var path = Path.Combine(_h.Workspace.Root, name);
         File.WriteAllText(path, content);
         return path;
     }
 
-    [Fact]
-    public void should_create_the_first_administrator_from_the_settings_and_the_password_file()
+    [Theory]
+    [InlineData("a long enough password")]
+    [InlineData("a long enough password\n")]
+    [InlineData("a long enough password\r\n")]
+    [InlineData("\uFEFFa long enough password\n")]
+    public void should_create_the_first_administrator_from_the_settings_and_the_password_file(string content)
     {
-        Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile("a long enough password\n") }).Run();
+        Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile(content) }).Run();
 
-        _accounts.List().Should().ContainSingle().Which.Should().Match<Account>(a => a.Name == "root" && a.Role == Roles.Admin && a.Kind == AccountKind.User);
-        _service.SignIn("root", "a long enough password").Should().NotBeNull();
+        _h.Accounts.List().Should().ContainSingle().Which.Should().Match<Account>(a => a.Name == "root" && a.Role == Roles.Admin && a.Kind == AccountKind.User);
+        _h.Service.SignIn("root", "a long enough password").Should().NotBeNull();
     }
 
     [Fact]
     public void should_do_nothing_once_there_is_an_account()
     {
-        _service.Create("alice", AccountKind.User, Roles.Reader, "correct horse battery", "test");
+        _h.Reader();
 
         Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile("a long enough password") }).Run();
 
-        _accounts.List().Should().ContainSingle().Which.Name.Should().Be("alice");
+        _h.Accounts.List().Should().ContainSingle().Which.Name.Should().Be("alice");
     }
 
     [Fact]
@@ -53,23 +47,35 @@ public sealed class AdminAccountSeederFixture : IDisposable
     {
         Seeder(new AuthOptions()).Run();
 
-        _accounts.Count().Should().Be(0);
+        _h.Accounts.Count().Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("short", "refused")]
+    [InlineData("", "refused")]
+    public void should_stop_the_start_with_a_message_when_the_password_is_not_acceptable(string content, string reason)
+    {
+        var run = () => Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile(content) }).Run();
+
+        run.Should().Throw<InvalidOperationException>().WithMessage($"*first administrator was {reason}*");
+        _h.Accounts.Count().Should().Be(0);
     }
 
     [Fact]
-    public void should_fail_to_start_on_a_password_that_is_too_weak()
+    public void should_stop_the_start_with_a_message_when_the_password_file_cannot_be_read()
     {
-        var run = () => Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile("short") }).Run();
+        var missing = Path.Combine(_h.Workspace.Root, "nope");
 
-        run.Should().Throw<AccountRejectedException>();
-        _accounts.Count().Should().Be(0);
+        var run = () => Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = missing }).Run();
+
+        run.Should().Throw<InvalidOperationException>().WithMessage($"*cannot be read: {missing}");
     }
 
     [Fact]
     public void should_leave_the_host_up_when_the_data_folder_does_not_exist_so_that_readiness_can_say_so()
     {
-        var accounts = new SqliteAccountStore(new Mnemarr.Core.Storage.Database(Options.Create(new Mnemarr.Core.Configuration.MnemarrOptions { DataFolder = Path.Combine(_workspace.Root, "gone") })));
-        var seeder = new AdminAccountSeeder(accounts, _service, Options.Create(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile("a long enough password") }), NullLogger<AdminAccountSeeder>.Instance);
+        var accounts = new SqliteAccountStore(new Mnemarr.Core.Storage.Database(Options.Create(new Mnemarr.Core.Configuration.MnemarrOptions { DataFolder = Path.Combine(_h.Workspace.Root, "gone") })));
+        var seeder = new AdminAccountSeeder(accounts, _h.Service, Options.Create(new AuthOptions { AdminUser = "root", AdminPasswordFile = PasswordFile("a long enough password") }), NullLogger<AdminAccountSeeder>.Instance);
 
         var run = () => seeder.Run();
 
@@ -77,10 +83,35 @@ public sealed class AdminAccountSeederFixture : IDisposable
     }
 
     [Fact]
-    public void should_fail_to_start_when_the_password_file_is_missing()
+    public void should_reset_the_password_of_the_named_user_at_start_even_when_accounts_exist()
     {
-        var run = () => Seeder(new AuthOptions { AdminUser = "root", AdminPasswordFile = Path.Combine(_workspace.Root, "nope") }).Run();
+        var alice = _h.Reader();
+        _h.Service.SetEnabled(alice.Id, false, "x");
+        _h.Admin();
 
-        run.Should().Throw<FileNotFoundException>();
+        Seeder(new AuthOptions { ResetPasswordUser = "alice", ResetPasswordFile = PasswordFile("a brand new password", "reset") }).Run();
+
+        _h.Service.SignIn("alice", "a brand new password").Should().NotBeNull();
+        _h.Audit.Recent(10, "account.reset").Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("nobody", "a brand new password")]
+    [InlineData("alice", "short")]
+    public void should_stop_the_start_when_the_reset_is_refused(string user, string password)
+    {
+        _h.Reader();
+
+        var run = () => Seeder(new AuthOptions { ResetPasswordUser = user, ResetPasswordFile = PasswordFile(password, "reset") }).Run();
+
+        run.Should().Throw<InvalidOperationException>().WithMessage($"*reset of '{user}' was refused*");
+    }
+
+    [Fact]
+    public void should_stop_the_start_when_the_reset_file_cannot_be_read()
+    {
+        var run = () => Seeder(new AuthOptions { ResetPasswordUser = "alice", ResetPasswordFile = Path.Combine(_h.Workspace.Root, "nope") }).Run();
+
+        run.Should().Throw<InvalidOperationException>().WithMessage("*of the reset cannot be read*");
     }
 }

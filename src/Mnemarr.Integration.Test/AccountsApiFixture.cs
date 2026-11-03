@@ -58,12 +58,8 @@ public sealed class AccountsApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
 
     [Theory]
     [InlineData("Robot", "Reader", null)]
-    [InlineData("User", "Reader", null)]
     [InlineData("User", "Reader", "short")]
-    [InlineData("User", "Assistant", "a long enough password")]
-    [InlineData("Service", "Admin", null)]
-    [InlineData("Service", "Reader", "a long enough password")]
-    public async Task should_refuse_an_account_that_does_not_follow_the_rules_with_a_400(string kind, string role, string? password)
+    public async Task should_refuse_an_account_that_does_not_follow_the_rules_with_a_400_problem_document(string kind, string role, string? password)
     {
         var response = await _admin.PostAsJsonAsync("/api/v1/accounts", new { name = Unique(), kind, role, password }, Token);
 

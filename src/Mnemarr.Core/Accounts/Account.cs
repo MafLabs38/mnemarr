@@ -12,7 +12,9 @@ public enum AccountKind
 public sealed record Account(Guid Id, string Name, AccountKind Kind, string Role, bool Enabled, DateTimeOffset CreatedAt)
 {
     /// <summary>What the role of the account gives it, now. A role that no longer exists gives nothing.</summary>
-    public IReadOnlySet<string> Permissions => Roles.Find(Role)?.Permissions ?? new HashSet<string>(StringComparer.Ordinal);
+    public IReadOnlySet<string> Permissions => Roles.Find(Role)?.Permissions ?? NoPermissions;
+
+    private static readonly IReadOnlySet<string> NoPermissions = new HashSet<string>(StringComparer.Ordinal);
 }
 
 /// <summary>An account with its password hash, for signing in. Never leaves the accounts code.</summary>

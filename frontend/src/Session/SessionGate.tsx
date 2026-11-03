@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import Alert from 'Components/Alert/Alert';
@@ -6,7 +5,7 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import Login from 'Login/Login';
 import translate from 'Utilities/String/translate';
 
-import { fetchSession, sessionKey } from './session';
+import { useSessionQuery } from './session';
 import { SessionProvider } from './SessionContext';
 
 /**
@@ -14,11 +13,7 @@ import { SessionProvider } from './SessionContext';
  * any answer 401 afterwards (an expired cookie, a disabled account) puts it back to "nobody" and the sign-in page returns.
  */
 export default function SessionGate({ children }: Readonly<{ children: ReactNode }>) {
-  const { data, isError, isPending } = useQuery({
-    queryKey: sessionKey,
-    queryFn: ({ signal }) => fetchSession(signal),
-    staleTime: Infinity,
-  });
+  const { data, isError, isPending } = useSessionQuery();
 
   if (isPending) {
     return <LoadingIndicator />;

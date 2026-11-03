@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
@@ -10,26 +10,33 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
-import { apiGet, apiSend } from 'Helpers/Api/apiGet';
+import { apiSend } from 'Helpers/Api/apiGet';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
-import type { AccountItem, ApiKeyItem, CreatedApiKey } from './accounts';
+import { type ApiKeyItem, type CreatedApiKey, keysQueryKey, useAccount, useApiKeys } from './accounts';
 import styles from './Accounts.module.css';
 
 /** The secret of a key that has just been created. This is the only time it is shown: it is kept nowhere. */
 function NewKey({ created, onDismiss }: Readonly<{ created: CreatedApiKey; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   async function copy() {
-    await navigator.clipboard.writeText(created.secret);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(created.secret);
+      setCopied(true);
+    } catch {
+      // No clipboard on a page served over plain HTTP: the secret is selected with one click, and the person is told so.
+      setCopyFailed(true);
+    }
   }
 
   return (
     <section aria-label={translate('NewKey')} className={styles.newKey}>
       <p>{translate('NewKeyWarning', { name: created.key.name })}</p>
       <code className={styles.secret}>{created.secret}</code>
+      {copyFailed && <p role="status">{translate('CopyUnavailable')}</p>}
       <div className={styles.inline}>
         <Button onClick={copy}>{translate(copied ? 'Copied' : 'Copy')}</Button>
         <Button onClick={onDismiss} variant="quiet">
@@ -53,15 +60,9 @@ function keyState(key: ApiKeyItem): string {
 export default function AccountKeys() {
   const { id = '' } = useParams();
   const client = useQueryClient();
-  const keysKey = ['api', `/accounts/${id}/keys`];
-  const account = useQuery({
-    queryKey: ['api', `/accounts/${id}`],
-    queryFn: ({ signal }) => apiGet<AccountItem>(`/accounts/${id}`, signal),
-  });
-  const keys = useQuery({
-    queryKey: keysKey,
-    queryFn: ({ signal }) => apiGet<ApiKeyItem[]>(`/accounts/${id}/keys`, signal),
-  });
+  const keysKey = keysQueryKey(id);
+  const account = useAccount(id);
+  const keys = useApiKeys(id);
   const [name, setName] = useState('');
   const [expires, setExpires] = useState('');
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
@@ -69,7 +70,8 @@ export default function AccountKeys() {
     mutationFn: () =>
       apiSend<CreatedApiKey>('POST', `/accounts/${id}/keys`, {
         name,
-        expiresAt: expires ? new Date(`${expires}T00:00:00Z`).toISOString() : undefined,
+        // The last day counts: the key works until the end of it, in UTC.
+        expiresAt: expires ? new Date(`${expires}T23:59:59.999Z`).toISOString() : undefined,
       }),
     onSuccess: (result) => {
       setCreated(result);
@@ -162,7 +164,7 @@ export default function AccountKeys() {
               value={name}
             />
             <TextField
-              label={translate('ExpiresOn')}
+              label={translate('ExpiresEndOf')}
               onChange={(event) => setExpires(event.target.value)}
               type="date"
               value={expires}

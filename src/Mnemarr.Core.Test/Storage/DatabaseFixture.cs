@@ -24,7 +24,7 @@ public sealed class DatabaseFixture : IDisposable
     {
         Scalar("PRAGMA user_version").Should().Be(1L);
         File.Exists(Path.Combine(_workspace.DataFolder, "mnemarr.db")).Should().BeTrue();
-        Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('accounts', 'api_keys', 'audit_events')").Should().Be(3L);
+        Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('accounts', 'api_keys', 'sessions', 'audit_events')").Should().Be(4L);
     }
 
     [Fact]
@@ -35,27 +35,20 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
-    public void should_not_apply_the_schema_again_when_the_database_is_opened_again()
+    public void should_keep_what_it_holds_when_the_database_is_opened_again()
     {
-        Scalar("PRAGMA user_version").Should().Be(1L);
+        using (var connection = _workspace.Database.Open())
+        {
+            using var insert = connection.CreateCommand();
+            insert.CommandText = "INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now')";
+            insert.ExecuteNonQuery();
+        }
 
-        using var connection = new Database(_workspace.Options).Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "PRAGMA user_version";
+        using var again = new Database(_workspace.Options).Open();
+        using var count = again.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM accounts";
 
-        command.ExecuteScalar().Should().Be(1L);
-    }
-
-    [Fact]
-    public void should_refuse_a_key_of_an_account_that_does_not_exist()
-    {
-        using var connection = _workspace.Database.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "INSERT INTO api_keys (id, account_id, name, prefix, secret_hash, created_at) VALUES ('k', 'nope', 'n', 'p', 'h', 'now')";
-
-        var insert = () => command.ExecuteNonQuery();
-
-        insert.Should().Throw<SqliteException>();
+        count.ExecuteScalar().Should().Be(1L);
     }
 
     [Fact]

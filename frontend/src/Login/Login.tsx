@@ -6,7 +6,7 @@ import BrandLogo from 'Components/BrandLogo';
 import Button from 'Components/Form/Button';
 import TextField from 'Components/Form/TextField';
 import { ApiError, apiSend } from 'Helpers/Api/apiGet';
-import { type Session, sessionKey } from 'Session/session';
+import { forgetSessionData, type Session, sessionKey } from 'Session/session';
 import translate from 'Utilities/String/translate';
 
 import styles from './Login.module.css';
@@ -28,7 +28,11 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const signIn = useMutation({
     mutationFn: () => apiSend<Session>('POST', '/auth/login', { name, password }),
-    onSuccess: (session) => client.setQueryData(sessionKey, session),
+    onSuccess: (session) => {
+      // Whatever an earlier session left in this tab is not for the person who signs in now.
+      forgetSessionData(client);
+      client.setQueryData(sessionKey, session);
+    },
   });
 
   function submit(event: FormEvent) {

@@ -8,7 +8,7 @@ import TextField from 'Components/Form/TextField';
 import { apiSend } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
-import { accountsKey, useRoles } from './accounts';
+import { accountsKey, leastPrivilegedRole, useRoles } from './accounts';
 import styles from './Accounts.module.css';
 
 export default function CreateAccount() {
@@ -16,11 +16,11 @@ export default function CreateAccount() {
   const { data: roles = [] } = useRoles();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<'User' | 'Service'>('User');
-  const [role, setRole] = useState('Reader');
+  const [chosenRole, setChosenRole] = useState<string | null>(null);
   const [password, setPassword] = useState('');
-  const roleOptions = roles
-    .filter((item) => (kind === 'User' ? item.forUsers : item.forServices))
-    .map((item) => ({ value: item.name, label: item.name }));
+  const rolesOfKind = roles.filter((item) => (kind === 'User' ? item.forUsers : item.forServices));
+  const roleOptions = rolesOfKind.map((item) => ({ value: item.name, label: item.name }));
+  const role = rolesOfKind.some((item) => item.name === chosenRole) ? chosenRole : leastPrivilegedRole(rolesOfKind);
   const create = useMutation({
     mutationFn: () =>
       apiSend('POST', '/accounts', { name, kind, role, password: kind === 'User' ? password : undefined }),
@@ -33,7 +33,7 @@ export default function CreateAccount() {
 
   function chooseKind(next: 'User' | 'Service') {
     setKind(next);
-    setRole(next === 'User' ? 'Reader' : 'Assistant');
+    setChosenRole(null);
   }
 
   function submit(event: FormEvent) {
@@ -56,9 +56,9 @@ export default function CreateAccount() {
       />
       <SelectField
         label={translate('Role')}
-        onChange={(event) => setRole(event.target.value)}
+        onChange={(event) => setChosenRole(event.target.value)}
         options={roleOptions}
-        value={role}
+        value={role ?? ''}
       />
       {kind === 'User' && (
         <TextField

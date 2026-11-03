@@ -108,9 +108,11 @@ function AccountRow({ account, roles, isSelf, onError }: Readonly<RowProps>) {
               {translate('SetPassword')}
             </Button>
           )}
-          <Link aria-label={translate('KeysOf', { name: account.name })} to={`/accounts/${account.id}/keys`}>
-            {translate('Keys')}
-          </Link>
+          {account.kind === 'Service' && (
+            <Link aria-label={translate('KeysOf', { name: account.name })} to={`/accounts/${account.id}/keys`}>
+              {translate('Keys')}
+            </Link>
+          )}
           {!isSelf && (
             <Button
               disabled={remove.isPending}

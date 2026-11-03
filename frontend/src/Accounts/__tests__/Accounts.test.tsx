@@ -6,11 +6,29 @@ import Accounts from 'Accounts/Accounts';
 import type { AccountItem, AuditItem, RoleItem } from 'Accounts/accounts';
 
 const roles: RoleItem[] = [
-  { name: 'Admin', description: '', permissions: [], forUsers: true, forServices: false },
-  { name: 'Operator', description: '', permissions: [], forUsers: true, forServices: true },
-  { name: 'Reader', description: '', permissions: [], forUsers: true, forServices: true },
-  { name: 'Assistant', description: '', permissions: [], forUsers: false, forServices: true },
-  { name: 'Collector', description: '', permissions: [], forUsers: false, forServices: true },
+  {
+    name: 'Admin',
+    description: '',
+    permissions: ['system.read', 'accounts.manage', 'notes.read', 'search'],
+    forUsers: true,
+    forServices: false,
+  },
+  {
+    name: 'Operator',
+    description: '',
+    permissions: ['system.read', 'notes.read', 'search'],
+    forUsers: true,
+    forServices: true,
+  },
+  { name: 'Reader', description: '', permissions: ['notes.read', 'search'], forUsers: true, forServices: true },
+  {
+    name: 'Assistant',
+    description: '',
+    permissions: ['notes.read', 'notes.write', 'search'],
+    forUsers: false,
+    forServices: true,
+  },
+  { name: 'Collector', description: '', permissions: ['ingest.write'], forUsers: false, forServices: true },
 ];
 
 const accounts: AccountItem[] = [
@@ -215,7 +233,7 @@ describe('Accounts', () => {
     await waitFor(() => expect(within(form).getByLabelText('Name')).toHaveValue(''));
   });
 
-  it('creates a service account with no password and the role of an assistant to begin with', async () => {
+  it('creates a service account with no password and the role that can do the least to begin with', async () => {
     const fetchMock = server();
     renderWithProviders(<Accounts />);
     await screen.findByRole('rowheader', { name: 'alice' });
@@ -223,7 +241,7 @@ describe('Accounts', () => {
 
     await userEvent.selectOptions(within(form).getByLabelText('Kind'), 'Service');
     expect(within(form).queryByLabelText('Password')).not.toBeInTheDocument();
-    expect(within(form).getByLabelText('Role')).toHaveValue('Assistant');
+    expect(within(form).getByLabelText('Role')).toHaveValue('Collector');
     await userEvent.type(within(form).getByLabelText('Name'), 'chat-runner');
     await userEvent.click(within(form).getByRole('button', { name: 'Create' }));
 
@@ -234,7 +252,18 @@ describe('Accounts', () => {
       fetchMock,
       ([url, init]) => url === '/api/v1/accounts' && (init as RequestInit | undefined)?.method === 'POST',
     );
-    expect(sentBody(call)).toEqual({ name: 'chat-runner', kind: 'Service', role: 'Assistant' });
+    expect(sentBody(call)).toEqual({ name: 'chat-runner', kind: 'Service', role: 'Collector' });
+  });
+
+  it('offers keys to service accounts only, since a person signs in with a password', async () => {
+    server();
+    renderWithProviders(<Accounts />);
+    await screen.findByRole('rowheader', { name: 'alice' });
+
+    expect(
+      within(rowOf(screen.getByRole('rowheader', { name: 'laptop' }))).getByRole('link', { name: 'Keys of laptop' }),
+    ).toBeInTheDocument();
+    expect(within(rowOf(screen.getByRole('rowheader', { name: 'alice' }))).queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('shows why an account was refused', async () => {

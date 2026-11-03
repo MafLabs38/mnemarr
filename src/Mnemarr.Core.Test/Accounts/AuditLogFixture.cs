@@ -31,16 +31,16 @@ public sealed class AuditLogFixture : IDisposable
     }
 
     [Fact]
-    public void should_keep_to_one_action_and_to_the_limit()
+    public void should_keep_to_one_action_and_to_the_limit_and_never_return_more_than_five_hundred()
     {
-        foreach (var i in Enumerable.Range(0, 5))
+        foreach (var i in Enumerable.Range(0, 520))
         {
             _subject.Append("root", i % 2 == 0 ? "even" : "odd", i.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
-        _subject.Recent(10, "even").Should().HaveCount(3);
+        _subject.Recent(1000, "even").Should().HaveCount(260);
         _subject.Recent(2).Should().HaveCount(2);
-        _subject.Recent(0).Should().HaveCount(1);
+        _subject.Recent(1000).Should().HaveCount(500);
     }
 
     [Fact]
@@ -51,5 +51,17 @@ public sealed class AuditLogFixture : IDisposable
         var stored = _subject.Recent(1).Single();
         stored.Actor.Should().HaveLength(500);
         stored.Detail.Should().HaveLength(500);
+    }
+
+    [Fact]
+    public void should_forget_the_events_before_a_moment_and_say_how_many()
+    {
+        _subject.Append("root", "old", "x");
+        _clock.Advance(TimeSpan.FromDays(100));
+        _subject.Append("root", "recent", "y");
+
+        _subject.Prune(_clock.GetUtcNow().AddDays(-90)).Should().Be(1);
+
+        _subject.Recent(10).Select(e => e.Action).Should().Equal("recent");
     }
 }

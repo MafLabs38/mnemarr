@@ -26,6 +26,12 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
 
     public string DataFolder { get; }
 
+    /// <summary>The cookie of the test hosts is not <c>Secure</c> (they speak plain HTTP) unless a test asks for the default.</summary>
+    protected virtual CookieSecurityMode CookieSecurity => CookieSecurityMode.SameAsRequest;
+
+    /// <summary>Whether the host starts with a first administrator. A test of an empty Mnemarr turns it off.</summary>
+    protected virtual bool HasAdministrator => true;
+
     /// <summary>The administrator every test host starts with, created from the settings like the first run of a real one.</summary>
     public const string AdminName = "admin";
 
@@ -47,9 +53,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
             services.PostConfigure<MnemarrOptions>(options => options.DataFolder = DataFolder);
             services.PostConfigure<AuthOptions>(options =>
             {
-                options.AdminUser = AdminName;
-                options.AdminPasswordFile = _passwordFile;
-                options.CookieSecurity = "SameAsRequest"; // the tests speak plain HTTP
+                options.AdminUser = HasAdministrator ? AdminName : null;
+                options.AdminPasswordFile = HasAdministrator ? _passwordFile : null;
+                options.CookieSecurity = CookieSecurity;
             });
             ConfigureServices(services);
         });
@@ -133,4 +139,26 @@ public sealed class FailingStatusFactory : MnemarrFactoryBase
     {
         public Mnemarr.Core.SystemInfo.SystemStatus GetStatus() => throw new InvalidOperationException("The status could not be read.");
     }
+}
+
+/// <summary>An application that keeps the default of the cookie, which is <c>Secure</c>.</summary>
+public sealed class SecureCookieFactory : MnemarrFactoryBase
+{
+    public SecureCookieFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override CookieSecurityMode CookieSecurity => CookieSecurityMode.Always;
+}
+
+/// <summary>An application that starts without a first administrator: nobody can sign in.</summary>
+public sealed class NoAdministratorFactory : MnemarrFactoryBase
+{
+    public NoAdministratorFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override bool HasAdministrator => false;
 }

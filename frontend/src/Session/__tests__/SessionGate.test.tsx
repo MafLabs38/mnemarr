@@ -14,6 +14,11 @@ function Inside() {
 
 function renderGate() {
   const client = createQueryClient();
+  // The production client asks once more, a second later, after a failure; the tests do not wait for it.
+  client.setDefaultOptions({
+    ...client.getDefaultOptions(),
+    queries: { ...client.getDefaultOptions().queries, retry: false },
+  });
   render(
     <QueryClientProvider client={client}>
       <SessionGate>
@@ -48,10 +53,7 @@ describe('SessionGate', () => {
 
     renderGate();
 
-    // The query client asks once more after a failure, a second later.
-    expect(await screen.findByRole('alert', {}, { timeout: 4000 })).toHaveTextContent(
-      'Could not check who is signed in.',
-    );
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not check who is signed in.');
     expect(screen.queryByRole('heading', { name: 'Sign in to Mnemarr' })).not.toBeInTheDocument();
   });
 
@@ -62,6 +64,35 @@ describe('SessionGate', () => {
 
     await client
       .fetchQuery({ queryKey: ['api', '/anything'], queryFn: () => Promise.reject(new ApiError(401)) })
+      .catch(() => undefined);
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to Mnemarr' })).toBeInTheDocument();
+    expect(client.getQueryData(sessionKey)).toBeNull();
+  });
+
+  it('forgets what the session had read when a call is answered 401, so that the next person sees none of it', async () => {
+    stubApi(() => ({ body: adminSession }));
+    const client = renderGate();
+    await screen.findByText('inside as admin');
+    client.setQueryData(['api', '/accounts'], [{ name: 'secret-name' }]);
+
+    await client
+      .fetchQuery({ queryKey: ['api', '/anything'], queryFn: () => Promise.reject(new ApiError(401)) })
+      .catch(() => undefined);
+
+    await screen.findByRole('heading', { name: 'Sign in to Mnemarr' });
+    expect(client.getQueryData(['api', '/accounts'])).toBeUndefined();
+  });
+
+  it('goes back to the sign-in page when a write is answered 401 as well', async () => {
+    stubApi(() => ({ body: adminSession }));
+    const client = renderGate();
+    await screen.findByText('inside as admin');
+
+    await client
+      .getMutationCache()
+      .build(client, { mutationFn: () => Promise.reject(new ApiError(401)) })
+      .execute(undefined)
       .catch(() => undefined);
 
     expect(await screen.findByRole('heading', { name: 'Sign in to Mnemarr' })).toBeInTheDocument();

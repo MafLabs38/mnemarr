@@ -1,7 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
 import { ApiError } from 'Helpers/Api/apiGet';
-import { sessionKey } from 'Session/session';
+import { endSession } from 'Session/session';
 
 /** Answers that will not change by asking again. */
 const FINAL_STATUSES = new Set([401, 403, 404]);
@@ -15,10 +15,10 @@ export function shouldRetry(failureCount: number, error: Error): boolean {
 }
 
 export function createQueryClient() {
-  // Any call that is answered 401 (an expired session, a disabled account) means nobody is signed in any more: the gate shows the sign-in page.
+  // Any call that is answered 401 (an expired session, a disabled account) means nobody is signed in any more: the gate shows the sign-in page, and what was read is forgotten.
   const signOutOnUnauthorized = (error: Error) => {
     if (error instanceof ApiError && error.status === 401) {
-      client.setQueryData(sessionKey, null);
+      endSession(client);
     }
   };
   const client: QueryClient = new QueryClient({

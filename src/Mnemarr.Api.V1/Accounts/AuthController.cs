@@ -17,10 +17,12 @@ public sealed class AuthController : ControllerBase
     public const string CookieScheme = "Mnemarr.Cookie";
 
     private readonly AccountService _accounts;
+    private readonly SessionService _sessions;
 
-    public AuthController(AccountService accounts)
+    public AuthController(AccountService accounts, SessionService sessions)
     {
         _accounts = accounts;
+        _sessions = sessions;
     }
 
     /// <summary>Signs a user in with a name and a password and starts a session. The answer is the same for a wrong name and a wrong password.</summary>
@@ -31,14 +33,15 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SessionResource>> Login(LoginRequest request)
     {
-        var account = _accounts.SignIn(request.Name ?? string.Empty, request.Password ?? string.Empty);
+        var account = _accounts.SignIn(request.Name, request.Password);
         if (account is null)
         {
             return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
         }
 
         var principal = new AccessPrincipal(account, account.Permissions, null, null);
-        var identity = new ClaimsIdentity([new Claim(MnemarrClaims.Account, account.Id.ToString())], CookieScheme);
+        var identity = new ClaimsIdentity(
+            [new Claim(MnemarrClaims.Account, account.Id.ToString()), new Claim(MnemarrClaims.Session, _sessions.Start(account.Id))], CookieScheme);
         await HttpContext.SignInAsync(CookieScheme, new ClaimsPrincipal(identity));
         return Session(principal);
     }
@@ -48,6 +51,11 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Logout()
     {
+        if (User.FindFirstValue(MnemarrClaims.Session) is { } session)
+        {
+            _sessions.End(session);
+        }
+
         await HttpContext.SignOutAsync(CookieScheme);
         return NoContent();
     }
@@ -69,12 +77,13 @@ public sealed class AuthController : ControllerBase
     {
         var name = User.Identity?.Name ?? string.Empty;
         var id = User.AccountId() ?? Guid.Empty;
-        if (_accounts.SignIn(name, request.CurrentPassword ?? string.Empty) is null)
+        if (!_accounts.VerifyPassword(id, request.CurrentPassword))
         {
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The current password is wrong.");
         }
 
-        _accounts.SetPassword(id, request.NewPassword ?? string.Empty, name);
+        // The other sessions of this person end; this one goes on.
+        _accounts.SetPassword(id, request.NewPassword, name, keepSession: User.FindFirstValue(MnemarrClaims.Session));
         return NoContent();
     }
 

@@ -1,3 +1,5 @@
+import { type QueryClient, useQuery } from '@tanstack/react-query';
+
 import { ApiError, apiGet } from 'Helpers/Api/apiGet';
 
 /** Who is signed in and what they may do. The interface shows or hides by `permissions`; the server decides on its own. */
@@ -27,4 +29,20 @@ export async function fetchSession(signal?: AbortSignal): Promise<Session | null
     }
     throw error;
   }
+}
+
+/** Asks who is signed in once; the answer changes only by signing in or out, or when a call is answered 401. */
+export function useSessionQuery() {
+  return useQuery({ queryKey: sessionKey, queryFn: ({ signal }) => fetchSession(signal), staleTime: Infinity });
+}
+
+/** Forgets everything that was read for the previous session: whoever signs in next, on this tab, must not see it. */
+export function forgetSessionData(client: QueryClient) {
+  client.removeQueries({ predicate: (query) => query.queryKey[1] !== sessionKey[1] });
+}
+
+/** Nobody is signed in any more. Nobody first, so that the gate leaves the pages; then what they had read goes. */
+export function endSession(client: QueryClient) {
+  client.setQueryData(sessionKey, null);
+  forgetSessionData(client);
 }

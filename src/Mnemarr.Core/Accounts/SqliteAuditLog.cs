@@ -28,6 +28,15 @@ public sealed class SqliteAuditLog : IAuditLog
         command.ExecuteNonQuery();
     }
 
+    public int Prune(DateTimeOffset before)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM audit_events WHERE at < $before";
+        command.Parameters.AddWithValue("$before", before.ToString("O", CultureInfo.InvariantCulture));
+        return command.ExecuteNonQuery();
+    }
+
     public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null)
     {
         using var connection = _database.Open();

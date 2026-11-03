@@ -3,12 +3,13 @@ using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Api.V1.Security;
 
-/// <summary>The claims of a signed-in principal, and how to read them back as an <see cref="AccessPrincipal"/>.</summary>
+/// <summary>The claims of a signed-in principal.</summary>
 public static class MnemarrClaims
 {
     public const string Account = "mnemarr:account";
     public const string Key = "mnemarr:key";
     public const string Kind = "mnemarr:kind";
+    public const string Session = "mnemarr:session";
     public const string Source = "mnemarr:source";
     public const string Permission = "permission";
 
@@ -37,16 +38,4 @@ public static class MnemarrClaims
 
     public static Guid? AccountId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(Account), out var id) ? id : null;
-
-    /// <summary>Whether the request came with a key that is limited to sources: only those may be touched.</summary>
-    public static IReadOnlyList<Guid>? LimitedSources(this ClaimsPrincipal user)
-    {
-        if (user.FindFirst(Key) is null)
-        {
-            return null;
-        }
-
-        var sources = user.FindAll(Source).Select(claim => Guid.Parse(claim.Value)).ToList();
-        return sources.Count == 0 ? null : sources;
-    }
 }

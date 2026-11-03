@@ -1,20 +1,16 @@
-import { useQuery } from '@tanstack/react-query';
-
 import Alert from 'Components/Alert/Alert';
 import LoadingIndicator from 'Components/LoadingIndicator';
-import { apiGet } from 'Helpers/Api/apiGet';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
-import type { AuditItem } from './accounts';
+import { useAudit } from './accounts';
 import styles from './Accounts.module.css';
+
+const AUDIT_LIMIT = 20;
 
 /** The last things that were done to accounts and keys, and the sign-ins: who, when, to what. */
 export default function Activity() {
-  const { data, isPending, isError } = useQuery({
-    queryKey: ['api', '/audit'],
-    queryFn: ({ signal }) => apiGet<AuditItem[]>('/audit?limit=20', signal),
-  });
+  const { data, isPending, isError } = useAudit(AUDIT_LIMIT);
 
   if (isPending) {
     return <LoadingIndicator />;

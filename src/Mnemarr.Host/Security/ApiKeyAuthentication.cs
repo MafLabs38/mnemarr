@@ -23,8 +23,15 @@ public static class ApiKeyHeader
             return header;
         }
 
+        // The scheme name is case-insensitive (RFC 7235); the key itself is not.
         var authorization = request.Headers.Authorization.ToString();
-        return authorization.StartsWith(Bearer + ApiKeyService.SecretPrefix, StringComparison.Ordinal) ? authorization[Bearer.Length..] : null;
+        if (!authorization.StartsWith(Bearer, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var token = authorization[Bearer.Length..];
+        return token.StartsWith(ApiKeyService.SecretPrefix, StringComparison.Ordinal) ? token : null;
     }
 }
 

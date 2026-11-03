@@ -38,33 +38,24 @@ public sealed class AccountsController : ControllerBase
     [ProducesResponseType<AccountResource>(StatusCodes.Status201Created)]
     public ActionResult<AccountResource> CreateAccount(CreateAccountRequest request)
     {
-        if (!Enum.TryParse<AccountKind>(request.Kind, ignoreCase: false, out var kind))
+        if (!Enum.TryParse<AccountKind>(request.Kind, ignoreCase: false, out var kind) || !Enum.IsDefined(kind))
         {
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The kind of an account is User or Service.");
         }
 
-        var account = _accounts.Create(request.Name ?? string.Empty, kind, request.Role ?? string.Empty, request.Password, Actor);
+        var account = _accounts.Create(request.Name, kind, request.Role, request.Password, Actor);
         return CreatedAtAction(nameof(GetAccount), new { id = account.Id }, AccountResource.From(account));
     }
 
     [HttpPut("accounts/{id:guid}")]
-    public ActionResult<AccountResource> UpdateAccount(Guid id, UpdateAccountRequest request)
-    {
-        var current = _store.Get(id);
-        if (current is null)
-        {
-            return NotFound();
-        }
-
-        var account = request.Role == current.Role ? current : _accounts.ChangeRole(id, request.Role ?? string.Empty, Actor);
-        return AccountResource.From(request.Enabled == account.Enabled ? account : _accounts.SetEnabled(id, request.Enabled, Actor));
-    }
+    public ActionResult<AccountResource> UpdateAccount(Guid id, UpdateAccountRequest request) =>
+        AccountResource.From(_accounts.Update(id, request.Role, request.Enabled, Actor));
 
     [HttpPut("accounts/{id:guid}/password")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public IActionResult SetPassword(Guid id, SetPasswordRequest request)
     {
-        _accounts.SetPassword(id, request.Password ?? string.Empty, Actor);
+        _accounts.SetPassword(id, request.Password, Actor);
         return NoContent();
     }
 

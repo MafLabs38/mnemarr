@@ -52,6 +52,10 @@ const renderKeys = () =>
   );
 
 describe('AccountKeys', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
   it('lists the keys of the account with their state, last use and expiry, and never a secret', async () => {
     server([
       key({ id: 'k1', name: 'active', lastUsedAt: '2026-11-03T10:00:00Z' }),
@@ -108,7 +112,28 @@ describe('AccountKeys', () => {
     expect(screen.queryByText('mnm_the-whole-secret')).not.toBeInTheDocument();
   });
 
-  it('sends the day a key expires, as the start of that day in UTC', async () => {
+  it('tells the person to copy by hand when the page cannot reach the clipboard', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('not allowed')) },
+      configurable: true,
+    });
+    server([], (method, path) =>
+      method === 'POST' && path === '/accounts/s3/keys'
+        ? { status: 201, body: { key: key({}), secret: 'mnm_the-whole-secret' } }
+        : undefined,
+    );
+    renderKeys();
+    await userEvent.type(await screen.findByLabelText('Name of the key'), 'laptop');
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    const notice = await screen.findByRole('region', { name: 'New key' });
+
+    await userEvent.click(within(notice).getByRole('button', { name: 'Copy' }));
+
+    expect(await within(notice).findByRole('status')).toHaveTextContent('Click the key to select it');
+    expect(within(notice).getByRole('button', { name: 'Copy' })).toBeInTheDocument();
+  });
+
+  it('sends the day a key expires, as the end of that day in UTC', async () => {
     const fetchMock = server([], (method, path) =>
       method === 'POST' && path === '/accounts/s3/keys'
         ? { status: 201, body: { key: key({}), secret: 'mnm_x' } }
@@ -117,14 +142,14 @@ describe('AccountKeys', () => {
     renderKeys();
 
     await userEvent.type(await screen.findByLabelText('Name of the key'), 'temp');
-    await userEvent.type(screen.getByLabelText('Expires on'), '2027-01-31');
+    await userEvent.type(screen.getByLabelText('Expires at the end of (UTC)'), '2027-01-31');
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toBe(true),
     );
     const call = findCall(fetchMock, ([, init]) => (init as RequestInit | undefined)?.method === 'POST');
-    expect(sentBody(call)).toEqual({ name: 'temp', expiresAt: '2027-01-31T00:00:00.000Z' });
+    expect(sentBody(call)).toEqual({ name: 'temp', expiresAt: '2027-01-31T23:59:59.999Z' });
   });
 
   it('shows why a key was refused', async () => {

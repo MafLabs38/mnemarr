@@ -5,27 +5,35 @@ namespace Mnemarr.Core.Accounts;
 
 /// <summary>
 /// The accounts: creating them, signing in, changing a role, a password or the state of an account. It keeps the rules of ADR 0016:
-/// a role is one of the built-in ones and fits the kind of account, a password is long enough, repeated failures lock a name,
-/// the last enabled administrator stays, and what changes is audited.
+/// a role is one of the built-in ones and fits the kind of account, a password is long enough, repeated failures lock a name, the last
+/// enabled administrator stays, a new password ends the other sessions, and what changes is audited.
 /// </summary>
 public sealed partial class AccountService
 {
+    public const int MaxNameLength = 64;
     private readonly IAccountStore _accounts;
     private readonly IAuditLog _audit;
     private readonly LoginThrottle _throttle;
+    private readonly SessionService _sessions;
+    private readonly AuditSampler _sampler;
+    private readonly IPasswordHasher<Account> _hasher;
     private readonly TimeProvider _clock;
-    private readonly PasswordHasher<Account> _hasher = new();
+    private readonly Lock _administrators = new();
     private readonly string _decoyHash;
 
-    public AccountService(IAccountStore accounts, IAuditLog audit, LoginThrottle throttle, TimeProvider clock)
+    public AccountService(
+        IAccountStore accounts, IAuditLog audit, LoginThrottle throttle, SessionService sessions, AuditSampler sampler, IPasswordHasher<Account> hasher, TimeProvider clock)
     {
         _accounts = accounts;
         _audit = audit;
         _throttle = throttle;
+        _sessions = sessions;
+        _sampler = sampler;
+        _hasher = hasher;
         _clock = clock;
 
         // Checked when the name is unknown, so that a wrong name and a wrong password take the same time.
-        _decoyHash = _hasher.HashPassword(new Account(Guid.Empty, "decoy", AccountKind.User, Roles.Reader, false, DateTimeOffset.UnixEpoch), Guid.NewGuid().ToString("N"));
+        _decoyHash = hasher.HashPassword(Placeholder("decoy"), Guid.NewGuid().ToString("N"));
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$")]
@@ -36,7 +44,7 @@ public sealed partial class AccountService
         name = name.Trim();
         if (!NamePattern().IsMatch(name))
         {
-            throw Invalid("A name is 2 to 64 letters, digits, dots, dashes or underscores, and starts with a letter or a digit.");
+            throw Invalid($"A name is 2 to {MaxNameLength} letters, digits, dots, dashes or underscores, and starts with a letter or a digit.");
         }
 
         CheckRole(role, kind);
@@ -56,23 +64,39 @@ public sealed partial class AccountService
         return account;
     }
 
-    /// <summary>The user who signed in, or null. A locked name is refused without checking the password, and without extending the lock.</summary>
+    /// <summary>
+    /// The user who signed in, or null. A name or a password that cannot be one is refused before anything is counted, hashed or audited.
+    /// An attempt is counted before its password is checked; a locked name is refused without checking the password.
+    /// </summary>
     public Account? SignIn(string name, string password)
     {
         name = name.Trim();
-        if (_throttle.IsLocked(name))
+        if (name.Length is 0 or > MaxNameLength || password.Length > PasswordPolicy.MaxLength)
         {
-            _audit.Append(name, "login.locked", name);
+            return null;
+        }
+
+        if (!_throttle.TryReserve(name))
+        {
+            if (_sampler.Allow($"login.locked:{name.ToUpperInvariant()}"))
+            {
+                _audit.Append(name, "login.locked", name);
+            }
+
             throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
         }
 
         var credentials = _accounts.GetCredentials(name);
-        var hash = credentials is { Account.Kind: AccountKind.User, PasswordHash: not null } ? credentials.PasswordHash : _decoyHash;
-        var result = _hasher.VerifyHashedPassword(credentials?.Account ?? Placeholder(name), hash, password);
-        if (credentials is null || !ReferenceEquals(hash, credentials.PasswordHash) || result == PasswordVerificationResult.Failed || !credentials.Account.Enabled)
+        var known = credentials is { Account.Kind: AccountKind.User, PasswordHash: not null };
+        var result = _hasher.VerifyHashedPassword(credentials?.Account ?? Placeholder(name), known ? credentials!.PasswordHash! : _decoyHash, password);
+        if (!known || result == PasswordVerificationResult.Failed || !credentials!.Account.Enabled)
         {
-            _throttle.Failed(name);
-            _audit.Append(name, "login.failed", name);
+            // Only a name that exists is audited: an unknown name is anybody's guess, and anybody can send a million.
+            if (credentials is not null)
+            {
+                _audit.Append(name, "login.failed", name);
+            }
+
             return null;
         }
 
@@ -86,26 +110,50 @@ public sealed partial class AccountService
         return credentials.Account;
     }
 
-    public Account ChangeRole(Guid id, string role, string actor)
+    /// <summary>Whether a person's password is the one they give, for a change of their own password. It neither signs in nor counts toward a lockout.</summary>
+    public bool VerifyPassword(Guid id, string password)
     {
         var account = Existing(id);
-        CheckRole(role, account.Kind);
-        KeepOneAdmin(account, stillAdmin: role == Roles.Admin && account.Enabled);
-        _accounts.Update(id, role, account.Enabled);
-        _audit.Append(actor, "account.role-changed", account.Name, $"{account.Role} to {role}");
-        return account with { Role = role };
+        var credentials = _accounts.GetCredentials(account.Name);
+        if (credentials?.PasswordHash is null || password.Length > PasswordPolicy.MaxLength
+            || _hasher.VerifyHashedPassword(account, credentials.PasswordHash, password) == PasswordVerificationResult.Failed)
+        {
+            _audit.Append(account.Name, "password.verify-failed", account.Name);
+            return false;
+        }
+
+        return true;
     }
 
-    public Account SetEnabled(Guid id, bool enabled, string actor)
+    /// <summary>Changes the role and the state of an account in one step: both are checked first, and nothing is written when one is refused.</summary>
+    public Account Update(Guid id, string role, bool enabled, string actor)
     {
-        var account = Existing(id);
-        KeepOneAdmin(account, stillAdmin: account.Role == Roles.Admin && enabled);
-        _accounts.Update(id, account.Role, enabled);
-        _audit.Append(actor, enabled ? "account.enabled" : "account.disabled", account.Name);
-        return account with { Enabled = enabled };
+        lock (_administrators)
+        {
+            var account = Existing(id);
+            CheckRole(role, account.Kind);
+            KeepOneAdmin(account, stillAdmin: enabled && role == Roles.Admin);
+            _accounts.Update(id, role, enabled);
+            if (role != account.Role)
+            {
+                _audit.Append(actor, "account.role-changed", account.Name, $"{account.Role} to {role}");
+            }
+
+            if (enabled != account.Enabled)
+            {
+                _audit.Append(actor, enabled ? "account.enabled" : "account.disabled", account.Name);
+            }
+
+            return account with { Role = role, Enabled = enabled };
+        }
     }
 
-    public void SetPassword(Guid id, string password, string actor)
+    public Account ChangeRole(Guid id, string role, string actor) => Update(id, role, (Existing(id)).Enabled, actor);
+
+    public Account SetEnabled(Guid id, bool enabled, string actor) => Update(id, Existing(id).Role, enabled, actor);
+
+    /// <summary>Sets a password and ends the sessions of the account, except the one given (the person who changes their own keeps theirs).</summary>
+    public void SetPassword(Guid id, string password, string actor, string? keepSession = null)
     {
         var account = Existing(id);
         if (account.Kind != AccountKind.User)
@@ -114,22 +162,49 @@ public sealed partial class AccountService
         }
 
         _accounts.SetPasswordHash(id, _hasher.HashPassword(account, CheckedPassword(password, account.Name)));
+        _sessions.EndAll(id, keepSession);
         _throttle.Succeeded(account.Name);
         _audit.Append(actor, "account.password-changed", account.Name);
     }
 
+    /// <summary>
+    /// Break-glass, for the day nobody can sign in: sets the password of a user, enables the account, lifts its lockout and ends its sessions.
+    /// </summary>
+    public void Reset(string name, string password)
+    {
+        var credentials = _accounts.GetCredentials(name.Trim()) ?? throw new AccountRejectedException(AccountProblem.NotFound, $"There is no account named '{name}'.");
+        var account = credentials.Account;
+        if (account.Kind != AccountKind.User)
+        {
+            throw Invalid("Only a user has a password to reset.");
+        }
+
+        lock (_administrators)
+        {
+            _accounts.SetPasswordHash(account.Id, _hasher.HashPassword(account, CheckedPassword(password, account.Name)));
+            _accounts.Update(account.Id, account.Role, enabled: true);
+        }
+
+        _sessions.EndAll(account.Id);
+        _throttle.Succeeded(account.Name);
+        _audit.Append("system", "account.reset", account.Name);
+    }
+
     public void Delete(Guid id, string actor)
     {
-        var account = Existing(id);
-        KeepOneAdmin(account, stillAdmin: false);
-        _accounts.Remove(id);
-        _audit.Append(actor, "account.deleted", account.Name);
+        lock (_administrators)
+        {
+            var account = Existing(id);
+            KeepOneAdmin(account, stillAdmin: false);
+            _accounts.Remove(id);
+            _audit.Append(actor, "account.deleted", account.Name);
+        }
     }
 
     private Account Existing(Guid id) =>
         _accounts.Get(id) ?? throw new AccountRejectedException(AccountProblem.NotFound, "There is no such account.");
 
-    /// <summary>Refuses a change that would leave no enabled administrator.</summary>
+    /// <summary>Refuses a change that would leave no enabled administrator. Called with the administrators lock held.</summary>
     private void KeepOneAdmin(Account account, bool stillAdmin)
     {
         var isAdminNow = account.Enabled && account.Role == Roles.Admin;
