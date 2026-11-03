@@ -1,4 +1,4 @@
-namespace Mnemarr.Core.Accounts;
+namespace Mnemarr.Core.Audit;
 
 /// <summary>
 /// Keeps what an anonymous caller can make the audit log write bounded. An event is audited at most once a minute per key (the name, the

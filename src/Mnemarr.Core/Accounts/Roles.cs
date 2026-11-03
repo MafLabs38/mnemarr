@@ -10,6 +10,7 @@ public static class Roles
     public const string Reader = "Reader";
     public const string Assistant = "Assistant";
     public const string Collector = "Collector";
+    public const string Monitor = "Monitor";
 
     public static IReadOnlyList<Role> All { get; } =
     [
@@ -23,6 +24,7 @@ public static class Roles
         new(Reader, "Reads notes and searches, nothing else.", Set(Permissions.NotesRead, Permissions.Search), ForUsers: true, ForServices: true),
         new(Assistant, "An assistant: reads and writes notes, searches.", Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search), ForUsers: false, ForServices: true),
         new(Collector, "A collector: sends conversations, nothing else.", Set(Permissions.IngestWrite), ForUsers: false, ForServices: true),
+        new(Monitor, "A companion that watches: reads the status of the system, nothing else.", Set(Permissions.SystemRead), ForUsers: false, ForServices: true),
     ];
 
     public static Role? Find(string name) => All.FirstOrDefault(role => string.Equals(role.Name, name, StringComparison.Ordinal));

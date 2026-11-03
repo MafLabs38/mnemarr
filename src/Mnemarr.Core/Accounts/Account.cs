@@ -17,6 +17,9 @@ public sealed record Account(Guid Id, string Name, AccountKind Kind, string Role
     private static readonly IReadOnlySet<string> NoPermissions = new HashSet<string>(StringComparer.Ordinal);
 }
 
+/// <summary>A user who has signed in, and the id of the session that was started for them.</summary>
+public sealed record SignedIn(Account Account, string SessionId);
+
 /// <summary>An account with its password hash, for signing in. Never leaves the accounts code.</summary>
 public sealed record AccountCredentials(Account Account, string? PasswordHash);
 
@@ -56,11 +59,15 @@ public enum AccountProblem
 /// <summary>An account operation that cannot be done, with the reason to give to the person who tried.</summary>
 public sealed class AccountRejectedException : Exception
 {
-    public AccountRejectedException(AccountProblem problem, string message)
+    public AccountRejectedException(AccountProblem problem, string message, TimeSpan? retryAfter = null)
         : base(message)
     {
         Problem = problem;
+        RetryAfter = retryAfter;
     }
 
     public AccountProblem Problem { get; }
+
+    /// <summary>When the caller may try again, for a refusal that is only for a while.</summary>
+    public TimeSpan? RetryAfter { get; }
 }

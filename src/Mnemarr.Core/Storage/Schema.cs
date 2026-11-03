@@ -57,6 +57,12 @@ public static class Schema
     {
         Execute(connection, "PRAGMA journal_mode = WAL;");
         var version = Convert.ToInt32(Scalar(connection, "PRAGMA user_version;"), System.Globalization.CultureInfo.InvariantCulture);
+        if (version > Steps.Length)
+        {
+            // A rollback to an older image: its code would read and write a schema it does not know.
+            throw new UnsupportedSchemaException(version, Steps.Length);
+        }
+
         for (var step = version; step < Steps.Length; step++)
         {
             using var transaction = connection.BeginTransaction();

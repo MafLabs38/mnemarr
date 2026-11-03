@@ -19,8 +19,13 @@ Mnemarr reads its settings from `appsettings.json`, then environment variables (
 | `MNEMARR__AUTH__COOKIESECURITY` | `Always` | `Always`: the session cookie is `Secure` (HTTPS only). `SameAsRequest`: for a sandbox in plain HTTP; behind TLS, leave the default. |
 | `MNEMARR__AUTH__SESSIONHOURS` | `12` | How long a session lasts without being used (1 to 720). |
 | `MNEMARR__AUTH__SESSIONMAXDAYS` | `30` | How long a session lasts at most, used or not (1 to 365). |
-| `MNEMARR__AUTH__AUDITRETENTIONDAYS` | `90` | How long the audit log keeps its events (1 to 3650). |
 
-`SESSIONHOURS`, `SESSIONMAXDAYS` and `AUDITRETENTIONDAYS` will move to the settings of the interface when it exists; the first administrator, the password files and the cookie mode stay in the environment.
+`SESSIONHOURS`, `SESSIONMAXDAYS` and the audit retention will move to the settings of the interface when it exists; the first administrator, the password files and the cookie mode stay in the environment.
+
+## Audit log (`Audit`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__AUDIT__RETENTIONDAYS` | `90` | How long the audit log keeps its events (1 to 3650). The log is shared by every vertical, so it has its own section. |
 
 See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each protects.

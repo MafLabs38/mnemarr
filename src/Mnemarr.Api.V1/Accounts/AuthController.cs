@@ -35,13 +35,7 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SessionResource>> Login(LoginRequest request)
     {
-        var account = await _accounts.SignInAsync(request.Name, request.Password, HttpContext.RequestAborted);
-        if (account is null)
-        {
-            return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
-        }
-
-        if (_accounts.StartSession(account.Id) is not { } session)
+        if (await _accounts.SignInAsync(request.Name, request.Password, HttpContext.RequestAborted) is not var (account, session))
         {
             return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
         }

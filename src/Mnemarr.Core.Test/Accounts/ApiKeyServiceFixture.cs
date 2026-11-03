@@ -1,4 +1,5 @@
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Test.Accounts;
 

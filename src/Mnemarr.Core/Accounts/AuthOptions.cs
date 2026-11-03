@@ -17,7 +17,6 @@ public sealed class AuthOptions
 {
     public const int MaxSessionHours = 720;
     public const int MaxSessionDays = 365;
-    public const int MaxRetentionDays = 3650;
 
     /// <summary>The first administrator, created at start when there is no account yet.</summary>
     public string? AdminUser { get; set; }
@@ -40,9 +39,6 @@ public sealed class AuthOptions
 
     /// <summary>How long a session lasts at most, used or not, in days.</summary>
     public int SessionMaxDays { get; set; } = 30;
-
-    /// <summary>How long the audit log keeps its events, in days.</summary>
-    public int AuditRetentionDays { get; set; } = 90;
 }
 
 public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
@@ -57,11 +53,6 @@ public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
         if (options.SessionMaxDays is < 1 or > AuthOptions.MaxSessionDays)
         {
             return ValidateOptionsResult.Fail($"Auth:SessionMaxDays (MNEMARR__AUTH__SESSIONMAXDAYS) must be between 1 and {AuthOptions.MaxSessionDays}.");
-        }
-
-        if (options.AuditRetentionDays is < 1 or > AuthOptions.MaxRetentionDays)
-        {
-            return ValidateOptionsResult.Fail($"Auth:AuditRetentionDays (MNEMARR__AUTH__AUDITRETENTIONDAYS) must be between 1 and {AuthOptions.MaxRetentionDays}.");
         }
 
         if (string.IsNullOrWhiteSpace(options.AdminUser) != string.IsNullOrWhiteSpace(options.AdminPasswordFile))

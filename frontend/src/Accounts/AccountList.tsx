@@ -90,40 +90,42 @@ function AccountRow({ account, roles, isSelf, onResult }: Readonly<RowProps>) {
             {translate(account.enabled ? 'Enabled' : 'Disabled')}
           </StatusLabel>
         </td>
-        <td className={styles.actions}>
-          <Button
-            disabled={update.isPending}
-            onClick={() => update.mutate({ role: account.role, enabled: !account.enabled }, outcome)}
-            variant="quiet"
-          >
-            {translate(account.enabled ? 'Disable' : 'Enable')}
-          </Button>
-          {account.kind === 'User' && (
-            <Button onClick={() => setEditingPassword(true)} variant="quiet">
-              {translate('SetPassword')}
+        <td>
+          <div className={styles.actions}>
+            <Button
+              disabled={update.isPending}
+              onClick={() => update.mutate({ role: account.role, enabled: !account.enabled }, outcome)}
+              variant="quiet"
+            >
+              {translate(account.enabled ? 'Disable' : 'Enable')}
             </Button>
-          )}
-          {account.kind === 'Service' && (
-            <Link aria-label={translate('KeysOf', { name: account.name })} to={`/accounts/${account.id}/keys`}>
-              {translate('Keys')}
-            </Link>
-          )}
-          {!isSelf && (
-            <>
-              <Button
-                disabled={remove.isPending}
-                onClick={() => (confirmingDelete ? remove.mutate(undefined, outcome) : setConfirmingDelete(true))}
-                variant="danger"
-              >
-                {confirmingDelete ? translate('ConfirmDelete', { name: account.name }) : translate('Delete')}
+            {account.kind === 'User' && (
+              <Button onClick={() => setEditingPassword(true)} variant="quiet">
+                {translate('SetPassword')}
               </Button>
-              {confirmingDelete && (
-                <Button onClick={() => setConfirmingDelete(false)} variant="quiet">
-                  {translate('Cancel')}
+            )}
+            {account.kind === 'Service' && (
+              <Link aria-label={translate('KeysOf', { name: account.name })} to={`/accounts/${account.id}/keys`}>
+                {translate('Keys')}
+              </Link>
+            )}
+            {!isSelf && (
+              <>
+                <Button
+                  disabled={remove.isPending}
+                  onClick={() => (confirmingDelete ? remove.mutate(undefined, outcome) : setConfirmingDelete(true))}
+                  variant="danger"
+                >
+                  {confirmingDelete ? translate('ConfirmDelete', { name: account.name }) : translate('Delete')}
                 </Button>
-              )}
-            </>
-          )}
+                {confirmingDelete && (
+                  <Button onClick={() => setConfirmingDelete(false)} variant="quiet">
+                    {translate('Cancel')}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </td>
       </tr>
       {editingPassword && (
@@ -139,14 +141,14 @@ function AccountRow({ account, roles, isSelf, onResult }: Readonly<RowProps>) {
 
 export default function AccountList() {
   const { data: accounts, isPending, isError } = useAccounts();
-  const { data: roles } = useRoles();
+  const { data: roles, isPending: rolesPending, isError: rolesError } = useRoles();
   const session = useSession();
   const [error, setError] = useState<Error | null>(null);
 
-  if (isPending) {
+  if (isPending || rolesPending) {
     return <LoadingIndicator />;
   }
-  if (isError || !roles) {
+  if (isError || rolesError) {
     return <Alert>{translate('AccountsError')}</Alert>;
   }
 

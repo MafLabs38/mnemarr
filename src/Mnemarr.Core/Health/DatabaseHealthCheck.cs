@@ -45,6 +45,10 @@ public sealed class DatabaseHealthCheck : IHealthCheck
                 ? HealthCheckResult.Healthy()
                 : HealthCheckResult.Degraded("The break-glass password reset is still set: remove it, it resets the password at every start."));
         }
+        catch (UnsupportedSchemaException ex)
+        {
+            return Task.FromResult(HealthCheckResult.Unhealthy("The database was written by a newer version of Mnemarr.", ex));
+        }
         catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {
             return Task.FromResult(HealthCheckResult.Unhealthy("The database cannot be opened.", ex));

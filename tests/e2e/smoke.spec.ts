@@ -50,6 +50,19 @@ test.describe('smoke @smoke', () => {
     },
   );
 
+  test(
+    'the real server refuses a sign-in body that is larger than a name and a password can be',
+    { tag: '@browserless' },
+    async ({ request }) => {
+      const response = await request.post('/api/v1/auth/login', {
+        headers: { 'X-Mnemarr-Request': '1' },
+        data: { name: 'admin', password: 'p'.repeat(20_000) },
+      });
+
+      expect(response.status()).toBe(413);
+    },
+  );
+
   test('nothing of the API is open to somebody who is not signed in', { tag: '@browserless' }, async ({ request }) => {
     // The matrix of every endpoint is in the integration tests; here, only that the real image closes the doors it does not know.
     expect((await request.get('/api/v1/nothing-here')).status()).toBe(401);
@@ -128,9 +141,14 @@ test.describe('smoke @smoke', () => {
     const problems: string[] = [];
     page.on('console', (message) => {
       // A person who is not signed in is answered 401 by the session probe: the browser logs it. It is expected, and nothing else is.
-      const isSessionProbe =
-        message.location().url.endsWith('/api/v1/auth/session') && message.text().includes('status of 401');
+      const isSessionProbe = message.location().url.endsWith('/api/v1/auth/session');
       if (message.type() === 'error' && !isSessionProbe) problems.push(message.text());
+    });
+    // ... and the probe itself may only answer "signed in" or "nobody": any other answer is a real failure, which the filter above must not hide.
+    page.on('response', (response) => {
+      if (response.url().endsWith('/api/v1/auth/session') && ![200, 401].includes(response.status())) {
+        problems.push(`session probe answered ${response.status()}`);
+      }
     });
     page.on('pageerror', (error) => problems.push(error.message));
 

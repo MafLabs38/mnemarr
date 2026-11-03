@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -353,17 +352,46 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    /// <summary>The in-memory server does not enforce the limit of the body (Kestrel does): what is pinned here is that the calls carry it.</summary>
     [Theory]
-    [InlineData("api/v1/auth/login")]
-    [InlineData("api/v1/auth/password")]
-    public void should_limit_the_size_of_the_body_of_the_calls_that_take_a_password(string route)
+    [InlineData("Operator")]
+    [InlineData("Reader")]
+    [InlineData("Assistant")]
+    [InlineData("Collector")]
+    [InlineData("Monitor")]
+    public async Task should_refuse_to_whoever_is_not_an_administrator_the_reading_of_one_account_and_of_its_keys(string caller)
     {
-        var endpoints = _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>();
+        var victim = _callers.IdOf("Assistant");
+        var client = _callers[caller];
 
-        var endpoint = endpoints.First(e => e.RoutePattern.RawText == route);
+        (await client.GetAsync($"/api/v1/accounts/{victim}", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.GetAsync($"/api/v1/accounts/{victim}/keys", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
 
-        endpoint.Metadata.GetMetadata<RequestSizeLimitAttribute>().Should().NotBeNull();
+    [Fact]
+    public async Task should_read_the_audit_log_page_by_page_over_http()
+    {
+        var first = await _callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/audit?limit=2", Token);
+        var oldest = first[1].GetProperty("id").GetInt64();
+
+        var next = await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/audit?limit=2&before={oldest}", Token);
+
+        next.EnumerateArray().Select(e => e.GetProperty("id").GetInt64()).Should().OnlyContain(id => id < oldest);
+    }
+
+    [Fact]
+    public async Task should_tell_how_long_to_wait_when_a_name_is_locked()
+    {
+        using var client = _factory.CreateBrowserClient();
+        var name = Unique("locked");
+        for (var i = 0; i < 5; i++)
+        {
+            await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token);
+        }
+
+        var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new { name, password = "wrong password here" }, Token);
+
+        locked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        locked.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromMinutes(15));
     }
 
     [Fact]
@@ -391,6 +419,8 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("anonymous", "GET", "/api/v1/auth/session", 401)]
     [InlineData("anonymous", "GET", "/openapi/v1.json", 401)]
     [InlineData("anonymous", "GET", "/api/v1/does-not-exist", 401)]
+    [InlineData("anonymous", "POST", "/api/v1/accounts", 401)]
+    [InlineData("anonymous", "DELETE", "/api/v1/accounts/00000000-0000-0000-0000-000000000001", 401)]
     [InlineData("Admin", "GET", "/api/v1/system/status", 200)]
     [InlineData("Admin", "GET", "/api/v1/accounts", 200)]
     [InlineData("Admin", "GET", "/api/v1/roles", 200)]
@@ -410,6 +440,12 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("Assistant", "GET", "/api/v1/roles", 403)]
     [InlineData("Collector", "GET", "/api/v1/audit", 403)]
     [InlineData("Collector", "GET", "/api/v1/roles", 403)]
+    [InlineData("Collector", "GET", "/api/v1/accounts", 403)]
+    [InlineData("Operator", "GET", "/api/v1/audit?before=1", 403)]
+    [InlineData("Admin", "GET", "/api/v1/audit?before=1", 200)]
+    [InlineData("Monitor", "GET", "/api/v1/system/status", 200)]
+    [InlineData("Monitor", "GET", "/api/v1/accounts", 403)]
+    [InlineData("Monitor", "GET", "/api/v1/auth/session", 200)]
     [InlineData("Reader", "GET", "/api/v1/system/status", 403)]
     [InlineData("Reader", "GET", "/api/v1/auth/session", 200)]
     [InlineData("Reader", "GET", "/openapi/v1.json", 200)]

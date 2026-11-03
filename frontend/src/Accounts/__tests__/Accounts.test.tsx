@@ -164,6 +164,35 @@ describe('Accounts', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The last enabled administrator cannot be removed.');
   });
 
+  it('shows the loading state, and not an error, while the roles are still being read', async () => {
+    const rolesAnswer: { promise?: Promise<unknown>; resolve?: (value: unknown) => void } = {};
+    rolesAnswer.promise = new Promise((resolve) => {
+      rolesAnswer.resolve = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url === '/api/v1/roles'
+          ? rolesAnswer.promise
+          : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(accounts) }),
+      ),
+    );
+    renderWithProviders(<Accounts />);
+
+    expect(await screen.findByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    rolesAnswer.resolve?.({ ok: true, status: 200, json: () => Promise.resolve(roles) });
+
+    expect(await screen.findByRole('rowheader', { name: 'alice' })).toBeInTheDocument();
+  });
+
+  it('says so when the roles cannot be read', async () => {
+    server((method, path) => (method === 'GET' && path === '/roles' ? { status: 503 } : undefined));
+    renderWithProviders(<Accounts />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not read the accounts.');
+  });
+
   it('disarms a deletion that was started and then given up', async () => {
     const fetchMock = server();
     renderWithProviders(<Accounts />);

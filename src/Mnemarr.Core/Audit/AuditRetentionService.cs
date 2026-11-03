@@ -3,18 +3,18 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Storage;
 
-namespace Mnemarr.Core.Accounts;
+namespace Mnemarr.Core.Audit;
 
-/// <summary>Forgets the events of the audit log older than <see cref="AuthOptions.AuditRetentionDays"/>: at start, then every six hours.</summary>
+/// <summary>Forgets the events of the audit log older than <see cref="AuditOptions.RetentionDays"/>: at start, then every six hours.</summary>
 public sealed partial class AuditRetentionService : BackgroundService
 {
     private static readonly TimeSpan Every = TimeSpan.FromHours(6);
     private readonly IAuditLog _audit;
-    private readonly IOptions<AuthOptions> _options;
+    private readonly IOptions<AuditOptions> _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<AuditRetentionService> _logger;
 
-    public AuditRetentionService(IAuditLog audit, IOptions<AuthOptions> options, TimeProvider clock, ILogger<AuditRetentionService> logger)
+    public AuditRetentionService(IAuditLog audit, IOptions<AuditOptions> options, TimeProvider clock, ILogger<AuditRetentionService> logger)
     {
         _audit = audit;
         _options = options;
@@ -39,13 +39,13 @@ public sealed partial class AuditRetentionService : BackgroundService
     {
         try
         {
-            var removed = _audit.Prune(_clock.GetUtcNow().AddDays(-_options.Value.AuditRetentionDays));
+            var removed = _audit.Prune(_clock.GetUtcNow().AddDays(-_options.Value.RetentionDays));
             if (removed > 0)
             {
                 LogPruned(removed);
             }
         }
-        catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogFailed(ex);
         }

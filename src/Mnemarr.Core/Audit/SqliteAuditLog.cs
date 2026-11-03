@@ -1,7 +1,7 @@
 using System.Globalization;
 using Mnemarr.Core.Storage;
 
-namespace Mnemarr.Core.Accounts;
+namespace Mnemarr.Core.Audit;
 
 public sealed class SqliteAuditLog : IAuditLog
 {
@@ -20,7 +20,7 @@ public sealed class SqliteAuditLog : IAuditLog
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "INSERT INTO audit_events (at, actor, action, target, detail) VALUES ($at, $actor, $action, $target, $detail)";
-        command.Parameters.AddWithValue("$at", _clock.GetUtcNow().ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$at", StorageText.Format(_clock.GetUtcNow()));
         command.Parameters.AddWithValue("$actor", Cut(actor));
         command.Parameters.AddWithValue("$action", Cut(action));
         command.Parameters.AddWithValue("$target", Cut(target));
@@ -33,7 +33,7 @@ public sealed class SqliteAuditLog : IAuditLog
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM audit_events WHERE at < $before";
-        command.Parameters.AddWithValue("$before", before.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$before", StorageText.Format(before));
         return command.ExecuteNonQuery();
     }
 

@@ -15,7 +15,8 @@ public sealed class LoginThrottle
 {
     public const int MaxFailures = 5;
     public const int MaxTracked = 10_000;
-    private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
+    /// <summary>How long failures count, and so how long a lockout lasts at most.</summary>
+    public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan NoRoomMemory = TimeSpan.FromSeconds(1);
     private readonly TimeProvider _clock;
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);

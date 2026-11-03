@@ -23,6 +23,11 @@ public sealed class AccountRejectedFilter : IExceptionFilter
             AccountProblem.Locked => StatusCodes.Status429TooManyRequests,
             _ => throw new InvalidOperationException($"No status is chosen for {rejected.Problem}."),
         };
+        if (rejected.RetryAfter is { } retryAfter)
+        {
+            context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         context.Result = new ObjectResult(new ProblemDetails { Status = status, Title = rejected.Message }) { StatusCode = status, ContentTypes = { "application/problem+json" } };
         context.ExceptionHandled = true;
     }

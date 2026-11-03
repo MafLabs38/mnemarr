@@ -19,8 +19,8 @@ public sealed class SqliteSessionStore : ISessionStore
         command.CommandText = "INSERT INTO sessions (id, account_id, created_at, expires_at) VALUES ($id, $account, $created, $expires)";
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$account", accountId.ToString());
-        command.Parameters.AddWithValue("$created", Text(createdAt));
-        command.Parameters.AddWithValue("$expires", Text(expiresAt));
+        command.Parameters.AddWithValue("$created", StorageText.Format(createdAt));
+        command.Parameters.AddWithValue("$expires", StorageText.Format(expiresAt));
         command.ExecuteNonQuery();
     }
 
@@ -63,9 +63,8 @@ public sealed class SqliteSessionStore : ISessionStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM sessions WHERE expires_at <= $now";
-        command.Parameters.AddWithValue("$now", Text(now));
+        command.Parameters.AddWithValue("$now", StorageText.Format(now));
         command.ExecuteNonQuery();
     }
 
-    private static string Text(DateTimeOffset at) => at.ToString("O", CultureInfo.InvariantCulture);
 }

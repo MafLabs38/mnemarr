@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Accounts;
 
@@ -108,7 +109,7 @@ public sealed class ApiKeyService
         return new AccessPrincipal(account, account.Permissions, key.Sources, key.Id);
     }
 
-    private static string Hash(string secret) => Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(secret)));
+    private static string Hash(string secret) => SecretHash.Of(secret);
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

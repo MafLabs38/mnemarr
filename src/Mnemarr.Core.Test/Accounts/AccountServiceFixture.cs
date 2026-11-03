@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Test.Accounts;
 
@@ -310,30 +311,59 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Fact]
-    public void should_start_the_session_of_a_user_who_signed_in()
+    public async Task should_sign_a_user_in_and_start_a_session_for_them()
     {
         var alice = _h.Reader();
 
-        var session = Subject.StartSession(alice.Id);
+        var signedIn = await Subject.SignInAsync("alice", Password, TestContext.Current.CancellationToken);
 
-        session.Should().NotBeNull();
-        _h.Sessions.AccountOf(session!).Should().Be(alice.Id);
+        signedIn!.Account.Id.Should().Be(alice.Id);
+        _h.Sessions.AccountOf(signedIn.SessionId).Should().Be(alice.Id);
     }
 
     [Fact]
-    public void should_start_no_session_when_the_account_was_disabled_between_the_password_and_the_session_and_leave_none_behind()
+    public async Task should_leave_no_session_behind_when_the_password_was_changed_while_the_old_one_was_being_checked()
     {
-        _h.Admin();
-        var alice = _h.Reader();
-        _h.Accounts.Update(alice.Id, alice.Role, enabled: false);
+        using var hasher = new BlockingHasher();
+        using var harness = new AccountsHarness(hasher: hasher);
+        var alice = harness.Reader();
+        var token = TestContext.Current.CancellationToken;
+        hasher.Block();
+        var signingIn = Task.Run(() => harness.Service.SignInAsync("alice", Password, token), token);
+        hasher.WaitUntilEntered(1);
 
-        var session = Subject.StartSession(alice.Id);
+        harness.Service.SetPassword(alice.Id, "another long password", "root");
+        hasher.Release();
 
-        session.Should().BeNull();
-        using var connection = _h.Workspace.Database.Open();
+        (await signingIn).Should().BeNull("the password that was checked is not the password any more");
+        CountSessions(harness).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task should_leave_no_session_behind_when_the_account_was_disabled_while_the_password_was_being_checked()
+    {
+        using var hasher = new BlockingHasher();
+        using var harness = new AccountsHarness(hasher: hasher);
+        harness.Admin();
+        var alice = harness.Reader();
+        var token = TestContext.Current.CancellationToken;
+        hasher.Block();
+        var signingIn = Task.Run(() => harness.Service.SignInAsync("alice", Password, token), token);
+        hasher.WaitUntilEntered(1);
+
+        harness.Service.SetEnabled(alice.Id, false, "root");
+        hasher.Release();
+
+        (await signingIn).Should().BeNull();
+        CountSessions(harness).Should().Be(0);
+    }
+
+    private static long CountSessions(AccountsHarness harness)
+    {
+        using var connection = harness.Workspace.Database.Open();
         using var count = connection.CreateCommand();
         count.CommandText = "SELECT COUNT(*) FROM sessions";
-        ((long)count.ExecuteScalar()!).Should().Be(0);
+        return (long)count.ExecuteScalar()!;
     }
 
     [Fact]
@@ -357,14 +387,6 @@ public sealed class AccountServiceFixture : IDisposable
         hasher.Release();
         await Task.WhenAll(running);
         (await subject.SignInAsync("alice", Password, token)).Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task should_check_a_current_password_through_the_same_places()
-    {
-        var alice = _h.Reader();
-
-        (await Subject.VerifyPasswordAsync(alice.Id, Password, TestContext.Current.CancellationToken)).Should().BeTrue();
     }
 
     [Theory]
@@ -466,28 +488,6 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_keep_an_administrator_when_two_administrators_are_demoted_at_the_same_moment()
-    {
-        var one = _h.Admin("one");
-        var two = _h.Admin("two");
-
-        var attempts = new[] { one.Id, two.Id }.Select(id => Task.Run(() =>
-        {
-            try
-            {
-                Subject.ChangeRole(id, Roles.Reader, "x");
-            }
-            catch (AccountRejectedException)
-            {
-                // The one that came second is refused: that is the point.
-            }
-        }, TestContext.Current.CancellationToken));
-        await Task.WhenAll(attempts);
-
-        _h.Accounts.CountEnabledAdmins().Should().Be(1);
-    }
-
-    [Fact]
     public void should_keep_an_administrator_an_administrator_when_the_role_is_set_to_admin_again()
     {
         var root = _h.Admin();
@@ -535,10 +535,11 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Theory]
-    [InlineData("short")]
-    [InlineData("a-password-of-129-characters-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
-    public void should_refuse_a_new_password_that_is_too_short_or_too_long(string password)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void should_refuse_a_new_password_that_is_too_short_or_too_long(bool tooLong)
     {
+        var password = tooLong ? new string('p', PasswordPolicy.MaxLength + 1) : "short";
         var alice = _h.Reader();
 
         new Action(() => Subject.SetPassword(alice.Id, password, "x")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);

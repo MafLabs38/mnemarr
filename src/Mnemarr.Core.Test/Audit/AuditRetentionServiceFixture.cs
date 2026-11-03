@@ -1,15 +1,19 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
+using Mnemarr.Core.Test.Accounts;
 
-namespace Mnemarr.Core.Test.Accounts;
+namespace Mnemarr.Core.Test.Audit;
 
 public sealed class AuditRetentionServiceFixture : IDisposable
 {
-    private readonly AccountsHarness _h = new(new AuthOptions { AuditRetentionDays = 90 });
+    private readonly AccountsHarness _h = new();
+    private readonly IOptions<AuditOptions> _options = Options.Create(new AuditOptions { RetentionDays = 90 });
 
     public void Dispose() => _h.Dispose();
 
-    private AuditRetentionService Subject(AccountsHarness harness) => new(harness.Audit, harness.Options, harness.Clock, NullLogger<AuditRetentionService>.Instance);
+    private AuditRetentionService Subject(AccountsHarness harness) => new(harness.Audit, _options, harness.Clock, NullLogger<AuditRetentionService>.Instance);
 
     [Fact]
     public void should_forget_what_is_older_than_the_retention_and_keep_the_rest()
@@ -28,7 +32,7 @@ public sealed class AuditRetentionServiceFixture : IDisposable
     {
         var pruned = new SemaphoreSlim(0);
         var audit = new CountingAuditLog(pruned);
-        var service = new AuditRetentionService(audit, _h.Options, _h.Clock, NullLogger<AuditRetentionService>.Instance);
+        var service = new AuditRetentionService(audit, _options, _h.Clock, NullLogger<AuditRetentionService>.Instance);
         var token = TestContext.Current.CancellationToken;
 
         await service.StartAsync(token);
@@ -45,7 +49,7 @@ public sealed class AuditRetentionServiceFixture : IDisposable
         var gone = new SqliteAuditLog(
             new Mnemarr.Core.Storage.Database(Microsoft.Extensions.Options.Options.Create(new Mnemarr.Core.Configuration.MnemarrOptions { DataFolder = Path.Combine(_h.Workspace.Root, "gone") })),
             _h.Clock);
-        var service = new AuditRetentionService(gone, _h.Options, _h.Clock, NullLogger<AuditRetentionService>.Instance);
+        var service = new AuditRetentionService(gone, _options, _h.Clock, NullLogger<AuditRetentionService>.Instance);
 
         var prune = () => service.Prune();
 

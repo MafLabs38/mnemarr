@@ -1,7 +1,8 @@
 using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
 
-namespace Mnemarr.Core.Test.Accounts;
+namespace Mnemarr.Core.Test.Audit;
 
 public sealed class AuditSamplerFixture
 {

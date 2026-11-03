@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Test.Accounts;
 

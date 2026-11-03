@@ -9,7 +9,7 @@ public sealed class Database : IDatabase
     private readonly string _folder;
     private readonly string _connectionString;
     private readonly Lock _gate = new();
-    private bool _ready;
+    private volatile bool _ready;
 
     public Database(IOptions<MnemarrOptions> options)
     {
@@ -24,6 +24,8 @@ public sealed class Database : IDatabase
 
     public SqliteConnection Open()
     {
+        // SQLite would create the file with the umask of the process and the WAL files after it: it is made for its owner first.
+        CreateRestrictedFile();
         // SQLite would create the folder itself: a volume that was never mounted would then look like a fresh, empty one.
         if (!Directory.Exists(_folder))
         {
@@ -46,6 +48,11 @@ public sealed class Database : IDatabase
 
     private void EnsureSchema(SqliteConnection connection)
     {
+        if (_ready)
+        {
+            return;
+        }
+
         lock (_gate)
         {
             if (_ready)
@@ -54,18 +61,35 @@ public sealed class Database : IDatabase
             }
 
             Schema.Apply(connection);
-            RestrictFile();
             _ready = true;
         }
     }
 
-    /// <summary>The database holds the hashes of passwords, sessions and keys: only the owner reads it (SQLite gives the WAL files the same mode).</summary>
-    private void RestrictFile()
+    /// <summary>
+    /// The database holds the hashes of passwords, sessions and keys: only the owner reads it, from its creation (SQLite gives the WAL files
+    /// the mode of the main file) and also when it was restored from a backup with another mode.
+    /// </summary>
+    private void CreateRestrictedFile()
     {
-        var file = Path.Combine(_folder, "mnemarr.db");
-        if (!OperatingSystem.IsWindows() && File.Exists(file))
+        if (_ready || OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            return;
         }
+
+        var file = Path.Combine(_folder, "mnemarr.db");
+        const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        if (!File.Exists(file))
+        {
+            try
+            {
+                using var created = new FileStream(file, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = OwnerOnly });
+            }
+            catch (IOException) when (File.Exists(file))
+            {
+                // Another connection created it first: it was made by this method too.
+            }
+        }
+
+        File.SetUnixFileMode(file, OwnerOnly);
     }
 }

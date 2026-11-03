@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Api.V1.Accounts;
 

@@ -37,14 +37,6 @@ public sealed class AuthOptionsValidatorFixture
     }
 
     [Theory]
-    [InlineData(0)]
-    [InlineData(AuthOptions.MaxRetentionDays + 1)]
-    public void should_refuse_a_retention_out_of_range(int days)
-    {
-        Failure(new AuthOptions { AuditRetentionDays = days }).Should().Contain("AUDITRETENTIONDAYS");
-    }
-
-    [Theory]
     [InlineData("root", null)]
     [InlineData(null, "/file")]
     public void should_refuse_a_first_administrator_that_is_only_half_set(string? user, string? file)

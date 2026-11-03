@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Options;
 
 namespace Mnemarr.Core.Accounts;
@@ -56,6 +55,6 @@ public sealed class SessionService
 
     public void EndAll(Guid accountId, string? except = null) => _store.RemoveAll(accountId, except is null ? null : Hash(except));
 
-    /// <summary>What the store holds for an id: a session id is 256 random bits, so a plain hash cannot be guessed back.</summary>
-    internal static string Hash(string sessionId) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sessionId)));
+    /// <summary>What the store holds for an id.</summary>
+    internal static string Hash(string sessionId) => SecretHash.Of(sessionId);
 }

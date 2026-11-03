@@ -53,7 +53,7 @@ public sealed class Callers
             _clients[role] = await _factory.SignedInClientAsync(name, Password);
         }
 
-        foreach (var role in new[] { "Assistant", "Collector" })
+        foreach (var role in new[] { "Assistant", "Collector", "Monitor" })
         {
             var id = await CreateAsync(Admin, new { name = Unique(role.ToLowerInvariant()), kind = "Service", role });
             _ids[role] = id;

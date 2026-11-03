@@ -1,4 +1,4 @@
-namespace Mnemarr.Core.Accounts;
+namespace Mnemarr.Core.Audit;
 
 /// <summary>Something that was done, by whom, to what. Never holds a secret.</summary>
 public sealed record AuditEvent(long Id, DateTimeOffset At, string Actor, string Action, string Target, string Detail);

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Api.V1.Security;
 

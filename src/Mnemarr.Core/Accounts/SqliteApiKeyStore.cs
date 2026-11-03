@@ -28,8 +28,8 @@ public sealed class SqliteApiKeyStore : IApiKeyStore
         command.Parameters.AddWithValue("$prefix", key.Prefix);
         command.Parameters.AddWithValue("$hash", secretHash);
         command.Parameters.AddWithValue("$sources", key.Sources is null ? DBNull.Value : JsonSerializer.Serialize(key.Sources));
-        command.Parameters.AddWithValue("$at", Text(key.CreatedAt));
-        command.Parameters.AddWithValue("$expires", key.ExpiresAt is { } expires ? Text(expires) : DBNull.Value);
+        command.Parameters.AddWithValue("$at", StorageText.Format(key.CreatedAt));
+        command.Parameters.AddWithValue("$expires", key.ExpiresAt is { } expires ? StorageText.Format(expires) : DBNull.Value);
         command.ExecuteNonQuery();
     }
 
@@ -66,7 +66,7 @@ public sealed class SqliteApiKeyStore : IApiKeyStore
         command.CommandText = "UPDATE api_keys SET revoked_at = $at WHERE id = $id AND account_id = $account AND revoked_at IS NULL";
         command.Parameters.AddWithValue(IdParameter, keyId.ToString());
         command.Parameters.AddWithValue(AccountParameter, accountId.ToString());
-        command.Parameters.AddWithValue("$at", Text(at));
+        command.Parameters.AddWithValue("$at", StorageText.Format(at));
         return command.ExecuteNonQuery() > 0;
     }
 
@@ -76,11 +76,10 @@ public sealed class SqliteApiKeyStore : IApiKeyStore
         using var command = connection.CreateCommand();
         command.CommandText = "UPDATE api_keys SET last_used_at = $at WHERE id = $id";
         command.Parameters.AddWithValue(IdParameter, keyId.ToString());
-        command.Parameters.AddWithValue("$at", Text(at));
+        command.Parameters.AddWithValue("$at", StorageText.Format(at));
         command.ExecuteNonQuery();
     }
 
-    private static string Text(DateTimeOffset at) => at.ToString("O", CultureInfo.InvariantCulture);
 
     private static DateTimeOffset? Date(SqliteDataReader reader, int column) =>
         reader.IsDBNull(column) ? null : DateTimeOffset.Parse(reader.GetString(column), CultureInfo.InvariantCulture);

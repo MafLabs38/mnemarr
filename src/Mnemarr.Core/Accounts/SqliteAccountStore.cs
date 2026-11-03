@@ -6,7 +6,8 @@ namespace Mnemarr.Core.Accounts;
 
 public sealed class SqliteAccountStore : IAccountStore
 {
-    private const int ConstraintViolation = 19;
+    /// <summary>SQLITE_CONSTRAINT_UNIQUE: the extended code, so that another constraint is not reported as a name already taken.</summary>
+    private const int UniqueViolation = 2067;
     private const string Columns = "id, name, kind, role, enabled, created_at";
     private const string IdParameter = "$id";
     private readonly IDatabase _database;
@@ -27,12 +28,12 @@ public sealed class SqliteAccountStore : IAccountStore
         command.Parameters.AddWithValue("$role", account.Role);
         command.Parameters.AddWithValue("$enabled", account.Enabled ? 1 : 0);
         command.Parameters.AddWithValue("$hash", passwordHash ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("$at", account.CreatedAt.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$at", StorageText.Format(account.CreatedAt));
         try
         {
             command.ExecuteNonQuery();
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode == ConstraintViolation)
+        catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == UniqueViolation)
         {
             throw new AccountRejectedException(AccountProblem.Conflict, $"An account named '{account.Name}' already exists.");
         }
@@ -94,9 +95,10 @@ public sealed class SqliteAccountStore : IAccountStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE accounts SET password_hash = $hash WHERE id = $id AND kind = 'User'";
+        command.CommandText = "UPDATE accounts SET password_hash = $hash WHERE id = $id AND kind = $user";
         command.Parameters.AddWithValue(IdParameter, id.ToString());
         command.Parameters.AddWithValue("$hash", passwordHash);
+        command.Parameters.AddWithValue("$user", nameof(AccountKind.User));
         return command.ExecuteNonQuery() > 0;
     }
 
@@ -111,7 +113,14 @@ public sealed class SqliteAccountStore : IAccountStore
 
     public int Count() => Scalar("SELECT COUNT(*) FROM accounts");
 
-    public int CountEnabledAdmins() => Scalar("SELECT COUNT(*) FROM accounts WHERE enabled = 1 AND role = 'Admin'");
+    public int CountEnabledAdmins()
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM accounts WHERE enabled = 1 AND role = $admin";
+        command.Parameters.AddWithValue("$admin", Roles.Admin);
+        return Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
 
     private int Scalar(string sql)
     {

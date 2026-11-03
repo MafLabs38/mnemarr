@@ -67,12 +67,54 @@ public sealed class DatabaseFixture : IDisposable
 
     [Fact]
     [SupportedOSPlatform("linux")]
-    public void should_let_only_its_owner_read_the_database_because_it_holds_the_hashes_of_passwords_sessions_and_keys()
+    public void should_let_only_its_owner_read_the_database_and_its_log_files_from_the_first_start()
     {
         Assert.SkipWhen(!OperatingSystem.IsLinux(), "Needs a Unix permission model.");
-        Scalar("PRAGMA user_version");
+        var folder = Path.Combine(_workspace.Root, "fresh");
+        Directory.CreateDirectory(folder);
+        var database = new Database(Options.Create(new MnemarrOptions { DataFolder = folder }));
 
-        File.GetUnixFileMode(Path.Combine(_workspace.DataFolder, "mnemarr.db")).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        using var connection = database.Open();
+
+        var owner = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        File.GetUnixFileMode(Path.Combine(folder, "mnemarr.db")).Should().Be(owner);
+        // The connection is still open: the log files exist, and were made with the mode of the database.
+        foreach (var log in new[] { "mnemarr.db-wal", "mnemarr.db-shm" }.Select(name => Path.Combine(folder, name)).Where(File.Exists))
+        {
+            File.GetUnixFileMode(log).Should().Be(owner);
+        }
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void should_restrict_a_database_that_was_restored_with_another_mode()
+    {
+        Assert.SkipWhen(!OperatingSystem.IsLinux(), "Needs a Unix permission model.");
+        var folder = Path.Combine(_workspace.Root, "restored");
+        Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "mnemarr.db");
+        File.WriteAllBytes(file, []);
+        File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        using var connection = new Database(Options.Create(new MnemarrOptions { DataFolder = folder })).Open();
+
+        File.GetUnixFileMode(file).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    [Fact]
+    public void should_refuse_a_database_written_by_a_newer_version_rather_than_read_a_schema_it_does_not_know()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var newer = connection.CreateCommand();
+            newer.CommandText = $"PRAGMA user_version = {Schema.Version + 1}";
+            newer.ExecuteNonQuery();
+        }
+
+        var open = () => new Database(_workspace.Options).Open();
+
+        open.Should().Throw<UnsupportedSchemaException>().Which.Message.Should().Contain($"{Schema.Version + 1}");
+        StorageErrors.IsUnavailable(new UnsupportedSchemaException(2, 1)).Should().BeTrue();
     }
 
     [Theory]

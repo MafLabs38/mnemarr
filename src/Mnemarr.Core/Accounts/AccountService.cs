@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
+using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Accounts;
 
@@ -14,6 +15,7 @@ public sealed partial class AccountService
 
     /// <summary>How many passwords are hashed at the same time: one per core, two to eight. The scarce resource of the host, and what a flood of sign-ins would exhaust.</summary>
     public static readonly int MaxConcurrentHashes = Math.Clamp(Environment.ProcessorCount, 2, 8);
+    private static readonly TimeSpan BusyRetryAfter = TimeSpan.FromSeconds(5);
     private readonly SemaphoreSlim _hashSlots = new(MaxConcurrentHashes, MaxConcurrentHashes);
     private readonly IAccountStore _accounts;
     private readonly IAuditLog _audit;
@@ -75,7 +77,10 @@ public sealed partial class AccountService
     /// The user who signed in, or null. A name or a password that cannot be one is refused before anything is counted, hashed or audited.
     /// An attempt is counted before its password is checked; a locked name is refused without checking the password.
     /// </summary>
-    internal Account? SignIn(string name, string password)
+    internal Account? SignIn(string name, string password) => Check(name, password)?.Account;
+
+    /// <summary>The account that signed in and the password hash it was checked against, which is the one the sessions are bound to.</summary>
+    private (Account Account, string Hash)? Check(string name, string password)
     {
         name = name.Trim();
         // Only what a name can be is counted: a counter is keyed by the name, and the other budgets cannot be reached with a forged one.
@@ -92,7 +97,7 @@ public sealed partial class AccountService
                 _audit.Append(name, "login.locked", name);
             }
 
-            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
+            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", LoginThrottle.Window);
         }
 
         // An unknown name, a service account and an account without a password are checked against the decoy: the answer takes the same time.
@@ -112,18 +117,35 @@ public sealed partial class AccountService
         _throttle.Succeeded(name);
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
-            _accounts.SetPasswordHash(account.Id, _hasher.HashPassword(account, password));
+            hash = _hasher.HashPassword(account, password);
+            _accounts.SetPasswordHash(account.Id, hash);
         }
 
         _audit.Append(account.Name, "login.succeeded", account.Name);
-        return account;
+        return (account, hash);
     }
 
-    /// <summary>Signs a user in, once a place to hash the password is free: waiting for one holds no thread, and not for long.</summary>
-    public async Task<Account?> SignInAsync(string name, string password, CancellationToken cancellationToken)
+    /// <summary>
+    /// Signs a user in, once a place to hash the password is free (waiting for one holds no thread, and not for long), and starts their
+    /// session. The session is checked after it is started: an account disabled, or a password changed, while the password was being
+    /// hashed ends it again, so that a new password or a disabling that ended the sessions a moment earlier cannot leave this one behind.
+    /// </summary>
+    public async Task<SignedIn?> SignInAsync(string name, string password, CancellationToken cancellationToken)
     {
         using var slot = await TakeHashSlotAsync(cancellationToken);
-        return SignIn(name, password);
+        if (Check(name, password) is not var (account, hash))
+        {
+            return null;
+        }
+
+        var session = _sessions.Start(account.Id);
+        if (_accounts.GetCredentials(account.Name) is { Account.Enabled: true, PasswordHash: { } current } && current == hash)
+        {
+            return new SignedIn(account, session);
+        }
+
+        _sessions.End(session);
+        return null;
     }
 
     /// <summary>
@@ -136,7 +158,7 @@ public sealed partial class AccountService
         var budget = PasswordCheckKey(account.Name);
         if (!_throttle.TryReserve(budget, isAccount: true))
         {
-            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
+            throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", LoginThrottle.Window);
         }
 
         var credentials = _accounts.GetCredentials(account.Name);
@@ -168,7 +190,7 @@ public sealed partial class AccountService
     {
         if (!await _hashSlots.WaitAsync(HashWait, cancellationToken))
         {
-            throw new AccountRejectedException(AccountProblem.Locked, "The server is busy checking passwords. Try again in a moment.");
+            throw new AccountRejectedException(AccountProblem.Locked, "The server is busy checking passwords. Try again in a moment.", BusyRetryAfter);
         }
 
         return new SlotReleaser(_hashSlots);
@@ -188,22 +210,6 @@ public sealed partial class AccountService
 
     /// <summary>Ends a session: the person signed out.</summary>
     public void EndSession(string sessionId) => _sessions.End(sessionId);
-
-    /// <summary>
-    /// Starts the session of a user who has just signed in, and returns its id; null when the account was disabled in the meantime. The
-    /// check comes after the start, so that a disabling that ended the sessions a moment earlier cannot leave this one behind.
-    /// </summary>
-    public string? StartSession(Guid accountId)
-    {
-        var session = _sessions.Start(accountId);
-        if (_accounts.Get(accountId) is { Enabled: true })
-        {
-            return session;
-        }
-
-        _sessions.End(session);
-        return null;
-    }
 
     /// <summary>Changes the role and the state of an account in one step: both are checked first, and nothing is written when one is refused.</summary>
     public Account Update(Guid id, string role, bool enabled, string actor)
@@ -244,9 +250,11 @@ public sealed partial class AccountService
         }
 
         var hash = _hasher.HashPassword(account, CheckedPassword(password, account.Name));
-        // The sessions go first: if the process stopped between the two, a password that was meant to be changed stays, and nobody keeps a session.
+        // The sessions end before the password changes (if the process stopped between the two, nobody keeps a session) and after (a sign-in
+        // that checked the old password and started its session in between does not keep it).
         _sessions.EndAll(id, keepSession);
         _accounts.SetPasswordHash(id, hash);
+        _sessions.EndAll(id, keepSession);
         _throttle.Succeeded(account.Name);
         _throttle.Succeeded(PasswordCheckKey(account.Name));
         _audit.Append(actor, "account.password-changed", account.Name);
@@ -271,6 +279,7 @@ public sealed partial class AccountService
             _sessions.EndAll(account.Id);
             _accounts.SetPasswordHash(account.Id, hash);
             _accounts.Update(account.Id, account.Role, enabled: true);
+            _sessions.EndAll(account.Id);
         }
 
         _throttle.Succeeded(account.Name);
