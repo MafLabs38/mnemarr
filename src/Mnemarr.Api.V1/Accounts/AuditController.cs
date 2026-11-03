@@ -17,7 +17,8 @@ public sealed class AuditController : ControllerBase
         _audit = audit;
     }
 
+    /// <summary>The newest events first. <c>before</c> is the id of the oldest event already read: the page after it.</summary>
     [HttpGet]
-    public IReadOnlyList<AuditEventResource> GetAudit([FromQuery] int limit = 100, [FromQuery] string? action = null) =>
-        [.. _audit.Recent(limit, action).Select(AuditEventResource.From)];
+    public IReadOnlyList<AuditEventResource> GetAudit([FromQuery] int limit = 100, [FromQuery] string? action = null, [FromQuery] long? before = null) =>
+        [.. _audit.Recent(limit, action, before).Select(AuditEventResource.From)];
 }

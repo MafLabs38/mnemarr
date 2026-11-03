@@ -35,7 +35,7 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<SessionResource>> Login(LoginRequest request)
     {
-        var account = _accounts.SignIn(request.Name, request.Password);
+        var account = await _accounts.SignInAsync(request.Name, request.Password, HttpContext.RequestAborted);
         if (account is null)
         {
             return Problem(statusCode: StatusCodes.Status401Unauthorized, title: "The name or the password is wrong.");
@@ -81,11 +81,11 @@ public sealed class AuthController : ControllerBase
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
-    public IActionResult ChangeOwnPassword(ChangeOwnPasswordRequest request)
+    public async Task<IActionResult> ChangeOwnPassword(ChangeOwnPasswordRequest request)
     {
         var name = User.Identity?.Name ?? string.Empty;
         var id = User.AccountId() ?? Guid.Empty;
-        if (!_accounts.VerifyPassword(id, request.CurrentPassword))
+        if (!await _accounts.VerifyPasswordAsync(id, request.CurrentPassword, HttpContext.RequestAborted))
         {
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The current password is wrong.");
         }

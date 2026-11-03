@@ -54,7 +54,18 @@ public sealed class Database : IDatabase
             }
 
             Schema.Apply(connection);
+            RestrictFile();
             _ready = true;
+        }
+    }
+
+    /// <summary>The database holds the hashes of passwords, sessions and keys: only the owner reads it (SQLite gives the WAL files the same mode).</summary>
+    private void RestrictFile()
+    {
+        var file = Path.Combine(_folder, "mnemarr.db");
+        if (!OperatingSystem.IsWindows() && File.Exists(file))
+        {
+            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
     }
 }

@@ -12,8 +12,8 @@ public sealed partial class AccountService
 {
     public const int MaxNameLength = 64;
 
-    /// <summary>How many passwords are hashed at the same time: the scarce resource of a small host, and what a flood of sign-ins would exhaust.</summary>
-    public const int MaxConcurrentHashes = 4;
+    /// <summary>How many passwords are hashed at the same time: one per core, two to eight. The scarce resource of the host, and what a flood of sign-ins would exhaust.</summary>
+    public static readonly int MaxConcurrentHashes = Math.Clamp(Environment.ProcessorCount, 2, 8);
     private readonly SemaphoreSlim _hashSlots = new(MaxConcurrentHashes, MaxConcurrentHashes);
     private readonly IAccountStore _accounts;
     private readonly IAuditLog _audit;
@@ -75,17 +75,16 @@ public sealed partial class AccountService
     /// The user who signed in, or null. A name or a password that cannot be one is refused before anything is counted, hashed or audited.
     /// An attempt is counted before its password is checked; a locked name is refused without checking the password.
     /// </summary>
-    public Account? SignIn(string name, string password)
+    internal Account? SignIn(string name, string password)
     {
         name = name.Trim();
-        if (name.Length is 0 or > MaxNameLength || password.Length > PasswordPolicy.MaxLength)
+        // Only what a name can be is counted: a counter is keyed by the name, and the other budgets cannot be reached with a forged one.
+        if (!NamePattern().IsMatch(name) || password.Length > PasswordPolicy.MaxLength)
         {
             return null;
         }
 
         var credentials = _accounts.GetCredentials(name);
-        var known = credentials is { Account.Kind: AccountKind.User, PasswordHash: not null };
-        using var slot = TakeHashSlot();
         if (!_throttle.TryReserve(name, isAccount: credentials is not null))
         {
             if (_sampler.Allow("login.locked", name.ToUpperInvariant()))
@@ -96,8 +95,10 @@ public sealed partial class AccountService
             throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.");
         }
 
-        var result = _hasher.VerifyHashedPassword(credentials?.Account ?? Placeholder(name), known ? credentials!.PasswordHash! : _decoyHash, password);
-        if (!known || result == PasswordVerificationResult.Failed || !credentials!.Account.Enabled)
+        // An unknown name, a service account and an account without a password are checked against the decoy: the answer takes the same time.
+        var (account, hash) = credentials is { Account.Kind: AccountKind.User, PasswordHash: { } stored } ? (credentials.Account, stored) : (Placeholder(name), _decoyHash);
+        var result = _hasher.VerifyHashedPassword(account, hash, password);
+        if (credentials is not { Account: { Enabled: true, Kind: AccountKind.User } } || hash == _decoyHash || result == PasswordVerificationResult.Failed)
         {
             // Only a name that exists is audited: an unknown name is anybody's guess, and anybody can send a million.
             if (credentials is not null)
@@ -111,21 +112,27 @@ public sealed partial class AccountService
         _throttle.Succeeded(name);
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
-            _accounts.SetPasswordHash(credentials.Account.Id, _hasher.HashPassword(credentials.Account, password));
+            _accounts.SetPasswordHash(account.Id, _hasher.HashPassword(account, password));
         }
 
-        _audit.Append(credentials.Account.Name, "login.succeeded", credentials.Account.Name);
-        return credentials.Account;
+        _audit.Append(account.Name, "login.succeeded", account.Name);
+        return account;
+    }
+
+    /// <summary>Signs a user in, once a place to hash the password is free: waiting for one holds no thread, and not for long.</summary>
+    public async Task<Account?> SignInAsync(string name, string password, CancellationToken cancellationToken)
+    {
+        using var slot = await TakeHashSlotAsync(cancellationToken);
+        return SignIn(name, password);
     }
 
     /// <summary>
     /// Whether a person's password is the one they give, for a change of their own password. It does not sign in, but it counts like a
     /// sign-in: whoever holds a stolen session must not be able to guess the password at the speed of the hash.
     /// </summary>
-    public bool VerifyPassword(Guid id, string password)
+    internal bool VerifyPassword(Guid id, string password)
     {
         var account = Existing(id);
-        using var slot = TakeHashSlot();
         var budget = PasswordCheckKey(account.Name);
         if (!_throttle.TryReserve(budget, isAccount: true))
         {
@@ -144,13 +151,22 @@ public sealed partial class AccountService
         return true;
     }
 
-    /// <summary>The counter of the wrong current passwords of a person is their own: whoever guesses their name at the sign-in cannot stop them changing it.</summary>
+    public async Task<bool> VerifyPasswordAsync(Guid id, string password, CancellationToken cancellationToken)
+    {
+        using var slot = await TakeHashSlotAsync(cancellationToken);
+        return VerifyPassword(id, password);
+    }
+
+    /// <summary>
+    /// The counter of the wrong current passwords of a person is their own: whoever guesses their name at the sign-in cannot stop them
+    /// changing it. A name cannot hold the colon, and the sign-in refuses what a name cannot be, so the two kinds of key never meet.
+    /// </summary>
     internal static string PasswordCheckKey(string name) => $"password-check:{name}";
 
     /// <summary>A place to hash a password, or a refusal to come back later: the work waits for a few at a time, and not for long.</summary>
-    private SlotReleaser TakeHashSlot()
+    private async Task<SlotReleaser> TakeHashSlotAsync(CancellationToken cancellationToken)
     {
-        if (!_hashSlots.Wait(HashWait))
+        if (!await _hashSlots.WaitAsync(HashWait, cancellationToken))
         {
             throw new AccountRejectedException(AccountProblem.Locked, "The server is busy checking passwords. Try again in a moment.");
         }
@@ -227,8 +243,10 @@ public sealed partial class AccountService
             throw Invalid("A service account has no password: it has keys.");
         }
 
-        _accounts.SetPasswordHash(id, _hasher.HashPassword(account, CheckedPassword(password, account.Name)));
+        var hash = _hasher.HashPassword(account, CheckedPassword(password, account.Name));
+        // The sessions go first: if the process stopped between the two, a password that was meant to be changed stays, and nobody keeps a session.
         _sessions.EndAll(id, keepSession);
+        _accounts.SetPasswordHash(id, hash);
         _throttle.Succeeded(account.Name);
         _throttle.Succeeded(PasswordCheckKey(account.Name));
         _audit.Append(actor, "account.password-changed", account.Name);
@@ -246,13 +264,15 @@ public sealed partial class AccountService
             throw Invalid("Only a user has a password to reset.");
         }
 
+        var hash = _hasher.HashPassword(account, CheckedPassword(password, account.Name));
         lock (_administrators)
         {
-            _accounts.SetPasswordHash(account.Id, _hasher.HashPassword(account, CheckedPassword(password, account.Name)));
+            // The sessions go first: a reset is for the day a cookie may be stolen, and it must not leave one if it stops half way.
+            _sessions.EndAll(account.Id);
+            _accounts.SetPasswordHash(account.Id, hash);
             _accounts.Update(account.Id, account.Role, enabled: true);
         }
 
-        _sessions.EndAll(account.Id);
         _throttle.Succeeded(account.Name);
         _throttle.Succeeded(PasswordCheckKey(account.Name));
         _audit.Append("system", "account.reset", account.Name);

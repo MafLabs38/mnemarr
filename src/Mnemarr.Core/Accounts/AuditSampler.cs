@@ -8,6 +8,9 @@ namespace Mnemarr.Core.Accounts;
 public sealed class AuditSampler
 {
     public const int MaxPerMinute = 60;
+
+    /// <summary>The kinds of event are a short list of constants; the cap only keeps a future caller from growing the table with user data.</summary>
+    public const int MaxKinds = 32;
     private static readonly TimeSpan Minute = TimeSpan.FromMinutes(1);
     private readonly TimeProvider _clock;
     private readonly Dictionary<string, HashSet<string>> _seen = new(StringComparer.Ordinal);
@@ -33,6 +36,11 @@ public sealed class AuditSampler
 
             if (!_seen.TryGetValue(action, out var keys))
             {
+                if (_seen.Count >= MaxKinds)
+                {
+                    return false;
+                }
+
                 keys = new HashSet<string>(StringComparer.Ordinal);
                 _seen[action] = keys;
             }

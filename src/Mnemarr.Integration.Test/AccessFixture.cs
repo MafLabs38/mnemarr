@@ -135,18 +135,34 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [Fact]
     public async Task should_end_a_session_at_the_end_of_its_absolute_lifetime_however_much_it_is_used()
     {
-        await using var factory = new MnemarrFactory();
+        await using var factory = new ShortSessionFactory();
         using var client = await factory.SignedInClientAsync();
-        // Used every few hours, the cookie slides along; only the absolute lifetime of the session on the server can end it.
-        for (var hour = 0; hour < 29 * 24; hour += 8)
+        // Used every 8 hours, the cookie slides along (it lasts 12 hours when idle): only the lifetime of the session on the server can end it.
+        for (var i = 0; i < 2; i++)
         {
             factory.Clock.Advance(TimeSpan.FromHours(8));
             (await client.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        factory.Clock.Advance(TimeSpan.FromDays(2));
+        factory.Clock.Advance(TimeSpan.FromHours(9));
 
         (await client.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task should_refuse_a_key_once_it_has_expired()
+    {
+        await using var factory = new MnemarrFactory();
+        using var admin = await factory.SignedInClientAsync();
+        var id = await Callers.CreateAsync(admin, new { name = Unique("svc"), kind = "Service", role = "Reader" });
+        var created = await admin.PostAsJsonAsync($"/api/v1/accounts/{id}/keys", new { name = "short", expiresAt = factory.Clock.GetUtcNow().AddDays(1) }, Token);
+        var secret = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!;
+        using var service = factory.CreateKeyClient(secret);
+        (await service.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        factory.Clock.Advance(TimeSpan.FromDays(2));
+
+        (await service.GetAsync("/api/v1/auth/session", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -318,23 +334,23 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("{\"name\":\"a\"}")]
     [InlineData("{\"name\":\"a\",\"password\":null}")]
     [InlineData("not json")]
-    public async Task should_answer_a_malformed_sign_in_with_a_client_error_and_never_a_server_error(string body)
+    public async Task should_answer_a_malformed_sign_in_with_a_400_and_never_a_server_error(string body)
     {
         using var client = _factory.CreateBrowserClient();
 
         var response = await client.PostAsync("/api/v1/auth/login", new StringContent(body, System.Text.Encoding.UTF8, "application/json"), Token);
 
-        ((int)response.StatusCode).Should().BeInRange(400, 499);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     [Fact]
-    public async Task should_refuse_a_password_longer_than_any_password_can_be()
+    public async Task should_answer_a_password_longer_than_any_password_can_be_as_a_wrong_one_without_hashing_it()
     {
         using var client = _factory.CreateBrowserClient();
 
         var response = await client.PostAsJsonAsync("/api/v1/auth/login", new { name = "admin", password = new string('p', 100_000) }, Token);
 
-        ((int)response.StatusCode).Should().BeInRange(400, 499);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     /// <summary>The in-memory server does not enforce the limit of the body (Kestrel does): what is pinned here is that the calls carry it.</summary>
@@ -385,6 +401,15 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("Operator", "GET", "/api/v1/accounts", 403)]
     [InlineData("Operator", "GET", "/api/v1/audit", 403)]
     [InlineData("Operator", "GET", "/api/v1/roles", 403)]
+    [InlineData("Operator", "GET", "/api/v1/auth/session", 200)]
+    [InlineData("Operator", "GET", "/openapi/v1.json", 200)]
+    [InlineData("Reader", "GET", "/api/v1/accounts", 403)]
+    [InlineData("Reader", "GET", "/api/v1/audit", 403)]
+    [InlineData("Reader", "GET", "/api/v1/roles", 403)]
+    [InlineData("Assistant", "GET", "/api/v1/audit", 403)]
+    [InlineData("Assistant", "GET", "/api/v1/roles", 403)]
+    [InlineData("Collector", "GET", "/api/v1/audit", 403)]
+    [InlineData("Collector", "GET", "/api/v1/roles", 403)]
     [InlineData("Reader", "GET", "/api/v1/system/status", 403)]
     [InlineData("Reader", "GET", "/api/v1/auth/session", 200)]
     [InlineData("Reader", "GET", "/openapi/v1.json", 200)]

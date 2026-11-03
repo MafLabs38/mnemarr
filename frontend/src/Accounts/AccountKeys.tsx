@@ -41,7 +41,7 @@ function NewKey({ created, onDismiss }: Readonly<{ created: CreatedApiKey; onDis
     <section aria-label={translate('NewKey')} className={styles.newKey}>
       <p>{translate('NewKeyWarning', { name: created.key.name })}</p>
       <code className={styles.secret}>{created.secret}</code>
-      {copyFailed && <p role="status">{translate('CopyUnavailable')}</p>}
+      {copyFailed && <output>{translate('CopyUnavailable')}</output>}
       <div className={styles.inline}>
         <Button onClick={copy}>{translate(copied ? 'Copied' : 'Copy')}</Button>
         <Button onClick={onDismiss} variant="quiet">

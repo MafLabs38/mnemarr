@@ -64,4 +64,21 @@ public sealed class AuditLogFixture : IDisposable
 
         _subject.Recent(10).Select(e => e.Action).Should().Equal("recent");
     }
+
+    [Fact]
+    public void should_read_the_events_page_by_page_from_the_newest_to_the_oldest()
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            _subject.Append("root", "thing", $"t{i}");
+        }
+
+        var first = _subject.Recent(2);
+        var second = _subject.Recent(2, before: first[^1].Id);
+        var third = _subject.Recent(2, before: second[^1].Id);
+
+        first.Select(e => e.Target).Should().Equal("t4", "t3");
+        second.Select(e => e.Target).Should().Equal("t2", "t1");
+        third.Select(e => e.Target).Should().Equal("t0");
+    }
 }

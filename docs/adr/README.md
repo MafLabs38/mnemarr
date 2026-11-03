@@ -20,3 +20,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0013](0013-releases-with-semantic-release-consumed-by-pulling.md) | Releases are decided by semantic-release from main, and consumed by pulling | D-33 |
 | [0014](0014-the-agent-merges-technical-pull-requests.md) | The agent merges technical pull requests; the maintainer decides verticals, releases and the rules themselves | D-34 |
 | [0016](0016-accounts-roles-and-service-accounts.md) | Accounts, permission-based roles and service accounts | D-36 |
+| [0018](0018-storage-layer-ado-net-and-numbered-schema-steps.md) | Storage layer: ADO.NET over SQLite, a schema in numbered steps | D-38 |

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Api.V1.Accounts;
@@ -20,7 +21,7 @@ public sealed class AccountsController : ControllerBase
         _accounts = accounts;
     }
 
-    private string Actor => User.Identity?.Name ?? "unknown";
+    private string Actor => User.ActorName();
 
     [HttpGet("roles")]
     public IReadOnlyList<RoleResource> GetRoles() => [.. Roles.All.Select(RoleResource.From)];

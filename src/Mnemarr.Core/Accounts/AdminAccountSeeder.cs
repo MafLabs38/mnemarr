@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Accounts;
 
@@ -31,7 +32,7 @@ public sealed partial class AdminAccountSeeder
             Reset();
             Seed();
         }
-        catch (Exception ex) when (ex is SqliteException or DirectoryNotFoundException)
+        catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {
             // A data folder that cannot hold the database is what /health/ready reports; the host stays up so that it can say so.
             LogUnavailable(ex);

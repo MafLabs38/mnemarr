@@ -43,11 +43,23 @@ public static class MnemarrClaims
     }
 
     /// <summary>
-    /// The one way to ask whether a caller may touch a source. A key limited to sources may touch those; any other signed-in caller, all of
-    /// them; a caller who is not signed in, none. Fails closed: a scope that cannot be read is a scope of nothing.
+    /// What a caller may touch, rebuilt from its claims: the one way a handler gets the scope to pass to Core. A key limited to sources
+    /// is limited to those (even to none); any other signed-in caller reaches all; a caller who is not signed in, none.
     /// </summary>
-    public static bool CanAccessSource(this ClaimsPrincipal user, Guid sourceId) =>
-        user.Identity?.IsAuthenticated == true && (!user.HasClaim(Scoped, bool.TrueString) || user.HasClaim(Source, sourceId.ToString()));
+    public static SourceScope Scope(this ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return SourceScope.None;
+        }
+
+        return user.HasClaim(Scoped, bool.TrueString)
+            ? new SourceScope([.. user.FindAll(Source).Select(claim => Guid.Parse(claim.Value))])
+            : SourceScope.All;
+    }
+
+    /// <summary>The name the audit log records for whoever is acting.</summary>
+    public static string ActorName(this ClaimsPrincipal user) => user.Identity?.Name ?? AuditActors.Unknown;
 
     public static Guid? AccountId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(Account), out var id) ? id : null;

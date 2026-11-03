@@ -128,7 +128,8 @@ test.describe('smoke @smoke', () => {
     const problems: string[] = [];
     page.on('console', (message) => {
       // A person who is not signed in is answered 401 by the session probe: the browser logs it. It is expected, and nothing else is.
-      const isSessionProbe = message.location().url.endsWith('/api/v1/auth/session');
+      const isSessionProbe =
+        message.location().url.endsWith('/api/v1/auth/session') && message.text().includes('status of 401');
       if (message.type() === 'error' && !isSessionProbe) problems.push(message.text());
     });
     page.on('pageerror', (error) => problems.push(error.message));
@@ -173,16 +174,26 @@ test.describe('smoke @smoke', () => {
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 
-  test('a wrong password is told in one way, and the right one signs in and out', async ({ page }) => {
+  test('a wrong password is told in one way, and the right one signs in and out', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    // A throwaway person: a failed sign-in counts against the name, and every other test relies on the administrator.
+    const admin = await signedInRequest(playwright, baseURL ?? '');
+    const person = { name: unique('person'), password: 'a long enough password' };
+    expect((await admin.post('/api/v1/accounts', { data: { ...person, kind: 'User', role: 'Reader' } })).status()).toBe(
+      201,
+    );
     await page.goto('/');
-    await page.getByLabel('Name').fill(ADMIN.name);
+    await page.getByLabel('Name').fill(person.name);
     await page.getByLabel('Password').fill('not the password');
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByRole('alert')).toHaveText('The name or the password is wrong.');
 
-    await page.getByLabel('Password').fill(ADMIN.password);
+    await page.getByLabel('Password').fill(person.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('banner')).toContainText('admin');
+    await expect(page.getByRole('banner')).toContainText(person.name);
     await page.getByRole('button', { name: 'Sign out' }).click();
 
     await expect(page.getByRole('heading', { name: 'Sign in to Mnemarr' })).toBeVisible();

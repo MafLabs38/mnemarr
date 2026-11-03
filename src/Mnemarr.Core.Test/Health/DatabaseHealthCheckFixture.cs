@@ -22,13 +22,13 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
     {
         _h.Admin();
 
-        (await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts))).Status.Should().Be(HealthStatus.Healthy);
+        (await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts, _h.Options))).Status.Should().Be(HealthStatus.Healthy);
     }
 
     [Fact]
     public async Task should_be_degraded_with_the_reason_when_there_is_no_account_at_all()
     {
-        var result = await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts));
+        var result = await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts, _h.Options));
 
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Contain("first administrator");
@@ -40,7 +40,7 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
         var folder = Path.Combine(_h.Workspace.Root, "gone");
         var database = new Database(Options.Create(new MnemarrOptions { DataFolder = folder }));
 
-        var result = await Check(new DatabaseHealthCheck(database, new SqliteAccountStore(database)));
+        var result = await Check(new DatabaseHealthCheck(database, new SqliteAccountStore(database), _h.Options));
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
         result.Description.Should().Be("The database cannot be opened.").And.NotContain(folder);
@@ -56,9 +56,21 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
             command.ExecuteNonQuery();
         }
 
-        var result = await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts));
+        var result = await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts, _h.Options));
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
         result.Description.Should().Contain("schema");
+    }
+
+    [Fact]
+    public async Task should_be_degraded_with_the_reason_while_the_break_glass_reset_is_still_set()
+    {
+        _h.Admin();
+        var options = Options.Create(new AuthOptions { ResetPasswordUser = "root", ResetPasswordFile = "/run/reset" });
+
+        var result = await Check(new DatabaseHealthCheck(_h.Workspace.Database, _h.Accounts, options));
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("break-glass").And.NotContain("/run/reset");
     }
 }

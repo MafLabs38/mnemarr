@@ -72,6 +72,6 @@ public sealed class AuditRetentionServiceFixture : IDisposable
             return 0;
         }
 
-        public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null) => [];
+        public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null, long? before = null) => [];
     }
 }

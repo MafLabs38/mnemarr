@@ -337,25 +337,50 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_hash_at_most_a_few_passwords_at_a_time_and_tell_the_others_to_come_back_later()
+    public async Task should_hash_at_most_a_few_passwords_at_a_time_and_tell_the_others_to_come_back_later_without_holding_a_thread()
     {
-        var hasher = new BlockingHasher();
+        using var hasher = new BlockingHasher();
         using var harness = new AccountsHarness(hasher: hasher);
         harness.Reader();
         var subject = harness.Service;
         subject.HashWait = TimeSpan.Zero;
         hasher.Block();
+        var token = TestContext.Current.CancellationToken;
 
         var running = Enumerable.Range(0, AccountService.MaxConcurrentHashes)
-            .Select(i => Task.Run(() => subject.SignIn($"someone-{i}", Password), TestContext.Current.CancellationToken))
+            .Select(i => Task.Run(() => subject.SignInAsync($"someone-{i}", Password, token), token))
             .ToList();
         hasher.WaitUntilEntered(AccountService.MaxConcurrentHashes);
-        var overflow = () => subject.SignIn("alice", Password);
+        var overflow = async () => await subject.SignInAsync("alice", Password, token);
 
-        overflow.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Locked);
+        (await overflow.Should().ThrowAsync<AccountRejectedException>()).Which.Problem.Should().Be(AccountProblem.Locked);
         hasher.Release();
         await Task.WhenAll(running);
-        subject.SignIn("alice", Password).Should().NotBeNull();
+        (await subject.SignInAsync("alice", Password, token)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task should_check_a_current_password_through_the_same_places()
+    {
+        var alice = _h.Reader();
+
+        (await Subject.VerifyPasswordAsync(alice.Id, Password, TestContext.Current.CancellationToken)).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("password-check:alice")]
+    [InlineData("al ice")]
+    [InlineData("a")]
+    public void should_refuse_what_a_name_cannot_be_without_counting_it_so_that_a_forged_name_reaches_no_other_budget(string name)
+    {
+        var alice = _h.Reader();
+        for (var i = 0; i < LoginThrottle.MaxFailures + 2; i++)
+        {
+            Subject.SignIn(name, "wrong password here").Should().BeNull();
+        }
+
+        Subject.VerifyPassword(alice.Id, Password).Should().BeTrue();
+        _h.Throttle.IsLocked(AccountService.PasswordCheckKey("alice")).Should().BeFalse();
     }
 
     [Fact]
@@ -592,7 +617,7 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     /// <summary>A hasher whose checks wait until the test lets them go, to hold the places of the server.</summary>
-    private sealed class BlockingHasher : Microsoft.AspNetCore.Identity.IPasswordHasher<Account>
+    private sealed class BlockingHasher : Microsoft.AspNetCore.Identity.IPasswordHasher<Account>, IDisposable
     {
         private readonly ManualResetEventSlim _open = new(initialState: true);
         private int _entered;
@@ -601,7 +626,15 @@ public sealed class AccountServiceFixture : IDisposable
 
         public void Release() => _open.Set();
 
-        public void WaitUntilEntered(int count) => SpinWait.SpinUntil(() => Volatile.Read(ref _entered) >= count, TimeSpan.FromSeconds(30));
+        public void WaitUntilEntered(int count) =>
+            SpinWait.SpinUntil(() => Volatile.Read(ref _entered) >= count, TimeSpan.FromSeconds(30)).Should().BeTrue("the checks reach the hasher");
+
+        /// <summary>A test that fails first must not leave threads parked on the gate.</summary>
+        public void Dispose()
+        {
+            _open.Set();
+            _open.Dispose();
+        }
 
         public string HashPassword(Account account, string password) => "hash:" + password;
 

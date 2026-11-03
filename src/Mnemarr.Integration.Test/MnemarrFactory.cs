@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Configuration;
 
@@ -29,6 +30,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
 
     /// <summary>The cookie of the test hosts is not <c>Secure</c> (they speak plain HTTP) unless a test asks for the default.</summary>
     protected virtual CookieSecurityMode CookieSecurity => CookieSecurityMode.SameAsRequest;
+
+    /// <summary>How long a session lasts at most; a test of the absolute lifetime shortens it instead of living through a month.</summary>
+    protected virtual int SessionMaxDays => 30;
 
     /// <summary>The password that a break-glass reset gives to <see cref="AdminName"/> at start, when a test restarts a host with one.</summary>
     protected virtual string? ResetPassword => null;
@@ -66,6 +70,7 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
                 options.AdminUser = HasAdministrator ? AdminName : null;
                 options.AdminPasswordFile = HasAdministrator ? _passwordFile : null;
                 options.CookieSecurity = CookieSecurity;
+                options.SessionMaxDays = SessionMaxDays;
                 options.ResetPasswordUser = ResetPassword is null ? null : AdminName;
                 options.ResetPasswordFile = ResetPassword is null ? null : _resetFile;
             });
@@ -188,4 +193,45 @@ public sealed class RestartedFactory : MnemarrFactoryBase
     }
 
     protected override string? ResetPassword => _resetPassword;
+}
+
+/// <summary>An application whose sessions last one day at most.</summary>
+public sealed class ShortSessionFactory : MnemarrFactoryBase
+{
+    public ShortSessionFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override int SessionMaxDays => 1;
+}
+
+/// <summary>
+/// An application with one more call, <c>/probe/scope</c>, that answers what the scope of the caller is: the claims of a key are rebuilt by the
+/// real authentication, and read the way a handler of a later vertical will read them.
+/// </summary>
+public sealed class ScopeProbeFactory : MnemarrFactoryBase
+{
+    public ScopeProbeFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureServices(IServiceCollection services) =>
+        services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, ProbeFilter>();
+
+    private sealed class ProbeFilter : Microsoft.AspNetCore.Hosting.IStartupFilter
+    {
+        public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Configure(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => app =>
+        {
+            Microsoft.AspNetCore.Builder.MapExtensions.Map(app, "/probe/scope", branch => Microsoft.AspNetCore.Builder.RunExtensions.Run(branch, async context =>
+            {
+                var result = await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.AuthenticateAsync(context);
+                var scope = (result.Principal ?? new System.Security.Claims.ClaimsPrincipal()).Scope();
+                context.Response.ContentType = "application/json";
+                await Microsoft.AspNetCore.Http.HttpResponseJsonExtensions.WriteAsJsonAsync(context.Response, new { all = scope.Sources is null, sources = scope.Sources ?? [] });
+            }));
+            next(app);
+        };
+    }
 }

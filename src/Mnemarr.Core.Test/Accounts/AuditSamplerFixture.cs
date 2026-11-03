@@ -39,4 +39,12 @@ public sealed class AuditSamplerFixture
 
         subject.Allow("login.locked", "alice").Should().BeTrue();
     }
+
+    [Fact]
+    public void should_not_grow_with_kinds_of_event_that_nobody_planned()
+    {
+        var subject = new AuditSampler(_clock);
+
+        Enumerable.Range(0, AuditSampler.MaxKinds + 10).Count(i => subject.Allow($"kind-{i}", "k")).Should().Be(AuditSampler.MaxKinds);
+    }
 }

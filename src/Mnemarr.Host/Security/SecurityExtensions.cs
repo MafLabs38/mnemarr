@@ -105,7 +105,10 @@ public static class SecurityExtensions
             return Directory.CreateDirectory(path);
         }
 
-        return Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var folder = Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        // A folder that was already there (a restored backup, a mounted volume) keeps the mode it had unless it is set again.
+        folder.UnixFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        return folder;
     }
 
     public static WebApplication UseMnemarrSecurity(this WebApplication app)

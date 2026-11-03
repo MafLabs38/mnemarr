@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Api.V1.Accounts;
@@ -20,7 +21,7 @@ public sealed class ApiKeysController : ControllerBase
         _keys = keys;
     }
 
-    private string Actor => User.Identity?.Name ?? "unknown";
+    private string Actor => User.ActorName();
 
     [HttpGet("{accountId:guid}/keys")]
     public ActionResult<IReadOnlyList<ApiKeyResource>> GetKeys(Guid accountId) =>

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Configuration;
@@ -62,5 +63,25 @@ public sealed class DatabaseFixture : IDisposable
         open.Should().Throw<DirectoryNotFoundException>();
         Directory.Exists(folder).Should().BeFalse();
         Directory.Exists(Path.Combine(_workspace.Root, "never")).Should().BeFalse();
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void should_let_only_its_owner_read_the_database_because_it_holds_the_hashes_of_passwords_sessions_and_keys()
+    {
+        Assert.SkipWhen(!OperatingSystem.IsLinux(), "Needs a Unix permission model.");
+        Scalar("PRAGMA user_version");
+
+        File.GetUnixFileMode(Path.Combine(_workspace.DataFolder, "mnemarr.db")).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    [Theory]
+    [InlineData(typeof(IOException))]
+    [InlineData(typeof(DirectoryNotFoundException))]
+    [InlineData(typeof(UnauthorizedAccessException))]
+    public void should_call_a_missing_or_unreadable_database_unavailable_and_nothing_else(Type exception)
+    {
+        StorageErrors.IsUnavailable((Exception)Activator.CreateInstance(exception)!).Should().BeTrue();
+        StorageErrors.IsUnavailable(new InvalidOperationException()).Should().BeFalse();
     }
 }

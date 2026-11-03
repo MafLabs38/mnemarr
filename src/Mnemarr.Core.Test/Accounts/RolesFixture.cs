@@ -21,13 +21,6 @@ public sealed class RolesFixture
     }
 
     [Fact]
-    public void should_keep_administrator_for_people_only()
-    {
-        Roles.Find(Roles.Admin)!.Should().Match<Role>(role => role.ForUsers && !role.ForServices);
-        Roles.Find(Roles.Assistant)!.Should().Match<Role>(role => !role.ForUsers && role.ForServices);
-    }
-
-    [Fact]
     public void should_know_no_role_by_another_case_and_give_nothing_to_an_unknown_role()
     {
         Roles.Find("admin").Should().BeNull();

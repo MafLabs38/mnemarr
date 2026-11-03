@@ -88,7 +88,7 @@ public sealed class ApiKeyService
             var prefix = secret[..Math.Min(PrefixLength, secret.Length)];
             if (_sampler.Allow("key.refused", prefix))
             {
-                _audit.Append("unknown", "key.refused", prefix);
+                _audit.Append(AuditActors.Unknown, "key.refused", prefix);
             }
 
             return null;

@@ -37,12 +37,13 @@ public sealed class SqliteAuditLog : IAuditLog
         return command.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null)
+    public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null, long? before = null)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, at, actor, action, target, detail FROM audit_events WHERE ($action IS NULL OR action = $action) ORDER BY id DESC LIMIT $limit";
+        command.CommandText = "SELECT id, at, actor, action, target, detail FROM audit_events WHERE ($action IS NULL OR action = $action) AND ($before IS NULL OR id < $before) ORDER BY id DESC LIMIT $limit";
         command.Parameters.AddWithValue("$action", action ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$before", before ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
         using var reader = command.ExecuteReader();
         var events = new List<AuditEvent>();

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Accounts;
 
@@ -44,7 +45,7 @@ public sealed partial class AuditRetentionService : BackgroundService
                 LogPruned(removed);
             }
         }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or DirectoryNotFoundException)
+        catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {
             LogFailed(ex);
         }

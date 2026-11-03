@@ -14,7 +14,7 @@ namespace Mnemarr.Host.Security;
 public sealed class AccountClaimsTransformation : IClaimsTransformation
 {
     /// <summary>Where the validation of the cookie leaves the account it read, for the rest of the request.</summary>
-    public const string AccountItem = "mnemarr:account";
+    public const string AccountItem = "mnemarr:account-object";
 
     private readonly IAccountStore _accounts;
     private readonly IHttpContextAccessor _context;
