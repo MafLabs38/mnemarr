@@ -1,3 +1,4 @@
+using Microsoft.OpenApi;
 using Mnemarr.Api.V1;
 using Mnemarr.Core;
 using Mnemarr.Core.SystemInfo;
@@ -18,7 +19,16 @@ builder.Services.AddMnemarrCore(builder.Configuration);
 builder.Services.AddMnemarrHealthChecks();
 builder.Services.AddMnemarrApiV1();
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
+{
+    document.Info = new OpenApiInfo
+    {
+        Title = "Mnemarr API",
+        Version = "v1",
+        Description = "The REST API of Mnemarr, a long-term memory for people and AI assistants. The interface, the agents and the MCP server all use it.",
+    };
+    return Task.CompletedTask;
+}));
 
 var app = builder.Build();
 

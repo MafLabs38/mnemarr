@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect } from 'react';
 
+import translate from 'Utilities/String/translate';
+
 import styles from './PageContent.module.css';
 
 interface PageContentProps {
@@ -10,7 +12,7 @@ interface PageContentProps {
 
 export default function PageContent({ title, children }: Readonly<PageContentProps>) {
   useEffect(() => {
-    document.title = `${title} - Mnemarr`;
+    document.title = `${title} - ${translate('AppName')}`;
   }, [title]);
 
   return (

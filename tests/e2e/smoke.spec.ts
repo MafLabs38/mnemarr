@@ -25,6 +25,19 @@ test.describe('smoke @smoke', () => {
     },
   );
 
+  test(
+    'the application shell of the real image carries the security headers',
+    { tag: '@browserless' },
+    async ({ request }) => {
+      const response = await request.get('/');
+      const headers = response.headers();
+
+      expect(response.status()).toBe(200);
+      expect(headers['x-content-type-options']).toBe('nosniff');
+      expect(headers['content-security-policy']).toContain("default-src 'self'");
+    },
+  );
+
   test('the shell shows the brand, a logo that loaded, and the whole menu with the unbuilt pages marked as soon', async ({
     page,
   }) => {
@@ -62,6 +75,8 @@ test.describe('smoke @smoke', () => {
     await expect(about.getByText('Version')).toBeVisible();
     // A label with no value would still show: check that the uptime reads like a duration.
     await expect(about).toContainText(/Uptime\s*\d+[smhd]/);
+    // The start time is parsed by the browser from what the API sent: a drift in its format shows as this.
+    await expect(about).not.toContainText('Invalid Date');
   });
 
   test('an address typed in the browser is answered with the application, for a page and for a missing page', async ({

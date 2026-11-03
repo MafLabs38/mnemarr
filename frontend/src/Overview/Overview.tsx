@@ -41,7 +41,7 @@ export default function Overview() {
   return (
     <PageContent title={translate('Overview')}>
       <PageContentBody>
-        <PageHeading scope="Mnemarr" title={translate('Overview')} />
+        <PageHeading scope={translate('AppName')} title={translate('Overview')} />
         <Card>
           <div className={styles.hero}>
             <div className={styles.logo}>

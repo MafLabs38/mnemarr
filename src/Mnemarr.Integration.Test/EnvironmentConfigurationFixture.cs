@@ -8,7 +8,6 @@ namespace Mnemarr.Integration.Test;
 /// other fixtures set the folder directly, and the image's own default would hide a broken prefix.
 /// </summary>
 [Collection("Environment variables")]
-[Trait("Category", "Integration")]
 public sealed class EnvironmentConfigurationFixture
 {
     [Theory]
@@ -38,6 +37,25 @@ public sealed class EnvironmentConfigurationFixture
             {
                 Directory.Delete(folder, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public async Task should_not_let_the_environment_of_the_machine_change_what_a_test_host_uses()
+    {
+        // CONTRIBUTING.md has developers export this variable; the tests must not depend on it.
+        Environment.SetEnvironmentVariable("MNEMARR__DATAFOLDER", Path.Combine(Path.GetTempPath(), $"mnemarr-nowhere-{Guid.NewGuid():N}"));
+        try
+        {
+            await using var factory = new MnemarrFactory();
+
+            var response = await factory.CreateClient().GetAsync("/health/ready", TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MNEMARR__DATAFOLDER", null);
         }
     }
 }

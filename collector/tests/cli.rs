@@ -31,4 +31,20 @@ fn should_print_the_usage_on_stdout_and_succeed_when_asked_for_help() {
     assert!(output.status.success());
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(text.contains("USAGE:"));
+    assert!(text.contains("--version") && text.contains("--help"));
+}
+
+#[cfg(unix)]
+#[test]
+fn should_report_a_usage_error_and_not_panic_on_an_argument_that_is_not_utf8() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let output = collector()
+        .arg(std::ffi::OsString::from_vec(vec![0xff, 0xfe]))
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    let text = String::from_utf8(output.stderr).unwrap();
+    assert!(text.contains("unexpected argument"));
 }

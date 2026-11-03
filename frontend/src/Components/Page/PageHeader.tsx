@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import BrandLogo from 'Components/BrandLogo';
+import translate from 'Utilities/String/translate';
 
 import styles from './PageHeader.module.css';
 
@@ -9,7 +10,7 @@ export default function PageHeader() {
     <header className={styles.header}>
       <Link className={styles.brand} to="/">
         <BrandLogo size={36} />
-        <span className={styles.name}>Mnemarr</span>
+        <span className={styles.name}>{translate('AppName')}</span>
       </Link>
     </header>
   );

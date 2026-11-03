@@ -5,7 +5,6 @@ using System.Text.Json;
 namespace Mnemarr.Integration.Test;
 
 [Collection("Host")]
-[Trait("Category", "Integration")]
 public sealed class SystemApiFixture
 {
     private readonly HttpClient _client;
@@ -16,39 +15,35 @@ public sealed class SystemApiFixture
     }
 
     [Fact]
-    public async Task should_return_the_version_runtime_and_uptime()
-    {
-        var status = await _client.GetFromJsonAsync<JsonElement>("/api/v1/system/status", TestContext.Current.CancellationToken);
-
-        status.GetProperty("version").GetString().Should().NotBeNullOrWhiteSpace();
-        status.GetProperty("runtimeVersion").GetString().Should().NotBeNullOrWhiteSpace();
-        status.GetProperty("uptimeSeconds").GetInt64().Should().BeGreaterThanOrEqualTo(0);
-    }
-
-    [Fact]
-    public async Task should_return_exactly_the_documented_properties_and_nothing_about_the_host()
+    public async Task should_return_exactly_the_documented_properties_in_the_documented_formats_and_nothing_about_the_host()
     {
         var status = await _client.GetFromJsonAsync<JsonElement>("/api/v1/system/status", TestContext.Current.CancellationToken);
 
         status.EnumerateObject().Select(property => property.Name)
             .Should().BeEquivalentTo("version", "runtimeVersion", "startedAt", "uptimeSeconds");
+        status.GetProperty("version").GetString().Should().NotBeNullOrWhiteSpace();
+        status.GetProperty("runtimeVersion").GetString().Should().NotBeNullOrWhiteSpace();
+        // The interface reads this with `new Date(...)`: UTC, ISO 8601. The clock of the shared host never moves.
+        status.GetProperty("startedAt").GetString().Should().Be("2026-11-01T08:00:00+00:00");
+        status.GetProperty("uptimeSeconds").GetInt64().Should().Be(0);
     }
 
     [Fact]
-    public async Task should_answer_not_found_for_an_unknown_api_path_instead_of_the_html_shell()
+    public async Task should_answer_a_problem_document_for_an_unknown_api_path_instead_of_the_html_shell()
     {
         var response = await _client.GetAsync("/api/v1/nothing-here", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html");
+        response.Content.Headers.ContentType.Should().NotBeNull();
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
     }
 
     [Fact]
-    public async Task should_publish_the_openapi_document_with_the_status_path()
+    public async Task should_publish_an_openapi_document_that_says_what_it_is_and_lists_the_status_path()
     {
         var document = await _client.GetStringAsync("/openapi/v1.json", TestContext.Current.CancellationToken);
 
-        document.Should().Contain("/api/v1/system/status");
+        document.Should().Contain("Mnemarr API").And.Contain("/api/v1/system/status");
     }
 
     [Theory]

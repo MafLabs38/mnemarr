@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 
 import {
   renderWithProviders,
@@ -71,13 +71,25 @@ describe('Status', () => {
       renderWithProviders(<Status />);
       expect(await screen.findByText('2h 10m')).toBeInTheDocument();
 
-      fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ...status, uptimeSeconds: 7830 }) });
+      fetchMock.mockResolvedValue({ ok: true, json: () => Promise.resolve({ ...status, uptimeSeconds: 7860 }) });
       await act(() => vi.advanceTimersByTimeAsync(STATUS_REFRESH_MS));
 
-      expect(await screen.findByText('2h 10m')).toBeInTheDocument();
+      expect(await screen.findByText('2h 11m')).toBeInTheDocument();
       expect(fetchMock).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('shows the error and not the data of the last good answer when a refresh fails', async () => {
+    stubStatusOk();
+    const { client } = renderWithProviders(<Status />);
+    expect(await screen.findByText('1.2.3')).toBeInTheDocument();
+
+    stubNetworkError('Failed to fetch');
+    await client.refetchQueries();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to fetch');
+    await waitFor(() => expect(screen.queryByText('1.2.3')).not.toBeInTheDocument());
   });
 });

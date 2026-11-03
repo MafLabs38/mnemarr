@@ -12,6 +12,12 @@ const kindIcons: Record<Kind, LucideIcon> = {
   [kinds.DANGER]: icons.DANGER,
 };
 
+/** Same rule for the colour: a new kind does not compile until it has its style. */
+const kindStyles: Record<Kind, string> = {
+  [kinds.SUCCESS]: styles.success ?? '',
+  [kinds.DANGER]: styles.danger ?? '',
+};
+
 interface StatusLabelProps {
   kind: Kind;
   children: ReactNode;
@@ -22,7 +28,7 @@ export default function StatusLabel({ kind, children }: Readonly<StatusLabelProp
   const Icon = kindIcons[kind];
 
   return (
-    <span className={`${styles.label} ${styles[kind]}`}>
+    <span className={`${styles.label} ${kindStyles[kind]}`}>
       <Icon aria-hidden="true" size={16} strokeWidth={2.5} />
       {children}
     </span>

@@ -17,6 +17,14 @@ pub enum Command {
 #[derive(Debug, PartialEq, Eq)]
 pub struct UsageError(pub String);
 
+impl std::fmt::Display for UsageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for UsageError {}
+
 /// The text printed by `--help`.
 pub fn usage() -> String {
     format!("mnemarr-collector {VERSION}\n\nUSAGE:\n    mnemarr-collector [--version | --help]\n")
@@ -81,15 +89,5 @@ mod tests {
                 "after {flag}"
             );
         }
-    }
-
-    #[test]
-    fn should_print_exactly_this_usage() {
-        assert_eq!(
-            usage(),
-            format!(
-                "mnemarr-collector {VERSION}\n\nUSAGE:\n    mnemarr-collector [--version | --help]\n"
-            )
-        );
     }
 }

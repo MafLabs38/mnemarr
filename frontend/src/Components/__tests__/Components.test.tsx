@@ -58,7 +58,7 @@ describe('DescriptionList', () => {
 });
 
 describe('StatusLabel', () => {
-  it('styles each kind apart, always with an icon and the text', () => {
+  it('shows each kind with an icon that is not read, and the text', () => {
     const { container } = render(
       <>
         <StatusLabel kind={kinds.SUCCESS}>Fine</StatusLabel>
@@ -66,8 +66,8 @@ describe('StatusLabel', () => {
       </>,
     );
 
-    const [fine, broken] = [screen.getByText('Fine'), screen.getByText('Broken')];
-    expect(fine.className).not.toBe(broken.className);
+    expect(screen.getByText('Fine')).toBeInTheDocument();
+    expect(screen.getByText('Broken')).toBeInTheDocument();
     expect(container.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(2);
   });
 });

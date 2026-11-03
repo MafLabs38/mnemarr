@@ -9,7 +9,7 @@ export default function NotFound() {
   return (
     <PageContent title={translate('PageNotFound')}>
       <PageContentBody>
-        <PageHeading scope="404" title={translate('PageNotFound')} />
+        <PageHeading scope={translate('NotFoundCode')} title={translate('PageNotFound')} />
         <p>{translate('PageNotFoundHelp')}</p>
         <Link to="/">{translate('BackToOverview')}</Link>
       </PageContentBody>

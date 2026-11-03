@@ -1,4 +1,4 @@
-import { shouldRetry } from 'App/queryClient';
+import { createQueryClient, shouldRetry } from 'App/queryClient';
 import { ApiError } from 'Helpers/Api/apiGet';
 
 describe('shouldRetry', () => {
@@ -13,5 +13,14 @@ describe('shouldRetry', () => {
 
   it.each([401, 403, 404])('does not ask again when the server answered %i', (status) => {
     expect(shouldRetry(0, new ApiError(status))).toBe(false);
+  });
+});
+
+describe('createQueryClient', () => {
+  it('uses the retry policy and does not refresh when the window gets the focus', () => {
+    const defaults = createQueryClient().getDefaultOptions().queries;
+
+    expect(defaults?.retry).toBe(shouldRetry);
+    expect(defaults?.refetchOnWindowFocus).toBe(false);
   });
 });

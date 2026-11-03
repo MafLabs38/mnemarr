@@ -73,4 +73,4 @@ Branches `main` (stable releases) and `develop` (integration) are protected by G
 
 Prefixes: `feature/`, `fix/`, `chore/`, `docs/`. Conventional Commits: `feat(api): ...`, `fix(search): ...`, `docs(spec): ...`, `chore(ci): ...`.
 
-The remote does not exist until the `repo/add-mnemarr-orchestratarr` pull request of `github-template` is merged and applied; see the README "Bootstrap" section.
+The repository, its branches, its rules and its secrets are described as code in the organisation's `github-template` (`repos/mnemarr.yaml`): a change to them is a pull request there, not a setting changed by hand. The AI review of a pull request is advisory (D-32); the SonarQube quality gate, CodeQL and the tests are what block.

@@ -21,6 +21,7 @@ describe('Overview', () => {
 
     expect(await screen.findByText('API reachable')).toBeInTheDocument();
     expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('API reachable');
   });
 
   it('shows that Mnemarr is unreachable when the server does not answer', async () => {
@@ -41,15 +42,5 @@ describe('Overview', () => {
 
     await waitFor(() => expect(screen.getByText('Unreachable')).toBeInTheDocument());
     expect(screen.queryByText('API reachable')).not.toBeInTheDocument();
-  });
-
-  it('announces the state to assistive technology', async () => {
-    stubStatusOk();
-
-    renderWithProviders(<Overview />);
-
-    await screen.findByText('API reachable');
-
-    expect(screen.getByRole('status')).toHaveTextContent('API reachable');
   });
 });

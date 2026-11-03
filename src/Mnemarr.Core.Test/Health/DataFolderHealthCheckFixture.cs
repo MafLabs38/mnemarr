@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Health;
 
@@ -9,50 +10,39 @@ namespace Mnemarr.Core.Test.Health;
 public sealed class DataFolderHealthCheckFixture : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("mnemarr-health-").FullName;
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero));
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
-    private static Task<HealthCheckResult> Check(string folder) =>
-        new DataFolderHealthCheck(Options.Create(new MnemarrOptions { DataFolder = folder }))
-            .CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
+    private DataFolderHealthCheck Subject(string folder) =>
+        new(Options.Create(new MnemarrOptions { DataFolder = folder }), _clock);
+
+    private static Task<HealthCheckResult> Check(DataFolderHealthCheck subject) =>
+        subject.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
 
     [Fact]
-    public async Task should_be_healthy_when_the_folder_is_writable()
+    public async Task should_be_healthy_and_leave_no_probe_file_when_the_folder_is_writable()
     {
-        var result = await Check(_folder);
+        var result = await Check(Subject(_folder));
 
         result.Status.Should().Be(HealthStatus.Healthy);
-    }
-
-    [Fact]
-    public async Task should_leave_no_probe_file_behind()
-    {
-        await Check(_folder);
-
         Directory.GetFileSystemEntries(_folder).Should().BeEmpty();
     }
 
     [Fact]
-    public async Task should_be_unhealthy_when_the_folder_does_not_exist()
-    {
-        var result = await Check(Path.Combine(_folder, "missing"));
-
-        result.Status.Should().Be(HealthStatus.Unhealthy);
-    }
-
-    [Fact]
-    public async Task should_not_reveal_the_folder_path_when_unhealthy()
+    public async Task should_be_unhealthy_without_revealing_the_path_when_the_folder_does_not_exist()
     {
         var missing = Path.Combine(_folder, "missing");
 
-        var result = await Check(missing);
+        var result = await Check(Subject(missing));
 
-        result.Description.Should().NotContain(missing);
+        result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Description.Should().Be("The data folder does not exist.").And.NotContain(missing);
     }
 
     [Fact]
     [SupportedOSPlatform("linux")]
-    public async Task should_be_unhealthy_when_the_folder_is_not_writable()
+    public async Task should_be_unhealthy_and_keep_the_cause_when_the_folder_is_not_writable()
     {
         Assert.SkipWhen(
             !OperatingSystem.IsLinux() || Environment.IsPrivilegedProcess,
@@ -61,14 +51,43 @@ public sealed class DataFolderHealthCheckFixture : IDisposable
 
         try
         {
-            var result = await Check(_folder);
+            var result = await Check(Subject(_folder));
 
             result.Status.Should().Be(HealthStatus.Unhealthy);
             result.Description.Should().Be("The data folder is not writable.");
+            result.Exception.Should().BeOfType<UnauthorizedAccessException>();
         }
         finally
         {
             File.SetUnixFileMode(_folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
+    }
+
+    [Fact]
+    public async Task should_reuse_its_result_for_a_few_seconds_so_that_a_loop_of_requests_does_not_write_on_every_one()
+    {
+        var folder = Path.Combine(_folder, "volume");
+        Directory.CreateDirectory(folder);
+        var subject = Subject(folder);
+        (await Check(subject)).Status.Should().Be(HealthStatus.Healthy);
+
+        Directory.Delete(folder);
+        _clock.Advance(DataFolderHealthCheck.ReuseFor - TimeSpan.FromSeconds(1));
+
+        (await Check(subject)).Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    [Fact]
+    public async Task should_see_a_volume_that_went_away_once_its_result_is_too_old()
+    {
+        var folder = Path.Combine(_folder, "volume");
+        Directory.CreateDirectory(folder);
+        var subject = Subject(folder);
+        await Check(subject);
+
+        Directory.Delete(folder);
+        _clock.Advance(DataFolderHealthCheck.ReuseFor);
+
+        (await Check(subject)).Status.Should().Be(HealthStatus.Unhealthy);
     }
 }

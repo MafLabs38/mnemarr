@@ -24,14 +24,6 @@ public sealed class CoreServiceCollectionExtensionsFixture
     }
 
     [Fact]
-    public void should_read_the_data_folder_from_the_configuration()
-    {
-        using var provider = Build(new() { ["DataFolder"] = "/somewhere/else" });
-
-        provider.GetRequiredService<IOptions<MnemarrOptions>>().Value.DataFolder.Should().Be("/somewhere/else");
-    }
-
-    [Fact]
     public void should_keep_the_start_time_when_the_status_is_read_again_later()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero));

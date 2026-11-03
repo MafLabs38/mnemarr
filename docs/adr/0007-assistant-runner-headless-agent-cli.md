@@ -1,6 +1,6 @@
 # 0007 — An assistant runner: a headless agent CLI behind an adapter, in an optional container
 
-- **Status**: accepted
+- **Status**: accepted for the runner and the chat (D-21); the use of the same runner for the consolidation (D-22) is provisional, to confirm on the first consolidation vertical
 - **Date**: 2026-11-01
 - **Spec**: D-21, D-22
 
