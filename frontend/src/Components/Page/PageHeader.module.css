@@ -1,0 +1,26 @@
+/* Pinned to the top like the sidebar below it: only the page content scrolls. */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  height: var(--headerHeight);
+  padding: 0 var(--pageContentBodyPaddingSmall);
+  border-bottom: var(--borderWidth) solid var(--hairline);
+  background-color: var(--paperWarm);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.name {
+  font-family: var(--displayFontFamily);
+  font-size: var(--fontSizeCardTitle);
+  font-weight: 700;
+}

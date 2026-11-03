@@ -1,0 +1,27 @@
+:root {
+  /* Fonts, self-hosted through @fontsource */
+  --displayFontFamily: 'Fredoka', 'Nunito', system-ui, sans-serif;
+  --defaultFontFamily: 'Nunito', system-ui, sans-serif;
+  --monoSpaceFontFamily: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Type scale */
+  --fontSizeMeta: 12px;
+  --fontSizeBody: 14px;
+  --fontSizeCardTitle: 18px;
+  --fontSizeSectionTitle: 22px;
+  --fontSizePageTitle: 30px;
+
+  /* Shape */
+  --radiusSmall: 10px;
+  --radiusMedium: 14px;
+  --radiusLarge: 22px;
+  --radiusPill: 999px;
+  --borderWidth: 2px;
+
+  /* Dimensions, identical to the *arr apps */
+  --headerHeight: 56px;
+  --sidebarWidth: 220px;
+  --toolbarHeight: 52px;
+  --pageContentBodyPadding: 32px;
+  --pageContentBodyPaddingSmall: 16px;
+}

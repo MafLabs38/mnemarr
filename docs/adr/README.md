@@ -15,3 +15,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0008](0008-same-quality-chain-as-portarr.md) | The same quality chain and delivery as Portarr | D-23, D-24 |
 | [0009](0009-embedded-vector-search-and-local-embeddings.md) | Embedded vector search and local embeddings, both behind interfaces | D-25, D-26 |
 | [0010](0010-external-exposure-and-delegated-backups.md) | External exposure without single sign-on, and backups delegated to a backup tool | D-27, D-28 |
+| [0011](0011-default-port.md) | Default port 8383 | D-29 |

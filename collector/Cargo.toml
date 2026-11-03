@@ -1,0 +1,13 @@
+[package]
+name = "mnemarr-collector"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Collector agent: reads the conversations of an AI assistant on this machine and sends them to Mnemarr"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

@@ -1,0 +1,29 @@
+# Mnemarr on a Docker host. Copy, adjust the values marked <...>, then `docker compose up -d`.
+# The image runs as a non-root user (uid 1654) with no shell: the data folder must be writable by that user.
+services:
+  mnemarr:
+    image: ghcr.io/<owner>/mnemarr:<tag>   # pin a version
+    restart: unless-stopped
+    ports:
+      # Loopback only: Mnemarr speaks plain HTTP. Publish it through a reverse proxy with TLS, or change the address
+      # on purpose. The API has no authentication yet (see docs/SPEC.md, section 6).
+      - "127.0.0.1:8383:8383"
+    volumes:
+      - mnemarr-data:/config               # database, raw conversations, settings: back this up (see docs/SPEC.md, D-28)
+    environment:
+      MNEMARR__DATAFOLDER: /config
+    # Hardening: nothing writes outside the data folder and a temporary folder.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  mnemarr-data:

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 112" role="img" aria-label="Mnemarr">
+  <title>Mnemarr</title>
+  <!-- neurons: floating synapses around the brain -->
+  <g stroke="#3ee0c5" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M14 24 L26 34"/>
+    <path d="M10 44 L14 24"/>
+    <path d="M114 22 L102 33"/>
+    <path d="M118 42 L114 22"/>
+  </g>
+  <g fill="#3ee0c5" stroke="#1a1d3a" stroke-width="2.5">
+    <circle cx="14" cy="24" r="5"/>
+    <circle cx="10" cy="44" r="3.5"/>
+    <circle cx="114" cy="22" r="5"/>
+    <circle cx="118" cy="42" r="3.5"/>
+  </g>
+  <g fill="#ffc145" stroke="#1a1d3a" stroke-width="2">
+    <circle cx="64" cy="9" r="3.5"/>
+  </g>
+  <!-- hard drop shadow, like the cards -->
+  <path id="shadow" transform="translate(0 5)" fill="#0b0e22" d="M64 22C57 13 40 15 34 27C23 29 15 40 20 52C11 60 14 74 26 78C28 88 40 96 52 91C56 96 62 97 64 93C66 97 72 96 76 91C88 96 100 88 102 78C114 74 117 60 108 52C113 40 105 29 94 27C88 15 71 13 64 22Z"/>
+  <!-- the brain -->
+  <path fill="#ff8fa0" stroke="#1a1d3a" stroke-width="4.5" stroke-linejoin="round" d="M64 22C57 13 40 15 34 27C23 29 15 40 20 52C11 60 14 74 26 78C28 88 40 96 52 91C56 96 62 97 64 93C66 97 72 96 76 91C88 96 100 88 102 78C114 74 117 60 108 52C113 40 105 29 94 27C88 15 71 13 64 22Z"/>
+  <!-- brain stem -->
+  <path fill="#ff8fa0" stroke="#1a1d3a" stroke-width="4" stroke-linejoin="round" d="M57 93C57 100 58 104 64 104C70 104 71 100 71 93"/>
+  <!-- highlight -->
+  <path fill="#ffffff" fill-opacity="0.38" d="M40 33C46 27 54 27 58 31C52 31 46 35 44 41C41 41 38 38 40 33Z"/>
+  <!-- folds, only on the forehead: the face needs the rest -->
+  <g fill="none" stroke="#d6506c" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M64 25C60 33 67 39 64 49"/>
+    <path d="M31 40C39 35 46 40 43 47"/>
+    <path d="M47 31C54 32 57 38 53 43"/>
+    <path d="M97 40C89 35 82 40 85 47"/>
+    <path d="M81 31C74 32 71 38 75 43"/>
+  </g>
+  <!-- the face -->
+  <g stroke="#1a1d3a" stroke-linecap="round">
+    <ellipse cx="48" cy="60" rx="7" ry="8" fill="#ffffff" stroke-width="3"/>
+    <ellipse cx="80" cy="60" rx="7" ry="8" fill="#ffffff" stroke-width="3"/>
+    <circle cx="49.5" cy="61" r="3.6" fill="#1a1d3a" stroke="none"/>
+    <circle cx="78.5" cy="61" r="3.6" fill="#1a1d3a" stroke="none"/>
+    <circle cx="50.8" cy="59.4" r="1.2" fill="#ffffff" stroke="none"/>
+    <circle cx="79.8" cy="59.4" r="1.2" fill="#ffffff" stroke="none"/>
+    <path d="M55 75Q64 83 73 75" fill="none" stroke-width="3.5"/>
+  </g>
+  <g fill="#e8627f" fill-opacity="0.7">
+    <ellipse cx="38" cy="73" rx="5" ry="3.2"/>
+    <ellipse cx="90" cy="73" rx="5" ry="3.2"/>
+  </g>
+</svg>

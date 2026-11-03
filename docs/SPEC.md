@@ -81,6 +81,7 @@ Everything is **automatic**: capture, consolidation and indexing involve no manu
 | ✅ D-26 | **Embeddings are computed locally** (ONNX Runtime) behind an `IEmbeddingProvider` interface, with a small multilingual model chosen by a comparison on the operator's own notes. The model identifier is stored with each vector; changing it re-embeds automatically. An external API is opt-in only. | Privacy by default; French and English mixed. | [0009](adr/0009-embedded-vector-search-and-local-embeddings.md) |
 | ✅ D-27 | **Mnemarr authenticates every API and MCP call itself** (per-machine ingest tokens, per-user API keys). The ingest and MCP endpoints may be published on a dedicated host name outside the proxy's single sign-on; the UI stays behind it. | Agents have no browser; safety must not rely on the proxy. | [0010](adr/0010-external-exposure-and-delegated-backups.md) |
 | ✅ D-28 | **Mnemarr produces consistent snapshots of its data; the operator's backup tool ships them** to remote storage (encrypted). The index is rebuildable; raw conversations, settings and credentials are what matter. | Conductor principle; a live SQLite file must not be copied naively. | [0010](adr/0010-external-exposure-and-delegated-backups.md) |
+| ✅ D-29 | **Default port 8383.** 8686 was Lidarr's; 8383 is used by no *arr application. | Installed next to the other *arr apps without a collision. | [0011](adr/0011-default-port.md) |
 
 ---
 
@@ -184,7 +185,7 @@ All 🟡 until validated. Identifiers are provisional.
 | F-CON-03 | Provenance: each fact links back to the conversation it came from |
 | F-IDX-01 | Automatic compilation of all sources into the vector index, incremental on change |
 | F-LIF-01 | Supersede or archive notes instead of overwriting; keep history (Git provides it) |
-| F-HLT-01 | Health page: agents last seen, queue sizes, pull status, index status |
+| F-HLT-01 | Health page: agents last seen, queue sizes, pull status, index status, with reason codes. Built on the same `IHealthCheck` registrations as the probes (`/health/*`), exposed as a `/api/v1` resource; no second health mechanism |
 | F-HLT-02 | Alert when an agent or source has been silent too long |
 | F-UI-01 | Minimal *arr-style UI that consumes the REST API and only configures the brain (D-18): sources, agents and their credentials, language-model and embeddings providers, schedules, retention, masking rules |
 | F-UI-02 | Chat panel that operates Mnemarr through its MCP tools ("index the data now"); same principle as Portarr's chat (D-21) |
@@ -204,6 +205,7 @@ All 🟡 until validated. Identifiers are provisional.
 - **Assistant credentials** (MCP, API) are scoped per source and per verb (read-only or read-write); every read and write is audited.
 - **Git credentials** are scoped to one repository each. A device clones only the repositories it should hold.
 - **The ingest endpoint must be reachable from outside the home network** and therefore cannot rely on an interactive single sign-on; the per-agent credential protects it (Q-07).
+- **Anonymous endpoints are an explicit, short list.** Only `/health/live` and `/health/ready` (and the static shell of the UI) are anonymous. Everything under `/api/v1` and `/mcp` requires authentication as soon as the authentication vertical lands, and no later than the first endpoint that exposes memory content or settings. Until then `/api/v1/system/status` (version, runtime, uptime) and the OpenAPI document are anonymous on purpose; the OpenAPI document moves behind authentication in production, since a public host name must not hand out a map of the API and the exact version. Behind a reverse proxy, `ForwardedHeaders` and `AllowedHosts` are set with the ingest vertical, before rate limiting and audit use the client address.
 - Raw conversations are sensitive data: they are part of the backup, have a retention policy and are not exposed beyond the authenticated API.
 
 ---
@@ -218,7 +220,6 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | Q-02 | Storage | Vector store | ✅ Embedded in SQLite behind an interface (D-25). Spike pending: `sqlite-vec` or in-process comparison |
 | Q-03 | Embeddings | Which embeddings model, and what happens to vectors when it changes? | ✅ Local, small, multilingual, behind an interface; model id stored with each vector (D-26). Comparison on the operator's notes pending |
 | Q-04 | Consolidation model | Which model does the consolidation, and where does it run? | ✅ Claude Code through the operator's subscription, in the assistant runner (D-21, D-22); the adapter leaves room for others. Conversations are sent to the provider, after masking (D-10). Remaining points: Q-19 |
-| Q-19 | Subscription | Is automated, unattended use of a Claude subscription this way allowed by the provider's terms? How is the shared usage limit protected (cadence, per-run cap, pause when the limit is near)? The operator expects consolidation to be cheap and to run on a light model (Haiku); the model is a setting of the job. | 💬 |
 | Q-05 | Writing model | Who writes the memory vault, and how are conflicts avoided? | ✅ Mnemarr's AI only, the operator reads (D-14) |
 | Q-06 | Note conventions | Which minimal conventions (front matter fields, naming) does the AI follow so that notes stay searchable and filterable by application? | ❓ |
 | Q-07 | Exposure | How is the ingest endpoint exposed? | ✅ Dedicated host name outside the proxy's single sign-on, with Mnemarr's own authentication (D-27); VPN as an alternative |
@@ -230,9 +231,12 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | Q-13 | Masking | Which secret patterns are masked, and how to avoid both leaks and over-masking? | ❓ |
 | Q-14 | Users | Single operator with several assistants, or several people? Authentication for the UI and the API. | ❓ |
 | Q-15 | Quality | How are duplicates and contradictions detected during consolidation (F-CON-02)? | ❓ |
+| Q-16 | Formats | Conversation file formats are not public contracts: how are readers versioned and tested against format changes? | ❓ |
 | Q-17 | Workspaces | Application documentation can be read from Git repositories, but some applications live only in a local workspace with no remote. Is documentation also sent by the agent from workspaces, or only read from Git? | ❓ |
 | Q-18 | Corrections | When the operator sees a wrong memory, how is it corrected? | 💬 By telling an assistant or the chat, which calls the correction tool of the MCP server (F-MCP-04); to confirm |
-| Q-16 | Formats | Conversation file formats are not public contracts: how are readers versioned and tested against format changes? | ❓ |
+| Q-19 | Subscription | Is automated, unattended use of a Claude subscription this way allowed by the provider's terms? How is the shared usage limit protected (cadence, per-run cap, pause when the limit is near)? The operator expects consolidation to be cheap and to run on a light model (Haiku); the model is a setting of the job. | 💬 |
+| Q-20 | License | Which license? Portarr uses GPL-3.0 (ADR 0003 there); the foundation code declares GPL-3.0-or-later in its package metadata as a placeholder, and no LICENSE file exists yet. | ❓ |
+| Q-21 | URL base | *arr applications can be served under a path of a host name (a URL base). Mnemarr starts as host-name-only: absolute `/api` paths and a root fallback. Is a URL base needed? If yes, a base is added in `apiGet` (the one place the API is addressed, DESIGN.md) and a `basename` on the router; the logo and favicon are the only other absolute paths. | ❓ |
 
 ---
 
@@ -260,6 +264,10 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 |---|---|
 | 2026-11-01 | Created. Interview #1 (architecture): D-01 to D-14, ADR 0001 to 0005, Q-01 to Q-16. Two Git vaults split by audience, three data layers, collector agent. |
 | 2026-11-01 | Interview #1 (continued). D-25 to D-28, ADR 0009 and 0010: embedded vector search and local embeddings behind interfaces (spikes pending), exposure outside the proxy's sign-on with own authentication, snapshots shipped by the operator's backup tool. Q-02, Q-03, Q-07 resolved. Glossary: embedding, vector store. |
+| 2026-11-01 | Review of the shell (four agents). Fixes: one state on the Overview (a failed refresh no longer shows online and unreachable together), the API reachable label until F-HLT-01 exists, a single door to the API (`apiGet`, `useApiQuery`), fonts no longer inlined as `data:` (the Content-Security-Policy refuses them), a skip link, typed status icons. |
+| 2026-11-01 | Application shell on the foundation: header with the brain logo, left menu (Overview and System built; Sources, Agents and Settings shown as "Soon"), Portarr's theme and fonts, docs/DESIGN.md. F-UI-01 starts here. |
+| 2026-11-01 | Foundation review (four agents). D-29 and ADR 0011: default port 8383 (8686 is Lidarr's). Rule on anonymous endpoints (section 6), health built on the probes' checks (F-HLT-01), Q-21 (URL base). Fixes: start time of the application, security headers on error responses. |
+| 2026-11-01 | Foundation vertical started (issue 3). Q-20 added: the license is not decided. |
 | 2026-11-01 | Interview #1 (continued). D-23, D-24, ADR 0008: same quality chain and infrastructure-as-code delivery as Portarr, foundation vertical first. Consolidation expected on a light model (Q-19). |
 | 2026-11-01 | Interview #1 (continued). D-19 to D-22, ADR 0006 and 0007: API exposes everything, MCP on top with memory and administration tools, chat and consolidation through an assistant runner reusing Portarr's design, Claude subscription. Q-04 resolved, Q-18 proposed, Q-19 added. |
 | 2026-11-01 | Interview #1 (continued). D-18: Mnemarr is the orchestrator of the brain, minimal configuration-only UI (F-UI-01 reduced), reading is done in Obsidian. Q-12 resolved (pull-only devices). |

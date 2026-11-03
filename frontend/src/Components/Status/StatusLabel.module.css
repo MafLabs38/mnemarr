@@ -1,0 +1,17 @@
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 2px 8px;
+  border: var(--borderWidth) solid currentcolor;
+  border-radius: var(--radiusPill);
+  font-weight: 800;
+}
+
+.success {
+  color: var(--successColor);
+}
+
+.danger {
+  color: var(--dangerColor);
+}

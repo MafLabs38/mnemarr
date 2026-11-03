@@ -1,0 +1,11 @@
+.content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Reached by the skip link: it takes the focus without showing a ring around the whole page. */
+.content:focus {
+  outline: none;
+}
