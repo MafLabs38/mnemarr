@@ -8,7 +8,14 @@ fn write_stdout(text: &str) -> ExitCode {
     match io::stdout().write_all(text.as_bytes()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.kind() == ErrorKind::BrokenPipe => ExitCode::SUCCESS,
-        Err(_) => ExitCode::from(1),
+        Err(error) => {
+            // If even standard error is closed there is nobody left to tell.
+            let _ = writeln!(
+                io::stderr(),
+                "mnemarr-collector: cannot write to standard output: {error}"
+            );
+            ExitCode::from(1)
+        }
     }
 }
 

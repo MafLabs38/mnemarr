@@ -64,6 +64,21 @@ public sealed class DataFolderHealthCheckFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_probe_once_when_many_requests_arrive_together_after_the_result_expired()
+    {
+        var subject = Subject(_folder);
+        var probes = 0;
+        using var watcher = new FileSystemWatcher(_folder, ".write-test-*") { EnableRaisingEvents = true };
+        watcher.Created += (_, _) => Interlocked.Increment(ref probes);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 25).Select(_ => Task.Run(() => Check(subject), TestContext.Current.CancellationToken)));
+        await Task.Delay(300, TestContext.Current.CancellationToken); // file events reach the watcher a moment later
+
+        results.Should().OnlyContain(result => result.Status == HealthStatus.Healthy);
+        probes.Should().Be(1);
+    }
+
+    [Fact]
     public async Task should_reuse_its_result_for_a_few_seconds_so_that_a_loop_of_requests_does_not_write_on_every_one()
     {
         var folder = Path.Combine(_folder, "volume");

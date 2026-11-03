@@ -12,7 +12,7 @@ public sealed class MnemarrOptionsValidator : IValidateOptions<MnemarrOptions>
             return ValidateOptionsResult.Fail("DataFolder (MNEMARR__DATAFOLDER) must name the folder that holds the data.");
         }
 
-        return Path.IsPathRooted(options.DataFolder)
+        return Path.IsPathFullyQualified(options.DataFolder)
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail("DataFolder (MNEMARR__DATAFOLDER) must be an absolute path.");
     }
