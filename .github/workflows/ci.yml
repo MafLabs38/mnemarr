@@ -228,6 +228,15 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
 
+  # A merge into main with no Sonar server configured is not a silent no-op: `release` and `image` are skipped (a release needs the
+  # analysis to have passed), and this says why.
+  sonar-not-configured:
+    name: sonar-not-configured
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SONAR_HOST_URL == '' }}
+    steps:
+      - run: echo "::warning title=No release::SONAR_HOST_URL is not set, so the SonarQube analysis was skipped; a release needs it to have passed. Nothing was released or published (docs/releasing.md)."
+
   # The things that decide a version: the release rules, the version of an image and the guard on the seed tag (tools/release/test).
   release-tooling:
     name: release-tooling
@@ -250,6 +259,7 @@ jobs:
   release:
     name: release
     runs-on: ubuntu-latest
+    # The same list as the `image` job below: a gate added to one is added to the other.
     needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling]
     # The tag cannot be undone, so the gate is the strictest one: nothing failed or was cancelled, the end-to-end test ran and passed, and the
     # Sonar analysis ran and passed (a skipped analysis, because the server is not configured, does not release).
@@ -292,6 +302,7 @@ jobs:
   image:
     name: image
     runs-on: ubuntu-latest
+    # The same gates as the `release` job above, and that job.
     needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling, release]
     if: >-
       ${{ !cancelled() && github.event_name == 'push' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
@@ -310,7 +321,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # X.Y.Z.<run> for a release (the application shows it), 0.0.0-<tag> for any other build.
+      # X.Y.Z.<run> for a release (the application shows it), 0.0.0-<ref>.<run> for any other build.
       - id: version
         env:
           RELEASE: ${{ needs.release.outputs.version }}

@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # The base images are pinned by digest (the tag says what they are, the digest what they were when a release was built); Dependabot moves both.
+# Tag and digest together are on purpose, an exception to SonarQube's docker:S8431 stated in ci.yml and ADR 0013: do not "fix" it.
 
 # The build stages run on the builder's own architecture (their output does not depend on the target one): only the last stage is
 # per architecture, and it only copies files, so a multi-architecture image is built without emulation.

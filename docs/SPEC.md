@@ -258,7 +258,7 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | Q-36 | Memory budget | Before the search vertical: the deployment examples limit memory to 512 MB, which the 390 MB model alone exceeds; a documented budget, raised limits, and SQLite temporary files (VACUUM, FTS merges) pointed into the data folder instead of a 64 MB `/tmp`. | ❓ |
 | Q-37 | Unpushed memory | Before the consolidation vertical: while a push fails, the memory vault's commits exist only locally, yet backups treat the vault as rebuildable (ADR 0010). Include unpushed commits in the snapshot, and show "N commits not pushed since T" on the health page. | ❓ |
 | Q-38 | Alerts | Before the health vertical: Mnemarr exposes health with reason codes (API, MCP) and Portarr, the observer, raises the alert; Mnemarr ships no notification channel of its own (D-13, F-HLT-02). | ❓ |
-| Q-39 | Release of a per-architecture image | Before the search vertical: the published image is a rebuild and the arm64 image is never started (ADR 0013). With the native `sqlite-vec` binary (D-30), the pushed digest must be started and checked for each platform before the version and `latest` tags are added (issue 24). | ❓ |
+| Q-39 | Release of a per-architecture image | Before the search vertical: the published image is a rebuild and the arm64 image is never started (ADR 0013). With the native `sqlite-vec` binary (D-30), the pushed digest must be started and checked for each platform before the version and `latest` tags are added (issue 24). The same step is where the image is scanned (Trivy scans the repository, not the image) and gets an SBOM and a provenance attestation. | ❓ |
 
 ---
 

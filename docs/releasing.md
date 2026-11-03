@@ -11,7 +11,7 @@ On every push to `main`, after the whole pipeline is green, the `release` job re
 | `feat(…): …` | minor: `0.1.0` → `0.2.0` |
 | `fix(…)`, `perf(…)`, `revert(…)` | patch: `0.1.0` → `0.1.1` |
 | a breaking change (`feat(…)!:` or a `BREAKING CHANGE:` footer) | minor while below 1.0, major from 1.0 |
-| `chore(deps)` (a dependency of the image, as Dependabot titles it) | patch: a fixed vulnerability must reach a version |
+| `chore(deps)` (a non-development dependency, as Dependabot titles it) | patch: a fixed vulnerability must reach a version. A NuGet bump counts even when only the tests use the package (Dependabot cannot tell); the collector's crates (`build(deps)`) do not |
 | `chore`, `docs`, `test`, `refactor`, `style`, `build`, `ci`, `chore(deps-dev)` | no release, even when marked breaking |
 
 The rules are in [`tools/release/.releaserc.json`](../tools/release/.releaserc.json) (the last matching rule wins, so the specific `chore(deps)` rule comes after the general `chore` one) and are tested by `release-tooling` in the CI.
@@ -93,6 +93,9 @@ There is no separate hotfix path. A fix goes through `develop` like any other ch
 
 - The tag `v0.0.0` exists on the initial commit of `main` (the `release` job refuses to run without any `v*` tag).
 - The `main` ruleset allows merge commits only (check **Settings > Rules**), and the squash commit of the repository is the pull request title (**Settings > General > Pull Requests**): both are set by `repos/mnemarr.yaml` of the organization's `github-template`.
+- Sonar is configured (`SONAR_HOST_URL` and `SONAR_TOKEN`): without it a merge into `main` releases and publishes nothing, and the run says so with a warning.
+- The `v*` tags are protected against deletion and moves (a ruleset of the organization's `github-template`): deleting `v0.0.0` would make the next release `1.0.0`.
+- A Dependabot pull request that touches `tools/release/yarn.lock` is reviewed as privileged code: that package runs in the one job that can write to the repository. Npm bumps wait seven days (`cooldown`).
 - Decide whether `conventional-title` (and the other checks) are **required** checks of the repository. The `PR title` workflow reports a failure, but only a required check blocks the merge.
 - After the first image is published, set the package visibility to public if the registry does not inherit it from the repository, so that a deployment can pull it without a credential.
 

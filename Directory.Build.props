@@ -10,6 +10,8 @@
     <!-- CS1591: XML comments are not required on every public member. -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <!-- The version the application shows is the one it was built with, not that plus the commit hash the SDK appends when .git is there. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>Mnemarr contributors</Authors>
     <Product>Mnemarr</Product>
     <!-- Provisional, like the one in package.json and the collector: the license is not decided yet (docs/SPEC.md, Q-20). -->

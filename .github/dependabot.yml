@@ -16,6 +16,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # A version published a moment ago is not taken at once: a compromised release is usually withdrawn within days.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -29,16 +32,20 @@ updates:
     directory: "/tools/release"
     schedule:
       interval: "weekly"
+    # This code runs in the job that can write to the repository: same cooldown, and its lockfile diff is reviewed as privileged code.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore"
       include: "scope"
 
+  # The collector is not in the image (ADR 0013): its bumps do not release a version of it.
   - package-ecosystem: "cargo"
     directory: "/collector"
     schedule:
       interval: "weekly"
     commit-message:
-      prefix: "chore"
+      prefix: "build"
       include: "scope"
 
   - package-ecosystem: "docker"

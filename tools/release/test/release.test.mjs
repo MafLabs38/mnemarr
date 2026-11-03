@@ -2,7 +2,7 @@
 // guard on the seed tag. Run by the `release-tooling` job of the CI (`yarn test` in tools/release).
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -28,6 +28,8 @@ test('the release rules', async (t) => {
     ['fix!: change a default', 'minor'],
     ['feat: x\n\nBREAKING CHANGE: the field is gone', 'minor'],
     ['chore(deps): Bump a from 1 to 2', 'patch'], // a dependency of the image is a patch: a fixed vulnerability must be released
+    ['feat(deps): x', 'minor'], // the scoped rule must not downgrade a feat
+    ['build(deps): Bump a collector crate', null],
     ['chore(deps-dev): Bump a from 1 to 2', null],
     ['ci(deps): Bump an action', null],
     ['docs(adr): explain', null],
@@ -48,8 +50,16 @@ test('the release rules', async (t) => {
 });
 
 test('the highest release of several commits wins', async () => {
-  const commits = ['docs: a', 'fix: b', 'feat: c', 'chore: d'].map((message, i) => ({ hash: String(i), message }));
-  assert.equal(await analyzeCommits(analyzer, { cwd: here, commits, logger }), 'minor');
+  const release = (messages) =>
+    analyzeCommits(analyzer, { cwd: here, commits: messages.map((message, i) => ({ hash: String(i), message })), logger });
+  assert.equal(await release(['docs: a', 'fix: b', 'feat: c', 'chore: d']), 'minor');
+  assert.equal(await release(['fix: a', 'fix!: b']), 'minor'); // a breaking fix beside a fix
+  assert.equal(await release(['docs: a', 'chore: b']), null);
+});
+
+test('semantic-release tells the next job the version it chose', () => {
+  const exec = config.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/exec')[1];
+  assert.match(exec.successCmd, /version=\$\{nextRelease\.version\}.*GITHUB_OUTPUT/);
 });
 
 test('the version of an image', async (t) => {
@@ -60,27 +70,48 @@ test('the version of an image', async (t) => {
   await t.test('no release is 0.0.0-<ref>.<run>', () => assert.equal(version({ RELEASE: '', RUN: '7', REF: 'develop' }), '0.0.0-develop.7'));
   await t.test('a ref that is not a valid version part is cleaned', () =>
     assert.equal(version({ RELEASE: '', RUN: '7', REF: 'feature/3_x y' }), '0.0.0-feature-3-x-y.7'));
+  await t.test('dots and dashes of a ref become dashes', () =>
+    assert.equal(version({ RELEASE: '', RUN: '7', REF: 'feature/1.2-x' }), '0.0.0-feature-1-2-x.7'));
+  await t.test('a missing run number is an error, not a version', () => {
+    const result = spawnSync('bash', [path.join(scripts, 'version.sh')], { env: { PATH: process.env.PATH, RELEASE: '0.1.0' }, encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+  });
 });
 
 test('the guard on the seed tag', async (t) => {
-  const guard = (cwd) => spawnSync('bash', [path.join(scripts, 'require-release-tag.sh')], { cwd, encoding: 'utf8' });
+  const guard = ({ cwd, env }) => spawnSync('bash', [path.join(scripts, 'require-release-tag.sh')], { cwd, env, encoding: 'utf8' });
+  // A repository of its own, removed afterwards, and none of the developer's git configuration (signing, hooks) in the way.
   const repository = () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'release-guard-'));
-    const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], { cwd });
+    t.after(() => rmSync(cwd, { recursive: true, force: true }));
+    const env = { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', ...args], { cwd, env });
     git('init', '-q');
     git('commit', '-q', '--allow-empty', '-m', 'initial');
-    return { cwd, git };
+    return { cwd, git, env };
   };
 
   await t.test('refuses to run without a v* tag', () => {
-    const { cwd } = repository();
-    const result = guard(cwd);
+    const result = guard(repository());
     assert.equal(result.status, 1);
     assert.match(result.stdout, /No release tag/);
   });
+  await t.test('refuses a repository whose only tags are not release tags', () => {
+    const repo = repository();
+    repo.git('tag', '1.0');
+    repo.git('tag', 'release-1');
+    assert.equal(guard(repo).status, 1);
+  });
   await t.test('runs with the seed tag', () => {
-    const { cwd, git } = repository();
-    git('tag', 'v0.0.0');
-    assert.equal(guard(cwd).status, 0);
+    const repo = repository();
+    repo.git('tag', 'v0.0.0');
+    assert.equal(guard(repo).status, 0);
+  });
+  await t.test('says that git failed when it is not in a repository', () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'release-guard-none-'));
+    t.after(() => rmSync(cwd, { recursive: true, force: true }));
+    const result = guard({ cwd, env: { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CEILING_DIRECTORIES: tmpdir() } });
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stdout, /No release tag/);
   });
 });
