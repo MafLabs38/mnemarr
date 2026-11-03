@@ -20,7 +20,7 @@ public static class SecurityHeaders
                 headers["X-Frame-Options"] = "DENY";
                 headers["Referrer-Policy"] = "no-referrer";
                 headers["Content-Security-Policy"] = ContentSecurityPolicy;
-                if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+                if (ApiPaths.IsApi(context.Request.Path))
                 {
                     // What the API says is for the person who asked, and sometimes once (the secret of a new key): no cache keeps it.
                     headers.CacheControl = "no-store";

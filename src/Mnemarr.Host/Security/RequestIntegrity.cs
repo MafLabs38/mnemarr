@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Mnemarr.Host.Http;
 namespace Mnemarr.Host.Security;
 
 /// <summary>
@@ -19,7 +20,7 @@ public sealed class RequestIntegrityMiddleware
     public Task InvokeAsync(HttpContext context)
     {
         var isWrite = !SafeMethods.Contains(context.Request.Method);
-        var isApi = context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase);
+        var isApi = ApiPaths.IsApi(context.Request.Path);
         if (isWrite && isApi && ApiKeyHeader.Read(context.Request) is null && !context.Request.Headers.ContainsKey(HeaderName))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;

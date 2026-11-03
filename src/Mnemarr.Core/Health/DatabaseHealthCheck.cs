@@ -25,15 +25,15 @@ public sealed class DatabaseHealthCheck : IHealthCheck
             // newer version started on the same folder, does not.
             return Task.FromResult(Schema.CurrentVersion(connection) == Schema.Version
                 ? HealthCheckResult.Healthy()
-                : HealthCheckResult.Unhealthy("The database does not have the schema of this version."));
+                : HealthReasons.Unhealthy("schema-mismatch", "The database does not have the schema of this version."));
         }
         catch (UnsupportedSchemaException ex)
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("The database was written by a newer version of Mnemarr.", ex));
+            return Task.FromResult(HealthReasons.Unhealthy("schema-newer", "The database was written by a newer version of Mnemarr.", ex));
         }
         catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("The database cannot be opened.", ex));
+            return Task.FromResult(HealthReasons.Unhealthy("database-unavailable", "The database cannot be opened.", ex));
         }
     }
 }

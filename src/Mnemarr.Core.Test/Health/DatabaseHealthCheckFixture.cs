@@ -39,6 +39,7 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
         var result = await Check(database);
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Data["reason"].Should().Be("database-unavailable");
         result.Description.Should().Be("The database cannot be opened.").And.NotContain(folder);
     }
 
@@ -50,6 +51,7 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
         var result = await Check(_h.Workspace.Database);
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Data["reason"].Should().Be("schema-mismatch");
         result.Description.Should().Contain("schema");
     }
 
@@ -61,6 +63,7 @@ public sealed class DatabaseHealthCheckFixture : IDisposable
         var result = await Check(new Database(_h.Workspace.Options));
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Data["reason"].Should().Be("schema-newer");
         result.Description.Should().Be("The database was written by a newer version of Mnemarr.");
     }
 }

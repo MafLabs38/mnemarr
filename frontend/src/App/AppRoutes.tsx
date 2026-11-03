@@ -15,7 +15,14 @@ export default function AppRoutes() {
     <Routes>
       <Route element={<Overview />} path="/" />
       <Route element={<Navigate replace to="/system/status" />} path="/system" />
-      <Route element={<Status />} path="/system/status" />
+      <Route
+        element={
+          <RequirePermission permission={permissions.systemRead}>
+            <Status />
+          </RequirePermission>
+        }
+        path="/system/status"
+      />
       <Route element={<MyAccount />} path="/account" />
       <Route
         element={

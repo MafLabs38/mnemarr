@@ -4,8 +4,8 @@ import { readerSession, renderWithProviders, stubApi } from '__tests__/render';
 import AppRoutes from 'App/AppRoutes';
 
 describe('AppRoutes', () => {
-  it.each(['/accounts', '/accounts/s3/keys'])(
-    'leads nowhere for a person who may not manage accounts, and asks the API for nothing: %s',
+  it.each(['/accounts', '/accounts/s3/keys', '/system/status'])(
+    'leads nowhere for a person who may not use the page, and asks the API for nothing: %s',
     async (path) => {
       const fetchMock = stubApi(() => ({ status: 403 }));
 

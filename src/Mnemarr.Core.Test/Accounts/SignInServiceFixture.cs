@@ -261,6 +261,8 @@ public sealed class SignInServiceFixture : IDisposable
 
         (await signingIn).Should().BeNull("the password that was checked is not the password any more");
         CountSessions(harness).Should().Be(0);
+        harness.Audit.Recent(10, "login.succeeded").Should().BeEmpty("a sign-in that was refused is not recorded as a success");
+        harness.Audit.Recent(10, "login.failed").Should().ContainSingle();
     }
 
     [Fact]

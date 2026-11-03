@@ -60,10 +60,14 @@ public sealed class SignInService
         var session = _sessions.Start(account.Id);
         if (_accounts.GetCredentials(account.Name) is { Account.Enabled: true, PasswordHash: { } current } && current == hash)
         {
+            // Only now is it a sign-in: the failures before it are forgiven, and the log says so.
+            _throttle.Succeeded(account.Name);
+            _audit.Append(account.Name, "login.succeeded", account.Name);
             return new SignedIn(account, session);
         }
 
         _sessions.End(session);
+        _audit.Append(account.Name, "login.failed", account.Name, "the account or its password changed while it was checked");
         return null;
     }
 
@@ -125,7 +129,7 @@ public sealed class SignInService
             return null;
         }
 
-        return Succeeded(account, hash, result, password);
+        return Rehashed(account, hash, result, password);
     }
 
     /// <summary>Counts an attempt before its password is checked, or refuses it: a locked name is not checked at all.</summary>
@@ -144,16 +148,15 @@ public sealed class SignInService
         throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(counter) ?? LoginThrottle.Window);
     }
 
-    private (Account Account, string Hash) Succeeded(Account account, string hash, PasswordVerificationResult result, string password)
+    /// <summary>The hash the sessions are bound to: the stored one, or the new one when the cost of hashing has changed since it was made.</summary>
+    private (Account Account, string Hash) Rehashed(Account account, string hash, PasswordVerificationResult result, string password)
     {
-        _throttle.Succeeded(account.Name);
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
             hash = _hasher.HashPassword(account, password);
             _accounts.SetPasswordHash(account.Id, hash);
         }
 
-        _audit.Append(account.Name, "login.succeeded", account.Name);
         return (account, hash);
     }
 

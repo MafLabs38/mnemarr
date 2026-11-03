@@ -29,7 +29,7 @@ public sealed class AccountsHealthCheck : IHealthCheck
         }
         catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("The accounts cannot be read.", ex));
+            return Task.FromResult(HealthReasons.Unhealthy("accounts-unreadable", "The accounts cannot be read.", ex));
         }
     }
 
@@ -38,23 +38,19 @@ public sealed class AccountsHealthCheck : IHealthCheck
         var byRole = _accounts.CountByRole();
         if (byRole.Count == 0)
         {
-            return Degraded("no-account", "No account exists: the first administrator is not configured, nobody can sign in.");
+            return HealthReasons.Degraded("no-account", "No account exists: the first administrator is not configured, nobody can sign in.");
         }
 
         // A role is a name in code and a word in the database: one that was renamed or removed gives its accounts no permission at all.
         var unknownRoles = byRole.Where(pair => Roles.Find(pair.Key) is null).Sum(pair => pair.Value);
         if (unknownRoles > 0)
         {
-            return Degraded("unknown-role", $"{unknownRoles} account(s) have a role that this version does not know, so they can do nothing.");
+            return HealthReasons.Degraded("unknown-role", $"{unknownRoles} account(s) have a role that this version does not know, so they can do nothing.");
         }
 
         // Left set, the break-glass reset puts the password back at every start: it is for one start only.
         return string.IsNullOrWhiteSpace(_auth.Value.ResetPasswordUser)
             ? HealthCheckResult.Healthy()
-            : Degraded("break-glass-set", "The break-glass password reset is still set: remove it, it resets the password at every start.");
+            : HealthReasons.Degraded("break-glass-set", "The break-glass password reset is still set: remove it, it resets the password at every start.");
     }
-
-    /// <summary>A degraded result with a stable reason code, which the health resource of the API will carry (F-HLT-01), next to the words.</summary>
-    private static HealthCheckResult Degraded(string reason, string description) =>
-        HealthCheckResult.Degraded(description, data: new Dictionary<string, object> { ["reason"] = reason });
 }
