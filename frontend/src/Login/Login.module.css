@@ -1,0 +1,32 @@
+.page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: var(--pageContentBodyPaddingSmall);
+  background-color: var(--paperWarm);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(380px, 100%);
+  padding: 28px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusLarge);
+  background-color: var(--paperCard);
+  box-shadow: var(--shadowCard);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--displayFontFamily);
+  font-size: var(--fontSizeSectionTitle);
+  font-weight: 700;
+}

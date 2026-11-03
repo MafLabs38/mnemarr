@@ -1,0 +1,20 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: var(--fontSizeMeta);
+  font-weight: 700;
+}
+
+.control {
+  padding: 8px 12px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusSmall);
+  background-color: var(--paperSunken);
+  color: var(--ink);
+  font-family: var(--defaultFontFamily);
+  font-size: var(--fontSizeBody);
+}

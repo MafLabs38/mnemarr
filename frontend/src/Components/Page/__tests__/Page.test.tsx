@@ -17,7 +17,7 @@ describe('Page', () => {
     renderPage();
 
     const menu = screen.getByRole('navigation', { name: 'Main menu' });
-    expect(menu).toHaveTextContent(/Overview.*Sources.*Agents.*Settings.*System/s);
+    expect(menu).toHaveTextContent(/Overview.*Sources.*Agents.*Settings.*System.*Accounts/s);
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: 'System' })).toHaveAttribute('href', '/system/status');
     for (const name of ['Sources', 'Agents', 'Settings']) {

@@ -16,8 +16,8 @@ public static class FrontendFiles
     /// </summary>
     public static WebApplication MapMnemarrFrontendFallback(this WebApplication app)
     {
-        app.MapFallback("/api/{**path}", () => Results.NotFound());
-        app.MapFallbackToFile("index.html");
+        app.MapFallback($"{ApiPaths.Prefix}/{{**path}}", () => Results.NotFound());
+        app.MapFallbackToFile("index.html").AllowAnonymous();
         return app;
     }
 }

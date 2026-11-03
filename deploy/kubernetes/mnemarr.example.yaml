@@ -53,6 +53,12 @@ spec:
           env:
             - name: MNEMARR__DATAFOLDER
               value: /config
+            # The first administrator, created only while there is no account: a name, and the password in a mounted secret.
+            # Choose a name that is not obvious: whoever knows it can lock that account for fifteen minutes (five wrong passwords).
+            - name: MNEMARR__AUTH__ADMINUSER
+              value: change-me-admin-name
+            - name: MNEMARR__AUTH__ADMINPASSWORDFILE
+              value: /run/secrets/mnemarr/admin-password
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -77,11 +83,17 @@ spec:
               memory: 512Mi
               ephemeral-storage: 256Mi
           volumeMounts:
+            - name: admin-password
+              mountPath: /run/secrets/mnemarr
+              readOnly: true
             - name: data
               mountPath: /config
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: admin-password
+          secret:
+            secretName: mnemarr-admin   # created by you: `kubectl -n mnemarr create secret generic mnemarr-admin --from-file=admin-password=./admin-password`
         - name: data
           persistentVolumeClaim:
             claimName: mnemarr-data

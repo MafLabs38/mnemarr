@@ -14,30 +14,30 @@ beforeEach(() => {
 });
 
 describe('App routing', () => {
-  it('shows the overview at the root', () => {
+  it('shows the overview at the root', async () => {
     openApp('/');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument();
   });
 
   it('opens the system status from its address', async () => {
     openApp('/system/status');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
     expect(await screen.findByText('1.2.3')).toBeInTheDocument();
   });
 
-  it('sends /system to its status page, and changes the address', () => {
+  it('sends /system to its status page, and changes the address', async () => {
     openApp('/system');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
     expect(globalThis.location.pathname).toBe('/system/status');
   });
 
-  it('shows a page not found for an unknown address, with a way back and a title', () => {
+  it('shows a page not found for an unknown address, with a way back and a title', async () => {
     openApp('/nowhere');
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to the overview' })).toHaveAttribute('href', '/');
     expect(document.title).toBe('Page not found - Mnemarr');
   });
@@ -45,8 +45,19 @@ describe('App routing', () => {
   it('navigates from the menu', async () => {
     openApp('/');
 
-    await userEvent.click(screen.getByRole('link', { name: 'System' }));
+    await userEvent.click(await screen.findByRole('link', { name: 'System' }));
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Status' })).toBeInTheDocument();
+  });
+
+  it('goes back to the sign-in page when the person signs out, and shows nothing of what they had read', async () => {
+    openApp('/system/status');
+    expect(await screen.findByText('1.2.3')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to Mnemarr' })).toBeInTheDocument();
+    expect(screen.queryByText('1.2.3')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Main menu' })).not.toBeInTheDocument();
   });
 });

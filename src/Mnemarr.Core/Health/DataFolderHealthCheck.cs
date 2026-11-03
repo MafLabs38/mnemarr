@@ -77,7 +77,7 @@ public sealed class DataFolderHealthCheck : IHealthCheck, IDisposable
     {
         if (!Directory.Exists(folder))
         {
-            return HealthCheckResult.Unhealthy("The data folder does not exist.");
+            return HealthReasons.Unhealthy("data-folder-missing", "The data folder does not exist.");
         }
 
         var probe = Path.Combine(folder, $".write-test-{Guid.NewGuid():N}");
@@ -88,7 +88,7 @@ public sealed class DataFolderHealthCheck : IHealthCheck, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return HealthCheckResult.Unhealthy("The data folder is not writable.", ex);
+            return HealthReasons.Unhealthy("data-folder-read-only", "The data folder is not writable.", ex);
         }
         finally
         {

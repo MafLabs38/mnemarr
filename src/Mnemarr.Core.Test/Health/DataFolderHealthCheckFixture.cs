@@ -37,6 +37,7 @@ public sealed class DataFolderHealthCheckFixture : IDisposable
         var result = await Check(Subject(missing));
 
         result.Status.Should().Be(HealthStatus.Unhealthy);
+        result.Data["reason"].Should().Be("data-folder-missing");
         result.Description.Should().Be("The data folder does not exist.").And.NotContain(missing);
     }
 
@@ -54,6 +55,7 @@ public sealed class DataFolderHealthCheckFixture : IDisposable
             var result = await Check(Subject(_folder));
 
             result.Status.Should().Be(HealthStatus.Unhealthy);
+            result.Data["reason"].Should().Be("data-folder-read-only");
             result.Description.Should().Be("The data folder is not writable.");
             result.Exception.Should().BeOfType<UnauthorizedAccessException>();
         }

@@ -6,6 +6,8 @@ import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
 import StatusLabel from 'Components/Status/StatusLabel';
 import { kinds } from 'Helpers/Props/kinds';
+import { permissions } from 'Session/session';
+import { usePermissions } from 'Session/SessionContext';
 import { useSystemStatus } from 'System/Status/useSystemStatus';
 import translate from 'Utilities/String/translate';
 
@@ -38,6 +40,8 @@ function ApiState() {
 
 /** The home page. It is the one place, with the empty states, where the product may be playful. */
 export default function Overview() {
+  const { can } = usePermissions();
+
   return (
     <PageContent title={translate('Overview')}>
       <PageContentBody>
@@ -48,7 +52,7 @@ export default function Overview() {
               <BrandLogo size={200} />
             </div>
             <div className={styles.text}>
-              <ApiState />
+              {can(permissions.systemRead) && <ApiState />}
               <p className={styles.headline}>{translate('NothingToRememberYet')}</p>
               <p className={styles.intro}>{translate('OverviewIntro')}</p>
             </div>

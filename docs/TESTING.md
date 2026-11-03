@@ -27,7 +27,7 @@ Later levels (Testcontainers for external services, a recorded fixture of the as
 - No real `Thread.Sleep` or delay: use `FakeTimeProvider`. No test depends on the order of another or on the network.
 - Tests never contain real infrastructure values or real memory content.
 - A test protects a behavior someone relies on; it does not assert a framework or a getter. The `test-reviewer` agent challenges this on every pull request.
-- E2E selectors use roles and visible text, not styling.
+- E2E selectors use roles and visible text, not styling. The stack starts with a first administrator (a mounted password file, as a real deployment gives it) and the tests sign in through the form; access (who is let in, with what, who is refused) is also a matrix in the integration tests (`AccessFixture`).
 
 ## 4. CI gates
 

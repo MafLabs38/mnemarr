@@ -6,12 +6,22 @@ import { defineConfig } from 'vite';
 const src = fileURLToPath(new URL('./src', import.meta.url));
 
 // Absolute imports from src: every top-level folder becomes an alias.
-const aliases = ['__tests__', 'App', 'Components', 'Helpers', 'Overview', 'Styles', 'System', 'Utilities'].map(
-  (folder) => ({
-    find: new RegExp(`^${folder}(/|$)`),
-    replacement: `${src}/${folder}$1`,
-  }),
-);
+const aliases = [
+  '__tests__',
+  'Accounts',
+  'App',
+  'Components',
+  'Helpers',
+  'Login',
+  'Overview',
+  'Session',
+  'Styles',
+  'System',
+  'Utilities',
+].map((folder) => ({
+  find: new RegExp(`^${folder}(/|$)`),
+  replacement: `${src}/${folder}$1`,
+}));
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),

@@ -5,13 +5,22 @@ using System.Text.Json;
 namespace Mnemarr.Integration.Test;
 
 [Collection("Host")]
-public sealed class SystemApiFixture
+public sealed class SystemApiFixture : IAsyncLifetime
 {
-    private readonly HttpClient _client;
+    private readonly MnemarrFactory _factory;
+    private HttpClient _client = null!;
 
     public SystemApiFixture(MnemarrFactory factory)
     {
-        _client = factory.CreateClient();
+        _factory = factory;
+    }
+
+    public async ValueTask InitializeAsync() => _client = await _factory.SignedInClientAsync();
+
+    public ValueTask DisposeAsync()
+    {
+        _client.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     [Fact]

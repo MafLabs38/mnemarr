@@ -12,7 +12,10 @@ public static class HealthExtensions
     {
         // One instance: it keeps its last result, and AddCheck would otherwise build a new one for every probe.
         services.TryAddSingleton<DataFolderHealthCheck>();
-        services.AddHealthChecks().AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag]);
+        services.AddHealthChecks()
+            .AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag])
+            .AddCheck<DatabaseHealthCheck>("database", tags: [ReadyTag])
+            .AddCheck<AccountsHealthCheck>("accounts", tags: [ReadyTag]);
         return services;
     }
 
@@ -22,8 +25,8 @@ public static class HealthExtensions
     /// </summary>
     public static IEndpointRouteBuilder MapMnemarrHealthChecks(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
-        endpoints.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = registration => registration.Tags.Contains(ReadyTag) });
+        endpoints.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
+        endpoints.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = registration => registration.Tags.Contains(ReadyTag) }).AllowAnonymous();
         return endpoints;
     }
 }

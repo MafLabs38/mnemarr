@@ -1,0 +1,23 @@
+.menu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  color: var(--ink);
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+.name {
+  font-weight: 700;
+}
+
+.role {
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}

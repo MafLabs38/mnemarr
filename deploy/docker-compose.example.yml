@@ -6,12 +6,18 @@ services:
     restart: unless-stopped
     ports:
       # Loopback only: Mnemarr speaks plain HTTP. Publish it through a reverse proxy with TLS, or change the address
-      # on purpose. The API has no authentication yet (see docs/SPEC.md, section 6).
+      # on purpose. Every call but the probes and the sign-in needs a session or a key (see docs/adr/0016).
       - "127.0.0.1:8383:8383"
     volumes:
       - mnemarr-data:/config               # database, raw conversations, settings: back this up (see docs/SPEC.md, D-28)
     environment:
       MNEMARR__DATAFOLDER: /config
+      # The first administrator, created only while there is no account: a name, and the password in a file (a secret).
+      # Choose a name that is not obvious: whoever knows it can lock that account for fifteen minutes (five wrong passwords).
+      MNEMARR__AUTH__ADMINUSER: change-me-admin-name
+      MNEMARR__AUTH__ADMINPASSWORDFILE: /run/secrets/mnemarr_admin_password
+    secrets:
+      - mnemarr_admin_password
     # Hardening: nothing writes outside the data folder and a temporary folder.
     read_only: true
     tmpfs:
@@ -24,6 +30,10 @@ services:
       resources:
         limits:
           memory: 512M
+
+secrets:
+  mnemarr_admin_password:
+    file: ./mnemarr-admin-password   # one line, at least 12 characters; not in git
 
 volumes:
   mnemarr-data:
