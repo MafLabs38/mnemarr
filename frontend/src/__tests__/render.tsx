@@ -48,6 +48,14 @@ export function renderWithProviders(ui: ReactElement, route = '/', session: Sess
   return { ...result, client };
 }
 
+/** What a fake answer carries: a status, JSON, and text for the calls that read a document. */
+export interface FakeResponse {
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+  text?: () => Promise<string>;
+}
+
 /** What the fake server answers to a call: a status (200 by default) and a JSON body. */
 export interface ApiAnswer {
   status?: number;
@@ -59,10 +67,15 @@ export interface ApiAnswer {
  * assert on the calls and what they carried.
  */
 export function stubApi(handler: (method: string, path: string, init?: RequestInit) => ApiAnswer | undefined) {
-  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+  const fetchMock = vi.fn((url: string, init?: RequestInit): Promise<FakeResponse> => {
     const answer = handler(init?.method ?? 'GET', url.replace('/api/v1', ''), init) ?? { status: 404 };
     const code = answer.status ?? 200;
-    return Promise.resolve({ ok: code < 400, status: code, json: () => Promise.resolve(answer.body) });
+    return Promise.resolve({
+      ok: code < 400,
+      status: code,
+      json: () => Promise.resolve(answer.body),
+      text: () => Promise.resolve(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body)),
+    });
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;

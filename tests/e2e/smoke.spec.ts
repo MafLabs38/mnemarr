@@ -101,8 +101,9 @@ test.describe('smoke @smoke', () => {
     const menu = page.getByRole('navigation', { name: 'Main menu' });
     await expect(menu.getByRole('link', { name: 'Overview' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'System' })).toBeVisible();
-    await expect(menu.getByRole('link', { name: 'Sources' })).toHaveCount(0);
-    await expect(menu).toContainText('Sources');
+    await expect(menu.getByRole('link', { name: 'Sources' })).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Agents' })).toHaveCount(0);
+    await expect(menu).toContainText('Agents');
     await expect(menu).toContainText('Soon');
   });
 
@@ -273,5 +274,55 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByText('Revoked')).toBeVisible();
     expect((await agent.get('/api/v1/auth/session')).status()).toBe(401);
     await agent.dispose();
+  });
+
+  test('an operator declares a folder of notes, indexes it and finds a note by its words', async ({ page }) => {
+    const name = unique('demo');
+    await signIn(page, '/sources');
+    // The base is on the page whatever its state: the memory vault is required, and there can be only one.
+    await expect(
+      page.getByRole('region', { name: 'Memory vault' }).getByText(/required, and there can be only one/),
+    ).toBeVisible();
+    const form = page.getByRole('form', { name: 'Declare a source of Knowledge vaults' });
+    await expect(form.getByText('A source is a folder inside one of: /notes')).toBeVisible();
+    await form.getByLabel('Name').fill(name);
+    await form.getByLabel('Folder').fill('/notes/demo');
+    await form.getByRole('button', { name: 'Create' }).click();
+    const row = page.getByRole('row', { name: new RegExp(name) });
+    await expect(row).toBeVisible();
+
+    await row.getByRole('button', { name: `Index now for ${name}` }).click();
+    await expect(row.getByRole('status')).toContainText('1 added');
+
+    const search = page.getByRole('region', { name: 'Search' });
+    await search.getByLabel('Search the notes').fill('layers');
+    await search.getByRole('button', { name: 'Search' }).click();
+    await expect(search.getByText(`${name} · docker.md · Docker > Images`)).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await row.getByRole('button', { name: `Confirm: delete ${name}` }).click();
+    await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  test('the configuration file given at start is applied: its sources are managed and cannot be changed by hand', async ({
+    page,
+  }) => {
+    await signIn(page, '/sources');
+
+    const memory = page.getByRole('region', { name: 'Memory vault' });
+    await expect(memory.getByRole('row', { name: /memory/ }).getByText('Managed by configuration')).toBeVisible();
+    await expect(memory.getByRole('button', { name: /Change/ })).toHaveCount(0);
+    await expect(memory.getByRole('alert')).toHaveCount(0);
+    const seeded = page.getByRole('region', { name: 'Knowledge vaults' }).getByRole('row', { name: /seeded/ });
+    await expect(seeded.getByText('Managed by configuration')).toBeVisible();
+    await expect(seeded.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+
+    const card = page.getByRole('region', { name: 'Configuration as code' });
+    await expect(card.getByLabel('Current configuration (YAML)')).toHaveValue(/seeded/);
+    await card.getByLabel('Configuration to apply (YAML)').fill('knowledge: []');
+    await card.getByRole('button', { name: 'Preview' }).click();
+    await expect(card.getByText('Remove Knowledge seeded')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 });

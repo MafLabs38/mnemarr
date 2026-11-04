@@ -9,6 +9,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly problem?: string,
+    /** The reasons, when the problem document lists them (a document that cannot be applied says every error). */
+    readonly errors: ReadonlyArray<string> = [],
   ) {
     super(problem ?? translate('ServerAnswered', { status }));
     this.name = 'ApiError';
@@ -22,8 +24,11 @@ const REQUEST_HEADER = 'X-Mnemarr-Request';
 
 async function failure(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as { title?: unknown };
-    return new ApiError(response.status, typeof body.title === 'string' ? body.title : undefined);
+    const body = (await response.json()) as { title?: unknown; errors?: unknown };
+    const errors = Array.isArray(body.errors)
+      ? body.errors.filter((error): error is string => typeof error === 'string')
+      : [];
+    return new ApiError(response.status, typeof body.title === 'string' ? body.title : undefined, errors);
   } catch {
     // Not a problem document (a proxy's page, an empty body): the status is all there is to say.
     return new ApiError(response.status);
@@ -57,4 +62,26 @@ export async function apiSend<T = void>(method: 'POST' | 'PUT' | 'DELETE', path:
     throw await failure(response);
   }
   return (response.status === 204 ? undefined : await response.json()) as T;
+}
+
+/** A read whose answer is text (a YAML document), not JSON. */
+export async function apiGetText(path: string, signal?: AbortSignal): Promise<string> {
+  const response = await fetch(`${API_BASE}${path}`, { signal });
+  if (!response.ok) {
+    throw await failure(response);
+  }
+  return response.text();
+}
+
+/** A write whose body is YAML text, answered in JSON. */
+export async function apiSendYaml<T>(path: string, yaml: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'PUT',
+    headers: { [REQUEST_HEADER]: '1', 'Content-Type': 'application/yaml' },
+    body: yaml,
+  });
+  if (!response.ok) {
+    throw await failure(response);
+  }
+  return (await response.json()) as T;
 }
