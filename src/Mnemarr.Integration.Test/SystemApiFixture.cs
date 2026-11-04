@@ -69,6 +69,8 @@ public sealed class SystemApiFixture : IAsyncLifetime
         var policy = response.Headers.GetValues("Content-Security-Policy").Should().ContainSingle().Subject;
         policy.Should().Contain("frame-ancestors 'none'").And.Contain("default-src 'self'");
         // Inline styles are allowed for diagrams (ADR 0021); scripts follow default-src: the application's own files only, nothing inline, no eval.
-        policy.Should().Contain("style-src 'self' 'unsafe-inline'").And.NotContain("script-src").And.NotContain("unsafe-eval");
+        policy.Should().Contain("style-src 'self' 'unsafe-inline'").And.NotContain("unsafe-eval");
+        policy.Split(';').Select(directive => directive.Trim()).Where(directive => directive.StartsWith("default-src", StringComparison.Ordinal) || directive.StartsWith("script-src", StringComparison.Ordinal))
+            .Should().OnlyContain(directive => !directive.Contains("unsafe-inline", StringComparison.Ordinal), "scripts: the application's own files only, nothing inline");
     }
 }

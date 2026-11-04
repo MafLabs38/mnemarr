@@ -30,6 +30,8 @@ public sealed class FilesController : ControllerBase
     {
         var file = _reader.OpenImage(sourceId, path, User.Scope());
         Response.Headers.XContentTypeOptions = "nosniff";
+        // The size that was checked is the size that is sent: a file that grows while it is served cannot send more.
+        Response.ContentLength = file.Content.Length;
         return File(file.Content, file.ContentType);
     }
 }

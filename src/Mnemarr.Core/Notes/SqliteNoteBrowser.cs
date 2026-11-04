@@ -161,11 +161,12 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
         var (id, reference, name) = note.Value;
         var pathWithoutExtension = WithoutExtension(reference.Path).ToLowerInvariant();
+        var named = new Dictionary<string, List<NoteRef>>(StringComparer.Ordinal);
         var (backlinks, backlinksTotal) = Backlinks(connection, id, reference, name, pathWithoutExtension, scope);
         return new NoteDetail(
             reference,
             Column(connection, "SELECT DISTINCT tag FROM note_tags WHERE note_id = $note ORDER BY tag", id),
-            [.. Column(connection, "SELECT DISTINCT target FROM note_links WHERE note_id = $note ORDER BY target", id).Select(target => new ResolvedLink(target, Resolve(connection, target, sourceId, scope)))],
+            [.. Column(connection, "SELECT DISTINCT target FROM note_links WHERE note_id = $note ORDER BY target", id).Select(target => new ResolvedLink(target, Resolve(connection, target, sourceId, scope, named)))],
             backlinks,
             backlinksTotal);
     }

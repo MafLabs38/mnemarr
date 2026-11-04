@@ -81,6 +81,8 @@ describe('Notes', () => {
     const tree = await screen.findByRole('navigation', { name: 'Notes' });
 
     await userEvent.type(screen.getByLabelText('Filter the notes'), 'decisions/');
+    expect(within(tree).getByRole('link', { name: 'Choix du réseau' })).toBeInTheDocument();
+    expect(within(tree).queryByRole('link', { name: 'Docker' })).not.toBeInTheDocument();
     // A word that is in a title only finds it too.
     await userEvent.clear(screen.getByLabelText('Filter the notes'));
     await userEvent.type(screen.getByLabelText('Filter the notes'), 'réseau');
@@ -195,6 +197,22 @@ describe('Notes', () => {
       expect(container.querySelector('img[src="x"]')).toBeNull();
       expect(container.querySelector('iframe')).toBeNull();
       expect(screen.queryByRole('link', { name: 'raw link' })).not.toBeInTheDocument();
+    });
+
+    it.each([
+      'JaVaScRiPt:alert(1)',
+      ' javascript:alert(1)',
+      'vbscript:msgbox(1)',
+      '//evil.example/x',
+      'java\tscript:alert(1)',
+    ])('does not make a link or an image of the address %j', async (address) => {
+      server(noteWith(`[bad](${address}) ![pic](${address}) then plain`));
+      const { container } = renderWithProviders(<Notes />, open, readerSession);
+
+      await screen.findByText(/then plain/);
+
+      expect(screen.queryByRole('link', { name: 'bad' })).not.toBeInTheDocument();
+      expect(container.querySelectorAll('main img')).toHaveLength(0);
     });
 
     it('does not make a link of a javascript: or data: address, and opens a web link without giving the opener away', async () => {

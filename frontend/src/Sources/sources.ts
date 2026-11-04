@@ -63,7 +63,8 @@ export function useSourceRoots() {
 }
 
 /** What a change to the sources makes stale: the list with its counts, every search, and the document that describes them. */
-const isSourcesQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/sources', '/search', '/config');
+const isSourcesQuery = (query: { queryKey: readonly unknown[] }) =>
+  isApiPath(query, '/sources', '/search', '/config', '/notes');
 
 export function useCreateSource() {
   const client = useQueryClient();

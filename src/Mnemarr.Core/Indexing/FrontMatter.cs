@@ -76,5 +76,4 @@ internal static class FrontMatter
             tags.Add(tag);
         }
     }
-
 }

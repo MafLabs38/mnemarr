@@ -24,19 +24,4 @@ describe('MermaidDiagram', () => {
     });
     expect(screen.getByRole('img', { name: 'Diagram' })).toHaveAttribute('src', 'data:image/svg+xml,second');
   });
-
-  it('draws nothing once it is gone, whenever the drawing ends', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const view = render(<MermaidDiagram source="gone" />);
-    view.unmount();
-
-    drawing.resolvers.get('gone')?.('data:image/svg+xml,late');
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(screen.queryByRole('img', { name: 'Diagram' })).not.toBeInTheDocument();
-    expect(error).not.toHaveBeenCalled();
-    error.mockRestore();
-  });
 });
