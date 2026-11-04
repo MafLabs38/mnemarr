@@ -109,6 +109,9 @@ function server(
     if (method === 'GET' && path === '/config') {
       return { body: 'memory:\n  name: memoire\n  path: /config/sources/memoire\n' };
     }
+    if (method === 'GET' && path === '/config/status') {
+      return { body: { file: false, applied: false, error: null } };
+    }
     if (method === 'GET' && path === '/sources/roots') {
       return { body: ['/config/sources'] };
     }
@@ -353,6 +356,24 @@ describe('Sources', () => {
 
     expect(within(card).getByRole('button', { name: 'Preview' })).toBeDisabled();
     expect(within(card).getByRole('button', { name: 'Apply' })).toBeDisabled();
+  });
+
+  it('says that a file is in charge and why it was not applied, and does not offer to apply a document', async () => {
+    server((method, path) =>
+      method === 'GET' && path === '/config/status'
+        ? { body: { file: true, applied: false, error: 'The configuration file cannot be read.' } }
+        : undefined,
+    );
+    renderWithProviders(<Sources />);
+    const card = await screen.findByRole('region', { name: 'Configuration as code' });
+
+    expect(await within(card).findByText(/given to Mnemarr as a file/)).toBeInTheDocument();
+    expect(await within(card).findByRole('alert')).toHaveTextContent(
+      'The configuration file was not applied: The configuration file cannot be read.',
+    );
+    await userEvent.type(within(card).getByLabelText('Configuration to apply (YAML)'), 'memory: x');
+    expect(within(card).getByRole('button', { name: 'Apply' })).toBeDisabled();
+    expect(within(card).getByRole('button', { name: 'Preview' })).toBeEnabled();
   });
 
   it('says when the configuration cannot be read', async () => {

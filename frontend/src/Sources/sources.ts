@@ -129,6 +129,17 @@ export interface ConfigPlan {
   items: PlanItem[];
 }
 
+/** Whether a configuration file is in charge, whether it was applied and why not. */
+export interface ConfigStatus {
+  file: boolean;
+  applied: boolean;
+  error: string | null;
+}
+
+export function useConfigStatus() {
+  return useApiQuery<ConfigStatus>('/config/status');
+}
+
 /** The current state as a configuration document (YAML): what to keep in a repository. */
 export function useConfigDocument() {
   return useQuery({ queryKey: ['api', '/config'], queryFn: ({ signal }) => apiGetText('/config', signal) });

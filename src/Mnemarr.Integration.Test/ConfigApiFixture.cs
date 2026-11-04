@@ -160,9 +160,11 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
         var export = await scoped.GetAsync("/api/v1/config", Token);
         var preview = await scoped.PutAsync("/api/v1/config?dryRun=true", Yaml("knowledge: []\n"), Token);
         var roots = await scoped.GetAsync("/api/v1/sources/roots", Token);
+        var status = await scoped.GetAsync("/api/v1/config/status", Token);
 
         apply.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         preview.StatusCode.Should().Be(HttpStatusCode.Forbidden, "a preview would name the sources outside the scope of the key");
+        status.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         roots.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the folders of the host are not for a key that cannot declare a source");
         export.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await export.Content.ReadAsStringAsync(Token)).Should().NotContain(mine, "a document with only some of the sources would remove the others when applied back");
@@ -217,6 +219,7 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
         apply.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await apply.Content.ReadAsStringAsync(Token)).Should().Contain("file");
         preview.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await admin.GetFromJsonAsync<JsonElement>("/api/v1/config/status", Token)).GetProperty("file").GetBoolean().Should().BeTrue("a client can tell, without trying to apply");
     }
 
     private static async Task<bool> WaitAsync(Func<Task<bool>> condition)

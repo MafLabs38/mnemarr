@@ -14,3 +14,6 @@ public sealed record ConfigPlanResource(bool Applied, IReadOnlyList<PlanItemReso
 {
     public static ConfigPlanResource From(ConfigPlan plan, bool applied) => new(applied, [.. plan.Items.Select(PlanItemResource.From)]);
 }
+
+/// <summary>Whether a configuration file is in charge, and what became of it: the reason a file could not be applied (in words that give no path), which readiness only names.</summary>
+public sealed record ConfigStatusResource(bool File, bool Applied, string? Error);

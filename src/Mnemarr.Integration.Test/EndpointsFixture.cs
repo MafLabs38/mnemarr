@@ -46,6 +46,7 @@ public sealed class EndpointsFixture
             "api/v1/auth/session",
         "api/v1/config",
         "api/v1/config",
+        "api/v1/config/status",
             "api/v1/roles",
         "api/v1/search",
         "api/v1/sources",

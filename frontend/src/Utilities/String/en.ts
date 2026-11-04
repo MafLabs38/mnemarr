@@ -117,6 +117,9 @@ const en = {
   ConfigurationError: 'Could not read the configuration.',
   ConfigurationHelp:
     'Describe the sources in a YAML document and keep it in a repository: it can be applied here, through the API, or given to Mnemarr as a file. What a document owns is managed by it and cannot be changed by hand. A section that is not in the document is left alone.',
+  ConfigurationFile:
+    'The configuration is given to Mnemarr as a file: change the file. A preview is still possible here.',
+  ConfigurationFileFailed: 'The configuration file was not applied: {reason}',
   ConfigurationToApply: 'Configuration to apply (YAML)',
   CurrentConfiguration: 'Current configuration (YAML)',
   ManagedByConfig: 'Managed by configuration',

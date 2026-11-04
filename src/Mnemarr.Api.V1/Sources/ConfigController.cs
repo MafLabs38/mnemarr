@@ -21,12 +21,26 @@ public sealed class ConfigController : ControllerBase
     private const string Yaml = "application/yaml";
     private readonly ConfigurationApplier _applier;
     private readonly IOptions<ConfigurationOptions> _options;
+    private readonly ConfigurationState _state;
 
-    public ConfigController(ConfigurationApplier applier, IOptions<ConfigurationOptions> options)
+    public ConfigController(ConfigurationApplier applier, IOptions<ConfigurationOptions> options, ConfigurationState state)
     {
         _applier = applier;
         _options = options;
+        _state = state;
     }
+
+    /// <summary>
+    /// Whether the configuration is given as a file, whether it was applied, and why not: so that the interface and an assistant do not
+    /// have to try an application to find out. Global like the document, so a key limited to some sources does not get it (an error can name a source).
+    /// </summary>
+    [HttpGet("status")]
+    [ProducesResponseType<ConfigStatusResource>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ConfigStatusResource GetStatus() =>
+        User.Scope().Sources is null
+            ? new ConfigStatusResource(!string.IsNullOrWhiteSpace(_options.Value.File), _state.Attempted && _state.Error is null, _state.Error)
+            : throw new RejectedException(Core.Problem.Forbidden, "A key limited to some sources cannot read the state of the configuration: it is global.");
 
     /// <summary>
     /// The current state as a configuration document: what to keep in a repository, and what applying it back leaves unchanged once every source is managed (a source made by hand is taken over by it). A key

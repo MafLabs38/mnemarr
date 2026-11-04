@@ -41,6 +41,8 @@ Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not i
 
 ## Configuration as code (`Config`)
 
+`GET /api/v1/config/status` says whether a file is in charge, whether it was applied and why not (in words that give no path); the interface shows it and does not offer to apply a document while a file is in charge.
+
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__CONFIG__FILE` | none | A configuration document (YAML) applied at start and again whenever it changes, or after a failure (a folder mounted late). An absolute path. A file that cannot be applied does not stop Mnemarr: `/health/ready` is degraded with the reason. |

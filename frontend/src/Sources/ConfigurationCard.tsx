@@ -6,7 +6,7 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import { ApiError } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
-import { type ConfigPlan, useApplyConfig, useConfigDocument } from './sources';
+import { type ConfigPlan, useApplyConfig, useConfigDocument, useConfigStatus } from './sources';
 import styles from './Sources.module.css';
 
 function Plan({ plan }: Readonly<{ plan: ConfigPlan }>) {
@@ -28,6 +28,8 @@ function Plan({ plan }: Readonly<{ plan: ConfigPlan }>) {
 /** Configuration as code: the state as a YAML document to keep in a repository, and a place to preview and apply one. */
 export default function ConfigurationCard() {
   const current = useConfigDocument();
+  const status = useConfigStatus();
+  const fromFile = status.data?.file === true;
   const apply = useApplyConfig();
   const [yaml, setYaml] = useState('');
   const currentId = useId();
@@ -43,6 +45,8 @@ export default function ConfigurationCard() {
   return (
     <>
       <p className={styles.hint}>{translate('ConfigurationHelp')}</p>
+      {fromFile && <p className={styles.hint}>{translate('ConfigurationFile')}</p>}
+      {status.data?.error && <Alert>{translate('ConfigurationFileFailed', { reason: status.data.error })}</Alert>}
       <label htmlFor={currentId}>{translate('CurrentConfiguration')}</label>
       {current.isPending && <LoadingIndicator />}
       {current.isError && <Alert>{translate('ConfigurationError')}</Alert>}
@@ -60,7 +64,7 @@ export default function ConfigurationCard() {
           <Button disabled={apply.isPending || yaml.trim() === ''} onClick={submit(true)} type="button" variant="quiet">
             {translate('Preview')}
           </Button>
-          <Button disabled={apply.isPending || yaml.trim() === ''} type="submit">
+          <Button disabled={apply.isPending || fromFile || yaml.trim() === ''} type="submit">
             {translate('Apply')}
           </Button>
         </div>
