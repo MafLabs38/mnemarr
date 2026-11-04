@@ -37,7 +37,7 @@ export default function Notes() {
       <PageContentBody>
         <PageHeading scope={translate('Notes')} title={tag ? `#${tag}` : translate('Notes')} />
         <div className={styles.layout}>
-          <aside className={styles.side}>
+          <div className={styles.side}>
             <TextField
               label={translate('FilterNotes')}
               onChange={(event) => setFilter(event.target.value)}
@@ -53,7 +53,7 @@ export default function Notes() {
             {tree.data && <NoteTree entries={entries} selected={source && path ? `${source}/${path}` : null} />}
             {tags.data && tags.data.length > 0 && (
               <section aria-label={translate('Tags')}>
-                <h3 className={styles.sourceName}>{translate('Tags')}</h3>
+                <h2 className={styles.sourceName}>{translate('Tags')}</h2>
                 <ul className={styles.tags}>
                   {tags.data.map((entry) => (
                     <li key={entry.tag}>
@@ -65,7 +65,7 @@ export default function Notes() {
                 </ul>
               </section>
             )}
-          </aside>
+          </div>
           <div className={styles.main}>
             {source && path ? (
               <NoteView key={`${source}/${path}`} path={path} sourceId={source} />

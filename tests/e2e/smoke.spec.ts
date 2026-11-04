@@ -309,7 +309,14 @@ test.describe('smoke @smoke', () => {
   test('a person reads the notes: the tree, a rendered note, a wikilink to another source, and the backlinks', async ({
     page,
   }) => {
-    await signIn(page, '/notes');
+    // The sources of the stack come from its configuration file and are scanned on a timer: index them now, as an operator would.
+    await signIn(page, '/sources');
+    for (const name of ['seeded', 'memory']) {
+      const row = page.getByRole('row', { name: new RegExp(name) });
+      await row.getByRole('button', { name: `Index now for ${name}` }).click();
+      await expect(row.getByRole('status')).toBeVisible();
+    }
+    await page.goto('/notes');
 
     const tree = page.getByRole('navigation', { name: 'Notes' });
     await expect(tree.getByText('seeded')).toBeVisible();

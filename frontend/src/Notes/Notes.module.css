@@ -139,3 +139,7 @@
   border: 1px solid var(--dangerColor);
   border-radius: var(--radiusSmall);
 }
+
+.backlinksTitle {
+  font-size: var(--fontSizeBody);
+}

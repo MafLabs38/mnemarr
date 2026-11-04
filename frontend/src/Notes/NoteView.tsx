@@ -40,7 +40,7 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
       )}
       <NoteMarkdown note={note} />
       <section aria-label={translate('Backlinks')} className={styles.backlinks}>
-        <h3>{translate('Backlinks')}</h3>
+        <h2 className={styles.backlinksTitle}>{translate('Backlinks')}</h2>
         {note.backlinks.length === 0 ? (
           <p className={styles.hint}>{translate('NoBacklinks')}</p>
         ) : (

@@ -80,7 +80,7 @@ export default function NoteTree({
     <nav aria-label={translate('Notes')}>
       {sources.map(([sourceId, notes]) => (
         <section aria-label={notes[0]?.sourceName} key={sourceId}>
-          <h3 className={styles.sourceName}>{notes[0]?.sourceName}</h3>
+          <h2 className={styles.sourceName}>{notes[0]?.sourceName}</h2>
           <Contents folder={build(notes)} path={sourceId} selected={selected} />
         </section>
       ))}
