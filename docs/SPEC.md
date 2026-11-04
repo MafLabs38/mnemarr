@@ -1,6 +1,6 @@
 # Mnemarr — Functional and Technical Specification
 
-> **Status**: draft v0.2. The architecture is decided (D-01 to D-42); the foundation and the accounts are built; the next verticals wait for the decisions listed in the question register.
+> **Status**: draft v0.2. The architecture is decided (D-01 to D-43); the foundation and the accounts are built; the next verticals wait for the decisions listed in the question register.
 > **Related documents**: [VISION.md](VISION.md) (why, raw notes) · [adr/](adr/README.md) (decision records)
 > **Last updated**: 2026-11-03
 > **Audience**: the project owner, contributors.
@@ -95,6 +95,7 @@ Everything is **automatic**: capture, consolidation and indexing involve no manu
 | ✅ D-40 | **Configuration as code: a YAML document in the shape of the rules, applied through the API or as a file.** `memory` is an object, `knowledge` and `applicationDocs` are lists; a section that is absent is not managed, one that is present is (even when empty). What a document owns is marked managed and cannot be changed by hand; a source made by hand with the same name is taken over; the memory vault is never removed. Everything is checked before anything is changed (a document with an error changes nothing), applying is idempotent (a database failure halfway is finished by the next application), with a preview; `GET`/`PUT /api/v1/config` and a file (`Config:File`) applied at start and on change; a file that fails degrades readiness with a reason. A document is read strictly (size, depth, no anchors, aliases or tags, no unknown key). | What the interface configures must be describable as code and actionable by an assistant, with one truth. | [0020](adr/0020-configuration-as-code.md) |
 | ✅ D-41 | **The notes reader reads links and tags from the index, the server decides what each link means, and the interface renders the Markdown as untrusted text.** Wikilinks, backlinks and tags are read when a note is indexed and stored; a link is resolved by name across the sources the caller may read (same source first, then the shortest path), and a link to a note out of scope is unresolved, as if it did not exist. The server returns the Markdown as written and the same Markdown with its wikilinks, embeds and relative links rewritten into three addresses (a note, an image of the source, or nothing the caller may read), with one reading of links for the index and for what is shown; the interface only draws it, without raw HTML, keeps only safe link schemes, and shows images only from the note's own source, served by the authenticated API (no SVG). **Mermaid diagrams are drawn** (strict mode, shown as images so that they cannot run anything), at the price of allowing inline styles in the Content-Security-Policy (which partly supersedes the last sentence of point 4 of ADR 0017). | The reader obeys the permissions of the person (D-37); a scan of the vaults at each click, or HTML built on the server, would be slower and a second place to get the security wrong. | [0021](adr/0021-the-reader-reads-links-from-the-index-and-renders-notes-as-untrusted-text.md) |
 | ✅ D-42 | **Git sources are cloned and fast-forwarded in the process (LibGit2Sharp), over HTTPS with a token the operator names and binds to a host.** A source can be the checkout of a repository (`repository`: address, branch, credential name) in a folder inside the roots; the address holds no secret, the operator names the hosts (none are allowed by default), the token is sent to its own host only and is never stored or shown. A checkout is cloned (never over what is in the folder) and fast-forwarded: a diverged checkout, one with uncommitted changes, another repository's or a missing branch is reported and left as it is; never merged, never forced. Syncs run at start and at an interval, and on demand; a failure is a fixed code on the source and degrades readiness. SSH is a known limit. Writing back comes with the write mode. | Keeps the chiseled image (no `git`, no shell, no hook can run) and makes declaring a source a bounded request to connect and to send a secret. | [0022](adr/0022-git-sources-are-cloned-and-pulled-in-process-over-https.md) |
+| ✅ D-43 | **Notes are written through one writer, committed to Git when the source is a repository, and offered to assistants over MCP.** Create, change (with the version that was read: a note that changed since is refused), append, move (the links to it follow, in the same source) and remove (kept in Git history, or in a hidden trash folder) a note of a source that is declared read-write, written whole and at once, indexed at once, under the lock of the source, audited under the account's name. A Git source gets one commit per change, authored by the account, holding only the paths touched, pushed as a fast-forward; a push that fails does not undo the note and is pushed by the next sync. `Operator` and `Assistant` write, as `Admin` does. The MCP server (`POST /mcp`, stateless, JSON) offers the same services under the same permissions and scopes; its writing tools are off unless the operator turns them on in the environment. Ordinary Markdown links count as links, and a link to a heading leads to it. | One writer means one set of checks for a person, an assistant and a script; the operator, not the database or the assistant, decides whether assistants write. | [0023](adr/0023-notes-are-written-through-the-api-committed-to-git-and-offered-over-mcp.md) |
 
 ---
 
@@ -184,14 +185,14 @@ All 🟡 until validated. Identifiers are provisional.
 
 | ID | Feature |
 |---|---|
-| F-SRC-01 | Declare, clone and pull Git sources; read-only and read-write modes. Declaring a folder, its kind and mode, scanning it and forgetting it are built (D-39), and so are cloning and pulling over HTTPS (D-42); writing back (commit, push, pull request) comes with the write mode |
+| F-SRC-01 | Declare, clone and pull Git sources; read-only and read-write modes. Declaring a folder, its kind and mode, scanning it and forgetting it are built (D-39), and so are cloning and pulling over HTTPS (D-42); writing back is a commit pushed to the remote (D-43); a pull request instead of a push is not built |
 | F-SRC-02 | Index application repositories' `docs/` in place |
 | F-COL-01 | Agent: read conversation files, resume by position, upload idempotently |
 | F-COL-02 | Agent: local queue and retry; masks secrets; one-command install; reports health |
 | F-COL-03 | Server: ingest API with per-agent ingest-only credentials, revocable |
 | F-SEA-01 | Hybrid search with filters; results show their source. Keyword search by source and topic is built (D-39); the vectors make it hybrid |
 | F-SEA-02 | Re-embedding when the embedding model changes |
-| F-MCP-01 | MCP tools: search, read, add, update; write tools enabled separately and audited |
+| F-MCP-01 | MCP tools: search, read, add, update; write tools enabled separately and audited. Built (D-43): `list_sources`, `search`, `list_notes`, `read_note`, `list_tags`, and, when the operator turns them on, `create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note` |
 | F-MCP-02 | Start-of-session context injection (D-12) |
 | F-CON-01 | Consolidation job: raw conversations into durable notes per application (D-17) |
 | F-CON-02 | Update and supersede existing notes; detect duplicates and contradictions |
@@ -205,7 +206,7 @@ All 🟡 until validated. Identifiers are provisional.
 | F-AUTH-03 | API keys: shown once, hashed, revocable, scoped to sources, never above the account's role (D-36) |
 | F-AUTH-04 | Audit log of sign-ins and of changes to accounts and keys (D-36) |
 | F-UI-01 | Minimal *arr-style UI that consumes the REST API and only configures the brain (D-18): sources, agents and their credentials, language-model and embeddings providers, schedules, retention, masking rules |
-| F-UI-03 | Notes reader: tree, rendered note, wikilinks across sources, backlinks, tags, search; read-only, obeys permissions (D-37) |
+| F-UI-03 | Notes reader: tree, rendered note, wikilinks across sources, backlinks, tags, search; obeys permissions (D-37). It is also an editor for whoever may write notes: edit with a preview, create, move (links follow), remove (D-43) |
 | F-UI-02 | Chat panel that operates Mnemarr through its MCP tools ("index the data now"); same principle as Portarr's chat (D-21) |
 | F-API-01 | REST API covering every capability, documented with OpenAPI (D-19) |
 | F-MCP-03 | Administration tools: status, trigger pull, indexing, consolidation; settings changes behind a separate switch (D-20) |
@@ -320,4 +321,5 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | 2026-11-04 | Sources, notes and keyword search (D-39, ADR 0019): declared through the API, scanned incrementally into an FTS5 index, searched within the caller's scope; Q-29 partly answered. |
 | 2026-11-04 | The sources have rules (ADR 0019: a required memory vault, kinds that grow) and a description as code (D-40, ADR 0020): a YAML document applied through the API or as a file, managed sources, all or nothing, with a preview. |
 | 2026-11-04 | The notes reader is built (D-41, ADR 0021): tree, rendered note, wikilinks across sources, backlinks, tags |
+| 2026-11-04 | Notes written through one writer, committed to Git, offered over MCP (D-43, ADR 0023). |
 | 2026-11-04 | Git sources (D-42, ADR 0022): cloned and fast-forwarded in the process over HTTPS with a named token; the Git part of Q-32 answered. |
