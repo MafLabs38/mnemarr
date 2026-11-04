@@ -150,13 +150,8 @@ public sealed class NoteWriter
 
             if (source.Repository is null)
             {
-                var trash = Path.Combine(folder, TrashFolder);
-                var kept = Path.GetFullPath(Path.Combine(trash, DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N")[..8], path));
-                if (!kept.StartsWith(trash + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-                {
-                    throw new RejectedException(Problem.Invalid, "The path of a note stays inside its source, and never goes through a link.");
-                }
-
+                // One folder per removal (the time and a random part, so that two removals never meet), holding the file under its own name.
+                var kept = Path.Combine(folder, TrashFolder, DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N")[..8], Path.GetFileName(full));
                 Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
                 File.Move(full, kept);
             }
