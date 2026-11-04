@@ -301,9 +301,10 @@ public static class MarkdownNotes
 
     /// <summary>
     /// Rewrites the links and embeds of a note, outside code, with what <paramref name="replace"/> says (null leaves one as it was written):
-    /// the same reading as the index's, so that what is shown and what is stored cannot disagree.
+    /// the same reading as the index's, so that what is shown and what is stored cannot disagree. <paramref name="replaceDestination"/>, if given,
+    /// does the same for the destination of an ordinary Markdown link or image (<c>[text](destination)</c>).
     /// </summary>
-    public static string Rewrite(string body, Func<WikiToken, string?> replace)
+    public static string Rewrite(string body, Func<WikiToken, string?> replace, Func<string, string?>? replaceDestination = null)
     {
         var result = new StringBuilder(body.Length);
         var inFence = false;
@@ -327,24 +328,121 @@ public static class MarkdownNotes
             }
             else
             {
-                RewriteLine(raw, replace, result);
+                RewriteLine(raw, replace, replaceDestination, result);
             }
         }
 
         return result.ToString();
     }
 
-    private static void RewriteLine(string raw, Func<WikiToken, string?> replace, StringBuilder result)
+    private static void RewriteLine(string raw, Func<WikiToken, string?> replace, Func<string, string?>? replaceDestination, StringBuilder result)
     {
-        var position = 0;
-        foreach (var token in FindTokens(WithoutInlineCode(raw)))
+        var masked = WithoutInlineCode(raw);
+        var tokens = FindTokens(masked);
+        var edits = tokens.Select(token => (token.Start, token.End, Text: replace(new WikiToken(InnerOf(raw, token), token.Embedded)))).ToList();
+        if (replaceDestination is not null)
         {
-            result.Append(raw, position, token.Start - position);
-            result.Append(replace(new WikiToken(InnerOf(raw, token), token.Embedded)) ?? raw[token.Start..token.End]);
-            position = token.End;
+            edits.AddRange(FindDestinations(masked, tokens).Select(span => (span.Start, span.End, Text: replaceDestination(raw[span.Start..span.End]))));
+            edits.Sort((x, y) => x.Start.CompareTo(y.Start));
+        }
+
+        var position = 0;
+        foreach (var (start, end, text) in edits)
+        {
+            result.Append(raw, position, start - position);
+            result.Append(text ?? raw[start..end]);
+            position = end;
         }
 
         result.Append(raw, position, raw.Length - position);
+    }
+
+    /// <summary>
+    /// The destinations of the ordinary Markdown links and images of a line (<c>](destination)</c> or <c>](destination "title")</c>), outside the
+    /// wikilinks: bounded in length, one pass, so that a line of <c>](</c> does not cost more than what a destination can hold for each.
+    /// </summary>
+    private static List<Span> FindDestinations(string line, List<Span> tokens)
+    {
+        var found = new List<Span>();
+        var inside = 0;
+        var position = 0;
+        while (position < line.Length)
+        {
+            var open = line.IndexOf("](", position, StringComparison.Ordinal);
+            if (open < 0)
+            {
+                break;
+            }
+
+            while (inside < tokens.Count && tokens[inside].End <= open)
+            {
+                inside++;
+            }
+
+            var from = open + 2;
+            var end = DestinationEnd(line, from);
+            var inWikilink = inside < tokens.Count && tokens[inside].Start <= open;
+            if (end > from && !inWikilink)
+            {
+                found.Add(new Span(from, end, false));
+                position = end;
+            }
+            else
+            {
+                position = from;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>Where the destination that starts at <paramref name="from"/> ends (at a <c>)</c> or a space), or -1 when it is empty, too long, or written between angle brackets.</summary>
+    private static int DestinationEnd(string line, int from)
+    {
+        var end = from;
+        while (end < line.Length && end - from <= MaxLength && line[end] is not (')' or ' ' or '\t'))
+        {
+            end++;
+        }
+
+        var closed = end < line.Length && line[end] is ')' or ' ' or '\t';
+        return closed && end - from <= MaxLength && line[from] != '<' ? end : -1;
+    }
+
+    /// <summary>
+    /// The path, from the root of the source, of what a relative address leads to from the note at <paramref name="notePath"/> (no heading or
+    /// query, URL-decoded), or null when it leaves the source or is not a relative address (a scheme, a leading <c>/</c>, <c>#</c> or <c>?</c>).
+    /// </summary>
+    public static string? RelativePath(string notePath, string address)
+    {
+        var colon = address.IndexOf(':', StringComparison.Ordinal);
+        var slash = address.IndexOf('/', StringComparison.Ordinal);
+        if (address.Length == 0 || address[0] is '/' or '#' or '?' || (colon > 0 && (slash < 0 || colon < slash)))
+        {
+            return null;
+        }
+
+        var end = address.IndexOfAny(['#', '?']);
+        var reference = Uri.UnescapeDataString(end >= 0 ? address[..end] : address).Replace('\\', '/');
+        var parts = notePath.Split('/').SkipLast(1).ToList();
+        foreach (var part in reference.Split('/'))
+        {
+            if (part == "..")
+            {
+                if (parts.Count == 0)
+                {
+                    return null;
+                }
+
+                parts.RemoveAt(parts.Count - 1);
+            }
+            else if (part is not ("." or ""))
+            {
+                parts.Add(part);
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join('/', parts);
     }
 
     /// <summary>A <c>#</c> that opens a tag: at the start of the line, after a space or after <c>[</c> (so not <c>C#</c>, not the anchor of a link such as <c>(#setup)</c>).</summary>

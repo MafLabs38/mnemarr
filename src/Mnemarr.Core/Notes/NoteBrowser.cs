@@ -40,6 +40,9 @@ public interface INoteBrowser
     /// <summary>The note a link (as <see cref="ResolvedLink"/> stores it) leads to for a note of <paramref name="fromSource"/>, among the sources the caller may read; null when there is none.</summary>
     NoteRef? Resolve(Guid fromSource, string target, SourceScope scope);
 
+    /// <summary>The note at this path of this source, if the index knows it and the caller may read it.</summary>
+    NoteRef? FindNote(Guid sourceId, string path, SourceScope scope);
+
     /// <summary>Whether the image file is one the last pass found in the source: only those are served.</summary>
     bool HasImage(Guid sourceId, string path);
 

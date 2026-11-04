@@ -105,8 +105,9 @@ public sealed class SourceIndexer
         var known = _index.Notes(source.Id);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var counts = new Dictionary<FileResult, int>();
+        var images = new List<string>();
 
-        foreach (var file in MarkdownFileScanner.Scan(source.Path))
+        foreach (var file in MarkdownFileScanner.Scan(source.Path, images))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (SourcePaths.CrossesLink(file.FullPath, source.Path))
@@ -132,14 +133,15 @@ public sealed class SourceIndexer
             removed++;
         }
 
-        RecordImages(source);
+        RecordImages(source, images);
         return new IndexReport(counts.GetValueOrDefault(FileResult.Added), counts.GetValueOrDefault(FileResult.Updated), removed, counts.GetValueOrDefault(FileResult.Unchanged));
     }
 
     /// <summary>The image files of the source, for the notes that show them: written only when they are not what the last pass found.</summary>
-    private void RecordImages(Source source)
+    private void RecordImages(Source source, List<string> images)
     {
-        var found = MarkdownFileScanner.ScanImages(source.Path).ToHashSet(StringComparer.Ordinal);
+        // In path order before the cut, so that a source over the limit keeps the same images at every pass.
+        var found = (images.Count > MarkdownFileScanner.MaxImages ? images.Order(StringComparer.Ordinal).Take(MarkdownFileScanner.MaxImages) : images).ToHashSet(StringComparer.Ordinal);
         if (!found.SetEquals(_index.Images(source.Id)))
         {
             _index.ReplaceImages(source.Id, found);

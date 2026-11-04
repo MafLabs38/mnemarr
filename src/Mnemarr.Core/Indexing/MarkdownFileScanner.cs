@@ -33,27 +33,15 @@ public static class MarkdownFileScanner
         }
     }
 
-    public static IEnumerable<ScannedFile> Scan(string root)
-    {
-        var options = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
-            MatchCasing = MatchCasing.CaseInsensitive,
-            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
-        };
-
-        return new DirectoryInfo(root)
-            .EnumerateFiles("*.md", options)
-            .Where(IsNote)
-            .Select(file => new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName, file.Length, file.LastWriteTimeUtc.Ticks));
-    }
-
     /// <summary>The most images of a source that are recorded: past it, the first in path order are kept.</summary>
     public const int MaxImages = 50_000;
 
-    /// <summary>The paths, from the root of the source and with <c>/</c>, of the image files a note may show (see <see cref="ImageFormats"/>): the same folders as the notes, none hidden or behind a link.</summary>
-    public static IEnumerable<string> ScanImages(string root)
+    /// <summary>
+    /// Walks a source once and finds its notes (as they are read: lazily). The image files a note may show (see <see cref="ImageFormats"/>), from
+    /// the root of the source and with <c>/</c>, are added to <paramref name="images"/> as the walk goes (it is complete when the notes have been
+    /// read to the end): the same folders as the notes, none hidden or behind a link, in one walk and not two.
+    /// </summary>
+    public static IEnumerable<ScannedFile> Scan(string root, List<string>? images = null)
     {
         var options = new EnumerationOptions
         {
@@ -62,12 +50,19 @@ public static class MarkdownFileScanner
             AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
         };
 
-        return new DirectoryInfo(root)
-            .EnumerateFiles("*", options)
-            .Where(file => ImageFormats.Is(file.Name))
-            .Select(file => Path.GetRelativePath(root, file.FullName).Replace('\\', '/'))
-            // In path order before the cut, so that a source over the limit keeps the same images at every pass.
-            .Order(StringComparer.Ordinal)
-            .Take(MaxImages);
+        foreach (var file in new DirectoryInfo(root).EnumerateFiles("*", options))
+        {
+            if (file.Extension.Equals(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                if (IsNote(file))
+                {
+                    yield return new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName, file.Length, file.LastWriteTimeUtc.Ticks);
+                }
+            }
+            else if (images is not null && ImageFormats.Is(file.Name))
+            {
+                images.Add(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'));
+            }
+        }
     }
 }

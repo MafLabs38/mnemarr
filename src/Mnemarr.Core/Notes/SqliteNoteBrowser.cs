@@ -60,6 +60,12 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         return Resolve(connection, target, fromSource, scope);
     }
 
+    public NoteRef? FindNote(Guid sourceId, string path, SourceScope scope)
+    {
+        using var connection = _database.Open();
+        return ReadNote(connection, sourceId, path, scope)?.Reference;
+    }
+
     public bool HasImage(Guid sourceId, string path)
     {
         using var connection = _database.Open();

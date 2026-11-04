@@ -73,6 +73,48 @@ public sealed class MarkdownNotesFixture
     }
 
     [Fact]
+    public void should_rewrite_the_destination_of_ordinary_links_and_images_outside_code_and_wikilinks()
+    {
+        var body = "[a](one.md) ![b](img/p.png \"title\") `[c](code.md)` [[w|[d](inside.md)]] [e](<angle.md>) [f]() [g](two.md#part)";
+
+        var rewritten = MarkdownNotes.Rewrite(body, _ => "W", destination => $"<{destination}>");
+
+        rewritten.Should().Be("[a](<one.md>) ![b](<img/p.png> \"title\") `[c](code.md)` W [e](<angle.md>) [f]() [g](<two.md#part>)");
+    }
+
+    [Theory]
+    [InlineData("devops/docker.md", "k8s.md", "devops/k8s.md")]
+    [InlineData("devops/docker.md", "../index.md#top", "index.md")]
+    [InlineData("devops/docker.md", "img/plan%20b.png?raw=1", "devops/img/plan b.png")]
+    [InlineData("a.md", "./b.md", "b.md")]
+    [InlineData("a/b.md", "..\\c.md", "c.md")]
+    [InlineData("a.md", "../outside.md", null)]
+    [InlineData("devops/a.md", "../../outside.md", null)]
+    [InlineData("a.md", "https://example.com/x.md", null)]
+    [InlineData("a.md", "mailto:me@example.com", null)]
+    [InlineData("a.md", "javascript:alert(1)", null)]
+    [InlineData("a.md", "/absolute.md", null)]
+    [InlineData("a.md", "#anchor", null)]
+    [InlineData("a.md", "", null)]
+    [InlineData("a.md", "dir/with:colon.md", "dir/with:colon.md")]
+    public void should_read_a_relative_address_from_the_folder_of_its_note(string note, string address, string? expected)
+    {
+        MarkdownNotes.RelativePath(note, address).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task should_rewrite_a_line_of_link_openings_in_one_pass()
+    {
+        var hostile = string.Concat(Enumerable.Repeat("](", 500_000)) + "\n[a](b.md)";
+
+        var rewriting = Task.Run(() => MarkdownNotes.Rewrite(hostile, _ => "x", destination => "D"), TestContext.Current.CancellationToken);
+        var finished = await Task.WhenAny(rewriting, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        finished.Should().BeSameAs(rewriting, "a note must be rewritten in one pass, whatever it holds");
+        (await rewriting).Should().EndWith("\n[a](D)");
+    }
+
+    [Fact]
     public void should_leave_a_link_as_written_when_the_replacement_says_nothing_and_keep_line_breaks_and_a_missing_last_one()
     {
         MarkdownNotes.Rewrite("[[a]]\r\n[[b]]", token => token.Inner == "a" ? null : "B").Should().Be("[[a]]\n" + "B");

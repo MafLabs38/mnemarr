@@ -34,7 +34,7 @@ internal sealed class WikiLinkRenderer
         _scope = scope;
     }
 
-    public string Render(string body) => MarkdownNotes.Rewrite(body, RenderToken);
+    public string Render(string body) => MarkdownNotes.Rewrite(body, RenderToken, RenderDestination);
 
     private string? RenderToken(WikiToken token)
     {
@@ -66,6 +66,31 @@ internal sealed class WikiLinkRenderer
         return LeadsTo(normalized) is { } note
             ? $"[{Escape(text)}]({NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)})"
             : $"[{Escape(text)}]({UnresolvedScheme})";
+    }
+
+    /// <summary>
+    /// The destination of an ordinary Markdown link or image, rewritten when it is relative and leads to a note or an image of the source:
+    /// the same addresses as for a wikilink. A web address, or a file that is neither, is left as it is.
+    /// </summary>
+    private string? RenderDestination(string destination)
+    {
+        if (MarkdownNotes.RelativePath(_notePath, destination) is not { } path)
+        {
+            return null;
+        }
+
+        var isNote = path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase);
+        if ((!isNote && !ImageFormats.Is(path)) || ++_rewritten > MaxLookups)
+        {
+            return null;
+        }
+
+        if (isNote)
+        {
+            return _browser.FindNote(_sourceId, path, _scope) is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}" : UnresolvedScheme;
+        }
+
+        return _browser.HasImage(_sourceId, path) ? FileScheme + Uri.EscapeDataString(path) : UnresolvedScheme;
     }
 
     private NoteRef? LeadsTo(string normalized)

@@ -1,24 +1,4 @@
-import { NOTE_SCHEME, parseNoteAddress, resolveRelative } from 'Notes/addresses';
-
-describe('resolveRelative', () => {
-  it.each([
-    ['devops/docker.md', 'k8s.md', 'devops/k8s.md'],
-    ['devops/docker.md', '../index.md#top', 'index.md'],
-    ['devops/docker.md', 'img/plan%20b.png', 'devops/img/plan b.png'],
-    ['a.md', './b.md', 'b.md'],
-  ])('resolves %j from %j', (note, reference, expected) => {
-    expect(resolveRelative(note, reference)).toBe(expected);
-  });
-
-  it.each([
-    ['a.md', '../outside.md'],
-    ['devops/a.md', '../../outside.md'],
-    ['a.md', '%E0%A4%A'],
-    ['a.md', ''],
-  ])('refuses to leave the source: %j from %j', (note, reference) => {
-    expect(resolveRelative(note, reference)).toBeNull();
-  });
-});
+import { NOTE_SCHEME, parseNoteAddress } from 'Notes/addresses';
 
 describe('parseNoteAddress', () => {
   it('reads the source and the decoded path the server wrote', () => {

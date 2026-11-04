@@ -211,11 +211,11 @@ describe('Notes', () => {
       expect(web).toHaveAttribute('target', '_blank');
     });
 
-    it('fetches an image of the note from its own source only, and shows another address as text', async () => {
+    it('fetches an image the server pointed at, from the source of the note, and shows any other address as text', async () => {
       server(
         noteWith('', {
           rendered:
-            '![plan.png](mnemarr-file:devops%2Fplan.png) ![relative](img/a.png) ![outside](../../x.png) ![remote](https://tracker.example/pixel.gif) ![missing.png](mnemarr-unresolved:)',
+            '![plan.png](mnemarr-file:devops%2Fplan.png) ![relative](img/a.png) ![remote](https://tracker.example/pixel.gif) ![missing.png](mnemarr-unresolved:)',
         }),
       );
       const { container } = renderWithProviders(<Notes />, open, readerSession);
@@ -223,11 +223,8 @@ describe('Notes', () => {
       await screen.findByText(/Image not shown: remote/);
 
       const sources = [...container.querySelectorAll('img')].map((image) => image.getAttribute('src'));
-      expect(sources).toEqual([
-        `/api/v1/sources/${S1}/files/devops/plan.png`,
-        `/api/v1/sources/${S1}/files/devops/img/a.png`,
-      ]);
-      expect(screen.getByText('Image not shown: outside')).toBeInTheDocument();
+      expect(sources).toEqual([`/api/v1/sources/${S1}/files/devops/plan.png`]);
+      expect(screen.getByText('Image not shown: relative')).toBeInTheDocument();
       expect(screen.getByText('Image not shown: missing.png')).toBeInTheDocument();
     });
 
@@ -241,18 +238,24 @@ describe('Notes', () => {
       expect(container.querySelectorAll('main img')).toHaveLength(1);
     });
 
-    it('follows a relative link to a Markdown file inside the source and refuses one that leaves it', async () => {
-      server(noteWith('[next](kubernetes.md) [up](../../x.md) [file](paper.pdf)'));
+    it('shows as text a relative link the server left as it was (it leaves the source, or is not a note)', async () => {
+      server(
+        noteWith('', {
+          rendered:
+            '[next](kubernetes.md) [up](../../x.md) [file](paper.pdf) [ok](mnemarr-note:' +
+            S1 +
+            '/devops%2Fkubernetes.md)',
+        }),
+      );
       renderWithProviders(<Notes />, open, readerSession);
 
       await screen.findByText('up');
 
-      expect(screen.getByRole('link', { name: 'next' })).toHaveAttribute(
+      expect(screen.getAllByRole('link').filter((link) => link.closest('article'))).toHaveLength(1);
+      expect(screen.getByRole('link', { name: 'ok' })).toHaveAttribute(
         'href',
         `/notes?source=${S1}&path=devops%2Fkubernetes.md`,
       );
-      expect(screen.queryByRole('link', { name: 'up' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: 'file' })).not.toBeInTheDocument();
     });
   });
 

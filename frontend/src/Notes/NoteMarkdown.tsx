@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { apiUrl } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
-import { FILE_SCHEME, NOTE_SCHEME, parseNoteAddress, resolveRelative, UNRESOLVED_SCHEME } from './addresses';
+import { FILE_SCHEME, NOTE_SCHEME, parseNoteAddress, UNRESOLVED_SCHEME } from './addresses';
 import MermaidDiagram from './MermaidDiagram';
 import { filePath, type Note, noteAddress } from './notes';
 import styles from './Notes.module.css';
@@ -26,10 +26,6 @@ const NoteContext = createContext<Note | null>(null);
 function transformUrl(url: string): string {
   const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*:)/.exec(url)?.[1]?.toLowerCase();
   return scheme === undefined || ALLOWED.has(scheme) ? url : '';
-}
-
-function isRelative(url: string): boolean {
-  return !/^([a-zA-Z][a-zA-Z0-9+.-]*:|\/|#)/.test(url);
 }
 
 function decode(value: string): string {
@@ -64,7 +60,6 @@ function NotePre({ children }: Readonly<{ children?: ReactNode }>) {
 }
 
 function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: ReactNode }>) {
-  const note = useNoteBeingRendered();
   if (href?.startsWith(NOTE_SCHEME)) {
     const target = parseNoteAddress(href);
     return target ? <Link to={noteAddress(target)}>{children}</Link> : <span>{children}</span>;
@@ -83,22 +78,13 @@ function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: Rea
       </a>
     );
   }
-  const path =
-    href && isRelative(href) && /\.(md|markdown)(#.*)?$/i.test(href) ? resolveRelative(note.path, href) : null;
-  return path ? <Link to={noteAddress({ sourceId: note.sourceId, path })}>{children}</Link> : <span>{children}</span>;
-}
-
-/** The path, in the source of the note, of the image an address leads to: one the server wrote, or a relative one; null when it leads elsewhere. */
-function imagePath(note: Note, src: string | undefined): string | null {
-  if (src?.startsWith(FILE_SCHEME)) {
-    return decode(src.slice(FILE_SCHEME.length));
-  }
-  return src && isRelative(src) ? resolveRelative(note.path, src) : null;
+  // What the server did not rewrite (a relative address that leaves the source, a file that is not a note) is text here.
+  return <span>{children}</span>;
 }
 
 function NoteImage({ src, alt }: Readonly<{ src?: string; alt?: string }>) {
   const note = useNoteBeingRendered();
-  const path = imagePath(note, src);
+  const path = src?.startsWith(FILE_SCHEME) ? decode(src.slice(FILE_SCHEME.length)) : null;
   return path ? (
     <img alt={alt ?? ''} loading="lazy" src={apiUrl(filePath(note.sourceId, path))} />
   ) : (

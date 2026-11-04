@@ -65,6 +65,27 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_rewrite_ordinary_relative_links_and_images_the_same_way_and_leave_the_rest()
+    {
+        var source = await SourceWithAsync(
+            "courses",
+            ("devops/docker.md", "[next](kubernetes.md) [up](../index.md#top) [missing](nope.md) [out](../../x.md) [web](https://example.com/a.md) [file](paper.pdf) ![plan](img/plan%20b.png) ![gone](img/gone.png) ![remote](https://example.com/p.png)"),
+            ("devops/kubernetes.md", "# K8s"),
+            ("index.md", "# Index"));
+        TestWorkspace.Write(Path.Combine(Workspace.SourcesFolder, "courses"), "devops/img/plan b.png", "png");
+        await ReindexAsync(source);
+
+        var rendered = Reader.Read(source.Id, "devops/docker.md", SourceScope.All).Rendered;
+
+        rendered.Should().Contain($"[next](mnemarr-note:{source.Id}/devops%2Fkubernetes.md)");
+        rendered.Should().Contain($"[up](mnemarr-note:{source.Id}/index.md)");
+        rendered.Should().Contain("[missing](mnemarr-unresolved:)").And.NotContain("](nope.md)");
+        rendered.Should().Contain("[out](../../x.md)", "an address that leaves the source is left, and the interface shows it as text");
+        rendered.Should().Contain("[web](https://example.com/a.md)").And.Contain("[file](paper.pdf)").And.Contain("![remote](https://example.com/p.png)");
+        rendered.Should().Contain("![plan](mnemarr-file:devops%2Fimg%2Fplan%20b.png)").And.Contain("![gone](mnemarr-unresolved:)");
+    }
+
+    [Fact]
     public async Task should_look_up_only_as_many_links_of_a_note_as_the_index_keeps_and_leave_the_rest_as_written()
     {
         var many = string.Concat(Enumerable.Range(0, 1_000).Select(i => $"[[n{i}]] "));
