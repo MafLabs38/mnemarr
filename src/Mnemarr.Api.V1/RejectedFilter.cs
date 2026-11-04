@@ -2,16 +2,17 @@ using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Mnemarr.Core;
 using Mnemarr.Core.Accounts;
 
-namespace Mnemarr.Api.V1.Accounts;
+namespace Mnemarr.Api.V1;
 
 /// <summary>Turns a refused account operation into a problem document with the right status, instead of a 500.</summary>
-public sealed class AccountRejectedFilter : IExceptionFilter
+public sealed class RejectedFilter : IExceptionFilter
 {
     public void OnException(ExceptionContext context)
     {
-        if (context.Exception is not AccountRejectedException rejected)
+        if (context.Exception is not RejectedException rejected)
         {
             return;
         }
@@ -28,15 +29,15 @@ public sealed class AccountRejectedFilter : IExceptionFilter
 
     /// <summary>
     /// The status of a refusal, and its stable name for clients that must tell "locked for a while" from "busy, try in a moment" without
-    /// reading English. One table: a refusal added to <see cref="AccountProblem"/> and not here is caught by a test over every value.
+    /// reading English. One table: a refusal added to <see cref="Problem"/> and not here is caught by a test over every value.
     /// </summary>
-    public static (int Status, string Kind) Describe(AccountProblem problem) => problem switch
+    public static (int Status, string Kind) Describe(Problem problem) => problem switch
     {
-        AccountProblem.Invalid => (StatusCodes.Status400BadRequest, "invalid"),
-        AccountProblem.Conflict => (StatusCodes.Status409Conflict, "conflict"),
-        AccountProblem.NotFound => (StatusCodes.Status404NotFound, "not-found"),
-        AccountProblem.Locked => (StatusCodes.Status429TooManyRequests, "locked"),
-        AccountProblem.Busy => (StatusCodes.Status429TooManyRequests, "busy"),
+        Problem.Invalid => (StatusCodes.Status400BadRequest, "invalid"),
+        Problem.Conflict => (StatusCodes.Status409Conflict, "conflict"),
+        Problem.NotFound => (StatusCodes.Status404NotFound, "not-found"),
+        Problem.Locked => (StatusCodes.Status429TooManyRequests, "locked"),
+        Problem.Busy => (StatusCodes.Status429TooManyRequests, "busy"),
         _ => throw new InvalidOperationException($"No status is chosen for {problem}."),
     };
 }

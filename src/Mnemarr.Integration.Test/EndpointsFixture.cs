@@ -44,7 +44,18 @@ public sealed class EndpointsFixture
             "api/v1/auth/logout",
             "api/v1/auth/password",
             "api/v1/auth/session",
+        "api/v1/config",
+        "api/v1/config",
             "api/v1/roles",
+        "api/v1/search",
+        "api/v1/sources",
+        "api/v1/sources",
+        "api/v1/sources/kinds",
+        "api/v1/sources/roots",
+        "api/v1/sources/{id:guid}",
+        "api/v1/sources/{id:guid}",
+        "api/v1/sources/{id:guid}",
+        "api/v1/sources/{id:guid}/index",
             "api/v1/system/status",
             "{*path:nonfile}");
     }

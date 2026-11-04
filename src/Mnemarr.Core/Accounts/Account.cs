@@ -50,28 +50,3 @@ public sealed record AccessPrincipal(Account Account, IReadOnlySet<string> Permi
 
     public bool CanAccess(Guid sourceId) => Scope.CanAccess(sourceId);
 }
-
-public enum AccountProblem
-{
-    Invalid,
-    Conflict,
-    NotFound,
-    Locked,
-    Busy,
-}
-
-/// <summary>An account operation that cannot be done, with the reason to give to the person who tried.</summary>
-public sealed class AccountRejectedException : Exception
-{
-    public AccountRejectedException(AccountProblem problem, string message, TimeSpan? retryAfter = null)
-        : base(message)
-    {
-        Problem = problem;
-        RetryAfter = retryAfter;
-    }
-
-    public AccountProblem Problem { get; }
-
-    /// <summary>When the caller may try again, for a refusal that is only for a while.</summary>
-    public TimeSpan? RetryAfter { get; }
-}

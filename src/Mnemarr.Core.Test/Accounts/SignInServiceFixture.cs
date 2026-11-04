@@ -86,7 +86,7 @@ public sealed class SignInServiceFixture : IDisposable
 
         var locked = () => Credentials.SignIn("alice", Password);
 
-        locked.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Locked);
+        locked.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Locked);
         _h.Clock.Advance(TimeSpan.FromMinutes(16));
         Credentials.SignIn("alice", Password).Should().NotBeNull();
     }
@@ -101,7 +101,7 @@ public sealed class SignInServiceFixture : IDisposable
 
         var locked = () => Credentials.SignIn("ghost", Password);
 
-        locked.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Locked);
+        locked.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Locked);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class SignInServiceFixture : IDisposable
 
         for (var i = 0; i < 20; i++)
         {
-            new Action(() => Credentials.SignIn("ghost", Password)).Should().Throw<AccountRejectedException>();
+            new Action(() => Credentials.SignIn("ghost", Password)).Should().Throw<RejectedException>();
         }
 
         _h.Audit.Recent(100, "login.locked").Should().ContainSingle();
@@ -191,7 +191,7 @@ public sealed class SignInServiceFixture : IDisposable
 
         var guess = () => Credentials.VerifyPassword(alice.Id, Password);
 
-        guess.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Locked);
+        guess.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Locked);
         _h.Clock.Advance(TimeSpan.FromMinutes(16));
         Credentials.VerifyPassword(alice.Id, Password).Should().BeTrue();
     }
@@ -308,7 +308,7 @@ public sealed class SignInServiceFixture : IDisposable
         hasher.WaitUntilEntered(SignInService.MaxConcurrentHashes);
         var overflow = async () => await subject.SignInAsync("alice", Password, token);
 
-        (await overflow.Should().ThrowAsync<AccountRejectedException>()).Which.Problem.Should().Be(AccountProblem.Busy);
+        (await overflow.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Busy);
         hasher.Release();
         await Task.WhenAll(running);
         (await subject.SignInAsync("alice", Password, token)).Should().NotBeNull();
@@ -355,7 +355,7 @@ public sealed class SignInServiceFixture : IDisposable
         var password = tooLong ? new string('p', PasswordPolicy.MaxLength + 1) : "short";
         var alice = _h.Reader();
 
-        new Action(() => Subject.SetPassword(alice.Id, password, "x")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        new Action(() => Subject.SetPassword(alice.Id, password, "x")).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
         Credentials.SignIn("alice", Password).Should().NotBeNull();
     }
 
@@ -426,8 +426,8 @@ public sealed class SignInServiceFixture : IDisposable
             Credentials.VerifyPassword(alice.Id, "wrong password here");
         }
 
-        new Action(() => Credentials.SignIn("alice", Password)).Should().Throw<AccountRejectedException>();
-        new Action(() => Credentials.VerifyPassword(alice.Id, Password)).Should().Throw<AccountRejectedException>();
+        new Action(() => Credentials.SignIn("alice", Password)).Should().Throw<RejectedException>();
+        new Action(() => Credentials.VerifyPassword(alice.Id, Password)).Should().Throw<RejectedException>();
 
         _h.Audit.Recent(10, "login.locked").Should().ContainSingle().Which.Actor.Should().Be("alice");
         _h.Audit.Recent(10, "password.locked").Should().ContainSingle().Which.Actor.Should().Be("alice");

@@ -116,7 +116,7 @@ public sealed class AccountService
     /// </summary>
     public void Reset(string name, string password)
     {
-        var credentials = _accounts.GetCredentials(name.Trim()) ?? throw new AccountRejectedException(AccountProblem.NotFound, $"There is no account named '{name}'.");
+        var credentials = _accounts.GetCredentials(name.Trim()) ?? throw new RejectedException(Problem.NotFound, $"There is no account named '{name}'.");
         var account = credentials.Account;
         if (account.Kind != AccountKind.User)
         {
@@ -158,7 +158,7 @@ public sealed class AccountService
         var isAdminNow = account.Enabled && account.Role == Roles.Admin;
         if (isAdminNow && !stillAdmin && _accounts.CountEnabledAdmins() <= 1)
         {
-            throw new AccountRejectedException(AccountProblem.Conflict, "The last enabled administrator cannot be removed, disabled or demoted.");
+            throw new RejectedException(Problem.Conflict, "The last enabled administrator cannot be removed, disabled or demoted.");
         }
     }
 
@@ -181,7 +181,7 @@ public sealed class AccountService
         return PasswordPolicy.Problem(password, name) is { } problem ? throw Invalid(problem) : password;
     }
 
-    private static AccountRejectedException NoSuchAccount() => new(AccountProblem.NotFound, "There is no such account.");
+    private static RejectedException NoSuchAccount() => new(Problem.NotFound, "There is no such account.");
 
-    private static AccountRejectedException Invalid(string message) => new(AccountProblem.Invalid, message);
+    private static RejectedException Invalid(string message) => new(Problem.Invalid, message);
 }

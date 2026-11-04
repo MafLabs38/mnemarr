@@ -2,7 +2,7 @@ namespace Mnemarr.Core.Accounts;
 
 public interface IAccountStore
 {
-    /// <summary>Adds an account. Throws <see cref="AccountRejectedException"/> (conflict) when the name is taken, whatever its case.</summary>
+    /// <summary>Adds an account. Throws <see cref="RejectedException"/> (conflict) when the name is taken, whatever its case.</summary>
     void Add(Account account, string? passwordHash);
 
     Account? Get(Guid id);

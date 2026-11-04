@@ -49,6 +49,44 @@ public static class Schema
         );
         CREATE INDEX audit_events_by_action ON audit_events (action, id);
         """,
+        // 2: sources, notes, chunks, and the full-text index of the chunks kept in step by triggers.
+        """
+        CREATE TABLE sources (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            kind TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            path TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            managed INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE notes (
+            id INTEGER PRIMARY KEY,
+            source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+            path TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TEXT NOT NULL,
+            UNIQUE (source_id, path)
+        );
+        CREATE TABLE chunks (
+            id INTEGER PRIMARY KEY,
+            note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            ordinal INTEGER NOT NULL,
+            heading TEXT NOT NULL,
+            text TEXT NOT NULL
+        );
+        CREATE INDEX chunks_by_note ON chunks (note_id);
+        CREATE VIRTUAL TABLE chunks_fts USING fts5(
+            text, heading, content = 'chunks', content_rowid = 'id', tokenize = 'unicode61 remove_diacritics 2');
+        CREATE TRIGGER chunks_after_insert AFTER INSERT ON chunks BEGIN
+            INSERT INTO chunks_fts (rowid, text, heading) VALUES (new.id, new.text, new.heading);
+        END;
+        CREATE TRIGGER chunks_after_delete AFTER DELETE ON chunks BEGIN
+            INSERT INTO chunks_fts (chunks_fts, rowid, text, heading) VALUES ('delete', old.id, old.text, old.heading);
+        END;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

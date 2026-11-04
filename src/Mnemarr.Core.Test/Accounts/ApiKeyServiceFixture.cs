@@ -34,8 +34,8 @@ public sealed class ApiKeyServiceFixture : IDisposable
     {
         var root = _h.Admin();
 
-        new Action(() => Subject.Create(root.Id, "script", null, null, "root")).Should().Throw<AccountRejectedException>()
-            .Which.Should().Match<AccountRejectedException>(e => e.Problem == AccountProblem.Invalid && e.Message.Contains("service account"));
+        new Action(() => Subject.Create(root.Id, "script", null, null, "root")).Should().Throw<RejectedException>()
+            .Which.Should().Match<RejectedException>(e => e.Problem == Problem.Invalid && e.Message.Contains("service account"));
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class ApiKeyServiceFixture : IDisposable
     {
         var account = _h.Robot();
 
-        new Action(() => Subject.Create(account.Id, "k", [], null, "root")).Should().Throw<AccountRejectedException>().WithMessage("*at least one*");
+        new Action(() => Subject.Create(account.Id, "k", [], null, "root")).Should().Throw<RejectedException>().WithMessage("*at least one*");
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public sealed class ApiKeyServiceFixture : IDisposable
 
         Subject.Authenticate(created.Secret).Should().BeNull();
         Subject.List(account.Id).Single().RevokedAt.Should().Be(_h.Clock.GetUtcNow());
-        new Action(() => Subject.Revoke(account.Id, created.Key.Id, "root")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.NotFound);
+        new Action(() => Subject.Revoke(account.Id, created.Key.Id, "root")).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public sealed class ApiKeyServiceFixture : IDisposable
         var other = _h.Robot("other", Roles.Reader);
         var created = Subject.Create(one.Id, "k", null, null, "root");
 
-        new Action(() => Subject.Revoke(other.Id, created.Key.Id, "root")).Should().Throw<AccountRejectedException>();
+        new Action(() => Subject.Revoke(other.Id, created.Key.Id, "root")).Should().Throw<RejectedException>();
 
         Subject.Authenticate(created.Secret).Should().NotBeNull();
     }
@@ -209,7 +209,7 @@ public sealed class ApiKeyServiceFixture : IDisposable
     {
         var account = _h.Robot();
 
-        new Action(() => Subject.Create(account.Id, name, null, null, "root")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        new Action(() => Subject.Create(account.Id, name, null, null, "root")).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public sealed class ApiKeyServiceFixture : IDisposable
         var account = _h.Robot();
         var name = new string('k', 101);
 
-        new Action(() => Subject.Create(account.Id, name, null, null, "root")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        new Action(() => Subject.Create(account.Id, name, null, null, "root")).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
     }
 
     [Fact]
@@ -226,14 +226,14 @@ public sealed class ApiKeyServiceFixture : IDisposable
     {
         var account = _h.Robot();
 
-        new Action(() => Subject.Create(account.Id, "k", null, _h.Clock.GetUtcNow(), "root")).Should().Throw<AccountRejectedException>().WithMessage("*past*");
+        new Action(() => Subject.Create(account.Id, "k", null, _h.Clock.GetUtcNow(), "root")).Should().Throw<RejectedException>().WithMessage("*past*");
     }
 
     [Fact]
     public void should_say_there_is_no_such_account_for_a_key_to_create_or_to_revoke()
     {
-        new Action(() => Subject.Create(Guid.NewGuid(), "k", null, null, "root")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.NotFound);
-        new Action(() => Subject.Revoke(Guid.NewGuid(), Guid.NewGuid(), "root")).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.NotFound);
+        new Action(() => Subject.Create(Guid.NewGuid(), "k", null, null, "root")).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
+        new Action(() => Subject.Revoke(Guid.NewGuid(), Guid.NewGuid(), "root")).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
     }
 
     [Fact]
