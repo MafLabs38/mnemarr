@@ -63,15 +63,18 @@ public sealed class SqliteNoteIndex : INoteIndex
             noteId = (long)insert.ExecuteScalar()!;
         }
 
+        using var chunk = connection.CreateCommand();
+        chunk.Transaction = transaction;
+        chunk.CommandText = "INSERT INTO chunks (note_id, ordinal, heading, text) VALUES ($note, $ordinal, $heading, $text)";
+        var ordinalParameter = chunk.Parameters.AddWithValue("$ordinal", 0);
+        var headingParameter = chunk.Parameters.AddWithValue("$heading", string.Empty);
+        var textParameter = chunk.Parameters.AddWithValue("$text", string.Empty);
+        chunk.Parameters.AddWithValue("$note", noteId);
         for (var ordinal = 0; ordinal < chunks.Count; ordinal++)
         {
-            using var chunk = connection.CreateCommand();
-            chunk.Transaction = transaction;
-            chunk.CommandText = "INSERT INTO chunks (note_id, ordinal, heading, text) VALUES ($note, $ordinal, $heading, $text)";
-            chunk.Parameters.AddWithValue("$note", noteId);
-            chunk.Parameters.AddWithValue("$ordinal", ordinal);
-            chunk.Parameters.AddWithValue("$heading", chunks[ordinal].Heading);
-            chunk.Parameters.AddWithValue("$text", chunks[ordinal].Text);
+            ordinalParameter.Value = ordinal;
+            headingParameter.Value = chunks[ordinal].Heading;
+            textParameter.Value = chunks[ordinal].Text;
             chunk.ExecuteNonQuery();
         }
 

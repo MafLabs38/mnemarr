@@ -34,7 +34,6 @@ public sealed class SourceIndexer
     /// <param name="cancellationToken">Stops the pass.</param>
     public async Task<IndexReport> IndexAsync(Source source, bool rebuild, bool waitForTurn, CancellationToken cancellationToken)
     {
-        CheckFolder(source);
         if (!await _onePass.WaitAsync(waitForTurn ? Timeout.InfiniteTimeSpan : TimeSpan.Zero, cancellationToken))
         {
             throw new RejectedException(Problem.Busy, "A pass over the sources is running: try again in a moment.", TimeSpan.FromSeconds(5));
@@ -42,6 +41,8 @@ public sealed class SourceIndexer
 
         try
         {
+            // After the wait, not before: the roots or the folder can change while a pass ahead of this one runs.
+            CheckFolder(source);
             var report = await PassAsync(source, rebuild, cancellationToken);
             _outcomes.Succeeded(source.Id, _clock.GetUtcNow());
             return report;
@@ -94,9 +95,9 @@ public sealed class SourceIndexer
         foreach (var file in MarkdownFileScanner.Scan(source.Path))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (IsLink(file.FullPath))
+            if (SourcePaths.CrossesLink(file.FullPath, source.Path))
             {
-                // Swapped for a link since the listing (a pull can do it): not a note any more, and what it led to is not read.
+                // The file, or a folder above it, was swapped for a link since the listing (a pull can do it): not a note any more, and what it led to is not read.
                 continue;
             }
 
@@ -140,18 +141,6 @@ public sealed class SourceIndexer
         }
 
         return new IndexReport(added, updated, removed, unchanged);
-    }
-
-    private static bool IsLink(string path)
-    {
-        try
-        {
-            return new FileInfo(path).LinkTarget is not null;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
     }
 
     /// <summary>

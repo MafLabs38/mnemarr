@@ -178,6 +178,7 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
         toRoot.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         outOfScope.StatusCode.Should().Be(HttpStatusCode.NotFound);
         mode.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await scoped.DeleteAsync($"/api/v1/sources/{mineId}", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, "forgetting its own source would leave the key with nothing to match");
         (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{mineId}", Token)).GetProperty("path").GetString().Should().Be(mineFolder);
     }
 

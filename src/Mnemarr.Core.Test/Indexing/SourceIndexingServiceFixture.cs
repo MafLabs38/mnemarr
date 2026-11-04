@@ -57,13 +57,23 @@ public sealed class SourceIndexingServiceFixture : IDisposable
         var token = TestContext.Current.CancellationToken;
 
         await _subject.StartAsync(token);
-        await AdvanceUntil(() => _index.Counts(source.Id).Notes == 1, token);
+        await WaitUntil(() => _index.Counts(source.Id).Notes == 1, token); // the clock has not moved: this is the scan at start
 
         TestWorkspace.Write(folder, "b.md", "# B\nsecond");
         await AdvanceUntil(() => _index.Counts(source.Id).Notes == 2, token);
 
         await _subject.StopAsync(token);
         _subject.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue();
+    }
+
+    private static async Task WaitUntil(Func<bool> condition, CancellationToken token)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+        limit.CancelAfter(TimeSpan.FromSeconds(30));
+        while (!condition())
+        {
+            await Task.Delay(10, limit.Token);
+        }
     }
 
     /// <summary>

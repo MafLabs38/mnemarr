@@ -142,20 +142,25 @@ public static class MarkdownChunker
 
     private static IEnumerable<string> HardCut(string paragraph, int maxChars)
     {
-        var rest = paragraph;
-        while (rest.Length > maxChars)
+        // An offset, not a copy of the rest at each cut: one long paragraph costs a pass over it, not a pass per piece.
+        var start = 0;
+        while (paragraph.Length - start > maxChars)
         {
-            var cut = rest.LastIndexOf(' ', maxChars - 1, maxChars);
-            if (cut <= 0)
+            var cut = paragraph.LastIndexOf(' ', start + maxChars - 1, maxChars);
+            if (cut <= start)
             {
-                cut = maxChars;
+                cut = start + maxChars;
             }
 
-            yield return rest[..cut].TrimEnd();
-            rest = rest[cut..].TrimStart();
+            yield return paragraph[start..cut].TrimEnd();
+            start = cut;
+            while (start < paragraph.Length && char.IsWhiteSpace(paragraph[start]))
+            {
+                start++;
+            }
         }
 
-        yield return rest;
+        yield return paragraph[start..];
     }
 
     /// <summary>The headings above the current line, as "A &gt; B &gt; C".</summary>

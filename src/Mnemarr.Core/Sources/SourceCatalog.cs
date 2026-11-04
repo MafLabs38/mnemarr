@@ -89,7 +89,7 @@ public sealed class SourceCatalog
             var current = Get(id, scope);
             RefuseIfManaged(current);
             // Before any look at the disk: a caller who may not change the folder must not learn, from the kind of refusal, what is there.
-            if (scope.Sources is not null && (name != current.Name || Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) != current.Path))
+            if (scope.Sources is not null && (name != current.Name || SourcePaths.Normalize(path) != current.Path))
             {
                 throw new RejectedException(Problem.Forbidden, "A key limited to some sources can change the mode of a source, not its name or its folder.");
             }
@@ -112,6 +112,7 @@ public sealed class SourceCatalog
         lock (Gate)
         {
             var source = Get(id, scope);
+            RefuseIfScoped(scope, "forget a source");
             RefuseIfManaged(source);
             if (SourceKinds.Of(source.Kind).Min >= _store.List().Count(other => other.Kind == source.Kind))
             {

@@ -297,6 +297,28 @@ public sealed class SourceIndexerFixture : IDisposable
 
     [Fact]
     [SupportedOSPlatform("linux")]
+    public void should_see_a_link_in_a_folder_above_a_file_not_only_in_the_file()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Creating a link needs no privilege on Linux only.");
+        var folder = _workspace.Folder("courses");
+        var outside = Directory.CreateTempSubdirectory("mnemarr-outside-");
+        try
+        {
+            TestWorkspace.Write(outside.FullName, "secret.md", "# Secret\nleakedword");
+            TestWorkspace.Write(folder, "plain.md", "# Plain");
+            Directory.CreateSymbolicLink(Path.Combine(folder, "swapped"), outside.FullName);
+
+            SourcePaths.CrossesLink(Path.Combine(folder, "swapped", "secret.md"), folder).Should().BeTrue();
+            SourcePaths.CrossesLink(Path.Combine(folder, "plain.md"), folder).Should().BeFalse();
+        }
+        finally
+        {
+            outside.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
     public async Task should_skip_a_note_that_cannot_be_read_and_index_the_others()
     {
         Assert.SkipUnless(OperatingSystem.IsLinux() && !Environment.IsPrivilegedProcess, "A file is unreadable to its owner only when the process is not privileged.");

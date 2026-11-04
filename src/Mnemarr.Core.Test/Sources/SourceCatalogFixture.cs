@@ -49,12 +49,29 @@ public sealed class SourceCatalogFixture : IDisposable
 
     [Theory]
     [InlineData("relative/path", "absolute")]
+    [InlineData("/tmp/with\0nul", "absolute")]
+    [InlineData("", "absolute")]
     [InlineData("/etc", "inside one of the folders")]
     public void should_refuse_a_path_that_is_not_absolute_or_not_allowed(string path, string reason)
     {
         var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, path, SourceScope.All, "root");
 
         add.Should().Throw<RejectedException>().WithMessage($"*{reason}*");
+    }
+
+    [Fact]
+    public void should_refuse_a_key_limited_to_some_sources_that_forgets_one_or_changes_it_with_a_path_that_is_not_one()
+    {
+        var catalog = Catalog();
+        var source = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("mine"), SourceScope.All, "root");
+        var scope = new SourceScope([source.Id]);
+
+        var forget = () => catalog.Remove(source.Id, scope, "key");
+        var repoint = () => catalog.Update(source.Id, "mine", SourceMode.ReadOnly, "/tmp/with\0nul", scope, "key");
+
+        forget.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+        repoint.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid, "a path that cannot be one is a bad request, not a failure");
+        catalog.List(SourceScope.All).Should().ContainSingle();
     }
 
     [Fact]

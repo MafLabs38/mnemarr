@@ -32,12 +32,7 @@ public sealed class SourcePaths
     /// </summary>
     public string Allowed(string path)
     {
-        if (!Path.IsPathFullyQualified(path))
-        {
-            throw new RejectedException(Problem.Invalid, "The path of a source must be an absolute path.");
-        }
-
-        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var full = Normalize(path);
         var root = Roots().Select(Path.TrimEndingDirectorySeparator).FirstOrDefault(candidate => IsInside(candidate, full));
         if (root is null)
         {
@@ -55,6 +50,43 @@ public sealed class SourcePaths
         }
 
         return full;
+    }
+
+    /// <summary>The full form of an absolute path, without any look at the disk; a path that is not absolute or holds a character no path can hold is refused as invalid, not allowed to fail later.</summary>
+    public static string Normalize(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.Contains('\0') || !Path.IsPathFullyQualified(path))
+        {
+            throw new RejectedException(Problem.Invalid, "The path of a source must be an absolute path.");
+        }
+
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+    }
+
+    /// <summary>The file or any folder between it and the source's folder is a link. The check and the read are two steps, so a swap in between is still possible: the window is narrowed, not closed (SECURITY.md).</summary>
+    internal static bool CrossesLink(string file, string root)
+    {
+        try
+        {
+            if (new FileInfo(file).LinkTarget is not null)
+            {
+                return true;
+            }
+
+            for (var folder = Path.GetDirectoryName(file); folder is not null && folder.Length > root.Length; folder = Path.GetDirectoryName(folder))
+            {
+                if (new DirectoryInfo(folder).LinkTarget is not null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     private static bool IsInside(string root, string path)
