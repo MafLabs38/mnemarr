@@ -54,21 +54,24 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         return new NoteListing(entries, Convert.ToInt32(count.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    public NoteRef? Resolve(Guid fromSource, string target, SourceScope scope)
+    public LinkAnswers Answer(Guid sourceId, string notePath, LinkQuestions questions, SourceScope scope)
     {
         using var connection = _database.Open();
-        return Resolve(connection, target, fromSource, scope);
-    }
-
-    public NoteRef? FindNote(Guid sourceId, string path, SourceScope scope)
-    {
-        using var connection = _database.Open();
-        return ReadNote(connection, sourceId, path, scope)?.Reference;
+        return new LinkAnswers(
+            questions.Targets.ToDictionary(target => target, target => Resolve(connection, target, sourceId, scope), StringComparer.Ordinal),
+            questions.Embeds.ToDictionary(embed => embed, embed => FindImage(connection, sourceId, notePath, embed), StringComparer.OrdinalIgnoreCase),
+            questions.NotePaths.ToDictionary(path => path, path => ReadNote(connection, sourceId, path, scope)?.Reference, StringComparer.Ordinal),
+            questions.ImagePaths.Where(path => HasImage(connection, sourceId, path)).ToHashSet(StringComparer.Ordinal));
     }
 
     public bool HasImage(Guid sourceId, string path)
     {
         using var connection = _database.Open();
+        return HasImage(connection, sourceId, path);
+    }
+
+    private static bool HasImage(SqliteConnection connection, Guid sourceId, string path)
+    {
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT 1 FROM images WHERE source_id = $source AND path = $path";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
@@ -76,10 +79,9 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         return command.ExecuteScalar() is not null;
     }
 
-    public string? FindImage(Guid sourceId, string notePath, string embed)
+    private static string? FindImage(SqliteConnection connection, Guid sourceId, string notePath, string embed)
     {
         var wanted = embed.Trim().Replace('\\', '/').TrimStart('/');
-        using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT path FROM images WHERE source_id = $source AND name = $name";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());

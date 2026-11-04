@@ -95,6 +95,7 @@ public sealed class MarkdownFileScannerFixture : IDisposable
         images.Should().Throw<InvalidOperationException>("a walk cut short knows only some of the images");
         first.RelativePath.Should().Be("a/note.md");
         _ = walk.Notes.ToList();
+        _ = walk.Notes.ToList();
         walk.Completed.Should().BeTrue();
         walk.Images.Should().Equal("a/one.JPG", "b/two.png");
     }

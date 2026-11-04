@@ -49,16 +49,6 @@ A vertical is not done, and its pull request is not opened, until all of this ho
 
 SonarQube rules to watch: S2583/S2589 (always true or false conditions), S3168 (async void), S3776 (cognitive complexity at most 15), S1481 (unused variables), S1854 (dead stores), S1066 (mergeable ifs), S2486 (swallowed exceptions), S2325 (a method that could be static).
 
-## Look at your own work before anyone else does
-
-The maintainer found a few defects by hand that the agent could have found first. Getting feedback by yourself is a reflex, not a favour: every vertical is looked at, in a real browser, **by the agent**, before the demo is announced and again before the pull request.
-
-- **Run every gate the CI runs, before pushing**: `dotnet format src/Mnemarr.sln --verify-no-changes`, the .NET tests, `yarn lint`, `yarn stylelint`, `yarn format:check`, `yarn typecheck`, `yarn test`. A gate you did not run locally is a red CI you will read later.
-- **Run the end-to-end tests yourself**, in Chromium and in Firefox, against the stack built from the branch: `docker compose -f tests/e2e/stack/docker-compose.yml up -d --build`, then `yarn e2e --workers=1` (stop the stack afterwards with `down -v`), and once the way the CI runs it, in parallel and in both browsers (`yarn e2e --grep @smoke`): journeys that share the stack can race, and a serial run hides it. Do not leave that to the CI.
-- **Open the sandbox in a real browser** (Playwright, or any browser you can drive) and use what was built as a person would: click through the journey, read the page, watch the console for errors and Content-Security-Policy violations, look at the screenshot (then delete it). A passing unit test says the code does what it was written to do, not that the screen is right.
-- **Try it on real material, not on a toy.** An example written for the demo shows only what its author thought of; the maintainer's own notes (with Mermaid diagrams, relative wikilinks, foldable callouts, `<br>` in tables) found three defects in one pass.
-- A defect found this way is fixed with a test that fails without the fix, like any other.
-
 ## The constellation
 
 Three products, each with one job, plugged into each other through their APIs and MCP servers:

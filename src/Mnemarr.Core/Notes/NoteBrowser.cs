@@ -17,6 +17,19 @@ public sealed record ResolvedLink(string Target, NoteRef? Note);
 /// <summary>What the index knows of a note besides its text: its tags, where its links lead, and which notes link to it (the first of them, and how many there are in all).</summary>
 public sealed record NoteDetail(NoteRef Note, IReadOnlyList<string> Tags, IReadOnlyList<ResolvedLink> Links, IReadOnlyList<NoteRef> Backlinks, int BacklinksTotal);
 
+/// <summary>
+/// What the links of one note ask the index, all at once: the links (as stored, to be resolved from the source of the note), the embedded
+/// image names, the paths of the notes that ordinary relative links name, and the paths of the images they name.
+/// </summary>
+public sealed record LinkQuestions(IReadOnlyCollection<string> Targets, IReadOnlyCollection<string> Embeds, IReadOnlyCollection<string> NotePaths, IReadOnlyCollection<string> ImagePaths);
+
+/// <summary>
+/// The answers, by what was asked: the note a link leads to (null when none the caller may read), the path of the image an embed names (null
+/// when none), the note at a path (null when none), and which of the image paths the last pass found.
+/// </summary>
+public sealed record LinkAnswers(
+    IReadOnlyDictionary<string, NoteRef?> Targets, IReadOnlyDictionary<string, string?> Embeds, IReadOnlyDictionary<string, NoteRef?> NotePaths, IReadOnlySet<string> ImagePaths);
+
 /// <summary>A tag and how many notes carry it.</summary>
 public sealed record TagCount(string Tag, int Count);
 
@@ -37,18 +50,9 @@ public interface INoteBrowser
 
     TagListing Tags(SourceScope scope);
 
-    /// <summary>The note a link (as <see cref="ResolvedLink"/> stores it) leads to for a note of <paramref name="fromSource"/>, among the sources the caller may read; null when there is none.</summary>
-    NoteRef? Resolve(Guid fromSource, string target, SourceScope scope);
-
-    /// <summary>The note at this path of this source, if the index knows it and the caller may read it.</summary>
-    NoteRef? FindNote(Guid sourceId, string path, SourceScope scope);
+    /// <summary>Everything the links of one note lead to, answered in one call (one connection): see <see cref="LinkQuestions"/>.</summary>
+    LinkAnswers Answer(Guid sourceId, string notePath, LinkQuestions questions, SourceScope scope);
 
     /// <summary>Whether the image file is one the last pass found in the source: only those are served.</summary>
     bool HasImage(Guid sourceId, string path);
-
-    /// <summary>
-    /// The image an embed (<c>![[plan.png]]</c>, <c>![[Assets/plan.png]]</c>) names, as Obsidian finds it: next to the note, then at the root of the
-    /// source, then anywhere in the source by file name (the shortest path first). Null when the source has none.
-    /// </summary>
-    string? FindImage(Guid sourceId, string notePath, string embed);
 }

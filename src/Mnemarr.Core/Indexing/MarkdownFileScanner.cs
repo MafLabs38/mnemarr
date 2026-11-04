@@ -64,8 +64,9 @@ public static class MarkdownFileScanner
     public static IEnumerable<ScannedFile> Scan(string root) => Find(root, null, null);
 
     private static IEnumerable<ScannedFile> Find(string root, List<string>? images, Action? completed)
-
     {
+        // A walk read again starts again: the images are those of the walk that reaches its end.
+        images?.Clear();
         var options = new EnumerationOptions
         {
             RecurseSubdirectories = true,

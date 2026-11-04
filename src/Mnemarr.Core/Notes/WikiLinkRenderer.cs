@@ -19,9 +19,12 @@ internal sealed class WikiLinkRenderer
     private readonly Guid _sourceId;
     private readonly string _notePath;
     private readonly SourceScope _scope;
-    private readonly Dictionary<string, NoteRef?> _resolved = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string?> _images = new(StringComparer.OrdinalIgnoreCase);
     private int _rewritten;
+    private LinkAnswers? _answers;
+    private readonly HashSet<string> _targets = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _embeds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _notePaths = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _imagePaths = new(StringComparer.Ordinal);
 
     /// <summary>The most links and embeds of a note that are looked up: the index keeps as many, and a note can hold far more. The rest stay as written.</summary>
     public const int MaxLookups = 400;
@@ -34,7 +37,17 @@ internal sealed class WikiLinkRenderer
         _scope = scope;
     }
 
-    public string Render(string body) => MarkdownNotes.Rewrite(body, RenderToken, RenderDestination);
+    /// <summary>
+    /// The body with its links rewritten. In two passes over the same text: the first only collects what the links ask, then the index answers
+    /// all of it in one call, and the second writes the answers: no question to the index per link.
+    /// </summary>
+    public string Render(string body)
+    {
+        MarkdownNotes.Rewrite(body, RenderToken, RenderDestination);
+        _answers = _browser.Answer(_sourceId, _notePath, new LinkQuestions(_targets, _embeds, _notePaths, _imagePaths), _scope);
+        _rewritten = 0;
+        return MarkdownNotes.Rewrite(body, RenderToken, RenderDestination);
+    }
 
     private string? RenderToken(WikiToken token)
     {
@@ -47,12 +60,13 @@ internal sealed class WikiLinkRenderer
         var file = MarkdownNotes.FileOf(target);
         if (token.Embedded && ImageFormats.Is(file))
         {
-            if (!_images.TryGetValue(file, out var image))
+            if (_answers is null)
             {
-                image = _browser.FindImage(_sourceId, _notePath, file);
-                _images[file] = image;
+                _embeds.Add(file);
+                return null;
             }
 
+            var image = _answers.Embeds[file];
             return $"![{Escape(file)}]({(image is null ? UnresolvedScheme : FileScheme + Uri.EscapeDataString(image))})";
         }
 
@@ -62,8 +76,19 @@ internal sealed class WikiLinkRenderer
             return null;
         }
 
+        var resolved = NotePaths.FromFolderTarget(_notePath, normalized);
+        if (_answers is null)
+        {
+            if (resolved is not null)
+            {
+                _targets.Add(resolved);
+            }
+
+            return null;
+        }
+
         var text = string.IsNullOrEmpty(alias) ? target : alias;
-        return LeadsTo(normalized) is { } note
+        return resolved is not null && _answers.Targets[resolved] is { } note
             ? $"[{Escape(text)}]({NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)})"
             : $"[{Escape(text)}]({UnresolvedScheme})";
     }
@@ -85,23 +110,18 @@ internal sealed class WikiLinkRenderer
             return null;
         }
 
+        if (_answers is null)
+        {
+            (isNote ? _notePaths : _imagePaths).Add(path);
+            return null;
+        }
+
         if (isNote)
         {
-            return _browser.FindNote(_sourceId, path, _scope) is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}" : UnresolvedScheme;
+            return _answers.NotePaths[path] is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}" : UnresolvedScheme;
         }
 
-        return _browser.HasImage(_sourceId, path) ? FileScheme + Uri.EscapeDataString(path) : UnresolvedScheme;
-    }
-
-    private NoteRef? LeadsTo(string normalized)
-    {
-        if (!_resolved.TryGetValue(normalized, out var note))
-        {
-            note = NotePaths.FromFolderTarget(_notePath, normalized) is { } target ? _browser.Resolve(_sourceId, target, _scope) : null;
-            _resolved[normalized] = note;
-        }
-
-        return note;
+        return _answers.ImagePaths.Contains(path) ? FileScheme + Uri.EscapeDataString(path) : UnresolvedScheme;
     }
 
     /// <summary>The text of a link in Markdown: a bracket or a backslash in it cannot end the link early.</summary>
