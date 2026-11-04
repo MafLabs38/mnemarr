@@ -74,6 +74,19 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_list_a_note_as_a_backlink_only_of_the_note_its_link_leads_to_when_two_notes_have_the_same_name()
+    {
+        var a = await SourceWithAsync("a", ("docker.md", "# A docker"), ("linker.md", "[[docker]]"));
+        var b = await SourceWithAsync("b", ("docker.md", "# B docker"));
+
+        var inA = Browser.Find(a.Id, "docker.md", SourceScope.All)!;
+        var inB = Browser.Find(b.Id, "docker.md", SourceScope.All)!;
+
+        inA.Backlinks.Should().ContainSingle().Which.Path.Should().Be("linker.md", "the link leads to the note of its own source");
+        inB.Backlinks.Should().BeEmpty("the same link does not lead here");
+    }
+
+    [Fact]
     public async Task should_not_resolve_link_or_backlink_through_a_source_the_caller_may_not_read()
     {
         var mine = await SourceWithAsync("mine", ("a.md", "[[secret-plan]]"), ("topic.md", "# Topic"));

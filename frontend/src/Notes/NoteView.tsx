@@ -9,6 +9,11 @@ import NoteMarkdown from './NoteMarkdown';
 import { noteAddress, noteToRead, useNote } from './notes';
 import styles from './Notes.module.css';
 
+/** Whether the text of the note already shows its title as a level-one heading (that is where the title comes from). */
+function hasOwnTitle(markdown: string, title: string): boolean {
+  return markdown.split('\n').some((line) => line.trim() === `# ${title}`);
+}
+
 /** One note: its title, where it is, its tags, its text, and the notes that link to it. */
 export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string; path: string }>) {
   const { data: note, isPending, error } = useNote(sourceId, path);
@@ -28,7 +33,7 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
   }
   return (
     <article>
-      {!/^\s*# /.test(note.markdown) && <h2 className={styles.noteTitle}>{note.title}</h2>}
+      {!hasOwnTitle(note.markdown, note.title) && <h2 className={styles.noteTitle}>{note.title}</h2>}
       <p className={styles.noteWhere}>
         {note.sourceName} · {note.path}
       </p>

@@ -1,17 +1,18 @@
 import { linkWikilinks, normalizeTarget, resolveRelative } from 'Notes/wikilinks';
 
-describe('normalizeTarget', () => {
-  it.each([
-    ['Docker', 'docker'],
-    [String.raw`  Devops\Docker.MD#Images `, 'devops/docker'],
-    ['/devops/docker/', 'devops/docker'],
-    ['notes.markdown', 'notes'],
-  ])('reads %j as %j, the way the server does', (target, expected) => {
-    expect(normalizeTarget(target)).toBe(expected);
-  });
+import sharedTargets from '../../../../tests/shared/link-targets.json';
 
-  it.each(['', '   ', '#only-a-heading', 'x'.repeat(201)])('reads %j as nothing to point at', (target) => {
-    expect(normalizeTarget(target)).toBeNull();
+describe('normalizeTarget', () => {
+  // The table the server's reading of a link is tested against too (MarkdownNotesFixture): the two must agree.
+  it.each(sharedTargets.map((row) => [row.written, row.target] as const))(
+    'reads %j as %j, the way the server does',
+    (written, target) => {
+      expect(normalizeTarget(written)).toBe(target);
+    },
+  );
+
+  it('reads a very long target as nothing to point at', () => {
+    expect(normalizeTarget('x'.repeat(201))).toBeNull();
   });
 });
 
@@ -41,8 +42,11 @@ describe('linkWikilinks', () => {
     );
   });
 
-  it('leaves an unclosed link alone', () => {
+  it('leaves an unclosed link alone, and reads a line of brackets in one pass', () => {
     expect(linkWikilinks('[[never closed')).toBe('[[never closed');
+    const hostile = `${'[['.repeat(100_000)}\n[[a]]?`;
+    expect(linkWikilinks(hostile).endsWith('[a](mnemarr-note:a)?')).toBe(true);
+    expect(linkWikilinks('['.repeat(2_000_000))).toHaveLength(2_000_000);
   });
 });
 

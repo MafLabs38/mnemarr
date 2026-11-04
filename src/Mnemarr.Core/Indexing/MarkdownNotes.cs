@@ -30,13 +30,17 @@ public static class MarkdownNotes
 {
     private const int MaxItems = 200;
     private const int MaxLength = 200;
+
+    /// <summary>The most characters between <c>[[</c> and <c>]]</c>: a target, a bar and an alias, each bounded.</summary>
+    private const int MaxInner = (2 * MaxLength) + 10;
     private const int MaxFrontMatterLines = 100;
     private static readonly string[] MarkdownExtensions = [".md", ".markdown"];
 
     public static NoteMeta Parse(string markdown)
     {
-        var (_, frontTags) = SplitFrontMatter(markdown);
-        var body = Body(markdown);
+        var text = markdown.TrimStart('\uFEFF');
+        var (length, frontTags) = SplitFrontMatter(text);
+        var body = text[length..];
         var links = new List<WikiLink>();
         var embeds = new List<string>();
         var tags = new List<string>(frontTags);
@@ -60,8 +64,7 @@ public static class MarkdownNotes
     public static string Body(string markdown)
     {
         var text = markdown.TrimStart('\uFEFF');
-        var (length, _) = SplitFrontMatter(text);
-        return text[length..];
+        return text[SplitFrontMatter(text).Length..];
     }
 
     /// <summary>The target of a link as it is stored and compared: no heading, no extension, trimmed, lower case. Null when there is nothing to point at.</summary>
@@ -110,13 +113,11 @@ public static class MarkdownNotes
         [.. links.DistinctBy(key, StringComparer.Ordinal).Take(MaxItems)];
 
     /// <summary>The length of the front matter block (including its fences and the line break after) and the tags it declares.</summary>
-    private static (int Length, List<string> Tags) SplitFrontMatter(string markdown)
+    private static (int Length, List<string> Tags) SplitFrontMatter(string text)
     {
-        var text = markdown.TrimStart('\uFEFF');
-        var offset = markdown.Length - text.Length;
         if (!text.StartsWith("---", StringComparison.Ordinal) || !(text.Length > 3 && text[3] is '\n' or '\r'))
         {
-            return (offset, []);
+            return (0, []);
         }
 
         var tags = new List<string>();
@@ -130,14 +131,14 @@ public static class MarkdownNotes
             position = Math.Min(end + 1, text.Length);
             if (line is "---" or "...")
             {
-                return (offset + position, tags);
+                return (position, tags);
             }
 
             inTags = ReadFrontMatterLine(line, inTags, tags);
         }
 
         // Never closed: it is not front matter, it is a line of dashes.
-        return (offset, []);
+        return (0, []);
     }
 
     /// <summary>One line of front matter; true when the following lines are the items of the <c>tags</c> list.</summary>
@@ -207,20 +208,27 @@ public static class MarkdownNotes
     private static void ReadLine(string line, List<WikiLink> links, List<string> embeds, List<string> tags)
     {
         var index = 0;
+        var nextClose = -2; // where the next `]]` is, remembered: a line of brackets must not cost a search for each
         while (index < line.Length)
         {
             if (line.AsSpan(index).StartsWith("[["))
             {
-                var close = line.IndexOf("]]", index + 2, StringComparison.Ordinal);
-                if (close < 0)
+                var from = index + 2;
+                if (nextClose != -1 && nextClose < from)
                 {
-                    // Never closed: it is text, and what follows on the line (a tag) is still read.
-                    index += 2;
-                    continue;
+                    nextClose = line.IndexOf("]]", from, StringComparison.Ordinal);
                 }
 
-                AddLink(line[(index + 2)..close], embedded: index > 0 && line[index - 1] == '!', links, embeds);
-                index = close + 2;
+                if (nextClose >= 0 && nextClose - from <= MaxInner)
+                {
+                    AddLink(line[from..nextClose], embedded: index > 0 && line[index - 1] == '!', links, embeds);
+                    index = nextClose + 2;
+                }
+                else
+                {
+                    // Never closed, or not closed within what a link can hold: it is text, and what follows on the line (a tag) is still read.
+                    index += 2;
+                }
             }
             else if (StartsTag(line, index))
             {
@@ -264,7 +272,7 @@ public static class MarkdownNotes
         {
             var hash = target.IndexOf('#', StringComparison.Ordinal);
             var file = (hash >= 0 ? target[..hash] : target).Trim().Replace('\\', '/');
-            if (file.Length is > 0 and <= MaxLength)
+            if (file.Length is > 0 and <= MaxLength && embeds.Count < MaxItems * 2)
             {
                 embeds.Add(file);
             }

@@ -50,7 +50,13 @@ export default function Notes() {
             )}
             {tree.isPending && <LoadingIndicator />}
             {tree.isError && <Alert>{translate('NotesError')}</Alert>}
-            {tree.data && <NoteTree entries={entries} selected={source && path ? `${source}/${path}` : null} />}
+            {tree.data && (
+              <NoteTree
+                entries={entries}
+                filtering={words !== ''}
+                selected={source && path ? `${source}/${path}` : null}
+              />
+            )}
             {tree.data && tree.data.total > tree.data.notes.length && (
               <p className={styles.hint}>
                 {translate('TreeCut', { shown: tree.data.notes.length, total: tree.data.total })}

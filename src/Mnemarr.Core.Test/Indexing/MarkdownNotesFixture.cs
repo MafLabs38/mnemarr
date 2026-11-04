@@ -57,7 +57,7 @@ public sealed class MarkdownNotesFixture
             folder = folder.Parent;
         }
 
-        var cases = JsonSerializer.Deserialize<List<Dictionary<string, string?>>>(File.ReadAllText(Path.Combine(folder!.FullName, "tests", "shared", "link-targets.json")))!;
+        var cases = JsonSerializer.Deserialize<List<Dictionary<string, string?>>>(File.ReadAllText(Path.Combine((folder ?? throw new InvalidOperationException($"tests/shared/link-targets.json was not found above {AppContext.BaseDirectory}")).FullName, "tests", "shared", "link-targets.json")))!;
         var data = new TheoryData<string, string?>();
         foreach (var c in cases)
         {
@@ -94,10 +94,22 @@ public sealed class MarkdownNotesFixture
     {
         var hostile = string.Concat(Enumerable.Range(0, 20_000).Select(i => $"[[n{i}]] #t{i} ")) + new string('[', 100_000) + "]]" + new string(' ', 100_000);
 
-        var meta = MarkdownNotes.Parse(hostile);
+        var meta = MarkdownNotes.Parse(hostile + string.Concat(Enumerable.Range(0, 5_000).Select(i => $"![[f{i}.png]]")));
 
         meta.Links.Count.Should().BeLessThanOrEqualTo(200);
         meta.Tags.Count.Should().BeLessThanOrEqualTo(200);
+        meta.Embeds.Count.Should().BeLessThanOrEqualTo(200);
+    }
+
+    [Fact]
+    public void should_read_a_line_of_brackets_that_never_close_in_one_pass_and_still_read_its_tags()
+    {
+        var line = new string('[', 2_000_000) + " #tag";
+
+        var meta = MarkdownNotes.Parse(line);
+
+        meta.Links.Should().BeEmpty();
+        meta.Tags.Should().Equal("tag");
     }
 
     [Fact]

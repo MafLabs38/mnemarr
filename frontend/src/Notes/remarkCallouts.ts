@@ -1,17 +1,10 @@
+import { type MarkdownNode as Node } from './markdownTree';
 import styles from './Notes.module.css';
-
-/** The few parts of the Markdown tree the plugin reads and changes. */
-interface Node {
-  type: string;
-  value?: string;
-  children?: Node[];
-  data?: { hName?: string; hProperties?: Record<string, unknown> };
-}
 
 /**
  * Obsidian callouts: a quote whose first line is `[!note] A title` becomes a box with a title, and `[!note]-` (or `+`) one that folds,
  * closed (or open). The title keeps its inline formatting; what follows is Markdown, rendered like the rest. The type is a short word,
- * and only letters and dashes are kept (it ends up in a class name).
+ * and only letters and dashes are kept (it ends up in the `data-callout` attribute, which the styles select on).
  */
 export default function remarkCallouts() {
   return (tree: Node) => visit(tree);
@@ -73,7 +66,8 @@ function markCallout(quote: Node) {
     return;
   }
   let rest = first.value.slice(close + 1);
-  const fold = rest[0] === '-' || rest[0] === '+' ? rest[0] : null;
+  const marker = rest.slice(0, 1);
+  const fold = marker === '-' || marker === '+' ? marker : null;
   if (fold) {
     rest = rest.slice(1);
   }
@@ -81,10 +75,9 @@ function markCallout(quote: Node) {
     { ...first, value: trimSpaces(rest) },
     ...(paragraph?.children?.slice(1) ?? []),
   ]);
-  const label: Node[] =
-    title.length > 0 && title.some((node) => node.type !== 'text' || node.value)
-      ? title
-      : [{ type: 'text', value: (kind[0]?.toUpperCase() ?? '') + kind.slice(1) }];
+  const label: Node[] = title.some((node) => node.type !== 'text' || node.value)
+    ? title
+    : [{ type: 'text', value: (kind[0]?.toUpperCase() ?? '') + kind.slice(1) }];
   const heading: Node = fold
     ? { type: 'paragraph', children: label, data: { hName: 'summary' } }
     : { type: 'paragraph', children: [{ type: 'strong', children: label }] };

@@ -51,17 +51,6 @@ export interface TagListing {
   total: number;
 }
 
-/** The notes the person may read and how many there are: a very large vault is cut, and `total` says by how much. */
-export interface NoteListing {
-  notes: NoteEntry[];
-  total: number;
-}
-
-export interface TagListing {
-  tags: Tag[];
-  total: number;
-}
-
 /** The address of the reader for a note: the one place it is built, so that every link to a note goes the same way. */
 export function noteAddress(note: Pick<NoteRef, 'sourceId' | 'path'>): string {
   return `/notes?${new URLSearchParams({ source: note.sourceId, path: note.path }).toString()}`;

@@ -21,6 +21,9 @@ public sealed class NoteReader
     /// <summary>The largest image served.</summary>
     public const long MaxImageBytes = 10 * 1024 * 1024;
 
+    /// <summary>How many files of a source are looked at to find an embedded image by name: a source of this size is the limit of a walk at each read.</summary>
+    private const int MaxFilesWalked = 50_000;
+
     private static readonly Dictionary<string, string> ImageTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         [".png"] = "image/png",
@@ -55,16 +58,7 @@ public sealed class NoteReader
         var source = _sources.Get(sourceId) ?? throw NoSuchNote();
         var file = Resolve(source, path);
         var text = ReadText(file);
-        var embeds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var embed in MarkdownNotes.Parse(text).Embeds)
-        {
-            if (FindImage(source, path, embed) is { } found)
-            {
-                embeds[embed] = found;
-            }
-        }
-
-        return new NoteContent(detail, MarkdownNotes.Body(text), embeds);
+        return new NoteContent(detail, MarkdownNotes.Body(text), FindImages(source, path, MarkdownNotes.Parse(text).Embeds));
     }
 
     public NoteFile OpenImage(Guid sourceId, string path, SourceScope scope)
@@ -93,14 +87,37 @@ public sealed class NoteReader
         }
     }
 
-    /// <summary>The image an embed (<c>![[plan.png]]</c>) names: next to the note, or at the root of the source. Null when there is none.</summary>
-    private string? FindImage(Source source, string notePath, string embed)
+    /// <summary>
+    /// Where the images that a note embeds (<c>![[plan.png]]</c>) are, by the name written in the note: as Obsidian finds them. Next to the note, or
+    /// at the root of the source, or, failing that, anywhere in the source by file name (the shortest path wins), which one bounded walk of the
+    /// source settles for all the embeds of the note. An embed that is not found is left out.
+    /// </summary>
+    private Dictionary<string, string> FindImages(Source source, string notePath, IEnumerable<string> embeds)
     {
-        if (!ImageTypes.ContainsKey(Path.GetExtension(embed)))
+        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var missing = new List<string>();
+        foreach (var embed in embeds.Where(embed => ImageTypes.ContainsKey(Path.GetExtension(embed))))
         {
-            return null;
+            if (NextToTheNote(source, notePath, embed) is { } near)
+            {
+                found[embed] = near;
+            }
+            else
+            {
+                missing.Add(embed);
+            }
         }
 
+        if (missing.Count > 0)
+        {
+            FindByName(source, missing, found);
+        }
+
+        return found;
+    }
+
+    private string? NextToTheNote(Source source, string notePath, string embed)
+    {
         var folder = notePath.Contains('/', StringComparison.Ordinal) ? notePath[..notePath.LastIndexOf('/')] + "/" : string.Empty;
         foreach (var candidate in new[] { folder + embed, embed }.Distinct(StringComparer.Ordinal))
         {
@@ -113,11 +130,43 @@ public sealed class NoteReader
             }
             catch (RejectedException)
             {
-                // Not a place a note may read from: the embed leads nowhere.
+                // Not a place a note may read from: the embed leads nowhere from there.
             }
         }
 
         return null;
+    }
+
+    private void FindByName(Source source, List<string> missing, Dictionary<string, string> found)
+    {
+        string folder;
+        try
+        {
+            folder = _paths.Allowed(source.Path);
+        }
+        catch (RejectedException)
+        {
+            return;
+        }
+
+        var wanted = missing.ToLookup(embed => Path.GetFileName(embed), StringComparer.OrdinalIgnoreCase);
+        var options = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
+        };
+        foreach (var file in new DirectoryInfo(folder).EnumerateFiles("*", options).Take(MaxFilesWalked).Where(file => wanted.Contains(file.Name)))
+        {
+            var relative = Path.GetRelativePath(folder, file.FullName).Replace('\\', '/');
+            foreach (var embed in wanted[file.Name].Where(embed => string.Equals(relative, embed, StringComparison.OrdinalIgnoreCase) || relative.EndsWith('/' + embed, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!found.TryGetValue(embed, out var best) || relative.Length < best.Length)
+                {
+                    found[embed] = relative;
+                }
+            }
+        }
     }
 
     /// <summary>The full path of a file of a source, or a refusal: relative, inside the folder of the source, not hidden, not behind a link.</summary>

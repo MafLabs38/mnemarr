@@ -15,7 +15,8 @@ public sealed class NoteIndexingFixture : NotesFixtureBase
         await ReindexAsync(source);
 
         var a = Browser.Find(source.Id, "a.md", SourceScope.All)!;
-        Browser.Find(source.Id, "a.md", SourceScope.All)!.Links.Select(l => l.Target).Should().Equal("c");
+        a.Links.Select(l => l.Target).Should().Equal("c");
+        Browser.Find(source.Id, "gone.md", SourceScope.All).Should().BeNull();
         a.Tags.Should().Equal("u");
         Browser.Find(source.Id, "b.md", SourceScope.All)!.Backlinks.Should().BeEmpty("a no longer links to b, and gone.md is not there any more");
         Browser.Tags(SourceScope.All).Tags.Select(t => t.Tag).Should().Equal("u");

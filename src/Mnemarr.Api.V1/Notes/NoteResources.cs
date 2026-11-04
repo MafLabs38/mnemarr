@@ -25,7 +25,7 @@ public sealed record NoteLinkResource(string Target, NoteRefResource? Note);
 
 /// <summary>
 /// A note to read: its Markdown without the front matter, its tags, where its links lead, the notes that link to it, and where the files it
-/// embeds (<c>![[plan.png]]</c>, by the name written in the note) are in its source, to be fetched from <c>/api/v1/files</c>.
+/// embeds (<c>![[plan.png]]</c>, by the name written in the note) are in its source, to be fetched from <c>/api/v1/sources/{id}/files/{path}</c>.
 /// </summary>
 public sealed record NoteResource(
     Guid SourceId, string SourceName, string Path, string Title, string Markdown, IReadOnlyList<string> Tags, IReadOnlyList<NoteLinkResource> Links,

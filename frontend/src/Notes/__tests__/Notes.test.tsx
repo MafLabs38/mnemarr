@@ -74,6 +74,18 @@ describe('Notes', () => {
     expect(await screen.findByText('Une image est faite de couches.')).toBeInTheDocument();
   });
 
+  it('filters the tree by a part of a path that is in no title, and opens the folders that hold the matches', async () => {
+    server(noteWith('# Docker'));
+    const { container } = renderWithProviders(<Notes />, '/notes', readerSession);
+    const tree = await screen.findByRole('navigation', { name: 'Notes' });
+
+    await userEvent.type(screen.getByLabelText('Filter the notes'), 'decisions/');
+
+    expect(within(tree).getByRole('link', { name: 'Choix du réseau' })).toBeInTheDocument();
+    expect(within(tree).queryByRole('link', { name: 'Docker' })).not.toBeInTheDocument();
+    expect([...container.querySelectorAll('details')].every((folder) => folder.hasAttribute('open'))).toBe(true);
+  });
+
   it('filters the tree by title or path', async () => {
     server(noteWith('# Docker'));
     renderWithProviders(<Notes />, '/notes', readerSession);

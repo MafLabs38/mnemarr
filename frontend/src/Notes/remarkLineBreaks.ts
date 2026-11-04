@@ -1,8 +1,4 @@
-interface Node {
-  type: string;
-  value?: string;
-  children?: Node[];
-}
+import { type MarkdownNode as Node } from './markdownTree';
 
 /** True for exactly `<br>`, `<br/>` or `<br />`, in any case: the one piece of HTML that notes use for a line break inside a table cell. */
 function isLineBreak(node: Node): boolean {

@@ -21,6 +21,27 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         content.Embeds.Should().BeEquivalentTo(new Dictionary<string, string> { ["plan.png"] = "devops/plan.png" }, "an image that is not there, or not inside the source, leads nowhere");
     }
 
+    [Fact]
+    public async Task should_find_an_embedded_image_by_its_name_anywhere_in_the_source_the_nearest_first_and_never_in_a_hidden_folder()
+    {
+        var source = await SourceWithAsync("courses", ("a.md", "![[plan.png]] ![[Assets/schema.PNG]] ![[hidden.png]] ![[nowhere.png]] ![[img/sub/two.png]]"));
+        var folder = Path.Combine(Workspace.SourcesFolder, "courses");
+        TestWorkspace.Write(folder, "attachments/plan.png", "far");
+        TestWorkspace.Write(folder, "attachments/deep/er/plan.png", "farther");
+        TestWorkspace.Write(folder, "all/Assets/schema.png", "by path");
+        TestWorkspace.Write(folder, ".trash/hidden.png", "hidden");
+        TestWorkspace.Write(folder, "x/img/sub/two.png", "suffix");
+
+        var embeds = Reader.Read(source.Id, "a.md", SourceScope.All).Embeds;
+
+        embeds.Should().BeEquivalentTo(new Dictionary<string, string>
+        {
+            ["plan.png"] = "attachments/plan.png",
+            ["Assets/schema.PNG"] = "all/Assets/schema.png",
+            ["img/sub/two.png"] = "x/img/sub/two.png",
+        });
+    }
+
     [Theory]
     [InlineData("missing.md")]
     [InlineData("../other/secret.md")]

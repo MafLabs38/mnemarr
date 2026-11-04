@@ -10,6 +10,9 @@
 /** The longest diagram drawn: Mermaid's own limit is higher, and a note can be hostile. */
 export const MAX_DIAGRAM_CHARS = 20_000;
 
+/** The most edges a diagram may have. */
+const MAX_EDGES = 300;
+
 const FONT = 'trebuchet ms, verdana, arial, sans-serif';
 
 type MermaidApi = (typeof import('mermaid'))['default'];
@@ -19,6 +22,7 @@ let loaded: Promise<MermaidApi> | undefined;
 let queue: Promise<unknown> = Promise.resolve();
 let counter = 0;
 
+// Mermaid cannot read a CSS variable, so the tokens are read here and given to it; the fallbacks are the values of the dark theme (themes.css).
 function token(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
@@ -49,13 +53,16 @@ function themeVariables() {
 /**
  * What a diagram cannot change. A diagram may carry a `%%{init: ...}%%` directive that Mermaid merges into its settings: spacing and
  * the like are welcome (the courses use them), but the safety of the drawing and the look of the page are not the note's to set.
- * Mermaid already keeps its own `secure`, `securityLevel`, `startOnLoad` and `maxTextSize`; these join them.
+ * Setting `secure` replaces Mermaid's own list, so what it protects by default (`secure`, `securityLevel`, `startOnLoad`, `maxTextSize`,
+ * `suppressErrorRendering`, `maxEdges`) is repeated here, with what we add.
  */
 export const LOCKED_SETTINGS = [
   'secure',
   'securityLevel',
   'startOnLoad',
   'maxTextSize',
+  'maxEdges',
+  'suppressErrorRendering',
   'htmlLabels',
   'theme',
   'themeCSS',
@@ -77,6 +84,7 @@ function settings() {
     themeVariables: themeVariables(),
     fontFamily: FONT,
     maxTextSize: MAX_DIAGRAM_CHARS,
+    maxEdges: MAX_EDGES,
     htmlLabels: false,
     flowchart: { htmlLabels: false },
     secure: LOCKED_SETTINGS,

@@ -1,4 +1,6 @@
 const MAX_LENGTH = 200;
+/** The most characters between `[[` and `]]`: a target, a bar and an alias, each bounded (as on the server). */
+const MAX_INNER = 2 * MAX_LENGTH + 10;
 const BACKSLASH = String.fromCodePoint(92);
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.bmp'];
 
@@ -58,25 +60,37 @@ function convert(inner: string, embedded: boolean): string | null {
   return `[${escapeText(alias || target)}](${NOTE_SCHEME}${encodeURIComponent(normalized)})`;
 }
 
+interface Position {
+  /** Where the next `]]` is, or -1 when there is none: remembered, so that a line of brackets does not cost a search for each. */
+  nextClose: number;
+}
+
 /** The `[[...]]` that starts at `index` (after a `!` when embedded), converted, and where the line goes on; null when it is not one. */
-function convertAt(line: string, index: number): { text: string; next: number } | null {
+function convertAt(line: string, index: number, position: Position): { text: string; next: number } | null {
   const embedded = line[index] === '!';
   const start = embedded ? index + 1 : index;
   if (!line.startsWith('[[', start)) {
     return null;
   }
-  const close = line.indexOf(']]', start + 2);
-  const converted = close < 0 ? null : convert(line.slice(start + 2, close), embedded);
-  return converted === null ? null : { text: converted, next: close + 2 };
+  const from = start + 2;
+  if (position.nextClose !== -1 && position.nextClose < from) {
+    position.nextClose = line.indexOf(']]', from);
+  }
+  if (position.nextClose < 0 || position.nextClose - from > MAX_INNER) {
+    return null;
+  }
+  const converted = convert(line.slice(from, position.nextClose), embedded);
+  return converted === null ? null : { text: converted, next: position.nextClose + 2 };
 }
 
 function convertLine(line: string): string {
   let result = '';
   let index = 0;
   let inCode = false;
+  const position: Position = { nextClose: -2 };
   while (index < line.length) {
     inCode = line[index] === '`' ? !inCode : inCode;
-    const converted = inCode ? null : convertAt(line, index);
+    const converted = inCode ? null : convertAt(line, index, position);
     result += converted?.text ?? line[index];
     index = converted?.next ?? index + 1;
   }

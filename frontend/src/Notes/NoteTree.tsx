@@ -34,14 +34,21 @@ function Contents({
   selected,
   path,
   open,
-}: Readonly<{ folder: Folder; selected: string | null; path: string; open: Set<string> }>) {
+  forceOpen,
+}: Readonly<{ folder: Folder; selected: string | null; path: string; open: Set<string>; forceOpen: boolean }>) {
   return (
     <ul className={styles.tree}>
       {[...folder.folders.values()].map((child) => (
         <li key={`${path}/${child.name}`}>
-          <details open={open.has(`${path}/${child.name}`)}>
+          <details open={forceOpen || open.has(`${path}/${child.name}`)}>
             <summary>{child.name}</summary>
-            <Contents folder={child} open={open} path={`${path}/${child.name}`} selected={selected} />
+            <Contents
+              folder={child}
+              forceOpen={forceOpen}
+              open={open}
+              path={`${path}/${child.name}`}
+              selected={selected}
+            />
           </details>
         </li>
       ))}
@@ -74,7 +81,8 @@ function ancestorsOf(selected: string | null): Set<string> {
 export default function NoteTree({
   entries,
   selected,
-}: Readonly<{ entries: ReadonlyArray<NoteEntry>; selected: string | null }>) {
+  filtering = false,
+}: Readonly<{ entries: ReadonlyArray<NoteEntry>; selected: string | null; filtering?: boolean }>) {
   const grouped = new Map<string, NoteEntry[]>();
   for (const entry of entries) {
     const list = grouped.get(entry.sourceId) ?? [];
@@ -91,7 +99,7 @@ export default function NoteTree({
       {sources.map(([sourceId, notes]) => (
         <section aria-label={notes[0]?.sourceName} key={sourceId}>
           <h2 className={styles.sourceName}>{notes[0]?.sourceName}</h2>
-          <Contents folder={build(notes)} open={open} path={sourceId} selected={selected} />
+          <Contents folder={build(notes)} forceOpen={filtering} open={open} path={sourceId} selected={selected} />
         </section>
       ))}
     </nav>
