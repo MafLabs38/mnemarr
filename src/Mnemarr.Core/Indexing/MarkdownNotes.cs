@@ -81,22 +81,57 @@ public static class MarkdownNotes
         return new NoteMeta(Distinct(links, link => link.Target + "|" + link.Alias), [.. embeds.Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxItems)], [.. tags.Distinct(StringComparer.Ordinal).Take(MaxItems)]);
     }
 
-    /// <summary>The lines of the body of a note, each with whether it is in a fenced code block (the lines of the fences included): what a fence holds is code, and says nothing.</summary>
+    /// <summary>
+    /// The lines of the body of a note, each with whether it is in a fenced code block (the lines of the fences included): what a fence holds is
+    /// code, and says nothing. A fence is three or more backticks or tildes, indented by at most three spaces, and is closed by the same character
+    /// at least as many times (CommonMark): a <c>~~~</c> inside a block of backticks is code.
+    /// </summary>
     private static IEnumerable<(string Line, bool Fenced)> Lines(string body)
     {
-        var inFence = false;
+        char marker = '\0';
+        var length = 0;
         foreach (var raw in body.ReplaceLineEndings("\n").Split('\n'))
         {
-            if (raw.StartsWith("```", StringComparison.Ordinal) || raw.StartsWith("~~~", StringComparison.Ordinal))
+            var (kind, run) = FenceOf(raw);
+            if (marker == '\0' && kind != '\0')
             {
-                inFence = !inFence;
+                (marker, length) = (kind, run);
+                yield return (raw, true);
+            }
+            else if (marker != '\0' && kind == marker && run >= length && raw.TrimStart(' ').Length == run)
+            {
+                marker = '\0';
                 yield return (raw, true);
             }
             else
             {
-                yield return (raw, inFence);
+                yield return (raw, marker != '\0');
             }
         }
+    }
+
+    /// <summary>The character and the length of the fence a line opens or closes (<c>\0</c> and 0 when it is not one).</summary>
+    private static (char Kind, int Length) FenceOf(string line)
+    {
+        var indent = 0;
+        while (indent < line.Length && indent <= 3 && line[indent] == ' ')
+        {
+            indent++;
+        }
+
+        if (indent > 3 || indent >= line.Length || line[indent] is not ('`' or '~'))
+        {
+            return ('\0', 0);
+        }
+
+        var kind = line[indent];
+        var run = 0;
+        while (indent + run < line.Length && line[indent + run] == kind)
+        {
+            run++;
+        }
+
+        return run >= 3 ? (kind, run) : ('\0', 0);
     }
 
     /// <summary>The note without its front matter: what is rendered. A BOM is dropped as well.</summary>

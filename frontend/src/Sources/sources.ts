@@ -49,17 +49,6 @@ export interface IndexReport {
   unchanged: number;
 }
 
-export interface SearchHit {
-  sourceId: string;
-  sourceName: string;
-  path: string;
-  topic: string;
-  title: string;
-  heading: string;
-  snippet: string;
-  score: number;
-}
-
 export function useSources() {
   return useApiQuery<SourceItem[]>('/sources');
 }
@@ -71,11 +60,6 @@ export function useSourceKinds() {
 /** The folders the operator allows for sources: they do not change while the page is open. */
 export function useSourceRoots() {
   return useApiQuery<string[]>('/sources/roots', { staleTime: Infinity });
-}
-
-/** The best matching chunks of the notes. Nothing is asked while there is nothing to look for. */
-export function useSearch(query: string) {
-  return useApiQuery<SearchHit[]>(`/search?q=${encodeURIComponent(query)}`, { enabled: query.trim() !== '' });
 }
 
 /** What a change to the sources makes stale: the list with its counts, every search, and the document that describes them. */

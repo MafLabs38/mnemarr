@@ -59,8 +59,9 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     public LinkAnswers Answer(Guid sourceId, string notePath, LinkQuestions questions, SourceScope scope)
     {
         using var connection = _database.Open();
+        var named = new Dictionary<string, List<NoteRef>>(StringComparer.Ordinal);
         return new LinkAnswers(
-            questions.Targets.ToDictionary(target => target, target => Resolve(connection, target, sourceId, scope), StringComparer.Ordinal),
+            questions.Targets.ToDictionary(target => target, target => Resolve(connection, target, sourceId, scope, named), StringComparer.Ordinal),
             questions.Embeds.ToDictionary(embed => embed, embed => FindImage(connection, sourceId, notePath, embed), StringComparer.OrdinalIgnoreCase),
             questions.NotePaths.ToDictionary(path => path, path => ReadNote(connection, sourceId, path, scope)?.Reference, StringComparer.Ordinal),
             questions.ImagePaths.Where(path => HasImage(connection, sourceId, path)).ToHashSet(StringComparer.Ordinal));
@@ -199,17 +200,21 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     /// the end of a path. When several notes answer, the one in the same source wins, then the shortest path, then the source name: the
     /// answer is the same every time.
     /// </summary>
-    private static NoteRef? Resolve(SqliteConnection connection, string target, Guid fromSource, SourceScope scope)
+    private static NoteRef? Resolve(SqliteConnection connection, string target, Guid fromSource, SourceScope scope, Dictionary<string, List<NoteRef>>? named = null)
     {
-        using var command = connection.CreateCommand();
-        command.CommandText = ResolveByName;
-        AddScope(command, scope);
-        command.Parameters.AddWithValue("$name", target[(target.LastIndexOf('/') + 1)..]);
-        using var reader = command.ExecuteReader();
-        var candidates = new List<NoteRef>();
-        while (reader.Read())
+        var name = target[(target.LastIndexOf('/') + 1)..];
+        List<NoteRef> candidates;
+        if (named is null || !named.TryGetValue(name, out var cached))
         {
-            candidates.Add(new NoteRef(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            candidates = NotesNamed(connection, name, scope);
+            if (named is not null)
+            {
+                named[name] = candidates;
+            }
+        }
+        else
+        {
+            candidates = cached;
         }
 
         return candidates
@@ -221,6 +226,22 @@ public sealed class SqliteNoteBrowser : INoteBrowser
             .FirstOrDefault();
     }
 
+    private static List<NoteRef> NotesNamed(SqliteConnection connection, string name, SourceScope scope)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = ResolveByName;
+        AddScope(command, scope);
+        command.Parameters.AddWithValue("$name", name);
+        using var reader = command.ExecuteReader();
+        var notes = new List<NoteRef>();
+        while (reader.Read())
+        {
+            notes.Add(new NoteRef(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        }
+
+        return notes;
+    }
+
     /// <summary>Whether a link (lower case, no extension) points at the note at this path: it is the whole path or the end of it.</summary>
     private static bool LeadsTo(string path, string target)
     {
@@ -230,7 +251,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
     /// <summary>
     /// The notes whose links lead to this one. The index finds the notes that name it; each is kept only if its link, resolved the way
-    /// <see cref="Resolve(SqliteConnection, string, Guid, SourceScope)"/> does for the note that holds it, really leads here: with two notes of the same name, a link leads to one, and
+    /// <see cref="Resolve(SqliteConnection, string, Guid, SourceScope, Dictionary{string, List{NoteRef}})"/> does for the note that holds it, really leads here: with two notes of the same name, a link leads to one, and
     /// only that one has it as a backlink.
     /// </summary>
     private static (List<NoteRef> Notes, int Total) Backlinks(SqliteConnection connection, long noteId, NoteRef self, string name, string pathWithoutExtension, SourceScope scope)
@@ -259,13 +280,14 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
         // Many notes link with the same words: each distinct link is resolved once, from the source of the note that holds it.
         var resolved = new Dictionary<(string Target, Guid From), NoteRef?>();
+        var named = new Dictionary<string, List<NoteRef>>(StringComparer.Ordinal);
         var all = candidates
             .Where(candidate =>
             {
                 var key = (candidate.Target, candidate.Note.SourceId);
                 if (!resolved.TryGetValue(key, out var found))
                 {
-                    found = Resolve(connection, candidate.Target, candidate.Note.SourceId, scope);
+                    found = Resolve(connection, candidate.Target, candidate.Note.SourceId, scope, named);
                     resolved[key] = found;
                 }
 

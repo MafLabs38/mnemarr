@@ -296,14 +296,18 @@ test.describe('smoke @smoke', () => {
     // The timer of the service may have scanned the new source first: either way the pass is done and the note is there.
     await expect(row.getByRole('status')).toContainText(' added, ');
 
+    // The notes are searched in the reader, by anybody who may read them.
+    await page.goto('/notes');
     const search = page.getByRole('region', { name: 'Search' });
     await search.getByLabel('Search the notes').fill('layers');
     await search.getByRole('button', { name: 'Search' }).click();
     await expect(search.getByText(`${name} · docker.md · Docker > Images`)).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-    await row.getByRole('button', { name: 'Delete' }).click();
-    await row.getByRole('button', { name: `Confirm: delete ${name}` }).click();
+    await page.goto('/sources');
+    const declared = page.getByRole('row', { name: new RegExp(name) });
+    await declared.getByRole('button', { name: 'Delete' }).click();
+    await declared.getByRole('button', { name: `Confirm: delete ${name}` }).click();
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
   });
 

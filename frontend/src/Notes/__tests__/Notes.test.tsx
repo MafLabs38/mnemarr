@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { type ApiAnswer, readerSession, renderWithProviders, stubApi } from '__tests__/render';
 import Notes from 'Notes/Notes';
-import type { Note, NoteEntry } from 'Notes/notes';
+import type { Note, NoteEntry, SearchHit } from 'Notes/notes';
 
 // The drawing is replaced by what the test says it does. It is a plain function, not a spy: a spy re-throws the rejection it records.
 const drawing = vi.hoisted(() => ({ run: (): Promise<string> => Promise.resolve('') }));
@@ -430,5 +430,77 @@ describe('Notes', () => {
     renderWithProviders(<Notes />, '/notes', readerSession);
 
     expect(await screen.findByText('Could not read the notes.')).toBeInTheDocument();
+  });
+
+  describe('search', () => {
+    const hits: SearchHit[] = [
+      {
+        sourceId: S1,
+        sourceName: 'cours',
+        path: 'devops/docker.md',
+        topic: 'devops',
+        title: 'Docker',
+        heading: 'Images',
+        snippet: 'Une image est faite de couches.',
+        score: 1.2,
+      },
+    ];
+    const answerSearch = (path: string): ApiAnswer | undefined => {
+      if (path.startsWith('/search?q=couches')) {
+        return { body: hits };
+      }
+      return path.startsWith('/search?q=') ? { body: [] } : undefined;
+    };
+
+    async function search(text: string) {
+      const region = await screen.findByRole('region', { name: 'Search' });
+      await userEvent.type(within(region).getByLabelText('Search the notes'), text);
+      await userEvent.click(within(region).getByRole('button', { name: 'Search' }));
+      return region;
+    }
+
+    it('searches the notes and shows each hit with its title, where it comes from and the words around the match, leading to the note', async () => {
+      const fetchMock = server(noteWith('# x'), answerSearch);
+      renderWithProviders(<Notes />, '/notes', readerSession);
+
+      const region = await search('couches');
+
+      expect(await within(region).findByRole('link', { name: 'Docker' })).toHaveAttribute(
+        'href',
+        `/notes?source=${S1}&path=devops%2Fdocker.md`,
+      );
+      expect(within(region).getByText('cours · devops/docker.md · Images')).toBeInTheDocument();
+      expect(within(region).getByText('Une image est faite de couches.')).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?q=couches', expect.anything());
+    });
+
+    it('says when nothing is found, and asks for nothing while nothing is typed', async () => {
+      const fetchMock = server(noteWith('# x'), answerSearch);
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      await userEvent.click(within(region).getByRole('button', { name: 'Search' }));
+      expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/v1/search'))).toBe(false);
+      await search('zzz');
+
+      expect(await within(region).findByText('Nothing found.')).toBeInTheDocument();
+    });
+
+    it('says when the search fails', async () => {
+      server(noteWith('# x'), (path) => (path.startsWith('/search') ? { status: 500 } : undefined));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+
+      const region = await search('couches');
+
+      expect(await within(region).findByRole('alert')).toHaveTextContent('The search failed.');
+    });
+
+    it('has no search for somebody who may read notes but not search', async () => {
+      server(noteWith('# x'));
+      renderWithProviders(<Notes />, '/notes', { ...readerSession, permissions: ['notes.read'] });
+      await screen.findByRole('navigation', { name: 'Notes' });
+
+      expect(screen.queryByRole('region', { name: 'Search' })).not.toBeInTheDocument();
+    });
   });
 });

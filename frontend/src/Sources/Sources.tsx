@@ -4,13 +4,10 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
-import { permissions } from 'Session/session';
-import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
 import ConfigurationCard from './ConfigurationCard';
 import KindSection from './KindSection';
-import SearchPanel from './SearchPanel';
 import { useSourceKinds, useSources } from './sources';
 
 /**
@@ -19,7 +16,6 @@ import { useSourceKinds, useSources } from './sources';
  * Only an operator reaches it.
  */
 export default function Sources() {
-  const { can } = usePermissions();
   const kinds = useSourceKinds();
   const sources = useSources();
 
@@ -35,11 +31,6 @@ export default function Sources() {
         <Card title={translate('ConfigurationAsCode')}>
           <ConfigurationCard />
         </Card>
-        {can(permissions.search) && (
-          <Card title={translate('Search')}>
-            <SearchPanel />
-          </Card>
-        )}
       </PageContentBody>
     </PageContent>
   );

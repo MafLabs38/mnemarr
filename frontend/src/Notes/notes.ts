@@ -103,3 +103,19 @@ export function useNote(sourceId: string | null, path: string | null) {
 export function filePath(sourceId: string, path: string): string {
   return `/sources/${sourceId}/files/${encodePath(path)}`;
 }
+
+export interface SearchHit {
+  sourceId: string;
+  sourceName: string;
+  path: string;
+  topic: string;
+  title: string;
+  heading: string;
+  snippet: string;
+  score: number;
+}
+
+/** The best matching chunks of the notes. Nothing is asked while there is nothing to look for. */
+export function useSearch(query: string) {
+  return useApiQuery<SearchHit[]>(`/search?q=${encodeURIComponent(query)}`, { enabled: query.trim() !== '' });
+}

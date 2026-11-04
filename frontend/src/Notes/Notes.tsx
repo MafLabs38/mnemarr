@@ -7,18 +7,22 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
+import { permissions } from 'Session/session';
+import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
 import { useNoteTree, useTags } from './notes';
 import styles from './Notes.module.css';
 import NoteTree from './NoteTree';
 import NoteView from './NoteView';
+import SearchPanel from './SearchPanel';
 
 /**
  * The notes reader (D-37): the notes a person may read as a tree, and the one they chose rendered. Read-only. The note and the tag
  * are in the address, so that a note can be linked to and the back button works.
  */
 export default function Notes() {
+  const { can } = usePermissions();
   const [params] = useSearchParams();
   const source = params.get('source');
   const path = params.get('path');
@@ -38,6 +42,11 @@ export default function Notes() {
         <PageHeading scope={translate('Notes')} title={tag ? `#${tag}` : translate('Notes')} />
         <div className={styles.layout}>
           <div className={styles.side}>
+            {can(permissions.search) && (
+              <section aria-label={translate('Search')}>
+                <SearchPanel />
+              </section>
+            )}
             <TextField
               label={translate('FilterNotes')}
               onChange={(event) => setFilter(event.target.value)}

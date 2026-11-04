@@ -62,6 +62,19 @@ public sealed class MarkdownNotesFixture
         MarkdownNotes.NormalizeTarget(written).Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData("~~~\n```\n[[in]]\n~~~\n[[out]]", new[] { "out" })]
+    [InlineData("````\n```\n[[in]]\n````\n[[out]]", new[] { "out" })]
+    [InlineData("   ```\n[[in]]\n   ```\n[[out]]", new[] { "out" })]
+    [InlineData("    ```\n[[not a fence: four spaces]]", new[] { "not a fence: four spaces" })]
+    [InlineData("```js\n[[in]]\n```\n[[out]]", new[] { "out" })]
+    [InlineData("```\n[[in]]\n``` text\n[[still in]]", new string[0])]
+    [InlineData("`` ``\n[[out]]", new[] { "out" })]
+    public void should_close_a_fence_only_with_the_same_character_and_at_least_as_many_of_them(string body, string[] expected)
+    {
+        MarkdownNotes.Parse(body).Links.Select(link => link.Target).Should().Equal(expected);
+    }
+
     [Fact]
     public void should_rewrite_links_and_embeds_outside_code_with_the_same_reading_as_the_index()
     {

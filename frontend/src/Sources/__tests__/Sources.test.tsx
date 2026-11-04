@@ -1,17 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import {
-  adminSession,
-  type ApiAnswer,
-  findCall,
-  renderWithProviders,
-  rowOf,
-  sentBody,
-  stubApi,
-} from '__tests__/render';
+import { type ApiAnswer, findCall, renderWithProviders, rowOf, sentBody, stubApi } from '__tests__/render';
 import Sources from 'Sources/Sources';
-import type { SearchHit, SourceItem, SourceKindItem } from 'Sources/sources';
+import type { SourceItem, SourceKindItem } from 'Sources/sources';
 
 const kindsWith = (counts: { Memory: number; Knowledge: number; ApplicationDocs: number }): SourceKindItem[] => [
   {
@@ -71,19 +63,6 @@ const sources: SourceItem[] = [
   },
 ];
 
-const hits: SearchHit[] = [
-  {
-    sourceId: 's1',
-    sourceName: 'cours',
-    path: '02 - DevOps/docker.md',
-    topic: '02 - DevOps',
-    title: 'Docker',
-    heading: 'Images',
-    snippet: 'Une image est faite de couches.',
-    score: 1.2,
-  },
-];
-
 function server(
   extra: (method: string, path: string) => ApiAnswer | undefined = () => undefined,
   list: SourceItem[] = sources,
@@ -114,12 +93,6 @@ function server(
     }
     if (method === 'GET' && path === '/sources/roots') {
       return { body: ['/config/sources'] };
-    }
-    if (method === 'GET' && path.startsWith('/search?q=couches')) {
-      return { body: hits };
-    }
-    if (method === 'GET' && path.startsWith('/search?q=')) {
-      return { body: [] };
     }
     return { status: 204 };
   });
@@ -459,74 +432,5 @@ describe('Sources', () => {
     await userEvent.click(index);
 
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
-  });
-
-  it('searches the notes and shows each hit with its title, where it comes from and the words around the match', async () => {
-    const fetchMock = server();
-    renderWithProviders(<Sources />);
-    const search = await screen.findByRole('region', { name: 'Search' });
-
-    await userEvent.type(within(search).getByLabelText('Search the notes'), 'couches');
-    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
-
-    expect(await within(search).findByText('Docker')).toBeInTheDocument();
-    expect(within(search).getByText('cours · 02 - DevOps/docker.md · Images')).toBeInTheDocument();
-    expect(within(search).getByText('Une image est faite de couches.')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?q=couches', expect.anything());
-  });
-
-  it('opens a hit in the reader for somebody who may read notes, and shows it as text for somebody who may not', async () => {
-    server();
-    const first = renderWithProviders(<Sources />);
-    let search = await screen.findByRole('region', { name: 'Search' });
-    await userEvent.type(within(search).getByLabelText('Search the notes'), 'couches');
-    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
-
-    expect(await within(search).findByRole('link', { name: 'Docker' })).toHaveAttribute(
-      'href',
-      expect.stringMatching(/^\/notes\?source=s1&path=02\+-\+DevOps%2Fdocker\.md$/),
-    );
-    first.unmount();
-
-    server();
-    renderWithProviders(<Sources />, '/', { ...adminSession, permissions: ['sources.manage', 'search'] });
-    search = await screen.findByRole('region', { name: 'Search' });
-    await userEvent.type(within(search).getByLabelText('Search the notes'), 'couches');
-    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
-
-    expect(await within(search).findByText('Docker')).toBeInTheDocument();
-    expect(within(search).queryByRole('link', { name: 'Docker' })).not.toBeInTheDocument();
-  });
-
-  it('says when nothing is found, and asks for nothing while nothing is typed', async () => {
-    const fetchMock = server();
-    renderWithProviders(<Sources />);
-    const search = await screen.findByRole('region', { name: 'Search' });
-
-    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
-    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/v1/search'))).toBe(false);
-    await userEvent.type(within(search).getByLabelText('Search the notes'), 'zzz');
-    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
-
-    expect(await within(search).findByText('Nothing found.')).toBeInTheDocument();
-  });
-
-  it('says when the search fails', async () => {
-    server((method, path) => (method === 'GET' && path.startsWith('/search') ? { status: 500 } : undefined));
-    renderWithProviders(<Sources />);
-    const search = await screen.findByRole('region', { name: 'Search' });
-
-    await userEvent.type(within(search).getByLabelText('Search the notes'), 'couches');
-    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
-
-    expect(await within(search).findByRole('alert')).toHaveTextContent('The search failed.');
-  });
-
-  it('has no search for somebody who may manage sources but not search', async () => {
-    server();
-    renderWithProviders(<Sources />, '/', { ...adminSession, permissions: ['sources.manage'] });
-    await screen.findByRole('rowheader', { name: 'cours' });
-
-    expect(screen.queryByRole('region', { name: 'Search' })).not.toBeInTheDocument();
   });
 });

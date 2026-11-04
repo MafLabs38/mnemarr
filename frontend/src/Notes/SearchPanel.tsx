@@ -5,13 +5,12 @@ import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import TextField from 'Components/Form/TextField';
 import LoadingIndicator from 'Components/LoadingIndicator';
-import { noteAddress } from 'Notes/notes';
 import { permissions } from 'Session/session';
 import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
-import { useSearch } from './sources';
-import styles from './Sources.module.css';
+import { noteAddress, useSearch } from './notes';
+import styles from './Notes.module.css';
 
 function Results({ query }: Readonly<{ query: string }>) {
   const { data: hits, isFetching, isError } = useSearch(query);
@@ -44,7 +43,7 @@ function Results({ query }: Readonly<{ query: string }>) {
   );
 }
 
-/** Tries the keyword search over the indexed notes, to see that what was declared is found. */
+/** The keyword search over the notes the person may read, with each hit leading to its note. */
 export default function SearchPanel() {
   const [text, setText] = useState('');
   const [asked, setAsked] = useState('');
