@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Sources;
 
@@ -19,16 +20,20 @@ public sealed class SourcesController : ControllerBase
     private readonly INoteIndex _index;
     private readonly SourceIndexer _indexer;
     private readonly ScanOutcomes _outcomes;
+    private readonly SourceSync _sync;
+    private readonly SyncOutcomes _syncOutcomes;
 
-    public SourcesController(SourceCatalog catalog, INoteIndex index, SourceIndexer indexer, ScanOutcomes outcomes)
+    public SourcesController(SourceCatalog catalog, INoteIndex index, SourceIndexer indexer, ScanOutcomes outcomes, SourceSync sync, SyncOutcomes syncOutcomes)
     {
         _catalog = catalog;
         _index = index;
         _indexer = indexer;
         _outcomes = outcomes;
+        _sync = sync;
+        _syncOutcomes = syncOutcomes;
     }
 
-    private SourceResource Resource(Source source) => SourceResource.From(source, _index.Counts(source.Id), _outcomes.Of(source.Id));
+    private SourceResource Resource(Source source) => SourceResource.From(source, _index.Counts(source.Id), _outcomes.Of(source.Id), _syncOutcomes.Of(source.Id));
 
     [HttpGet]
     public IReadOnlyList<SourceResource> GetSources() => [.. _catalog.List(User.Scope()).Select(Resource)];
@@ -63,7 +68,7 @@ public sealed class SourcesController : ControllerBase
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The mode of a source is ReadOnly or ReadWrite.");
         }
 
-        var source = _catalog.Add(request.Name, kind, mode, request.Path, User.Scope(), User.ActorName());
+        var source = _catalog.Add(request.Name, kind, mode, request.Path, User.Scope(), User.ActorName(), request.Repository?.ToModel());
         return CreatedAtAction(nameof(GetSource), new { id = source.Id }, Resource(source));
     }
 
@@ -76,7 +81,7 @@ public sealed class SourcesController : ControllerBase
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The mode of a source is ReadOnly or ReadWrite.");
         }
 
-        return Resource(_catalog.Update(id, request.Name, mode, request.Path, User.Scope(), User.ActorName()));
+        return Resource(_catalog.Update(id, request.Name, mode, request.Path, User.Scope(), User.ActorName(), request.Repository?.ToModel()));
     }
 
     /// <summary>Forgets a source with its notes and chunks. The folder and its files are not touched. A source the base requires (the memory vault) cannot be forgotten: change its folder.</summary>
@@ -95,4 +100,12 @@ public sealed class SourcesController : ControllerBase
     [HttpPost("{id:guid}/index")]
     public async Task<IndexReportResource> IndexSource(Guid id, [FromQuery] bool rebuild = false, CancellationToken cancellationToken = default) =>
         IndexReportResource.From(await _indexer.IndexAsync(_catalog.Get(id, User.Scope()), rebuild, waitForTurn: false, cancellationToken));
+
+    /// <summary>
+    /// Brings the checkout of a Git source up to date now (a clone, or a fast-forward; never a merge, never a forced change) and reads what
+    /// came in. The call does not wait for a sync or a pass that is running (429, busy). A failure is a 409 that says why in fixed words.
+    /// </summary>
+    [HttpPost("{id:guid}/sync")]
+    public async Task<SyncReportResource> SyncSource(Guid id, CancellationToken cancellationToken) =>
+        SyncReportResource.From(await _sync.SyncAsync(_catalog.Get(id, User.Scope()), waitForTurn: false, cancellationToken));
 }

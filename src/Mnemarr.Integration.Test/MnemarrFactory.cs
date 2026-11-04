@@ -7,6 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Git;
 
 namespace Mnemarr.Integration.Test;
 
@@ -54,6 +55,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
 
     private readonly string _resetFile = Path.Combine(Path.GetTempPath(), $"mnemarr-reset-{Guid.NewGuid():N}");
 
+    /// <summary>The Git engine of the host: nothing is cloned in a test, and the test says what a sync does.</summary>
+    public FakeGitEngine Git { get; } = new();
+
     /// <summary>The application's clock, so that a test can let time pass without waiting.</summary>
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 1, 8, 0, 0, TimeSpan.Zero));
 
@@ -75,6 +79,12 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             // Applied after every source, the MNEMARR__ variables of the machine included.
             services.PostConfigure<MnemarrOptions>(options => options.DataFolder = DataFolder);
+            services.AddSingleton<IGitEngine>(Git);
+            services.PostConfigure<GitOptions>(options =>
+            {
+                options.Hosts = ["github.example"];
+                options.Credentials["github"] = new GitCredentialOptions { Host = "github.example", Token = "secret-token-do-not-leak" };
+            });
             services.PostConfigure<Mnemarr.Core.Declarative.ConfigurationOptions>(options =>
             {
                 options.File = ConfigurationText is null ? null : ConfigurationFile;
