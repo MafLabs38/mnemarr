@@ -294,7 +294,7 @@ test.describe('smoke @smoke', () => {
 
     await row.getByRole('button', { name: `Index now for ${name}` }).click();
     // The timer of the service may have scanned the new source first: either way the pass is done and the note is there.
-    await expect(row.getByRole('status')).toContainText('removed');
+    await expect(row.getByRole('status')).toContainText(' added, ');
 
     const search = page.getByRole('region', { name: 'Search' });
     await search.getByLabel('Search the notes').fill('layers');

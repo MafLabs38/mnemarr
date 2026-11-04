@@ -9,7 +9,7 @@ public sealed record IndexCounts(int Notes, int Chunks, DateTimeOffset? LastInde
 /// An indexed note: the hash of the content it was cut from, the version of the chunker that cut it, the version of the reading of its links and tags,
 /// and the size and last write time of the file at that moment. A file whose size and time have not changed is not read again; the hash decides whether a file that was read changed.
 /// </summary>
-public sealed record NoteState(string ContentHash, int Chunker, int MetaVersion = 0, long Length = 0, long ModifiedTicks = 0);
+public sealed record NoteState(string ContentHash, int Chunker, long Length = 0, long ModifiedTicks = 0, int MetaVersion = 0);
 
 /// <summary>A note as it is stored: its title, the hash of the content it was cut from, the version of the chunker that cut it, its chunks, and its links and tags.</summary>
 public sealed record IndexedNote(string Title, string ContentHash, int Chunker, IReadOnlyList<Chunk> Chunks, NoteMeta Meta, int MetaVersion);

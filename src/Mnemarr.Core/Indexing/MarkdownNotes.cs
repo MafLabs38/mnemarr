@@ -18,7 +18,19 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
     /// The links as paths from the root of the source. <c>[[../01 - Java/Index]]</c>, written in the note <c>04 - Angular/Basics.md</c>, points at
     /// <c>01 - java/index</c>: Obsidian reads it from the folder of the note. A link that climbs out of the source points at nothing and is dropped.
     /// </summary>
-    public NoteMeta ResolvedFrom(string notePath) => this with { Links = [.. Links.Select(link => (link, MarkdownNotes.FromFolder(notePath, link.Target))).Where(pair => pair.Item2 is not null).Select(pair => pair.link with { Target = pair.Item2!, Written = pair.link.AsWritten })] };
+    public NoteMeta ResolvedFrom(string notePath)
+    {
+        var resolved = new List<WikiLink>();
+        foreach (var link in Links)
+        {
+            if (MarkdownNotes.FromFolder(notePath, link.Target) is { } target)
+            {
+                resolved.Add(link with { Target = target, Written = link.AsWritten });
+            }
+        }
+
+        return this with { Links = resolved };
+    }
 }
 
 /// <summary>

@@ -100,6 +100,37 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_refuse_a_note_that_grew_past_the_limit_since_the_pass_and_ask_to_try_again_for_one_that_went()
+    {
+        var source = await SourceWithAsync("courses", ("big.md", "# Big"), ("gone.md", "# Gone"));
+        var folder = Path.Combine(Workspace.SourcesFolder, "courses");
+        File.WriteAllText(Path.Combine(folder, "big.md"), new string('x', (int)Mnemarr.Core.Indexing.MarkdownFileScanner.MaxFileBytes + 10));
+        File.Delete(Path.Combine(folder, "gone.md"));
+
+        var big = () => Reader.Read(source.Id, "big.md", SourceScope.All);
+        var gone = () => Reader.Read(source.Id, "gone.md", SourceScope.All);
+
+        big.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound, "it is not a note any more");
+        gone.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict, "the file is not there now; the next pass will say");
+    }
+
+    [Theory]
+    [InlineData("a.png", "image/png")]
+    [InlineData("a.JPG", "image/jpeg")]
+    [InlineData("a.jpeg", "image/jpeg")]
+    [InlineData("a.gif", "image/gif")]
+    [InlineData("a.webp", "image/webp")]
+    [InlineData("a.avif", "image/avif")]
+    [InlineData("a.bmp", "image/bmp")]
+    [InlineData("a.svg", null)]
+    [InlineData("a.html", null)]
+    [InlineData("a", null)]
+    public void should_decide_the_type_of_an_image_by_its_extension_and_refuse_the_rest(string file, string? expected)
+    {
+        Mnemarr.Core.Indexing.ImageFormats.ContentType(file).Should().Be(expected);
+    }
+
+    [Fact]
     public async Task should_not_serve_an_image_the_last_pass_did_not_find_and_serve_it_once_it_did()
     {
         var source = await SourceWithAsync("courses", ("a.md", "# A"));

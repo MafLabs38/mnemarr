@@ -170,6 +170,18 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_resolve_a_link_to_a_note_whose_folder_and_name_have_accents_and_capitals()
+    {
+        var source = await SourceWithAsync("s", ("Cours/Été.md", "# Été"), ("Cours/Élèves.md", "[[Cours/Été]] [[élèves]] [[COURS/ÉTÉ|again]]"));
+
+        var detail = Browser.Find(source.Id, "Cours/Élèves.md", SourceScope.All)!;
+        var summer = Browser.Find(source.Id, "Cours/Été.md", SourceScope.All)!;
+
+        detail.Links.Should().HaveCount(2, "the first and the third say the same thing").And.OnlyContain(l => l.Note != null, "SQLite only folds ASCII: the case is folded in code, as when the index was written");
+        summer.Backlinks.Should().ContainSingle().Which.Path.Should().Be("Cours/Élèves.md");
+    }
+
+    [Fact]
     public async Task should_find_a_link_written_with_a_dot_from_a_folder_whose_name_has_capitals()
     {
         var source = await SourceWithAsync("s", ("Folder/a.md", "[[./X]] [[../Top]]"), ("Folder/x.md", "# X"), ("Top.md", "# Top"));

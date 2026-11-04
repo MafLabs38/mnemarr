@@ -169,46 +169,46 @@ public sealed class SqliteNoteBrowser : INoteBrowser
             : null;
     }
 
-    /// <summary>
-    /// The note a link points at. A name (<c>[[docker]]</c>) is the name of a file anywhere in the sources, a path (<c>[[devops/docker]]</c>)
-    /// is the end of a path. When several notes answer, the one in the same source wins, then the shortest path, then the source name: the
-    /// answer is the same every time.
-    /// </summary>
-    private const string ResolveSelect = """
+    // The notes that have the name a link ends with, on the indexed name; what is left of the link (a path) is compared in code, where the
+    // case is folded the same way as when the index was written (SQLite only folds ASCII).
+    private const string ResolveByName = $"""
         SELECT s.id, s.name, n.path, n.title
         FROM notes n JOIN sources s ON s.id = n.source_id
+        WHERE {ScopeFilter} AND n.name = $name
         """;
 
-    private const string ResolveOrder = """
-        ORDER BY (s.id = $from) DESC, length(n.path), s.name, n.path
-        LIMIT 1
-        """;
-
-    // A name is looked up on the indexed column; only a path (it has a slash) needs the end of a path to be compared.
-    private const string ResolveByName = $"{ResolveSelect} WHERE {ScopeFilter} AND n.name = $target {ResolveOrder}";
-
-    // A path is looked up on the indexed name (its last segment) first; the rest of the path is compared on the few notes that have that name.
-    private const string ResolveByPath = $"""
-        {ResolveSelect}
-        WHERE {ScopeFilter}
-          AND n.name = $name
-          AND (lower(n.path) = $target || '.md' OR lower(n.path) = $target || '.markdown'
-               OR lower(n.path) LIKE '%/' || $escaped || '.md' ESCAPE '\'
-               OR lower(n.path) LIKE '%/' || $escaped || '.markdown' ESCAPE '\')
-        {ResolveOrder}
-        """;
-
+    /// <summary>
+    /// The note a link points at. A name (<c>[[docker]]</c>) is the name of a file anywhere in the sources, a path (<c>[[devops/docker]]</c>) is
+    /// the end of a path. When several notes answer, the one in the same source wins, then the shortest path, then the source name: the
+    /// answer is the same every time.
+    /// </summary>
     private static NoteRef? Resolve(SqliteConnection connection, string target, Guid fromSource, SourceScope scope)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = target.Contains('/', StringComparison.Ordinal) ? ResolveByPath : ResolveByName;
+        command.CommandText = ResolveByName;
         AddScope(command, scope);
-        command.Parameters.AddWithValue("$target", target);
         command.Parameters.AddWithValue("$name", target[(target.LastIndexOf('/') + 1)..]);
-        command.Parameters.AddWithValue("$escaped", target.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal));
-        command.Parameters.AddWithValue("$from", fromSource.ToString());
         using var reader = command.ExecuteReader();
-        return reader.Read() ? new NoteRef(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3)) : null;
+        var candidates = new List<NoteRef>();
+        while (reader.Read())
+        {
+            candidates.Add(new NoteRef(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        }
+
+        return candidates
+            .Where(note => LeadsTo(note.Path, target))
+            .OrderByDescending(note => note.SourceId == fromSource)
+            .ThenBy(note => note.Path.Length)
+            .ThenBy(note => note.SourceName, StringComparer.Ordinal)
+            .ThenBy(note => note.Path, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Whether a link (lower case, no extension) points at the note at this path: it is the whole path or the end of it.</summary>
+    private static bool LeadsTo(string path, string target)
+    {
+        var key = WithoutExtension(path).ToLowerInvariant();
+        return !target.Contains('/', StringComparison.Ordinal) || key == target || key.EndsWith('/' + target, StringComparison.Ordinal);
     }
 
     /// <summary>

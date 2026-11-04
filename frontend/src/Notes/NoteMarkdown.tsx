@@ -89,7 +89,9 @@ function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: Rea
 
 function NoteImage({ src, alt }: Readonly<{ src?: string; alt?: string }>) {
   const note = useNoteBeingRendered();
-  const embedded = src?.startsWith(FILE_SCHEME) ? note.embeds[decode(src.slice(FILE_SCHEME.length))] : undefined;
+  // The key comes from the note, and `embeds` is a plain object: a name such as `constructor` must not find what every object inherits.
+  const name = src?.startsWith(FILE_SCHEME) ? decode(src.slice(FILE_SCHEME.length)) : undefined;
+  const embedded = name !== undefined && Object.hasOwn(note.embeds, name) ? note.embeds[name] : undefined;
   const path = embedded ?? (src && isRelative(src) ? resolveRelative(note.path, src) : null);
   return path ? (
     <img alt={alt ?? ''} loading="lazy" src={apiUrl(filePath(note.sourceId, path))} />

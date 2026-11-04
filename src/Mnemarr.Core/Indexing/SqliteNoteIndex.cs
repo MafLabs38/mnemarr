@@ -34,7 +34,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         var notes = new Dictionary<string, NoteState>(StringComparer.Ordinal);
         while (reader.Read())
         {
-            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt64(4), reader.GetInt64(5));
+            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2), reader.GetInt64(4), reader.GetInt64(5), reader.GetInt32(3));
         }
 
         return notes;
@@ -85,7 +85,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         }
 
         InsertLinks(connection, transaction, noteId, note.Meta.Links);
-        InsertEach(connection, transaction, "INSERT INTO note_tags (note_id, tag) VALUES ($note, $value)", noteId, note.Meta.Tags);
+        InsertTags(connection, transaction, noteId, note.Meta.Tags);
         transaction.Commit();
     }
 
@@ -104,6 +104,9 @@ public sealed class SqliteNoteIndex : INoteIndex
             command.ExecuteNonQuery();
         }
     }
+
+    private static void InsertTags(SqliteConnection connection, SqliteTransaction transaction, long noteId, IEnumerable<string> tags) =>
+        InsertEach(connection, transaction, "INSERT INTO note_tags (note_id, tag) VALUES ($note, $value)", noteId, tags);
 
     private static void InsertEach(SqliteConnection connection, SqliteTransaction transaction, string sql, long noteId, IEnumerable<string> values)
     {
@@ -135,15 +138,17 @@ public sealed class SqliteNoteIndex : INoteIndex
     {
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
-        using var find = connection.CreateCommand();
-        find.Transaction = transaction;
-        find.CommandText = "UPDATE notes SET meta_version = $version, size = $size, modified_ticks = $modified WHERE source_id = $source AND path = $path RETURNING id";
-        find.Parameters.AddWithValue("$version", metaVersion);
-        find.Parameters.AddWithValue("$size", file.Length);
-        find.Parameters.AddWithValue("$modified", file.ModifiedTicks);
-        find.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
-        find.Parameters.AddWithValue(PathParameter, file.RelativePath);
-        if (find.ExecuteScalar() is not long noteId)
+        using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = "UPDATE notes SET meta_version = $version, name = $name, size = $size, modified_ticks = $modified WHERE source_id = $source AND path = $path RETURNING id";
+        update.Parameters.AddWithValue("$version", metaVersion);
+        // The name is written here too: a database made before the names were kept has none, and this is the pass that gives them.
+        update.Parameters.AddWithValue("$name", System.IO.Path.GetFileNameWithoutExtension(file.RelativePath).ToLowerInvariant());
+        update.Parameters.AddWithValue("$size", file.Length);
+        update.Parameters.AddWithValue("$modified", file.ModifiedTicks);
+        update.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        update.Parameters.AddWithValue(PathParameter, file.RelativePath);
+        if (update.ExecuteScalar() is not long noteId)
         {
             return;
         }
@@ -155,7 +160,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         clear.ExecuteNonQuery();
 
         InsertLinks(connection, transaction, noteId, meta.Links);
-        InsertEach(connection, transaction, "INSERT INTO note_tags (note_id, tag) VALUES ($note, $value)", noteId, meta.Tags);
+        InsertTags(connection, transaction, noteId, meta.Tags);
         transaction.Commit();
     }
 

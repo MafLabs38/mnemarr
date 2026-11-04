@@ -1,5 +1,6 @@
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Indexing;
+using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Test.Notes;
 
@@ -36,7 +37,7 @@ public sealed class NoteIndexingFixture : NotesFixtureBase
         using (var connection = Workspace.Database.Open())
         {
             using var stale = connection.CreateCommand();
-            stale.CommandText = "UPDATE notes SET meta_version = 0; DELETE FROM note_links; DELETE FROM note_tags";
+            stale.CommandText = "UPDATE notes SET meta_version = 0, name = ''; DELETE FROM note_links; DELETE FROM note_tags";
             stale.ExecuteNonQuery();
             using var chunk = connection.CreateCommand();
             chunk.CommandText = "SELECT MIN(c.id) FROM chunks c JOIN notes n ON n.id = c.note_id WHERE n.path = 'a.md'";
@@ -47,6 +48,7 @@ public sealed class NoteIndexingFixture : NotesFixtureBase
 
         report.Should().Be(new IndexReport(0, 0, 0, Unchanged: 2), "the notes were not cut again");
         Browser.Find(source.Id, "a.md", SourceScope.All)!.Should().Match<Mnemarr.Core.Notes.NoteDetail>(d => d.Links.Count == 1 && d.Tags.Count == 1);
+        Browser.Find(source.Id, "a.md", SourceScope.All)!.Links.Single().Note.Should().NotBeNull("the names of the notes are given back too: a database made before they were kept has none");
         using var after = Workspace.Database.Open();
         using var check = after.CreateCommand();
         check.CommandText = "SELECT MIN(c.id) FROM chunks c JOIN notes n ON n.id = c.note_id WHERE n.path = 'a.md'";
@@ -54,7 +56,7 @@ public sealed class NoteIndexingFixture : NotesFixtureBase
     }
 
     [Fact]
-    public async Task should_keep_the_images_of_a_source_up_to_date_and_forget_them_with_it()
+    public async Task should_keep_the_images_of_a_source_up_to_date_and_forget_them_with_the_source()
     {
         var source = await SourceWithAsync("s", ("a.md", "# A"));
         var folder = Path.Combine(Workspace.SourcesFolder, "s");
@@ -71,5 +73,8 @@ public sealed class NoteIndexingFixture : NotesFixtureBase
         Browser.HasImage(source.Id, "img/one.png").Should().BeFalse("it went");
         Browser.HasImage(source.Id, "img/two.svg").Should().BeFalse("not a format a note may show");
         Browser.HasImage(source.Id, ".hidden/three.png").Should().BeFalse("a hidden folder is not read");
+
+        new SqliteSourceStore(Workspace.Database).Remove(source.Id);
+        Browser.HasImage(source.Id, "four.JPG").Should().BeFalse("the images go with the source");
     }
 }

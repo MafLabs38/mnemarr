@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 const drawing = vi.hoisted(() => ({ resolvers: new Map<string, (address: string) => void>() }));
 vi.mock('Notes/mermaid', () => ({
@@ -19,14 +19,24 @@ describe('MermaidDiagram', () => {
     drawing.resolvers.get('first')?.('data:image/svg+xml,first');
 
     expect(await screen.findByRole('img', { name: 'Diagram' })).toHaveAttribute('src', 'data:image/svg+xml,second');
-    await Promise.resolve();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(screen.getByRole('img', { name: 'Diagram' })).toHaveAttribute('src', 'data:image/svg+xml,second');
   });
 
-  it('does not touch the page once it is gone', () => {
+  it('draws nothing once it is gone, whenever the drawing ends', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const view = render(<MermaidDiagram source="gone" />);
     view.unmount();
 
-    expect(() => drawing.resolvers.get('gone')?.('data:image/svg+xml,late')).not.toThrow();
+    drawing.resolvers.get('gone')?.('data:image/svg+xml,late');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole('img', { name: 'Diagram' })).not.toBeInTheDocument();
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 });

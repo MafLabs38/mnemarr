@@ -56,20 +56,26 @@ public sealed class NoteReader
         }
 
         var file = Resolve(source, path);
+        FileStream? stream = null;
         try
         {
-            var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             if (stream.Length > MaxImageBytes)
             {
-                stream.Dispose();
                 throw NoSuchFile();
             }
 
-            return new NoteFile(stream, contentType);
+            var opened = stream;
+            stream = null;
+            return new NoteFile(opened, contentType);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw NoSuchFile();
+        }
+        finally
+        {
+            stream?.Dispose();
         }
     }
 

@@ -113,6 +113,9 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         note.GetProperty("backlinks").GetArrayLength().Should().Be(0);
         tags.GetProperty("tags").EnumerateArray().Select(t => t.GetProperty("tag").GetString()).Should().NotContain("hidden");
         (await scoped.GetAsync($"/api/v1/notes/{theirs}/b.md", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var theirList = await scoped.GetFromJsonAsync<JsonElement>($"/api/v1/notes?source={theirs}&tag=hidden", Token);
+        theirList.GetProperty("notes").GetArrayLength().Should().Be(0, "asking for a source out of scope, by name or by tag, lists nothing");
+        theirList.GetProperty("total").GetInt32().Should().Be(0);
         var theirImage = Path.Combine(_factory.DataFolder, "sources", (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{theirs}", Token)).GetProperty("name").GetString()!, "p.png");
         await File.WriteAllTextAsync(theirImage, "png", Token);
         await _callers["Operator"].PostAsync($"/api/v1/sources/{theirs}/index", null, Token);

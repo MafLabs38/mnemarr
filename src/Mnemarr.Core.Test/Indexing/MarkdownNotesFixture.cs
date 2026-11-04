@@ -89,12 +89,21 @@ public sealed class MarkdownNotesFixture
         meta.Links.Select(link => link.Target).Should().Equal(expected is null ? [] : [expected.ToLowerInvariant()]);
     }
 
+    /// <summary>Parses on another thread and fails, instead of hanging, when it does not finish: a reading that is not linear must not wait for the end of the run.</summary>
+    private static async Task<NoteMeta> ParsedWithinAsync(string text)
+    {
+        var parsing = Task.Run(() => MarkdownNotes.Parse(text), TestContext.Current.CancellationToken);
+        var finished = await Task.WhenAny(parsing, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        finished.Should().BeSameAs(parsing, "a note must be read in one pass, whatever it holds");
+        return await parsing;
+    }
+
     [Fact]
-    public void should_bound_what_a_hostile_note_can_make_it_keep()
+    public async Task should_bound_what_a_hostile_note_can_make_it_keep()
     {
         var hostile = string.Concat(Enumerable.Range(0, 20_000).Select(i => $"[[n{i}]] #t{i} ")) + new string('[', 100_000) + "]]" + new string(' ', 100_000);
 
-        var meta = MarkdownNotes.Parse(hostile + string.Concat(Enumerable.Range(0, 5_000).Select(i => $"![[f{i}.png]]")));
+        var meta = await ParsedWithinAsync(hostile + string.Concat(Enumerable.Range(0, 5_000).Select(i => $"![[f{i}.png]]")));
 
         meta.Links.Count.Should().BeLessThanOrEqualTo(200);
         meta.Tags.Count.Should().BeLessThanOrEqualTo(200);
@@ -102,11 +111,11 @@ public sealed class MarkdownNotesFixture
     }
 
     [Fact]
-    public void should_read_a_line_of_brackets_that_never_close_in_one_pass_and_still_read_its_tags()
+    public async Task should_read_a_line_of_brackets_that_never_close_in_one_pass_and_still_read_its_tags()
     {
         var line = new string('[', 2_000_000) + " #tag";
 
-        var meta = MarkdownNotes.Parse(line);
+        var meta = await ParsedWithinAsync(line);
 
         meta.Links.Should().BeEmpty();
         meta.Tags.Should().Equal("tag");

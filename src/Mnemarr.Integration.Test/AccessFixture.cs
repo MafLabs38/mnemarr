@@ -484,6 +484,8 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("Reader", "GET", "/api/v1/notes/00000000-0000-0000-0000-000000000001/a.md", 404)]
     [InlineData("Reader", "GET", "/api/v1/sources/00000000-0000-0000-0000-000000000001/files/a.png", 404)]
     [InlineData("Collector", "GET", "/api/v1/notes", 403)]
+    [InlineData("Monitor", "GET", "/api/v1/notes/tags", 403)]
+    [InlineData("anonymous", "GET", "/api/v1/notes/tags", 401)]
     [InlineData("Monitor", "GET", "/api/v1/notes/00000000-0000-0000-0000-000000000001/a.md", 403)]
     [InlineData("Monitor", "GET", "/api/v1/sources/00000000-0000-0000-0000-000000000001/files/a.png", 403)]
     [InlineData("anonymous", "GET", "/api/v1/notes", 401)]
