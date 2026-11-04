@@ -13,6 +13,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     private const int MaxTags = 200;
     private const int MaxBacklinks = 200;
     private const int MaxBacklinkCandidates = 1000;
+    private const string SourceParameter = "$source";
     private const string ScopeFilter = "($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources)))";
     private readonly IDatabase _database;
 
@@ -54,10 +55,55 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         return new NoteListing(entries, Convert.ToInt32(count.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    public bool HasImage(Guid sourceId, string path)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM images WHERE source_id = $source AND path = $path";
+        command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        command.Parameters.AddWithValue("$path", path);
+        return command.ExecuteScalar() is not null;
+    }
+
+    public string? FindImage(Guid sourceId, string notePath, string embed)
+    {
+        var wanted = embed.Trim().Replace('\\', '/').TrimStart('/');
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT path FROM images WHERE source_id = $source AND name = $name";
+        command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        command.Parameters.AddWithValue("$name", System.IO.Path.GetFileName(wanted).ToLowerInvariant());
+        using var reader = command.ExecuteReader();
+        var paths = new List<string>();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        var folder = notePath.Contains('/', StringComparison.Ordinal) ? notePath[..notePath.LastIndexOf('/')] + "/" : string.Empty;
+        return paths
+            .Where(path => string.Equals(path, wanted, StringComparison.OrdinalIgnoreCase) || path.EndsWith('/' + wanted, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => Nearness(path, folder, wanted))
+            .ThenBy(path => path.Length)
+            .ThenBy(path => path, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    /// <summary>0 for the image next to the note, 1 for the one at the root of the source, 2 for any other.</summary>
+    private static int Nearness(string path, string folder, string wanted)
+    {
+        if (string.Equals(path, folder + wanted, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        return string.Equals(path, wanted, StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+    }
+
     private static void BindListing(SqliteCommand command, SourceScope scope, Guid? sourceId, string? tag)
     {
         AddScope(command, scope);
-        command.Parameters.AddWithValue("$source", sourceId?.ToString() ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue(SourceParameter, sourceId?.ToString() ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$tag", tag?.ToLowerInvariant() ?? (object)DBNull.Value);
     }
 
@@ -115,7 +161,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
             WHERE s.id = $source AND n.path = $path AND {ScopeFilter}
             """;
         AddScope(command, scope);
-        command.Parameters.AddWithValue("$source", sourceId.ToString());
+        command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
         command.Parameters.AddWithValue("$path", path);
         using var reader = command.ExecuteReader();
         return reader.Read()
@@ -141,26 +187,24 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     // A name is looked up on the indexed column; only a path (it has a slash) needs the end of a path to be compared.
     private const string ResolveByName = $"{ResolveSelect} WHERE {ScopeFilter} AND n.name = $target {ResolveOrder}";
 
+    // A path is looked up on the indexed name (its last segment) first; the rest of the path is compared on the few notes that have that name.
     private const string ResolveByPath = $"""
         {ResolveSelect}
         WHERE {ScopeFilter}
+          AND n.name = $name
           AND (lower(n.path) = $target || '.md' OR lower(n.path) = $target || '.markdown'
                OR lower(n.path) LIKE '%/' || $escaped || '.md' ESCAPE '\'
                OR lower(n.path) LIKE '%/' || $escaped || '.markdown' ESCAPE '\')
         {ResolveOrder}
         """;
 
-    /// <summary>
-    /// The note a link points at. A name (<c>[[docker]]</c>) is the name of a file anywhere in the sources, a path (<c>[[devops/docker]]</c>) is
-    /// the end of a path. When several notes answer, the one in the same source wins, then the shortest path, then the source name: the answer
-    /// is the same every time.
-    /// </summary>
     private static NoteRef? Resolve(SqliteConnection connection, string target, Guid fromSource, SourceScope scope)
     {
         using var command = connection.CreateCommand();
         command.CommandText = target.Contains('/', StringComparison.Ordinal) ? ResolveByPath : ResolveByName;
         AddScope(command, scope);
         command.Parameters.AddWithValue("$target", target);
+        command.Parameters.AddWithValue("$name", target[(target.LastIndexOf('/') + 1)..]);
         command.Parameters.AddWithValue("$escaped", target.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal));
         command.Parameters.AddWithValue("$from", fromSource.ToString());
         using var reader = command.ExecuteReader();
@@ -175,22 +219,20 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     private static List<NoteRef> Backlinks(SqliteConnection connection, long noteId, NoteRef self, string name, string pathWithoutExtension, SourceScope scope)
     {
         using var command = connection.CreateCommand();
+        // The targets that can lead here are the name of the note and each end of its path (`c`, `b/c`, `a/b/c`): looked up on the index of targets.
         command.CommandText = $"""
             SELECT DISTINCT s.id, s.name, n.path, n.title, l.target
             FROM note_links l JOIN notes n ON n.id = l.note_id JOIN sources s ON s.id = n.source_id
             WHERE {ScopeFilter}
               AND n.id <> $note
-              AND (l.target = $name
-                   OR l.target = $path
-                   OR (instr(l.target, '/') > 0 AND substr($path, -(length(l.target) + 1)) = '/' || l.target))
+              AND l.target IN (SELECT value FROM json_each($targets))
             ORDER BY s.name, n.path
             LIMIT $limit
             """;
         AddScope(command, scope);
         command.Parameters.AddWithValue("$limit", MaxBacklinkCandidates);
         command.Parameters.AddWithValue("$note", noteId);
-        command.Parameters.AddWithValue("$name", name);
-        command.Parameters.AddWithValue("$path", pathWithoutExtension);
+        command.Parameters.AddWithValue("$targets", JsonSerializer.Serialize(TargetsThatLeadTo(name, pathWithoutExtension)));
         var candidates = new List<(NoteRef Note, string Target)>();
         using (var reader = command.ExecuteReader())
         {
@@ -200,14 +242,36 @@ public sealed class SqliteNoteBrowser : INoteBrowser
             }
         }
 
+        // Many notes link with the same words: each distinct link is resolved once, from the source of the note that holds it.
+        var resolved = new Dictionary<(string Target, Guid From), NoteRef?>();
         return
         [
             .. candidates
-                .Where(candidate => Resolve(connection, candidate.Target, candidate.Note.SourceId, scope) is { } found && found.SourceId == self.SourceId && found.Path == self.Path)
+                .Where(candidate =>
+                {
+                    var key = (candidate.Target, candidate.Note.SourceId);
+                    if (!resolved.TryGetValue(key, out var found))
+                    {
+                        found = Resolve(connection, candidate.Target, candidate.Note.SourceId, scope);
+                        resolved[key] = found;
+                    }
+
+                    return found is not null && found.SourceId == self.SourceId && found.Path == self.Path;
+                })
                 .Select(candidate => candidate.Note)
                 .DistinctBy(note => (note.SourceId, note.Path))
                 .Take(MaxBacklinks),
         ];
+    }
+
+    private static IEnumerable<string> TargetsThatLeadTo(string name, string pathWithoutExtension)
+    {
+        yield return name;
+        var parts = pathWithoutExtension.Split('/');
+        for (var from = 0; from < parts.Length - 1; from++)
+        {
+            yield return string.Join('/', parts[from..]);
+        }
     }
 
     private static List<(string Target, string Written)> Links(SqliteConnection connection, long noteId)

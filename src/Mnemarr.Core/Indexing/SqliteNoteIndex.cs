@@ -9,6 +9,8 @@ namespace Mnemarr.Core.Indexing;
 public sealed class SqliteNoteIndex : INoteIndex
 {
     private const string SourceParameter = "$source";
+    private const string PathParameter = "$path";
+    private const string NoteParameter = "$note";
 
     /// <summary>The most hits one search returns, whatever is asked.</summary>
     private const int MaxLimit = 50;
@@ -26,13 +28,13 @@ public sealed class SqliteNoteIndex : INoteIndex
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT path, content_hash, chunker, size, modified_ticks FROM notes WHERE source_id = $source";
+        command.CommandText = "SELECT path, content_hash, chunker, meta_version, size, modified_ticks FROM notes WHERE source_id = $source";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
         using var reader = command.ExecuteReader();
         var notes = new Dictionary<string, NoteState>(StringComparer.Ordinal);
         while (reader.Read())
         {
-            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2), reader.GetInt64(3), reader.GetInt64(4));
+            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt64(4), reader.GetInt64(5));
         }
 
         return notes;
@@ -49,17 +51,18 @@ public sealed class SqliteNoteIndex : INoteIndex
         {
             insert.Transaction = transaction;
             insert.CommandText = """
-                INSERT INTO notes (source_id, path, topic, title, name, content_hash, chunker, size, modified_ticks, indexed_at)
-                VALUES ($source, $path, $topic, $title, $name, $hash, $chunker, $size, $modified, $at)
+                INSERT INTO notes (source_id, path, topic, title, name, content_hash, chunker, meta_version, size, modified_ticks, indexed_at)
+                VALUES ($source, $path, $topic, $title, $name, $hash, $chunker, $metaVersion, $size, $modified, $at)
                 RETURNING id
                 """;
             insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
-            insert.Parameters.AddWithValue("$path", file.RelativePath);
+            insert.Parameters.AddWithValue(PathParameter, file.RelativePath);
             insert.Parameters.AddWithValue("$topic", file.Topic);
             insert.Parameters.AddWithValue("$title", note.Title);
             insert.Parameters.AddWithValue("$name", System.IO.Path.GetFileNameWithoutExtension(file.RelativePath).ToLowerInvariant());
             insert.Parameters.AddWithValue("$hash", note.ContentHash);
             insert.Parameters.AddWithValue("$chunker", note.Chunker);
+            insert.Parameters.AddWithValue("$metaVersion", note.MetaVersion);
             insert.Parameters.AddWithValue("$size", file.Length);
             insert.Parameters.AddWithValue("$modified", file.ModifiedTicks);
             insert.Parameters.AddWithValue("$at", StorageText.Format(at));
@@ -72,7 +75,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         var ordinalParameter = chunk.Parameters.AddWithValue("$ordinal", 0);
         var headingParameter = chunk.Parameters.AddWithValue("$heading", string.Empty);
         var textParameter = chunk.Parameters.AddWithValue("$text", string.Empty);
-        chunk.Parameters.AddWithValue("$note", noteId);
+        chunk.Parameters.AddWithValue(NoteParameter, noteId);
         for (var ordinal = 0; ordinal < note.Chunks.Count; ordinal++)
         {
             ordinalParameter.Value = ordinal;
@@ -91,7 +94,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "INSERT INTO note_links (note_id, target, written) VALUES ($note, $target, $written)";
-        command.Parameters.AddWithValue("$note", noteId);
+        command.Parameters.AddWithValue(NoteParameter, noteId);
         var target = command.Parameters.AddWithValue("$target", string.Empty);
         var written = command.Parameters.AddWithValue("$written", string.Empty);
         foreach (var link in links.DistinctBy(link => (link.Target, link.AsWritten)))
@@ -107,7 +110,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = sql;
-        command.Parameters.AddWithValue("$note", noteId);
+        command.Parameters.AddWithValue(NoteParameter, noteId);
         var value = command.Parameters.AddWithValue("$value", string.Empty);
         foreach (var text in values)
         {
@@ -122,10 +125,79 @@ public sealed class SqliteNoteIndex : INoteIndex
         using var command = connection.CreateCommand();
         command.CommandText = "UPDATE notes SET size = $size, modified_ticks = $modified WHERE source_id = $source AND path = $path";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
-        command.Parameters.AddWithValue("$path", file.RelativePath);
+        command.Parameters.AddWithValue(PathParameter, file.RelativePath);
         command.Parameters.AddWithValue("$size", file.Length);
         command.Parameters.AddWithValue("$modified", file.ModifiedTicks);
         command.ExecuteNonQuery();
+    }
+
+    public void UpdateMeta(Guid sourceId, ScannedFile file, NoteMeta meta, int metaVersion)
+    {
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        using var find = connection.CreateCommand();
+        find.Transaction = transaction;
+        find.CommandText = "UPDATE notes SET meta_version = $version, size = $size, modified_ticks = $modified WHERE source_id = $source AND path = $path RETURNING id";
+        find.Parameters.AddWithValue("$version", metaVersion);
+        find.Parameters.AddWithValue("$size", file.Length);
+        find.Parameters.AddWithValue("$modified", file.ModifiedTicks);
+        find.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        find.Parameters.AddWithValue(PathParameter, file.RelativePath);
+        if (find.ExecuteScalar() is not long noteId)
+        {
+            return;
+        }
+
+        using var clear = connection.CreateCommand();
+        clear.Transaction = transaction;
+        clear.CommandText = "DELETE FROM note_links WHERE note_id = $note; DELETE FROM note_tags WHERE note_id = $note";
+        clear.Parameters.AddWithValue(NoteParameter, noteId);
+        clear.ExecuteNonQuery();
+
+        InsertLinks(connection, transaction, noteId, meta.Links);
+        InsertEach(connection, transaction, "INSERT INTO note_tags (note_id, tag) VALUES ($note, $value)", noteId, meta.Tags);
+        transaction.Commit();
+    }
+
+    public IReadOnlySet<string> Images(Guid sourceId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT path FROM images WHERE source_id = $source";
+        command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        using var reader = command.ExecuteReader();
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
+    public void ReplaceImages(Guid sourceId, IReadOnlyCollection<string> paths)
+    {
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        using var clear = connection.CreateCommand();
+        clear.Transaction = transaction;
+        clear.CommandText = "DELETE FROM images WHERE source_id = $source";
+        clear.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        clear.ExecuteNonQuery();
+        using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText = "INSERT INTO images (source_id, path, name) VALUES ($source, $path, $name)";
+        insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        var path = insert.Parameters.AddWithValue(PathParameter, string.Empty);
+        var name = insert.Parameters.AddWithValue("$name", string.Empty);
+        foreach (var image in paths)
+        {
+            path.Value = image;
+            name.Value = System.IO.Path.GetFileName(image).ToLowerInvariant();
+            insert.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
     }
 
     public void Remove(Guid sourceId, string path)
@@ -202,7 +274,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         command.Transaction = transaction;
         command.CommandText = "DELETE FROM notes WHERE source_id = $source AND path = $path";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
-        command.Parameters.AddWithValue("$path", path);
+        command.Parameters.AddWithValue(PathParameter, path);
         command.ExecuteNonQuery();
     }
 }

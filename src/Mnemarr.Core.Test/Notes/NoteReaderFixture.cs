@@ -12,6 +12,7 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         var source = await SourceWithAsync(
             "courses", ("devops/docker.md", "---\ntags: [infra]\n---\n# Docker\nSee [[kubernetes]] ![[plan.png]] ![[missing.png]] ![[../outside.png]]"), ("devops/kubernetes.md", "# K8s"));
         TestWorkspace.Write(Path.Combine(Workspace.SourcesFolder, "courses"), "devops/plan.png", "not really a png");
+        await ReindexAsync(source);
 
         var content = Reader.Read(source.Id, "devops/docker.md", SourceScope.All);
 
@@ -31,6 +32,7 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         TestWorkspace.Write(folder, "all/Assets/schema.png", "by path");
         TestWorkspace.Write(folder, ".trash/hidden.png", "hidden");
         TestWorkspace.Write(folder, "x/img/sub/two.png", "suffix");
+        await ReindexAsync(source);
 
         var embeds = Reader.Read(source.Id, "a.md", SourceScope.All).Embeds;
 
@@ -81,6 +83,7 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         TestWorkspace.Write(folder, "img/logo.svg", "<svg onload=alert(1)/>");
         TestWorkspace.Write(folder, "img/page.html", "<script>alert(1)</script>");
         TestWorkspace.Write(folder, ".git/config.png", "hidden");
+        await ReindexAsync(source);
 
         using var image = Reader.OpenImage(source.Id, "img/plan.PNG", SourceScope.All).Content;
         var svg = () => Reader.OpenImage(source.Id, "img/logo.svg", SourceScope.All);
@@ -97,11 +100,26 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_not_serve_an_image_the_last_pass_did_not_find_and_serve_it_once_it_did()
+    {
+        var source = await SourceWithAsync("courses", ("a.md", "# A"));
+        TestWorkspace.Write(Path.Combine(Workspace.SourcesFolder, "courses"), "new.png", "png");
+
+        var before = () => Reader.OpenImage(source.Id, "new.png", SourceScope.All);
+        before.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound, "only what the index knows is served");
+        await ReindexAsync(source);
+        using var after = Reader.OpenImage(source.Id, "new.png", SourceScope.All).Content;
+
+        new StreamReader(after).ReadToEnd().Should().Be("png");
+    }
+
+    [Fact]
     public async Task should_not_serve_an_image_of_a_source_the_caller_may_not_read()
     {
         var mine = await SourceWithAsync("mine", ("a.md", "# A"));
         var other = await SourceWithAsync("other", ("b.md", "# B"));
         TestWorkspace.Write(Path.Combine(Workspace.SourcesFolder, "other"), "p.png", "x");
+        await ReindexAsync(other);
 
         var open = () => Reader.OpenImage(other.Id, "p.png", new SourceScope([mine.Id]));
 
@@ -116,6 +134,8 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         {
             big.SetLength(NoteReader.MaxImageBytes + 1);
         }
+
+        await ReindexAsync(source);
 
         var open = () => Reader.OpenImage(source.Id, "big.png", SourceScope.All);
 

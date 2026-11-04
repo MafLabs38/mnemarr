@@ -37,7 +37,7 @@ public sealed class DatabaseFixture : IDisposable
             using var back = connection.CreateCommand();
             back.CommandText = """
                 INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now');
-                DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
+                DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -62,7 +62,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
                 INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at) VALUES ('s', 'a.md', '', 'A', 'h', 'now');
-                DROP INDEX notes_by_name; DROP TABLE note_tags; DROP TABLE note_links; ALTER TABLE notes DROP COLUMN name;
+                DROP INDEX notes_by_name; DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; ALTER TABLE notes DROP COLUMN name; ALTER TABLE notes DROP COLUMN meta_version;
                 PRAGMA user_version = 2;
                 """;
             back.ExecuteNonQuery();

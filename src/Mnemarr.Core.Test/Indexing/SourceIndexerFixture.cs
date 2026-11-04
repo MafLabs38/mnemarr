@@ -225,7 +225,7 @@ public sealed class SourceIndexerFixture : IDisposable
         TestWorkspace.Write(folder, "a.md", "# A\ntext");
         var source = Declare("courses", folder);
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(folder, "a.md"))));
-        _index.Upsert(source.Id, new ScannedFile("a.md", Path.Combine(folder, "a.md")), new IndexedNote("A", hash, MarkdownChunker.Version - 1, [new Chunk("A", "text")], NoteMeta.Empty), _clock.GetUtcNow());
+        _index.Upsert(source.Id, new ScannedFile("a.md", Path.Combine(folder, "a.md")), new IndexedNote("A", hash, MarkdownChunker.Version - 1, [new Chunk("A", "text")], NoteMeta.Empty, MarkdownNotes.Version), _clock.GetUtcNow());
 
         var report = await _subject.IndexAsync(source, Token);
 
@@ -447,6 +447,12 @@ public sealed class SourceIndexerFixture : IDisposable
 
         public void Touch(Guid sourceId, ScannedFile file) => throw new InvalidOperationException();
 
+        public void UpdateMeta(Guid sourceId, ScannedFile file, NoteMeta meta, int metaVersion) => throw new InvalidOperationException();
+
+        public IReadOnlySet<string> Images(Guid sourceId) => throw new InvalidOperationException();
+
+        public void ReplaceImages(Guid sourceId, IReadOnlyCollection<string> paths) => throw new InvalidOperationException();
+
         public void Remove(Guid sourceId, string path) => throw new InvalidOperationException();
 
         public IndexCounts Counts(Guid sourceId) => throw new InvalidOperationException();
@@ -483,6 +489,12 @@ public sealed class SourceIndexerFixture : IDisposable
             Touched++;
             inner.Touch(sourceId, file);
         }
+
+        public void UpdateMeta(Guid sourceId, ScannedFile file, NoteMeta meta, int metaVersion) => inner.UpdateMeta(sourceId, file, meta, metaVersion);
+
+        public IReadOnlySet<string> Images(Guid sourceId) => inner.Images(sourceId);
+
+        public void ReplaceImages(Guid sourceId, IReadOnlyCollection<string> paths) => inner.ReplaceImages(sourceId, paths);
 
         public void Remove(Guid sourceId, string path) => inner.Remove(sourceId, path);
 

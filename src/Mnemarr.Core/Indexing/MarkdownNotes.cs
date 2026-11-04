@@ -28,6 +28,12 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
 /// </summary>
 public static class MarkdownNotes
 {
+    /// <summary>
+    /// The version of the reading of links and tags, stored with each note. A note read by another version has its links and tags read again at the
+    /// next pass, without being cut again: raise it with a change to how a link or a tag is read (1: the first reading).
+    /// </summary>
+    public const int Version = 1;
+
     private const int MaxItems = 200;
     private const int MaxLength = 200;
 

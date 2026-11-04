@@ -46,6 +46,7 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         var id = await IndexedSourceAsync(name, ("devops/docker.md", "---\ntags: [infra]\n---\n# Docker\nSee [[kubernetes]] and [[ghost]] ![[plan.png]]"), ("devops/kubernetes.md", "# K8s\n[[docker]]"), ("art/index.md", "# Art\n[[../devops/docker|up]]"));
         await IndexedSourceAsync(other, ("kubernetes.md", "# Elsewhere"));
         await File.WriteAllTextAsync(Path.Combine(_factory.DataFolder, "sources", name, "devops", "plan.png"), "png", Token);
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token);
         var reader = _callers["Reader"];
 
         var listing = await reader.GetFromJsonAsync<JsonElement>($"/api/v1/notes?source={id}", Token);
@@ -78,6 +79,7 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         var folder = Path.Combine(_factory.DataFolder, "sources", (await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/sources/{id}", Token)).GetProperty("name").GetString()!);
         await File.WriteAllTextAsync(Path.Combine(folder, "p.png"), "png", Token);
         await File.WriteAllTextAsync(Path.Combine(folder, "p.svg"), "<svg onload=alert(1)/>", Token);
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token);
 
         var image = await _callers["Reader"].GetAsync($"/api/v1/sources/{id}/files/p.png", Token);
         var svg = await _callers["Reader"].GetAsync($"/api/v1/sources/{id}/files/p.svg", Token);
@@ -113,6 +115,7 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         (await scoped.GetAsync($"/api/v1/notes/{theirs}/b.md", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         var theirImage = Path.Combine(_factory.DataFolder, "sources", (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{theirs}", Token)).GetProperty("name").GetString()!, "p.png");
         await File.WriteAllTextAsync(theirImage, "png", Token);
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{theirs}/index", null, Token);
         (await _callers["Reader"].GetAsync($"/api/v1/sources/{theirs}/files/p.png", Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the file is there for someone who may read the source");
         (await scoped.GetAsync($"/api/v1/sources/{theirs}/files/p.png", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

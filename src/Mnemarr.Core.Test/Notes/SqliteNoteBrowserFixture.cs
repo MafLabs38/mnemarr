@@ -158,6 +158,18 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_resolve_a_link_that_is_the_end_of_a_path_and_list_it_as_a_backlink_of_that_note()
+    {
+        var source = await SourceWithAsync("s", ("a.md", "[[devops/docker]] [[b/c]]"), ("tools/devops/docker.md", "# Docker"), ("x/b/c.md", "# C"), ("y/b/c.md", "# Other C, longer path"));
+
+        var detail = Browser.Find(source.Id, "a.md", SourceScope.All)!;
+        var docker = Browser.Find(source.Id, "tools/devops/docker.md", SourceScope.All)!;
+
+        detail.Links.Select(l => (l.Target, l.Note?.Path)).Should().BeEquivalentTo([("devops/docker", "tools/devops/docker.md"), ("b/c", "x/b/c.md")]);
+        docker.Backlinks.Should().ContainSingle().Which.Path.Should().Be("a.md");
+    }
+
+    [Fact]
     public async Task should_find_a_link_written_with_a_dot_from_a_folder_whose_name_has_capitals()
     {
         var source = await SourceWithAsync("s", ("Folder/a.md", "[[./X]] [[../Top]]"), ("Folder/x.md", "# X"), ("Top.md", "# Top"));

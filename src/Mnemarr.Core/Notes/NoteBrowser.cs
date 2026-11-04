@@ -39,4 +39,13 @@ public interface INoteBrowser
     NoteDetail? Find(Guid sourceId, string path, SourceScope scope);
 
     TagListing Tags(SourceScope scope);
+
+    /// <summary>Whether the image file is one the last pass found in the source: only those are served.</summary>
+    bool HasImage(Guid sourceId, string path);
+
+    /// <summary>
+    /// The image an embed (<c>![[plan.png]]</c>, <c>![[Assets/plan.png]]</c>) names, as Obsidian finds it: next to the note, then at the root of the
+    /// source, then anywhere in the source by file name (the shortest path first). Null when the source has none.
+    /// </summary>
+    string? FindImage(Guid sourceId, string notePath, string embed);
 }
