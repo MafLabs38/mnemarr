@@ -8,13 +8,19 @@ public sealed record NoteEntryResource(Guid SourceId, string SourceName, string 
     public static NoteEntryResource From(NoteEntry entry) => new(entry.SourceId, entry.SourceName, entry.Path, entry.Title, entry.Topic);
 }
 
+/// <summary>The notes of the tree and how many there are in all: when the tree is cut, <c>total</c> is larger than the list.</summary>
+public sealed record NoteListResource(IReadOnlyList<NoteEntryResource> Notes, int Total)
+{
+    public static NoteListResource From(NoteListing listing) => new([.. listing.Notes.Select(NoteEntryResource.From)], listing.Total);
+}
+
 /// <summary>Where a note is: enough to open it.</summary>
 public sealed record NoteRefResource(Guid SourceId, string SourceName, string Path, string Title)
 {
     public static NoteRefResource From(NoteRef note) => new(note.SourceId, note.SourceName, note.Path, note.Title);
 }
 
-/// <summary>A <c>[[wikilink]]</c> of a note: what it names (lower case, as it is matched) and the note it leads to, if the caller may read one.</summary>
+/// <summary>A <c>[[wikilink]]</c> of a note: what it names as the note wrote it (lower case, no extension, no heading) and the note it leads to, if the caller may read one.</summary>
 public sealed record NoteLinkResource(string Target, NoteRefResource? Note);
 
 /// <summary>
@@ -35,3 +41,9 @@ public sealed record NoteResource(
 }
 
 public sealed record TagResource(string Tag, int Count);
+
+/// <summary>The tags, most used first, and how many tags there are in all.</summary>
+public sealed record TagListResource(IReadOnlyList<TagResource> Tags, int Total)
+{
+    public static TagListResource From(TagListing listing) => new([.. listing.Tags.Select(tag => new TagResource(tag.Tag, tag.Count))], listing.Total);
+}

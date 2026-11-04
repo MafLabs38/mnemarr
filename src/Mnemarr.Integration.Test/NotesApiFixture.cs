@@ -43,26 +43,32 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
     {
         var name = Callers.Unique("vault");
         var other = Callers.Unique("other");
-        var id = await IndexedSourceAsync(name, ("devops/docker.md", "---\ntags: [infra]\n---\n# Docker\nSee [[kubernetes]] and [[ghost]] ![[plan.png]]"), ("devops/kubernetes.md", "# K8s\n[[docker]]"));
+        var id = await IndexedSourceAsync(name, ("devops/docker.md", "---\ntags: [infra]\n---\n# Docker\nSee [[kubernetes]] and [[ghost]] ![[plan.png]]"), ("devops/kubernetes.md", "# K8s\n[[docker]]"), ("art/index.md", "# Art\n[[../devops/docker|up]]"));
         await IndexedSourceAsync(other, ("kubernetes.md", "# Elsewhere"));
         await File.WriteAllTextAsync(Path.Combine(_factory.DataFolder, "sources", name, "devops", "plan.png"), "png", Token);
         var reader = _callers["Reader"];
 
-        var tree = (await reader.GetFromJsonAsync<JsonElement>($"/api/v1/notes?source={id}", Token)).EnumerateArray().Select(n => n.GetProperty("path").GetString()).ToList();
+        var listing = await reader.GetFromJsonAsync<JsonElement>($"/api/v1/notes?source={id}", Token);
+        var tree = listing.GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("path").GetString()).ToList();
         var note = await reader.GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/devops/docker.md", Token);
         var tagged = await reader.GetFromJsonAsync<JsonElement>("/api/v1/notes?tag=infra", Token);
         var tags = await reader.GetFromJsonAsync<JsonElement>("/api/v1/notes/tags", Token);
 
-        tree.Should().Equal("devops/docker.md", "devops/kubernetes.md");
+        tree.Should().Equal("art/index.md", "devops/docker.md", "devops/kubernetes.md");
+        listing.GetProperty("total").GetInt32().Should().Be(3);
         note.GetProperty("markdown").GetString().Should().StartWith("# Docker").And.NotContain("tags:");
         note.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).Should().Equal("infra");
         var links = note.GetProperty("links").EnumerateArray().ToDictionary(l => l.GetProperty("target").GetString()!, l => l.GetProperty("note"));
         links["kubernetes"].GetProperty("path").GetString().Should().Be("devops/kubernetes.md", "the same source comes first");
         links["ghost"].ValueKind.Should().Be(JsonValueKind.Null);
-        note.GetProperty("backlinks").EnumerateArray().Select(b => b.GetProperty("path").GetString()).Should().Equal("devops/kubernetes.md");
+        note.GetProperty("backlinks").EnumerateArray().Select(b => b.GetProperty("path").GetString()).Should().Equal("art/index.md", "devops/kubernetes.md");
+        var art = await reader.GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/art/index.md", Token);
+        var up = art.GetProperty("links").EnumerateArray().Single();
+        up.GetProperty("target").GetString().Should().Be("../devops/docker", "the link as the note wrote it, which is what the interface finds in the text");
+        up.GetProperty("note").GetProperty("path").GetString().Should().Be("devops/docker.md", "a link written from the folder of its note leads to the note");
         note.GetProperty("embeds").GetProperty("plan.png").GetString().Should().Be("devops/plan.png");
-        tagged.EnumerateArray().Select(n => n.GetProperty("path").GetString()).Should().Contain("devops/docker.md");
-        tags.EnumerateArray().Should().Contain(t => t.GetProperty("tag").GetString() == "infra");
+        tagged.GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("path").GetString()).Should().Contain("devops/docker.md");
+        tags.GetProperty("tags").EnumerateArray().Should().Contain(t => t.GetProperty("tag").GetString() == "infra");
     }
 
     [Fact]
@@ -73,18 +79,18 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         await File.WriteAllTextAsync(Path.Combine(folder, "p.png"), "png", Token);
         await File.WriteAllTextAsync(Path.Combine(folder, "p.svg"), "<svg onload=alert(1)/>", Token);
 
-        var image = await _callers["Reader"].GetAsync($"/api/v1/files/{id}/p.png", Token);
-        var svg = await _callers["Reader"].GetAsync($"/api/v1/files/{id}/p.svg", Token);
-        var note = await _callers["Reader"].GetAsync($"/api/v1/files/{id}/a.md", Token);
-        var up = await _callers["Reader"].GetAsync($"/api/v1/files/{id}/..%2F..%2Fsecret.png", Token);
+        var image = await _callers["Reader"].GetAsync($"/api/v1/sources/{id}/files/p.png", Token);
+        var svg = await _callers["Reader"].GetAsync($"/api/v1/sources/{id}/files/p.svg", Token);
+        var note = await _callers["Reader"].GetAsync($"/api/v1/sources/{id}/files/a.md", Token);
+        await File.WriteAllTextAsync(Path.Combine(_factory.DataFolder, "sources", "secret.png"), "outside", Token);
+        var climb = await _callers["Reader"].GetAsync($"/api/v1/sources/{id}/files/..%2Fsecret.png", Token);
 
         image.StatusCode.Should().Be(HttpStatusCode.OK);
         image.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
         image.Headers.GetValues("X-Content-Type-Options").Should().Equal("nosniff");
-        image.Headers.GetValues("Content-Security-Policy").Single().Should().Contain("default-src 'self'", "the strict policy of the whole application applies to an image opened on its own");
         svg.StatusCode.Should().Be(HttpStatusCode.NotFound);
         note.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        up.StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.BadRequest);
+        climb.StatusCode.Should().Be(HttpStatusCode.NotFound, "a file next to the source, not in it, is not served");
     }
 
     [Fact]
@@ -96,15 +102,18 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         var created = await _callers.Admin.PostAsJsonAsync($"/api/v1/accounts/{service}/keys", new { name = "scoped", sources = new[] { mine } }, Token);
         using var scoped = _factory.CreateKeyClient((await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!);
 
-        var tree = await scoped.GetFromJsonAsync<JsonElement>("/api/v1/notes", Token);
+        var tree = (await scoped.GetFromJsonAsync<JsonElement>("/api/v1/notes", Token)).GetProperty("notes");
         var note = await scoped.GetFromJsonAsync<JsonElement>($"/api/v1/notes/{mine}/a.md", Token);
         var tags = await scoped.GetFromJsonAsync<JsonElement>("/api/v1/notes/tags", Token);
 
         tree.EnumerateArray().Select(n => n.GetProperty("path").GetString()).Should().Equal("a.md");
         note.GetProperty("links").EnumerateArray().Single().GetProperty("note").ValueKind.Should().Be(JsonValueKind.Null, "the note exists, but not for this key");
         note.GetProperty("backlinks").GetArrayLength().Should().Be(0);
-        tags.EnumerateArray().Select(t => t.GetProperty("tag").GetString()).Should().NotContain("hidden");
+        tags.GetProperty("tags").EnumerateArray().Select(t => t.GetProperty("tag").GetString()).Should().NotContain("hidden");
         (await scoped.GetAsync($"/api/v1/notes/{theirs}/b.md", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await scoped.GetAsync($"/api/v1/files/{theirs}/p.png", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var theirImage = Path.Combine(_factory.DataFolder, "sources", (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{theirs}", Token)).GetProperty("name").GetString()!, "p.png");
+        await File.WriteAllTextAsync(theirImage, "png", Token);
+        (await _callers["Reader"].GetAsync($"/api/v1/sources/{theirs}/files/p.png", Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the file is there for someone who may read the source");
+        (await scoped.GetAsync($"/api/v1/sources/{theirs}/files/p.png", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

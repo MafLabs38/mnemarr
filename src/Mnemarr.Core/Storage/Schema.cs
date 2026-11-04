@@ -97,7 +97,8 @@ public static class Schema
         CREATE INDEX notes_by_name ON notes (name);
         CREATE TABLE note_links (
             note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
-            target TEXT NOT NULL
+            target TEXT NOT NULL,
+            written TEXT NOT NULL
         );
         CREATE INDEX note_links_by_note ON note_links (note_id);
         CREATE INDEX note_links_by_target ON note_links (target);

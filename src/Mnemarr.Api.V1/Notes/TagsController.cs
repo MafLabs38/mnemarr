@@ -12,13 +12,13 @@ namespace Mnemarr.Api.V1.Notes;
 [Authorize(Policy = Permissions.NotesRead)]
 public sealed class TagsController : ControllerBase
 {
-    private readonly INoteBrowser _browser;
+    private readonly NoteReader _reader;
 
-    public TagsController(INoteBrowser browser)
+    public TagsController(NoteReader reader)
     {
-        _browser = browser;
+        _reader = reader;
     }
 
     [HttpGet]
-    public IReadOnlyList<TagResource> Get() => [.. _browser.Tags(User.Scope()).Select(tag => new TagResource(tag.Tag, tag.Count))];
+    public TagListResource Get() => TagListResource.From(_reader.Tags(User.Scope()));
 }

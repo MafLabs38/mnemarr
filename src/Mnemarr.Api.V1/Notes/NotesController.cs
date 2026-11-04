@@ -23,10 +23,10 @@ public sealed class NotesController : ControllerBase
         _reader = reader;
     }
 
-    /// <summary>The notes, by source and path; of one source or carrying one tag when asked. A very large vault is cut short: the search is the way in beyond it.</summary>
+    /// <summary>The notes, by source and path; of one source or carrying one tag when asked. A very large vault is cut short, and <c>total</c> says by how much: the search is the way in beyond it.</summary>
     [HttpGet]
-    public IReadOnlyList<NoteEntryResource> List([FromQuery] Guid? source = null, [FromQuery] string? tag = null) =>
-        [.. _reader.List(User.Scope(), source, tag).Select(NoteEntryResource.From)];
+    public NoteListResource List([FromQuery] Guid? source = null, [FromQuery] string? tag = null) =>
+        NoteListResource.From(_reader.List(User.Scope(), source, tag));
 
     /// <summary>A note: its Markdown (never rendered here, and never trusted by whoever renders it), its tags, links and backlinks.</summary>
     [HttpGet("{sourceId:guid}/{**path}")]

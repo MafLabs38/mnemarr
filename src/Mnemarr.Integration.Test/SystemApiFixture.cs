@@ -66,17 +66,9 @@ public sealed class SystemApiFixture : IAsyncLifetime
         response.Headers.GetValues("X-Content-Type-Options").Should().ContainSingle().Which.Should().Be("nosniff");
         response.Headers.GetValues("X-Frame-Options").Should().ContainSingle().Which.Should().Be("DENY");
         response.Headers.GetValues("Referrer-Policy").Should().ContainSingle().Which.Should().Be("no-referrer");
-        response.Headers.GetValues("Content-Security-Policy").Should().ContainSingle().Which.Should().Contain("frame-ancestors 'none'");
-    }
-
-    [Fact]
-    public async Task should_allow_inline_styles_for_diagrams_and_nothing_inline_or_dynamic_for_scripts()
-    {
-        var response = await _client.GetAsync("/health/live", TestContext.Current.CancellationToken);
-
-        var policy = response.Headers.GetValues("Content-Security-Policy").Single();
-
-        policy.Should().Contain("default-src 'self'").And.Contain("style-src 'self' 'unsafe-inline'");
-        policy.Should().NotContain("script-src", "scripts follow default-src: the application's own files only").And.NotContain("unsafe-eval");
+        var policy = response.Headers.GetValues("Content-Security-Policy").Should().ContainSingle().Subject;
+        policy.Should().Contain("frame-ancestors 'none'").And.Contain("default-src 'self'");
+        // Inline styles are allowed for diagrams (ADR 0021); scripts follow default-src: the application's own files only, nothing inline, no eval.
+        policy.Should().Contain("style-src 'self' 'unsafe-inline'").And.NotContain("script-src").And.NotContain("unsafe-eval");
     }
 }

@@ -28,7 +28,7 @@ export default function Notes() {
   const tags = useTags();
 
   const words = filter.trim().toLowerCase();
-  const entries = (tree.data ?? []).filter(
+  const entries = (tree.data?.notes ?? []).filter(
     (entry) => words === '' || `${entry.title} ${entry.path}`.toLowerCase().includes(words),
   );
 
@@ -51,11 +51,16 @@ export default function Notes() {
             {tree.isPending && <LoadingIndicator />}
             {tree.isError && <Alert>{translate('NotesError')}</Alert>}
             {tree.data && <NoteTree entries={entries} selected={source && path ? `${source}/${path}` : null} />}
-            {tags.data && tags.data.length > 0 && (
+            {tree.data && tree.data.total > tree.data.notes.length && (
+              <p className={styles.hint}>
+                {translate('TreeCut', { shown: tree.data.notes.length, total: tree.data.total })}
+              </p>
+            )}
+            {tags.data && tags.data.tags.length > 0 && (
               <section aria-label={translate('Tags')}>
                 <h2 className={styles.sourceName}>{translate('Tags')}</h2>
                 <ul className={styles.tags}>
-                  {tags.data.map((entry) => (
+                  {tags.data.tags.map((entry) => (
                     <li key={entry.tag}>
                       <Link to={`/notes?tag=${encodeURIComponent(entry.tag)}`}>
                         #{entry.tag} <span className={styles.hint}>{entry.count}</span>
@@ -63,6 +68,11 @@ export default function Notes() {
                     </li>
                   ))}
                 </ul>
+                {tags.data.total > tags.data.tags.length && (
+                  <p className={styles.hint}>
+                    {translate('TagsCut', { shown: tags.data.tags.length, total: tags.data.total })}
+                  </p>
+                )}
               </section>
             )}
           </div>

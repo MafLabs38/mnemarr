@@ -71,6 +71,17 @@ describe('the menu of a person who may only read notes', () => {
     expect(screen.getByRole('link', { name: 'Sources' })).toHaveAttribute('href', '/sources');
   });
 
+  it('shows the notes to somebody who may read them, and not to somebody who may not', () => {
+    stubApi(() => undefined);
+    const reads = renderPage({ ...readerSession, permissions: ['notes.read'] });
+
+    expect(screen.getByRole('link', { name: 'Notes' })).toHaveAttribute('href', '/notes');
+    reads.unmount();
+
+    renderPage({ ...readerSession, permissions: ['search'] });
+    expect(screen.queryByRole('link', { name: 'Notes' })).not.toBeInTheDocument();
+  });
+
   it('shows the accounts to somebody who may manage them', () => {
     stubApi(() => undefined);
 

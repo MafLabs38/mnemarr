@@ -1,3 +1,5 @@
+import styles from './Notes.module.css';
+
 /** The few parts of the Markdown tree the plugin reads and changes. */
 interface Node {
   type: string;
@@ -44,6 +46,15 @@ function splitFirstLine(nodes: Node[]): { title: Node[]; body: Node[] } {
   return { title, body: body.filter((node) => node.type !== 'text' || node.value !== '') };
 }
 
+/** Leading spaces and tabs only: a line break after the marker means the callout has no title. */
+function trimSpaces(text: string): string {
+  let start = 0;
+  while (text[start] === ' ' || text[start] === '\t') {
+    start++;
+  }
+  return text.slice(start);
+}
+
 function markCallout(quote: Node) {
   const paragraph = quote.children?.[0];
   const first = paragraph?.type === 'paragraph' ? paragraph.children?.[0] : undefined;
@@ -67,7 +78,7 @@ function markCallout(quote: Node) {
     rest = rest.slice(1);
   }
   const { title, body } = splitFirstLine([
-    { ...first, value: rest.trimStart() },
+    { ...first, value: trimSpaces(rest) },
     ...(paragraph?.children?.slice(1) ?? []),
   ]);
   const label: Node[] =
@@ -81,6 +92,6 @@ function markCallout(quote: Node) {
   quote.children = [heading, ...(body.length > 0 ? [{ type: 'paragraph', children: body }] : []), ...others];
   quote.data = {
     hName: fold ? 'details' : 'div',
-    hProperties: { className: ['callout', `callout-${kind}`], ...(fold === '+' ? { open: true } : {}) },
+    hProperties: { className: [styles.callout], 'data-callout': kind, ...(fold === '+' ? { open: true } : {}) },
   };
 }

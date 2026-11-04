@@ -1,0 +1,11 @@
+[
+  { "written": "Docker", "target": "docker" },
+  { "written": "  Devops\\Docker.MD#Images ", "target": "devops/docker" },
+  { "written": "/devops/docker/", "target": "devops/docker" },
+  { "written": "notes.markdown", "target": "notes" },
+  { "written": "./Sibling", "target": "./sibling" },
+  { "written": "../Up/Note.md#Heading", "target": "../up/note" },
+  { "written": "", "target": null },
+  { "written": "   ", "target": null },
+  { "written": "#only-a-heading", "target": null }
+]

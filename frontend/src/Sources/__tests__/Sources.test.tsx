@@ -475,6 +475,29 @@ describe('Sources', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?q=couches', expect.anything());
   });
 
+  it('opens a hit in the reader for somebody who may read notes, and shows it as text for somebody who may not', async () => {
+    server();
+    const first = renderWithProviders(<Sources />);
+    let search = await screen.findByRole('region', { name: 'Search' });
+    await userEvent.type(within(search).getByLabelText('Search the notes'), 'couches');
+    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
+
+    expect(await within(search).findByRole('link', { name: 'Docker' })).toHaveAttribute(
+      'href',
+      expect.stringMatching(/^\/notes\?source=s1&path=02\+-\+DevOps%2Fdocker\.md$/),
+    );
+    first.unmount();
+
+    server();
+    renderWithProviders(<Sources />, '/', { ...adminSession, permissions: ['sources.manage', 'search'] });
+    search = await screen.findByRole('region', { name: 'Search' });
+    await userEvent.type(within(search).getByLabelText('Search the notes'), 'couches');
+    await userEvent.click(within(search).getByRole('button', { name: 'Search' }));
+
+    expect(await within(search).findByText('Docker')).toBeInTheDocument();
+    expect(within(search).queryByRole('link', { name: 'Docker' })).not.toBeInTheDocument();
+  });
+
   it('says when nothing is found, and asks for nothing while nothing is typed', async () => {
     const fetchMock = server();
     renderWithProviders(<Sources />);

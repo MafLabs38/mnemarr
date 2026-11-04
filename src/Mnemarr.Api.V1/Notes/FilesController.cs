@@ -12,7 +12,7 @@ namespace Mnemarr.Api.V1.Notes;
 /// image formats: a note is untrusted, and what it points at must not be able to run in the page.
 /// </summary>
 [ApiController]
-[Route("api/v1/files")]
+[Route("api/v1/sources/{sourceId:guid}/files")]
 [Authorize(Policy = Permissions.NotesRead)]
 public sealed class FilesController : ControllerBase
 {
@@ -23,14 +23,13 @@ public sealed class FilesController : ControllerBase
         _reader = reader;
     }
 
-    [HttpGet("{sourceId:guid}/{**path}")]
+    [HttpGet("{**path}")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult Get(Guid sourceId, string path)
     {
         var file = _reader.OpenImage(sourceId, path, User.Scope());
         Response.Headers.XContentTypeOptions = "nosniff";
-        Response.Headers.CacheControl = "private, max-age=60";
         return File(file.Content, file.ContentType);
     }
 }

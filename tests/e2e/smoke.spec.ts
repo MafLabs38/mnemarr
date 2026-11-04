@@ -334,7 +334,7 @@ test.describe('smoke @smoke', () => {
     expect(await diagram.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-    await page.getByRole('link', { name: 'decision', exact: true }).click();
+    await page.getByRole('article').getByRole('link', { name: 'decision', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'A decision' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Docker' })).toBeVisible();
   });

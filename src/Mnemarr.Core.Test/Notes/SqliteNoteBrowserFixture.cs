@@ -1,4 +1,5 @@
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Notes;
 
 namespace Mnemarr.Core.Test.Notes;
 
@@ -10,14 +11,16 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
         var courses = await SourceWithAsync("courses", ("devops/docker.md", "# Docker\n#infra"), ("angular/signals.md", "# Signals"));
         await SourceWithAsync("memory", ("decisions/network.md", "# Network choice\n#infra #decision"));
 
-        var all = Browser.List(SourceScope.All, null, null);
-        var tagged = Browser.List(SourceScope.All, null, "INFRA");
-        var one = Browser.List(SourceScope.All, courses.Id, null);
+        var all = Browser.List(SourceScope.All, null, null).Notes;
+        var tagged = Browser.List(SourceScope.All, null, "INFRA").Notes;
+        var one = Browser.List(SourceScope.All, courses.Id, null).Notes;
+        var both = Browser.List(SourceScope.All, courses.Id, "infra").Notes;
 
         all.Select(n => $"{n.SourceName}:{n.Path}").Should().Equal("courses:angular/signals.md", "courses:devops/docker.md", "memory:decisions/network.md");
         all.Single(n => n.Path == "devops/docker.md").Should().Match<Mnemarr.Core.Notes.NoteEntry>(n => n.Title == "Docker" && n.Topic == "devops");
         tagged.Select(n => n.Path).Should().Equal("devops/docker.md", "decisions/network.md");
         one.Should().HaveCount(2);
+        both.Select(n => n.Path).Should().Equal("devops/docker.md"); // a source and a tag together
     }
 
     [Fact]
@@ -26,8 +29,8 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
         var mine = await SourceWithAsync("mine", ("a.md", "#infra #only-mine"), ("b.md", "#infra"));
         await SourceWithAsync("other", ("c.md", "#infra #secret"));
 
-        var everyone = Browser.Tags(SourceScope.All);
-        var scoped = Browser.Tags(new SourceScope([mine.Id]));
+        var everyone = Browser.Tags(SourceScope.All).Tags;
+        var scoped = Browser.Tags(new SourceScope([mine.Id])).Tags;
 
         everyone.Should().Equal(new Mnemarr.Core.Notes.TagCount("infra", 3), new Mnemarr.Core.Notes.TagCount("only-mine", 1), new Mnemarr.Core.Notes.TagCount("secret", 1));
         scoped.Should().Equal(new Mnemarr.Core.Notes.TagCount("infra", 2), new Mnemarr.Core.Notes.TagCount("only-mine", 1));
@@ -95,7 +98,7 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
         Browser.Find(mine.Id, "missing.md", SourceScope.All).Should().BeNull();
         Browser.Find(other.Id, "b.md", new SourceScope([mine.Id])).Should().BeNull();
         Browser.Find(other.Id, "b.md", new SourceScope([])).Should().BeNull();
-        Browser.List(new SourceScope([]), null, null).Should().BeEmpty("an empty scope matches nothing, never everything");
+        Browser.List(new SourceScope([]), null, null).Notes.Should().BeEmpty("an empty scope matches nothing, never everything");
     }
 
     [Fact]
@@ -107,5 +110,49 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
 
         detail.Links.Single(l => l.Target == "x/100%_done").Note!.Path.Should().Be("x/100%_done.md");
         detail.Links.Single(l => l.Target == "x/100_%").Note.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task should_say_how_many_notes_there_are_when_the_tree_is_cut_short()
+    {
+        var source = await SourceWithAsync("big", ("a.md", "# A"));
+        using (var connection = Workspace.Database.Open())
+        {
+            using var fill = connection.CreateCommand();
+            fill.CommandText = """
+                WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10100)
+                INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at) SELECT $source, 'bulk/' || i || '.md', 'bulk', 'Bulk ' || i, 'h', 'now' FROM n
+                """;
+            fill.Parameters.AddWithValue("$source", source.Id.ToString());
+            fill.ExecuteNonQuery();
+        }
+
+        var listing = Browser.List(SourceScope.All, null, null);
+
+        listing.Notes.Should().HaveCount(SqliteNoteBrowser.MaxEntries);
+        listing.Total.Should().Be(10_101, "the list is cut, and the total says by how much");
+    }
+
+    [Fact]
+    public async Task should_order_tags_by_use_then_by_name_and_count_them_all_even_when_the_list_is_cut()
+    {
+        await SourceWithAsync("s", ("a.md", "#beta #alpha #gamma"), ("b.md", "#gamma"));
+
+        var tags = Browser.Tags(SourceScope.All);
+
+        tags.Tags.Select(t => t.Tag).Should().Equal("gamma", "alpha", "beta");
+        tags.Total.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task should_find_a_link_written_with_a_dot_from_a_folder_whose_name_has_capitals()
+    {
+        var source = await SourceWithAsync("s", ("Folder/a.md", "[[./X]] [[../Top]]"), ("Folder/x.md", "# X"), ("Top.md", "# Top"));
+
+        var detail = Browser.Find(source.Id, "Folder/a.md", SourceScope.All)!;
+        var x = Browser.Find(source.Id, "Folder/x.md", SourceScope.All)!;
+
+        detail.Links.Select(l => (l.Target, l.Note?.Path)).Should().BeEquivalentTo([("./x", "Folder/x.md"), ("../top", "Top.md")], "the link is returned as written, and resolved from the folder of its note");
+        x.Backlinks.Should().ContainSingle().Which.Path.Should().Be("Folder/a.md");
     }
 }

@@ -11,6 +11,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     internal const int MaxEntries = 10_000;
 
     private const int MaxTags = 200;
+    private const int MaxBacklinks = 200;
     private const string ScopeFilter = "($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources)))";
     private readonly IDatabase _database;
 
@@ -19,34 +20,44 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         _database = database;
     }
 
-    public IReadOnlyList<NoteEntry> List(SourceScope scope, Guid? sourceId, string? tag)
+    public NoteListing List(SourceScope scope, Guid? sourceId, string? tag)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = $"""
-            SELECT s.id, s.name, n.path, n.title, n.topic
+        const string From = $"""
             FROM notes n JOIN sources s ON s.id = n.source_id
             WHERE {ScopeFilter}
               AND ($source IS NULL OR s.id = $source)
               AND ($tag IS NULL OR EXISTS (SELECT 1 FROM note_tags t WHERE t.note_id = n.id AND t.tag = $tag))
-            ORDER BY s.name, n.path
-            LIMIT $limit
             """;
+        command.CommandText = $"SELECT s.id, s.name, n.path, n.title, n.topic {From} ORDER BY s.name, n.path LIMIT $limit";
         AddScope(command, scope);
         command.Parameters.AddWithValue("$source", sourceId?.ToString() ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$tag", tag?.ToLowerInvariant() ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$limit", MaxEntries);
-        using var reader = command.ExecuteReader();
         var entries = new List<NoteEntry>();
-        while (reader.Read())
+        using (var reader = command.ExecuteReader())
         {
-            entries.Add(new NoteEntry(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4)));
+            while (reader.Read())
+            {
+                entries.Add(new NoteEntry(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4)));
+            }
         }
 
-        return entries;
+        if (entries.Count < MaxEntries)
+        {
+            return new NoteListing(entries, entries.Count);
+        }
+
+        using var count = connection.CreateCommand();
+        count.CommandText = $"SELECT COUNT(*) {From}";
+        AddScope(count, scope);
+        count.Parameters.AddWithValue("$source", sourceId?.ToString() ?? (object)DBNull.Value);
+        count.Parameters.AddWithValue("$tag", tag?.ToLowerInvariant() ?? (object)DBNull.Value);
+        return new NoteListing(entries, Convert.ToInt32(count.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    public IReadOnlyList<TagCount> Tags(SourceScope scope)
+    public TagListing Tags(SourceScope scope)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
@@ -56,18 +67,21 @@ public sealed class SqliteNoteBrowser : INoteBrowser
             WHERE {ScopeFilter}
             GROUP BY t.tag
             ORDER BY used DESC, t.tag
-            LIMIT $limit
             """;
         AddScope(command, scope);
-        command.Parameters.AddWithValue("$limit", MaxTags);
         using var reader = command.ExecuteReader();
         var tags = new List<TagCount>();
+        var total = 0;
         while (reader.Read())
         {
-            tags.Add(new TagCount(reader.GetString(0), reader.GetInt32(1)));
+            total++;
+            if (tags.Count < MaxTags)
+            {
+                tags.Add(new TagCount(reader.GetString(0), reader.GetInt32(1)));
+            }
         }
 
-        return tags;
+        return new TagListing(tags, total);
     }
 
     public NoteDetail? Find(Guid sourceId, string path, SourceScope scope)
@@ -84,7 +98,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         return new NoteDetail(
             reference,
             Column(connection, "SELECT DISTINCT tag FROM note_tags WHERE note_id = $note ORDER BY tag", id),
-            [.. Column(connection, "SELECT DISTINCT target FROM note_links WHERE note_id = $note ORDER BY target", id).Select(target => new ResolvedLink(target, Resolve(connection, target, sourceId, scope)))],
+            [.. Links(connection, id).Select(link => new ResolvedLink(link.Written, Resolve(connection, link.Target, sourceId, scope)))],
             Backlinks(connection, id, name, pathWithoutExtension, scope));
     }
 
@@ -110,20 +124,32 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     /// is the end of a path. When several notes answer, the one in the same source wins, then the shortest path, then the source name: the
     /// answer is the same every time.
     /// </summary>
+    private const string ResolveSelect = """
+        SELECT s.id, s.name, n.path, n.title
+        FROM notes n JOIN sources s ON s.id = n.source_id
+        """;
+
+    private const string ResolveOrder = """
+        ORDER BY (s.id = $from) DESC, length(n.path), s.name, n.path
+        LIMIT 1
+        """;
+
+    // A name is looked up on the indexed column; only a path (it has a slash) needs the end of a path to be compared.
+    private const string ResolveByName = $"{ResolveSelect} WHERE {ScopeFilter} AND n.name = $target {ResolveOrder}";
+
+    private const string ResolveByPath = $"""
+        {ResolveSelect}
+        WHERE {ScopeFilter}
+          AND (lower(n.path) = $target || '.md' OR lower(n.path) = $target || '.markdown'
+               OR lower(n.path) LIKE '%/' || $escaped || '.md' ESCAPE '\'
+               OR lower(n.path) LIKE '%/' || $escaped || '.markdown' ESCAPE '\')
+        {ResolveOrder}
+        """;
+
     private static NoteRef? Resolve(SqliteConnection connection, string target, Guid fromSource, SourceScope scope)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = $"""
-            SELECT s.id, s.name, n.path, n.title
-            FROM notes n JOIN sources s ON s.id = n.source_id
-            WHERE {ScopeFilter}
-              AND (n.name = $target
-                   OR lower(n.path) = $target || '.md'
-                   OR lower(n.path) = $target || '.markdown'
-                   OR (instr($target, '/') > 0 AND (lower(n.path) LIKE '%/' || $escaped || '.md' ESCAPE '\' OR lower(n.path) LIKE '%/' || $escaped || '.markdown' ESCAPE '\')))
-            ORDER BY (s.id = $from) DESC, length(n.path), s.name, n.path
-            LIMIT 1
-            """;
+        command.CommandText = target.Contains('/', StringComparison.Ordinal) ? ResolveByPath : ResolveByName;
         AddScope(command, scope);
         command.Parameters.AddWithValue("$target", target);
         command.Parameters.AddWithValue("$escaped", target.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal));
@@ -144,8 +170,10 @@ public sealed class SqliteNoteBrowser : INoteBrowser
                    OR l.target = $path
                    OR (instr(l.target, '/') > 0 AND substr($path, -(length(l.target) + 1)) = '/' || l.target))
             ORDER BY s.name, n.path
+            LIMIT $limit
             """;
         AddScope(command, scope);
+        command.Parameters.AddWithValue("$limit", MaxBacklinks);
         command.Parameters.AddWithValue("$note", noteId);
         command.Parameters.AddWithValue("$name", name);
         command.Parameters.AddWithValue("$path", pathWithoutExtension);
@@ -157,6 +185,21 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         }
 
         return notes;
+    }
+
+    private static List<(string Target, string Written)> Links(SqliteConnection connection, long noteId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DISTINCT target, written FROM note_links WHERE note_id = $note ORDER BY written, target";
+        command.Parameters.AddWithValue("$note", noteId);
+        using var reader = command.ExecuteReader();
+        var links = new List<(string, string)>();
+        while (reader.Read())
+        {
+            links.Add((reader.GetString(0), reader.GetString(1)));
+        }
+
+        return links;
     }
 
     private static List<string> Column(SqliteConnection connection, string sql, long noteId)

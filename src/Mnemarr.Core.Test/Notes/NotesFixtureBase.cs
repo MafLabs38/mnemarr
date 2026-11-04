@@ -32,6 +32,8 @@ public abstract class NotesFixtureBase : IDisposable
 
     public void Dispose() => Workspace.Dispose();
 
+    protected Task<IndexReport> ReindexAsync(Source source) => _indexer.IndexAsync(source, Token);
+
     /// <summary>Declares a source whose folder holds the given notes, and indexes it.</summary>
     protected async Task<Source> SourceWithAsync(string name, params (string Path, string Text)[] notes)
     {

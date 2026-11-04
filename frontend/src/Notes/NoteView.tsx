@@ -6,13 +6,16 @@ import { ApiError } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
 import NoteMarkdown from './NoteMarkdown';
-import { noteAddress, useNote } from './notes';
+import { noteAddress, noteToRead, useNote } from './notes';
 import styles from './Notes.module.css';
 
 /** One note: its title, where it is, its tags, its text, and the notes that link to it. */
 export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string; path: string }>) {
   const { data: note, isPending, error } = useNote(sourceId, path);
 
+  if (noteToRead(sourceId, path) === null) {
+    return <Alert>{translate('NoteNotFound')}</Alert>;
+  }
   if (isPending) {
     return <LoadingIndicator />;
   }

@@ -47,7 +47,6 @@ public sealed class EndpointsFixture
         "api/v1/config",
         "api/v1/config",
         "api/v1/config/status",
-        "api/v1/files/{sourceId:guid}/{**path}",
         "api/v1/notes",
         "api/v1/notes/tags",
         "api/v1/notes/{sourceId:guid}/{**path}",
@@ -61,6 +60,7 @@ public sealed class EndpointsFixture
         "api/v1/sources/{id:guid}",
         "api/v1/sources/{id:guid}",
         "api/v1/sources/{id:guid}/index",
+        "api/v1/sources/{sourceId:guid}/files/{**path}",
             "api/v1/system/status",
             "{*path:nonfile}");
     }

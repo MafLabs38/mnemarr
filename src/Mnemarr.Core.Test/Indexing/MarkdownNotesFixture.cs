@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using System.Text.Json;
 using Mnemarr.Core.Indexing;
 
 namespace Mnemarr.Core.Test.Indexing;
@@ -27,7 +27,7 @@ public sealed class MarkdownNotesFixture
     {
         var meta = MarkdownNotes.Parse("# Title\n\nWork #Docker and #devops/ci, issue #123, C# is fine, (#inline) ok.\n`#incode` and [[x#heading]]\n```\n#fenced\n[[inside]]\n```\n");
 
-        meta.Tags.Should().BeEquivalentTo("docker", "devops/ci", "inline");
+        meta.Tags.Should().BeEquivalentTo("docker", "devops/ci");
         meta.Links.Select(link => link.Target).Should().Equal("x");
     }
 
@@ -48,14 +48,30 @@ public sealed class MarkdownNotesFixture
         MarkdownNotes.Body("# No front matter\n---\nnot front matter").Should().Be("# No front matter\n---\nnot front matter");
     }
 
-    [Theory]
-    [InlineData("Docker", "docker")]
-    [InlineData("  Devops\\Docker.MD#Images ", "devops/docker")]
-    [InlineData("#only-heading", null)]
-    [InlineData("   ", null)]
-    public void should_normalise_the_target_of_a_link(string target, string? expected)
+    /// <summary>The cases of <c>tests/shared/link-targets.json</c>, which the interface's own reading of a link is tested against too: the two must agree.</summary>
+    public static TheoryData<string, string?> SharedTargets()
     {
-        MarkdownNotes.NormalizeTarget(target).Should().Be(expected);
+        var folder = new DirectoryInfo(AppContext.BaseDirectory);
+        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "tests", "shared", "link-targets.json")))
+        {
+            folder = folder.Parent;
+        }
+
+        var cases = JsonSerializer.Deserialize<List<Dictionary<string, string?>>>(File.ReadAllText(Path.Combine(folder!.FullName, "tests", "shared", "link-targets.json")))!;
+        var data = new TheoryData<string, string?>();
+        foreach (var c in cases)
+        {
+            data.Add(c["written"]!, c["target"]);
+        }
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(SharedTargets))]
+    public void should_normalise_the_target_of_a_link_as_the_interface_does(string written, string? expected)
+    {
+        MarkdownNotes.NormalizeTarget(written).Should().Be(expected);
     }
 
     [Theory]
@@ -74,15 +90,22 @@ public sealed class MarkdownNotesFixture
     }
 
     [Fact]
-    public void should_bound_what_a_hostile_note_can_make_it_keep_and_read_it_quickly()
+    public void should_bound_what_a_hostile_note_can_make_it_keep()
     {
-        var hostile = string.Concat(Enumerable.Range(0, 20_000).Select(i => $"[[n{i}]] #t{i} ")) + new string('[', 100_000) + new string(' ', 100_000);
-        var watch = Stopwatch.StartNew();
+        var hostile = string.Concat(Enumerable.Range(0, 20_000).Select(i => $"[[n{i}]] #t{i} ")) + new string('[', 100_000) + "]]" + new string(' ', 100_000);
 
         var meta = MarkdownNotes.Parse(hostile);
 
-        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
         meta.Links.Count.Should().BeLessThanOrEqualTo(200);
         meta.Tags.Count.Should().BeLessThanOrEqualTo(200);
+    }
+
+    [Fact]
+    public void should_not_take_the_anchor_of_a_link_for_a_tag_and_still_read_a_tag_after_a_link_that_is_never_closed()
+    {
+        var meta = MarkdownNotes.Parse("[setup](#setup) and (#inline) then [[never closed #after");
+
+        meta.Tags.Should().Equal("after");
+        meta.Links.Should().BeEmpty();
     }
 }

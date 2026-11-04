@@ -119,6 +119,8 @@ const en = {
   NotesError: 'Could not read the notes.',
   SelectANote: 'Choose a note in the list.',
   Tags: 'Tags',
+  TagsCut: 'Showing {shown} of {total} tags.',
+  TreeCut: 'Showing {shown} of {total} notes: use the search to find the others.',
   UnresolvedLink: 'No note of this name that you may read',
   Search: 'Search',
   SearchError: 'The search failed.',

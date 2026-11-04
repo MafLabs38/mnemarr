@@ -12,15 +12,18 @@ vi.mock('Notes/mermaid', () => ({
   MAX_DIAGRAM_CHARS: 20_000,
 }));
 
+const S1 = '11111111-1111-4111-8111-111111111111';
+const S2 = '22222222-2222-4222-8222-222222222222';
+
 const entries: NoteEntry[] = [
-  { sourceId: 's1', sourceName: 'cours', path: 'devops/docker.md', title: 'Docker', topic: 'devops' },
-  { sourceId: 's1', sourceName: 'cours', path: 'devops/kubernetes.md', title: 'Kubernetes', topic: 'devops' },
-  { sourceId: 's2', sourceName: 'memoire', path: 'decisions/reseau.md', title: 'Choix du réseau', topic: 'decisions' },
+  { sourceId: S1, sourceName: 'cours', path: 'devops/docker.md', title: 'Docker', topic: 'devops' },
+  { sourceId: S1, sourceName: 'cours', path: 'devops/kubernetes.md', title: 'Kubernetes', topic: 'devops' },
+  { sourceId: S2, sourceName: 'memoire', path: 'decisions/reseau.md', title: 'Choix du réseau', topic: 'decisions' },
 ];
 
 function noteWith(markdown: string, extra: Partial<Note> = {}): Note {
   return {
-    sourceId: 's1',
+    sourceId: S1,
     sourceName: 'cours',
     path: 'devops/docker.md',
     title: 'Docker',
@@ -40,19 +43,19 @@ function server(note: Note, extra: (path: string) => ApiAnswer | undefined = () 
       return special;
     }
     if (method === 'GET' && (path === '/notes' || path.startsWith('/notes?'))) {
-      return { body: entries };
+      return { body: { notes: entries, total: entries.length } };
     }
     if (method === 'GET' && path === '/notes/tags') {
-      return { body: [{ tag: 'infra', count: 2 }] };
+      return { body: { tags: [{ tag: 'infra', count: 2 }], total: 1 } };
     }
-    if (method === 'GET' && path.startsWith('/notes/s1/')) {
+    if (method === 'GET' && path.startsWith(`/notes/${S1}/`)) {
       return { body: note };
     }
     return undefined;
   });
 }
 
-const open = '/notes?source=s1&path=devops%2Fdocker.md';
+const open = `/notes?source=${S1}&path=devops%2Fdocker.md`;
 
 describe('Notes', () => {
   it('lists the notes by source and folder and opens the one in the address', async () => {
@@ -66,7 +69,7 @@ describe('Notes', () => {
     expect(within(tree).getByRole('link', { name: 'Docker' })).toHaveAttribute('aria-current', 'page');
     expect(within(tree).getByRole('link', { name: 'Kubernetes' })).toHaveAttribute(
       'href',
-      '/notes?source=s1&path=devops%2Fkubernetes.md',
+      `/notes?source=${S1}&path=devops%2Fkubernetes.md`,
     );
     expect(await screen.findByText('Une image est faite de couches.')).toBeInTheDocument();
   });
@@ -95,7 +98,7 @@ describe('Notes', () => {
         links: [
           {
             target: 'kubernetes',
-            note: { sourceId: 's1', sourceName: 'cours', path: 'devops/kubernetes.md', title: 'Kubernetes' },
+            note: { sourceId: S1, sourceName: 'cours', path: 'devops/kubernetes.md', title: 'Kubernetes' },
           },
           { target: 'ghost', note: null },
         ],
@@ -107,7 +110,7 @@ describe('Notes', () => {
 
     expect(within(body).getByRole('link', { name: 'kubernetes' })).toHaveAttribute(
       'href',
-      '/notes?source=s1&path=devops%2Fkubernetes.md',
+      `/notes?source=${S1}&path=devops%2Fkubernetes.md`,
     );
     expect(within(body).queryByRole('link', { name: 'the ghost' })).not.toBeInTheDocument();
     expect(within(body).getByText('the ghost')).toHaveAttribute('title', 'No note of this name that you may read');
@@ -117,7 +120,7 @@ describe('Notes', () => {
     server(
       noteWith('# Docker', {
         tags: ['infra'],
-        backlinks: [{ sourceId: 's2', sourceName: 'memoire', path: 'decisions/reseau.md', title: 'Choix du réseau' }],
+        backlinks: [{ sourceId: S2, sourceName: 'memoire', path: 'decisions/reseau.md', title: 'Choix du réseau' }],
       }),
     );
     renderWithProviders(<Notes />, open, readerSession);
@@ -128,7 +131,7 @@ describe('Notes', () => {
     expect(within(tags).getByRole('link', { name: '#infra' })).toHaveAttribute('href', '/notes?tag=infra');
     expect(within(backlinks).getByRole('link', { name: 'Choix du réseau' })).toHaveAttribute(
       'href',
-      '/notes?source=s2&path=decisions%2Freseau.md',
+      `/notes?source=${S2}&path=decisions%2Freseau.md`,
     );
   });
 
@@ -152,14 +155,19 @@ describe('Notes', () => {
 
   describe('treats a note as untrusted text', () => {
     it('does not render raw HTML or run a script', async () => {
-      server(noteWith('<script>window.hacked = true</script>\n\n<img src=x onerror="window.hacked = true">\n\nplain'));
+      server(
+        noteWith(
+          '<script>alert(1)</script>\n\n<img src=x onerror="alert(1)">\n\n<iframe src="https://evil.example"></iframe>\n\n<a href="javascript:alert(1)">raw link</a>\n\nplain',
+        ),
+      );
       const { container } = renderWithProviders(<Notes />, open, readerSession);
 
       await screen.findByText('plain');
 
       expect(container.querySelector('script')).toBeNull();
       expect(container.querySelector('img[src="x"]')).toBeNull();
-      expect((globalThis as unknown as { hacked?: boolean }).hacked).toBeUndefined();
+      expect(container.querySelector('iframe')).toBeNull();
+      expect(screen.queryByRole('link', { name: 'raw link' })).not.toBeInTheDocument();
     });
 
     it('does not make a link of a javascript: or data: address, and opens a web link without giving the opener away', async () => {
@@ -190,7 +198,10 @@ describe('Notes', () => {
       await screen.findByText(/Image not shown: remote/);
 
       const sources = [...container.querySelectorAll('img')].map((image) => image.getAttribute('src'));
-      expect(sources).toEqual(['/api/v1/files/s1/devops/plan.png', '/api/v1/files/s1/devops/img/a.png']);
+      expect(sources).toEqual([
+        `/api/v1/sources/${S1}/files/devops/plan.png`,
+        `/api/v1/sources/${S1}/files/devops/img/a.png`,
+      ]);
       expect(screen.getByText('Image not shown: outside')).toBeInTheDocument();
       expect(screen.getByText('Image not shown: missing.png')).toBeInTheDocument();
     });
@@ -203,7 +214,7 @@ describe('Notes', () => {
 
       expect(screen.getByRole('link', { name: 'next' })).toHaveAttribute(
         'href',
-        '/notes?source=s1&path=devops%2Fkubernetes.md',
+        `/notes?source=${S1}&path=devops%2Fkubernetes.md`,
       );
       expect(screen.queryByRole('link', { name: 'up' })).not.toBeInTheDocument();
       expect(screen.queryByRole('link', { name: 'file' })).not.toBeInTheDocument();
@@ -231,7 +242,7 @@ describe('Notes', () => {
 
     await screen.findByRole('table');
 
-    const callout = container.querySelector('.callout-warning');
+    const callout = container.querySelector('[data-callout="warning"]');
     expect(callout).not.toBeNull();
     expect(within(callout as HTMLElement).getByText('Careful')).toBeInTheDocument();
     expect(within(callout as HTMLElement).getByText('This is a callout.')).toBeInTheDocument();
@@ -248,12 +259,12 @@ describe('Notes', () => {
 
     await screen.findByText('No: it is an encoding.');
 
-    const folded = container.querySelector('details.callout-question');
+    const folded = container.querySelector('details[data-callout="question"]');
     expect(folded).not.toBeNull();
     expect(folded).not.toHaveAttribute('open');
     expect(within(folded as HTMLElement).getByText('echo x | base64').tagName).toBe('CODE');
     expect(within(folded as HTMLElement).getByText('encryption').tagName).toBe('STRONG');
-    expect(container.querySelector('details.callout-info')).toHaveAttribute('open');
+    expect(container.querySelector('details[data-callout="info"]')).toHaveAttribute('open');
   });
 
   describe('Mermaid diagrams', () => {
@@ -286,15 +297,113 @@ describe('Notes', () => {
     });
   });
 
+  it('follows a link written from the folder of its note: the server returns it as the note wrote it', async () => {
+    server(
+      noteWith('Back to [[../01 - Java/Index|the index]] and [[../../outside]].', {
+        links: [
+          {
+            target: '../01 - java/index',
+            note: { sourceId: S1, sourceName: 'cours', path: '01 - Java/Index.md', title: 'Index' },
+          },
+          { target: '../../outside', note: null },
+        ],
+      }),
+    );
+    renderWithProviders(<Notes />, open, readerSession);
+
+    const body = await screen.findByText(/Back to/);
+
+    expect(within(body).getByRole('link', { name: 'the index' })).toHaveAttribute(
+      'href',
+      `/notes?source=${S1}&path=01+-+Java%2FIndex.md`,
+    );
+    expect(within(body).queryByRole('link', { name: '../../outside' })).not.toBeInTheDocument();
+  });
+
+  it('shows the title of a note that has no title of its own, and none twice for one that has', async () => {
+    server(noteWith('No heading here.', { title: 'The file name' }));
+    const first = renderWithProviders(<Notes />, open, readerSession);
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'The file name' })).toBeInTheDocument();
+    first.unmount();
+
+    server(noteWith('# Own title\n\ntext', { title: 'Own title' }));
+    renderWithProviders(<Notes />, open, readerSession);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Own title' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Own title' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['a source that is not an id', '/notes?source=..&path=accounts'],
+    ['a path that climbs', `/notes?source=${S1}&path=..%2F..%2Faccounts`],
+    ['a path with an empty or dot segment', `/notes?source=${S1}&path=a%2F.%2Fb.md`],
+  ])('asks the API for nothing when the address holds %s', async (_name, address) => {
+    const fetchMock = server(noteWith('# x'));
+    renderWithProviders(<Notes />, address, readerSession);
+
+    expect(await screen.findByText('There is no such note, or you may not read it.')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.map((call) => call[0])).not.toContainEqual(expect.stringMatching(/accounts|\.\./));
+  });
+
+  it('says when the list of notes or of tags was cut, and by how much', async () => {
+    stubApi((_method, path) => {
+      if (path === '/notes') {
+        return { body: { notes: entries, total: 10_500 } };
+      }
+      if (path === '/notes/tags') {
+        return { body: { tags: [{ tag: 'infra', count: 2 }], total: 450 } };
+      }
+      return undefined;
+    });
+    renderWithProviders(<Notes />, '/notes', readerSession);
+
+    expect(await screen.findByText('Showing 3 of 10500 notes: use the search to find the others.')).toBeInTheDocument();
+    expect(await screen.findByText('Showing 1 of 450 tags.')).toBeInTheDocument();
+  });
+
+  it('lists the tags of the notes with how many notes carry each', async () => {
+    server(noteWith('# Docker'));
+    renderWithProviders(<Notes />, '/notes', readerSession);
+
+    const tags = await screen.findByRole('region', { name: 'Tags' });
+
+    expect(within(tags).getByRole('link', { name: '#infra 2' })).toHaveAttribute('href', '/notes?tag=infra');
+  });
+
+  it.each([
+    ['has no title, so it is named by its type', '> [!note]\n> Body', 'Note'],
+    ['has several paragraphs', '> [!tip] Title\n> First.\n>\n> Second.', 'Title'],
+  ])('draws a callout that %s', async (_name, markdown, title) => {
+    server(noteWith(markdown));
+    const { container } = renderWithProviders(<Notes />, open, readerSession);
+
+    await screen.findByText(title);
+
+    const callout = container.querySelector('[data-callout]') as HTMLElement;
+    expect(callout).not.toBeNull();
+    expect(within(callout).getByText(title)).toBeInTheDocument();
+  });
+
+  it('draws a callout with no body, and leaves a quote whose type is not a word as a quote', async () => {
+    server(noteWith('> [!info] Just a title\n\n> [!123] not a callout'));
+    const { container } = renderWithProviders(<Notes />, open, readerSession);
+
+    await screen.findByText('Just a title');
+
+    expect(container.querySelectorAll('[data-callout]')).toHaveLength(1);
+    expect(screen.getByText('[!123] not a callout').closest('blockquote')).not.toBeNull();
+  });
+
   it('says when a note does not exist or cannot be read, and when the notes cannot be read', async () => {
-    server(noteWith('# x'), (path) => (path.startsWith('/notes/s1/') ? { status: 404 } : undefined));
+    server(noteWith('# x'), (path) => (path.startsWith(`/notes/${S1}/`) ? { status: 404 } : undefined));
     renderWithProviders(<Notes />, open, readerSession);
 
     expect(await screen.findByText('There is no such note, or you may not read it.')).toBeInTheDocument();
   });
 
   it('says when the notes cannot be listed', async () => {
-    stubApi((_method, path) => (path === '/notes' ? { status: 500 } : { body: [] }));
+    stubApi((_method, path) => (path === '/notes' ? { status: 500 } : { body: { tags: [], total: 0 } }));
     renderWithProviders(<Notes />, '/notes', readerSession);
 
     expect(await screen.findByText('Could not read the notes.')).toBeInTheDocument();

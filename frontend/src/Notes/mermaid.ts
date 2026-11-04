@@ -46,21 +46,41 @@ function themeVariables() {
   };
 }
 
+/**
+ * What a diagram cannot change. A diagram may carry a `%%{init: ...}%%` directive that Mermaid merges into its settings: spacing and
+ * the like are welcome (the courses use them), but the safety of the drawing and the look of the page are not the note's to set.
+ * Mermaid already keeps its own `secure`, `securityLevel`, `startOnLoad` and `maxTextSize`; these join them.
+ */
+export const LOCKED_SETTINGS = [
+  'secure',
+  'securityLevel',
+  'startOnLoad',
+  'maxTextSize',
+  'htmlLabels',
+  'theme',
+  'themeCSS',
+  'themeVariables',
+  'fontFamily',
+  'dompurifyConfig',
+];
+
 function load(): Promise<MermaidApi> {
-  loaded ??= import('mermaid').then(({ default: mermaid }) => {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: 'base',
-      themeVariables: themeVariables(),
-      fontFamily: FONT,
-      maxTextSize: MAX_DIAGRAM_CHARS,
-      htmlLabels: false,
-      flowchart: { htmlLabels: false },
-    });
-    return mermaid;
-  });
+  loaded ??= import('mermaid').then(({ default: mermaid }) => mermaid);
   return loaded;
+}
+
+function settings() {
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict' as const,
+    theme: 'base' as const,
+    themeVariables: themeVariables(),
+    fontFamily: FONT,
+    maxTextSize: MAX_DIAGRAM_CHARS,
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
+    secure: LOCKED_SETTINGS,
+  };
 }
 
 /**
@@ -87,6 +107,8 @@ export function drawDiagram(source: string): Promise<string> {
   }
   const run = async () => {
     const mermaid = await load();
+    // At each drawing, so that a diagram never starts from what the one before it was told to change.
+    mermaid.initialize(settings());
     counter++;
     const { svg } = await mermaid.render(`mermaid-diagram-${counter}`, source);
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized(svg))}`;

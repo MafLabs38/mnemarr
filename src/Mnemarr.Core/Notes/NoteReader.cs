@@ -44,7 +44,10 @@ public sealed class NoteReader
     }
 
     /// <summary>The notes the caller may read, optionally of one source or carrying one tag.</summary>
-    public IReadOnlyList<NoteEntry> List(SourceScope scope, Guid? sourceId, string? tag) => _browser.List(scope, sourceId, tag);
+    public NoteListing List(SourceScope scope, Guid? sourceId, string? tag) => _browser.List(scope, sourceId, tag);
+
+    /// <summary>The tags of the notes the caller may read.</summary>
+    public TagListing Tags(SourceScope scope) => _browser.Tags(scope);
 
     public NoteContent Read(Guid sourceId, string path, SourceScope scope)
     {

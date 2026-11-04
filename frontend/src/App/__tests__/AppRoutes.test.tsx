@@ -15,4 +15,13 @@ describe('AppRoutes', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it('leads nowhere to the notes for somebody who may not read them', async () => {
+    const fetchMock = stubApi(() => ({ status: 403 }));
+
+    renderWithProviders(<AppRoutes />, '/notes', { ...readerSession, permissions: ['search'] });
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

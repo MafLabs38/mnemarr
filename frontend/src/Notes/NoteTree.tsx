@@ -29,14 +29,19 @@ function build(entries: ReadonlyArray<NoteEntry>): Folder {
   return root;
 }
 
-function Contents({ folder, selected, path }: Readonly<{ folder: Folder; selected: string | null; path: string }>) {
+function Contents({
+  folder,
+  selected,
+  path,
+  open,
+}: Readonly<{ folder: Folder; selected: string | null; path: string; open: Set<string> }>) {
   return (
     <ul className={styles.tree}>
       {[...folder.folders.values()].map((child) => (
         <li key={`${path}/${child.name}`}>
-          <details open={hasSelected(child, selected)}>
+          <details open={open.has(`${path}/${child.name}`)}>
             <summary>{child.name}</summary>
-            <Contents folder={child} path={`${path}/${child.name}`} selected={selected} />
+            <Contents folder={child} open={open} path={`${path}/${child.name}`} selected={selected} />
           </details>
         </li>
       ))}
@@ -55,12 +60,14 @@ function Contents({ folder, selected, path }: Readonly<{ folder: Folder; selecte
   );
 }
 
-function hasSelected(folder: Folder, selected: string | null): boolean {
-  return (
-    selected !== null &&
-    (folder.notes.some((n) => `${n.sourceId}/${n.path}` === selected) ||
-      [...folder.folders.values()].some((f) => hasSelected(f, selected)))
-  );
+/** The folders on the way to the chosen note (as `source/folder/subfolder`): the ones that are open when the tree is drawn. */
+function ancestorsOf(selected: string | null): Set<string> {
+  const open = new Set<string>();
+  const parts = selected?.split('/') ?? [];
+  for (let end = 1; end < parts.length; end++) {
+    open.add(parts.slice(0, end).join('/'));
+  }
+  return open;
 }
 
 /** The notes the person may read, as one tree per source and folders inside: what a vault looks like in Obsidian. */
@@ -70,9 +77,12 @@ export default function NoteTree({
 }: Readonly<{ entries: ReadonlyArray<NoteEntry>; selected: string | null }>) {
   const grouped = new Map<string, NoteEntry[]>();
   for (const entry of entries) {
-    grouped.set(entry.sourceId, [...(grouped.get(entry.sourceId) ?? []), entry]);
+    const list = grouped.get(entry.sourceId) ?? [];
+    list.push(entry);
+    grouped.set(entry.sourceId, list);
   }
   const sources = [...grouped.entries()];
+  const open = ancestorsOf(selected);
   if (sources.length === 0) {
     return <p>{translate('NoNotes')}</p>;
   }
@@ -81,7 +91,7 @@ export default function NoteTree({
       {sources.map(([sourceId, notes]) => (
         <section aria-label={notes[0]?.sourceName} key={sourceId}>
           <h2 className={styles.sourceName}>{notes[0]?.sourceName}</h2>
-          <Contents folder={build(notes)} path={sourceId} selected={selected} />
+          <Contents folder={build(notes)} open={open} path={sourceId} selected={selected} />
         </section>
       ))}
     </nav>

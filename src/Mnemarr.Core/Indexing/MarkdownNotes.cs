@@ -2,8 +2,12 @@ using System.Text;
 
 namespace Mnemarr.Core.Indexing;
 
-/// <summary>A <c>[[wikilink]]</c> of a note: the name or path it points at (lower case, no extension, no heading), and its text if it has one.</summary>
-public sealed record WikiLink(string Target, string? Alias);
+/// <summary>A <c>[[wikilink]]</c> of a note: the name or path it points at (lower case, no extension, no heading, written from the root of the source), and its text if it has one.</summary>
+public sealed record WikiLink(string Target, string? Alias, string? Written = null)
+{
+    /// <summary>The target as the note wrote it (normalised, not resolved from its folder): what the interface finds in the text of the note and looks up.</summary>
+    public string AsWritten => Written ?? Target;
+}
 
 /// <summary>What a note says about itself and about other notes: the notes it links to, the files it embeds, and its tags.</summary>
 public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<string> Embeds, IReadOnlyList<string> Tags)
@@ -14,7 +18,7 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
     /// The links as paths from the root of the source. <c>[[../01 - Java/Index]]</c>, written in the note <c>04 - Angular/Basics.md</c>, points at
     /// <c>01 - java/index</c>: Obsidian reads it from the folder of the note. A link that climbs out of the source points at nothing and is dropped.
     /// </summary>
-    public NoteMeta ResolvedFrom(string notePath) => this with { Links = [.. Links.Select(link => (link, MarkdownNotes.FromFolder(notePath, link.Target))).Where(pair => pair.Item2 is not null).Select(pair => pair.link with { Target = pair.Item2! })] };
+    public NoteMeta ResolvedFrom(string notePath) => this with { Links = [.. Links.Select(link => (link, MarkdownNotes.FromFolder(notePath, link.Target))).Where(pair => pair.Item2 is not null).Select(pair => pair.link with { Target = pair.Item2!, Written = pair.link.AsWritten })] };
 }
 
 /// <summary>
@@ -99,7 +103,7 @@ public static class MarkdownNotes
             }
         }
 
-        return parts.Count == 0 ? null : string.Join('/', parts);
+        return parts.Count == 0 ? null : string.Join('/', parts).ToLowerInvariant();
     }
 
     private static List<WikiLink> Distinct(List<WikiLink> links, Func<WikiLink, string> key) =>
@@ -210,7 +214,9 @@ public static class MarkdownNotes
                 var close = line.IndexOf("]]", index + 2, StringComparison.Ordinal);
                 if (close < 0)
                 {
-                    return;
+                    // Never closed: it is text, and what follows on the line (a tag) is still read.
+                    index += 2;
+                    continue;
                 }
 
                 AddLink(line[(index + 2)..close], embedded: index > 0 && line[index - 1] == '!', links, embeds);
@@ -227,9 +233,9 @@ public static class MarkdownNotes
         }
     }
 
-    /// <summary>A <c>#</c> that opens a tag: at the start of the line or after a space or an opening bracket (so not <c>C#</c>, not an anchor).</summary>
+    /// <summary>A <c>#</c> that opens a tag: at the start of the line, after a space or after <c>[</c> (so not <c>C#</c>, not the anchor of a link such as <c>(#setup)</c>).</summary>
     private static bool StartsTag(string line, int index) =>
-        line[index] == '#' && (index == 0 || char.IsWhiteSpace(line[index - 1]) || line[index - 1] is '(' or '[');
+        line[index] == '#' && (index == 0 || char.IsWhiteSpace(line[index - 1]) || line[index - 1] is '[');
 
     /// <summary>Reads the tag that starts at <paramref name="index"/> (if it is one: a number, or a heading's <c>#</c>, is not) and returns where the line goes on.</summary>
     private static int ReadTag(string line, int index, List<string> tags)
