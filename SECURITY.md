@@ -14,7 +14,7 @@ Until 1.0, only the latest release receives security fixes.
 
 ## Security model (summary)
 
-Mnemarr is at the foundation stage: it has no memory feature yet. It **does authenticate**: every call but the probes, the interface's shell and the sign-in call needs a session or a key.
+Mnemarr is at the foundation stage: it reads folders of Markdown notes and searches them, and does not write notes yet. It **does authenticate**: every call but the probes, the interface's shell and the sign-in call needs a session or a key.
 
 **True today**
 

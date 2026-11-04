@@ -48,7 +48,13 @@ public sealed partial class SourceIndexingService : BackgroundService
     public async Task ScanAllAsync(CancellationToken cancellationToken)
     {
         var declared = DeclaredSources();
-        _indexer.Retain([.. declared.Select(source => source.Id)]);
+        var ids = declared.Select(source => source.Id).ToHashSet();
+        _indexer.Retain(ids);
+        foreach (var forgotten in _failures.Keys.Where(id => !ids.Contains(id)).ToList())
+        {
+            _failures.Remove(forgotten);
+        }
+
         foreach (var source in declared)
         {
             try
