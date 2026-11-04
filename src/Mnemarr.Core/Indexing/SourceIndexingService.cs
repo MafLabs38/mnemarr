@@ -17,6 +17,7 @@ public sealed partial class SourceIndexingService : BackgroundService
     private readonly IOptions<IndexingOptions> _options;
     private readonly TimeProvider _clock;
     private readonly ILogger<SourceIndexingService> _logger;
+    private readonly Dictionary<Guid, string> _failures = [];
 
     public SourceIndexingService(
         ISourceStore sources, SourceIndexer indexer, IOptions<IndexingOptions> options, TimeProvider clock, ILogger<SourceIndexingService> logger)
@@ -46,11 +47,14 @@ public sealed partial class SourceIndexingService : BackgroundService
     /// <summary>One pass over every source. Public so that a test can run it.</summary>
     public async Task ScanAllAsync(CancellationToken cancellationToken)
     {
-        foreach (var source in DeclaredSources())
+        var declared = DeclaredSources();
+        _indexer.Retain([.. declared.Select(source => source.Id)]);
+        foreach (var source in declared)
         {
             try
             {
                 var report = await _indexer.IndexAsync(source, cancellationToken);
+                _failures.Remove(source.Id);
                 if (report.Added + report.Updated + report.Removed > 0)
                 {
                     LogIndexed(source.Name, report.Added, report.Updated, report.Removed);
@@ -58,7 +62,13 @@ public sealed partial class SourceIndexingService : BackgroundService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                LogFailed(source.Name, ex);
+                // A state that lasts (a folder that is not mounted) is said once, then again when it changes or ends: not every interval.
+                var what = $"{ex.GetType().Name}: {ex.Message}";
+                if (!_failures.TryGetValue(source.Id, out var last) || last != what)
+                {
+                    _failures[source.Id] = what;
+                    LogFailed(source.Name, ex);
+                }
             }
         }
     }

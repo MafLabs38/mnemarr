@@ -26,13 +26,13 @@ public sealed class SqliteNoteIndex : INoteIndex
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT path, content_hash, chunker FROM notes WHERE source_id = $source";
+        command.CommandText = "SELECT path, content_hash, chunker, size, modified_ticks FROM notes WHERE source_id = $source";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
         using var reader = command.ExecuteReader();
         var notes = new Dictionary<string, NoteState>(StringComparer.Ordinal);
         while (reader.Read())
         {
-            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2));
+            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2), reader.GetInt64(3), reader.GetInt64(4));
         }
 
         return notes;
@@ -49,8 +49,8 @@ public sealed class SqliteNoteIndex : INoteIndex
         {
             insert.Transaction = transaction;
             insert.CommandText = """
-                INSERT INTO notes (source_id, path, topic, title, content_hash, chunker, indexed_at)
-                VALUES ($source, $path, $topic, $title, $hash, $chunker, $at)
+                INSERT INTO notes (source_id, path, topic, title, content_hash, chunker, size, modified_ticks, indexed_at)
+                VALUES ($source, $path, $topic, $title, $hash, $chunker, $size, $modified, $at)
                 RETURNING id
                 """;
             insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
@@ -59,6 +59,8 @@ public sealed class SqliteNoteIndex : INoteIndex
             insert.Parameters.AddWithValue("$title", title);
             insert.Parameters.AddWithValue("$hash", contentHash);
             insert.Parameters.AddWithValue("$chunker", chunker);
+            insert.Parameters.AddWithValue("$size", file.Length);
+            insert.Parameters.AddWithValue("$modified", file.ModifiedTicks);
             insert.Parameters.AddWithValue("$at", StorageText.Format(at));
             noteId = (long)insert.ExecuteScalar()!;
         }
@@ -79,6 +81,18 @@ public sealed class SqliteNoteIndex : INoteIndex
         }
 
         transaction.Commit();
+    }
+
+    public void Touch(Guid sourceId, ScannedFile file)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE notes SET size = $size, modified_ticks = $modified WHERE source_id = $source AND path = $path";
+        command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        command.Parameters.AddWithValue("$path", file.RelativePath);
+        command.Parameters.AddWithValue("$size", file.Length);
+        command.Parameters.AddWithValue("$modified", file.ModifiedTicks);
+        command.ExecuteNonQuery();
     }
 
     public void Remove(Guid sourceId, string path)

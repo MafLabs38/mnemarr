@@ -49,6 +49,19 @@ public sealed class SourceIndexingServiceFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_forget_the_outcome_of_a_source_that_is_not_declared_any_more()
+    {
+        var gone = Declare("a-broken", Path.Combine(_workspace.SourcesFolder, "gone"));
+        await _subject.ScanAllAsync(TestContext.Current.CancellationToken);
+        _outcomes.Of(gone.Id).Should().NotBeNull();
+
+        _sources.Remove(gone.Id);
+        await _subject.ScanAllAsync(TestContext.Current.CancellationToken);
+
+        _outcomes.Of(gone.Id).Should().BeNull();
+    }
+
+    [Fact]
     public async Task should_scan_at_start_then_again_when_the_interval_has_passed_and_stop_when_asked()
     {
         var folder = _workspace.Folder("courses");

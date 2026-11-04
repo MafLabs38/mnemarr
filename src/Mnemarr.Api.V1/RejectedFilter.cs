@@ -7,7 +7,7 @@ using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Api.V1;
 
-/// <summary>Turns a refused account operation into a problem document with the right status, instead of a 500.</summary>
+/// <summary>Turns a refused operation (a <see cref="Mnemarr.Core.RejectedException"/>, from any vertical) into a problem document with the right status, instead of a 500.</summary>
 public sealed class RejectedFilter : IExceptionFilter
 {
     public void OnException(ExceptionContext context)

@@ -1,7 +1,7 @@
 namespace Mnemarr.Core.Indexing;
 
-/// <summary>A Markdown file of a source: its path from the root of the source, always with <c>/</c>, and where it is.</summary>
-public sealed record ScannedFile(string RelativePath, string FullPath)
+/// <summary>A Markdown file of a source: its path from the root of the source, always with <c>/</c>, where it is, and its size and last write time when it was listed.</summary>
+public sealed record ScannedFile(string RelativePath, string FullPath, long Length = 0, long ModifiedTicks = 0)
 {
     /// <summary>The first folder of the path: the subject of a note in a vault organised by folders ("" at the root).</summary>
     public string Topic
@@ -46,6 +46,6 @@ public static class MarkdownFileScanner
         return new DirectoryInfo(root)
             .EnumerateFiles("*.md", options)
             .Where(IsNote)
-            .Select(file => new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName));
+            .Select(file => new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName, file.Length, file.LastWriteTimeUtc.Ticks));
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Mnemarr.Core.Sources;
@@ -9,7 +10,7 @@ public sealed record IndexReport(int Added, int Updated, int Removed, int Unchan
 
 /// <summary>
 /// Brings the index of a source in line with its folder (F-IDX-01): a note whose content hash and cut did not change is left alone,
-/// a new or changed one is cut again and replaced, one that has gone is removed. Only one pass runs at a time. The folder is checked
+/// a new or changed one is cut again and replaced, one that has gone is removed. Only one pass runs at a time for a source, so that a source that hangs (a share that does not answer) holds back only itself. The folder is checked
 /// against the roots before every pass, and how the pass ended is kept for the source.
 /// </summary>
 public sealed class SourceIndexer
@@ -18,7 +19,7 @@ public sealed class SourceIndexer
     private readonly SourcePaths _paths;
     private readonly ScanOutcomes _outcomes;
     private readonly TimeProvider _clock;
-    private readonly SemaphoreSlim _onePass = new(1, 1);
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _passes = new();
 
     public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock)
     {
@@ -34,9 +35,10 @@ public sealed class SourceIndexer
     /// <param name="cancellationToken">Stops the pass.</param>
     public async Task<IndexReport> IndexAsync(Source source, bool rebuild, bool waitForTurn, CancellationToken cancellationToken)
     {
-        if (!await _onePass.WaitAsync(waitForTurn ? Timeout.InfiniteTimeSpan : TimeSpan.Zero, cancellationToken))
+        var onePass = _passes.GetOrAdd(source.Id, _ => new SemaphoreSlim(1, 1));
+        if (!await onePass.WaitAsync(waitForTurn ? Timeout.InfiniteTimeSpan : TimeSpan.Zero, cancellationToken))
         {
-            throw new RejectedException(Problem.Busy, "A pass over the sources is running: try again in a moment.", TimeSpan.FromSeconds(5));
+            throw new RejectedException(Problem.Busy, "A pass over this source is running: try again in a moment.", TimeSpan.FromSeconds(5));
         }
 
         try
@@ -56,13 +58,23 @@ public sealed class SourceIndexer
         }
         finally
         {
-            _onePass.Release();
+            onePass.Release();
         }
     }
 
     public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, waitForTurn: true, cancellationToken);
 
     public Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken) => IndexAsync(source, rebuild, waitForTurn: true, cancellationToken);
+
+    /// <summary>Forgets what is kept of the sources that are not declared any more: how their last pass ended, and their lock.</summary>
+    public void Retain(IReadOnlyCollection<Guid> declared)
+    {
+        _outcomes.Retain(declared);
+        foreach (var id in _passes.Keys.Where(id => !declared.Contains(id)))
+        {
+            _passes.TryRemove(id, out _);
+        }
+    }
 
     /// <summary>The folder is still one a source may be in, and is still there: the roots can be narrowed, and a folder can go or become a link, after the declaration.</summary>
     private void CheckFolder(Source source)
@@ -92,7 +104,7 @@ public sealed class SourceIndexer
     {
         var known = _index.Notes(source.Id);
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        int added = 0, updated = 0, unchanged = 0;
+        var counts = new Dictionary<FileResult, int>();
 
         foreach (var file in MarkdownFileScanner.Scan(source.Path))
         {
@@ -103,36 +115,14 @@ public sealed class SourceIndexer
                 continue;
             }
 
-            if (await ReadAsync(file, cancellationToken) is not { } bytes)
-            {
-                // Gone since the scan: it is removed below. One that is there but cannot be read keeps what it had.
-                if (File.Exists(file.FullPath))
-                {
-                    seen.Add(file.RelativePath);
-                }
-
-                continue;
-            }
-
-            seen.Add(file.RelativePath);
-            var hash = Convert.ToHexString(SHA256.HashData(bytes));
             known.TryGetValue(file.RelativePath, out var previous);
-            if (!rebuild && previous is { } state && state.ContentHash == hash && state.Chunker == MarkdownChunker.Version)
+            var result = await IndexFileAsync(source, file, previous, rebuild, cancellationToken);
+            if (result != FileResult.Gone)
             {
-                unchanged++;
-                continue;
+                seen.Add(file.RelativePath);
             }
 
-            var text = Decode(bytes);
-            _index.Upsert(source.Id, file, MarkdownChunker.Title(text, file.RelativePath), hash, MarkdownChunker.Version, MarkdownChunker.Split(text), _clock.GetUtcNow());
-            if (previous is null)
-            {
-                added++;
-            }
-            else
-            {
-                updated++;
-            }
+            counts[result] = counts.GetValueOrDefault(result) + 1;
         }
 
         var removed = 0;
@@ -142,7 +132,45 @@ public sealed class SourceIndexer
             removed++;
         }
 
-        return new IndexReport(added, updated, removed, unchanged);
+        return new IndexReport(counts.GetValueOrDefault(FileResult.Added), counts.GetValueOrDefault(FileResult.Updated), removed, counts.GetValueOrDefault(FileResult.Unchanged));
+    }
+
+    private enum FileResult
+    {
+        /// <summary>Gone since the scan: it is removed from the index.</summary>
+        Gone,
+
+        /// <summary>There, but it cannot be read now: it keeps what it had.</summary>
+        Kept,
+        Unchanged,
+        Added,
+        Updated,
+    }
+
+    private async Task<FileResult> IndexFileAsync(Source source, ScannedFile file, NoteState? previous, bool rebuild, CancellationToken cancellationToken)
+    {
+        if (!rebuild && previous is { } same && same.Chunker == MarkdownChunker.Version && same.Length == file.Length && same.ModifiedTicks == file.ModifiedTicks)
+        {
+            // Same size and same time as when it was read: not read again, so that a pass costs what changed and not the size of the vault.
+            return FileResult.Unchanged;
+        }
+
+        if (await ReadAsync(file, cancellationToken) is not { } bytes)
+        {
+            return File.Exists(file.FullPath) ? FileResult.Kept : FileResult.Gone;
+        }
+
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        if (!rebuild && previous is { } state && state.ContentHash == hash && state.Chunker == MarkdownChunker.Version)
+        {
+            // Touched, not changed: the content is what was cut, so only what the next pass compares with is brought up to date.
+            _index.Touch(source.Id, file);
+            return FileResult.Unchanged;
+        }
+
+        var text = Decode(bytes);
+        _index.Upsert(source.Id, file, MarkdownChunker.Title(text, file.RelativePath), hash, MarkdownChunker.Version, MarkdownChunker.Split(text), _clock.GetUtcNow());
+        return previous is null ? FileResult.Added : FileResult.Updated;
     }
 
     /// <summary>

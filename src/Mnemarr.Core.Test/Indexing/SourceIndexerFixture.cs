@@ -302,6 +302,71 @@ public sealed class SourceIndexerFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_not_read_again_a_note_whose_size_and_time_did_not_change_unless_asked_to_rebuild()
+    {
+        var folder = _workspace.Folder("courses");
+        var file = Path.Combine(folder, "a.md");
+        TestWorkspace.Write(folder, "a.md", "# A\nfirstword");
+        var source = Declare("courses", folder);
+        await _subject.IndexAsync(source, Token);
+        var written = File.GetLastWriteTimeUtc(file);
+
+        File.WriteAllText(file, "# A\nsecondwrd");
+        File.SetLastWriteTimeUtc(file, written);
+        var skipped = await _subject.IndexAsync(source, Token);
+        var rebuilt = await _subject.IndexAsync(source, rebuild: true, Token);
+
+        skipped.Should().Be(new IndexReport(0, 0, 0, Unchanged: 1), "the size and the time are those of the note that was cut: it is not read");
+        rebuilt.Updated.Should().Be(1);
+        _index.Search(new SearchRequest("secondwrd"), SourceScope.All).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task should_remember_the_new_time_of_a_note_that_was_touched_without_changing_so_that_it_is_read_once()
+    {
+        var folder = _workspace.Folder("courses");
+        var file = Path.Combine(folder, "a.md");
+        TestWorkspace.Write(folder, "a.md", "# A\nfirstword");
+        var source = Declare("courses", folder);
+        await _subject.IndexAsync(source, Token);
+        using var gated = new GatedIndex(_index);
+        gated.Release.Set();
+        var subject = new SourceIndexer(gated, _workspace.Paths(), _outcomes, _clock);
+
+        var touchedAt = File.GetLastWriteTimeUtc(file).AddHours(1);
+        File.SetLastWriteTimeUtc(file, touchedAt);
+        var touched = await subject.IndexAsync(source, Token);
+        File.WriteAllText(file, "# A\nsecondwrd");
+        File.SetLastWriteTimeUtc(file, touchedAt);
+        var again = await subject.IndexAsync(source, Token);
+
+        touched.Unchanged.Should().Be(1);
+        gated.Touched.Should().Be(1);
+        again.Unchanged.Should().Be(1, "the touched time was kept: the same time and size are not read again");
+    }
+
+    [Fact]
+    public async Task should_let_a_source_be_indexed_while_the_pass_over_another_one_is_running()
+    {
+        var running = _workspace.Folder("busy");
+        TestWorkspace.Write(running, "a.md", "# A\ntext");
+        var busy = Declare("busy", running);
+        var idle = Declare("idle", _workspace.Folder("idle"));
+        using var gated = new GatedIndex(_index);
+        var subject = new SourceIndexer(gated, _workspace.Paths(), _outcomes, _clock);
+        var pass = Task.Run(() => subject.IndexAsync(busy, Token), Token);
+        gated.Entered.Wait(Token);
+
+        var other = await subject.IndexAsync(idle, rebuild: false, waitForTurn: false, Token);
+        var same = () => subject.IndexAsync(busy, rebuild: false, waitForTurn: false, Token);
+
+        other.Should().Be(new IndexReport(0, 0, 0, 0));
+        (await same.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Busy);
+        gated.Release.Set();
+        await pass;
+    }
+
+    [Fact]
     public async Task should_record_a_pass_that_fails_in_the_index_so_that_the_source_does_not_look_healthy()
     {
         var folder = _workspace.Folder("courses");
@@ -380,6 +445,8 @@ public sealed class SourceIndexerFixture : IDisposable
 
         public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at) => throw new InvalidOperationException();
 
+        public void Touch(Guid sourceId, ScannedFile file) => throw new InvalidOperationException();
+
         public void Remove(Guid sourceId, string path) => throw new InvalidOperationException();
 
         public IndexCounts Counts(Guid sourceId) => throw new InvalidOperationException();
@@ -407,6 +474,14 @@ public sealed class SourceIndexerFixture : IDisposable
             Entered.Set();
             Release.Wait(TimeSpan.FromSeconds(10));
             inner.Upsert(sourceId, file, title, contentHash, chunker, chunks, at);
+        }
+
+        public int Touched { get; private set; }
+
+        public void Touch(Guid sourceId, ScannedFile file)
+        {
+            Touched++;
+            inner.Touch(sourceId, file);
         }
 
         public void Remove(Guid sourceId, string path) => inner.Remove(sourceId, path);

@@ -26,5 +26,14 @@ public sealed class ScanOutcomes
 
     public void Succeeded(Guid sourceId, DateTimeOffset at) => _outcomes[sourceId] = new ScanOutcome(at, null);
 
+    /// <summary>Forgets the outcome of every source that is not declared any more.</summary>
+    public void Retain(IReadOnlyCollection<Guid> declared)
+    {
+        foreach (var id in _outcomes.Keys.Where(id => !declared.Contains(id)))
+        {
+            _outcomes.TryRemove(id, out _);
+        }
+    }
+
     public void Failed(Guid sourceId, DateTimeOffset at, string error) => _outcomes[sourceId] = new ScanOutcome(at, error);
 }

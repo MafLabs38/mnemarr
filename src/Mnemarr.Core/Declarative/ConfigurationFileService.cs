@@ -121,8 +121,13 @@ public sealed partial class ConfigurationFileService : BackgroundService
 
     private void Fail(string reason)
     {
+        // A file that stays wrong is said once, not at every look.
+        var repeated = _state.Error == reason;
         _state.Failed(reason);
-        LogFailed(reason);
+        if (!repeated)
+        {
+            LogFailed(reason);
+        }
     }
 
     /// <summary>One look, and false when the host asked to stop during it: stopping is not a failure.</summary>
