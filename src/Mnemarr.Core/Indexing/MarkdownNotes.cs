@@ -8,6 +8,16 @@ public sealed record WikiLink(string Target, string? Alias);
 /// <summary>A <c>[[link]]</c> or <c>![[embed]]</c> found in the text of a note: what is between the brackets, and whether it was an embed.</summary>
 public sealed record WikiToken(string Inner, bool Embedded);
 
+/// <summary>What a <c>[[...]]</c> or <c>![[...]]</c> is: an embedded image (the file it names), a link to a note (its normalised target and its text), or nothing the index keeps.</summary>
+public abstract record WikiKind
+{
+    public sealed record Image(string File) : WikiKind;
+
+    public sealed record Note(string Target, string Text) : WikiKind;
+
+    public sealed record Nothing : WikiKind;
+}
+
 /// <summary>What a note says about itself and about other notes: the notes it links to, the files it embeds, and its tags.</summary>
 public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<string> Embeds, IReadOnlyList<string> Tags)
 {
@@ -346,24 +356,41 @@ public static class MarkdownNotes
         return ((bar >= 0 ? inner[..bar] : inner).Trim(), bar >= 0 ? inner[(bar + 1)..].Trim() : null);
     }
 
-    private static void AddLink(string inner, bool embedded, List<WikiLink> links, List<string> embeds)
+    /// <summary>
+    /// What a token is, the one rule that the index and what is shown both follow: an embedded file of an image format is an image; anything else
+    /// (a link, or a note embedded in place) is a link to a note if it names one; else nothing.
+    /// </summary>
+    public static WikiKind Classify(WikiToken token)
     {
-        var (target, alias) = Split(inner);
-        if (embedded && ImageFormats.Is(FileOf(target)))
+        var (target, alias) = Split(token.Inner);
+        var file = FileOf(target);
+        if (token.Embedded && ImageFormats.Is(file))
         {
-            var file = FileOf(target);
-            if (file.Length is > 0 and <= MaxLength && embeds.Count < MaxItems * 2)
-            {
-                embeds.Add(file);
-            }
-
-            return;
+            return file.Length is > 0 and <= MaxLength ? new WikiKind.Image(file) : new WikiKind.Nothing();
         }
 
-        // Anything else that is embedded (`![[Other note]]`) is a note shown in place: for the index it is a link, and the embedding note is a backlink of it.
-        if (NormalizeTarget(target) is { } normalized && links.Count < MaxItems * 2)
+        if (NormalizeTarget(target) is not { } normalized)
         {
-            links.Add(new WikiLink(normalized, string.IsNullOrEmpty(alias) ? null : alias[..Math.Min(alias.Length, MaxLength)]));
+            return new WikiKind.Nothing();
+        }
+
+        var text = string.IsNullOrEmpty(alias) ? target : alias;
+        return new WikiKind.Note(normalized, text);
+    }
+
+    private static void AddLink(string inner, bool embedded, List<WikiLink> links, List<string> embeds)
+    {
+        var (_, alias) = Split(inner);
+        switch (Classify(new WikiToken(inner, embedded)))
+        {
+            case WikiKind.Image image when embeds.Count < MaxItems * 2:
+                embeds.Add(image.File);
+                break;
+            case WikiKind.Note note when links.Count < MaxItems * 2:
+                links.Add(new WikiLink(note.Target, string.IsNullOrEmpty(alias) ? null : alias[..Math.Min(alias.Length, MaxLength)]));
+                break;
+            default:
+                break;
         }
     }
 

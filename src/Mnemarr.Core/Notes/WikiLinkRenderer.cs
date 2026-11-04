@@ -56,41 +56,36 @@ internal sealed class WikiLinkRenderer
             return null;
         }
 
-        var (target, alias) = MarkdownNotes.Split(token.Inner);
-        var file = MarkdownNotes.FileOf(target);
-        if (token.Embedded && ImageFormats.Is(file))
+        switch (MarkdownNotes.Classify(token))
         {
-            if (_answers is null)
-            {
-                _embeds.Add(file);
+            case WikiKind.Image image:
+                if (_answers is null)
+                {
+                    _embeds.Add(image.File);
+                    return null;
+                }
+
+                var path = _answers.Embeds.GetValueOrDefault(image.File);
+                return $"![{Escape(image.File)}]({(path is null ? UnresolvedScheme : FileScheme + Uri.EscapeDataString(path))})";
+            case WikiKind.Note note:
+                // A note shown in place (`![[Other note]]`) is a link here, as it is for the index.
+                var target = NotePaths.FromFolderTarget(_notePath, note.Target);
+                if (_answers is null)
+                {
+                    if (target is not null)
+                    {
+                        _targets.Add(target);
+                    }
+
+                    return null;
+                }
+
+                return target is not null && _answers.Targets.GetValueOrDefault(target) is { } found
+                    ? $"[{Escape(note.Text)}]({NoteScheme}{found.SourceId}/{Uri.EscapeDataString(found.Path)})"
+                    : $"[{Escape(note.Text)}]({UnresolvedScheme})";
+            default:
                 return null;
-            }
-
-            var image = _answers.Embeds[file];
-            return $"![{Escape(file)}]({(image is null ? UnresolvedScheme : FileScheme + Uri.EscapeDataString(image))})";
         }
-
-        // Anything else that is embedded is a note shown in place: it is a link here, as it is for the index.
-        if (MarkdownNotes.NormalizeTarget(target) is not { } normalized)
-        {
-            return null;
-        }
-
-        var resolved = NotePaths.FromFolderTarget(_notePath, normalized);
-        if (_answers is null)
-        {
-            if (resolved is not null)
-            {
-                _targets.Add(resolved);
-            }
-
-            return null;
-        }
-
-        var text = string.IsNullOrEmpty(alias) ? target : alias;
-        return resolved is not null && _answers.Targets[resolved] is { } note
-            ? $"[{Escape(text)}]({NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)})"
-            : $"[{Escape(text)}]({UnresolvedScheme})";
     }
 
     /// <summary>
@@ -118,7 +113,7 @@ internal sealed class WikiLinkRenderer
 
         if (isNote)
         {
-            return _answers.NotePaths[path] is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}" : UnresolvedScheme;
+            return _answers.NotePaths.GetValueOrDefault(path) is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}" : UnresolvedScheme;
         }
 
         return _answers.ImagePaths.Contains(path) ? FileScheme + Uri.EscapeDataString(path) : UnresolvedScheme;
