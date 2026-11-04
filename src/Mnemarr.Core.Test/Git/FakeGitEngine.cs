@@ -12,10 +12,19 @@ internal sealed class FakeGitEngine : IGitEngine
     /// <summary>Called inside the sync, to hold it while a test looks at what is going on around it.</summary>
     public Action? During { get; set; }
 
+    /// <summary>The engine waits for its token to be cancelled, as a host that answers slowly does, then stops.</summary>
+    public bool Hang { get; set; }
+
     public GitSyncResult Sync(string url, string? branch, string folder, GitSecret? secret, CancellationToken cancellationToken)
     {
         Calls.Add((url, branch, folder, secret));
         During?.Invoke();
+        if (Hang)
+        {
+            cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
         return Result();
     }
 }

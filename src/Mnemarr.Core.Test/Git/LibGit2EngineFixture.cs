@@ -45,8 +45,10 @@ public sealed class LibGit2EngineFixture : IDisposable
     {
         _origin.CreateBranch("drafts");
 
-        using var repository = new Repository(Sync("drafts").Action == GitSyncAction.Cloned ? Checkout : throw new InvalidOperationException());
+        var result = Sync("drafts");
 
+        result.Action.Should().Be(GitSyncAction.Cloned);
+        using var repository = new Repository(Checkout);
         repository.Head.FriendlyName.Should().Be("drafts");
     }
 
@@ -122,6 +124,50 @@ public sealed class LibGit2EngineFixture : IDisposable
     }
 
     [Fact]
+    public void should_refuse_a_checkout_that_has_a_file_that_is_not_tracked_and_keep_it()
+    {
+        Sync();
+        _origin.Commit("Other.md", "# other");
+        File.WriteAllText(Path.Combine(Checkout, "Mine.md"), "# mine, never committed");
+
+        var failure = Assert.Throws<GitSyncException>(() => Sync());
+
+        failure.Code.Should().Be(GitFailure.LocalChanges);
+        File.ReadAllText(Path.Combine(Checkout, "Mine.md")).Should().Be("# mine, never committed");
+    }
+
+    [Fact]
+    public void should_move_a_checkout_to_the_branch_the_source_now_asks_for_and_back_without_losing_either()
+    {
+        var main = _origin.Branch;
+        var drafts = _origin.CommitOnNewBranch("drafts", "Draft.md", "# draft");
+        var mainTip = Sync().Head;
+
+        var toDrafts = Sync("drafts");
+        var backToMain = Sync(main);
+
+        toDrafts.Should().Be(new GitSyncResult(GitSyncAction.Updated, drafts));
+        File.Exists(Path.Combine(Checkout, "Draft.md")).Should().BeFalse("back on the main branch, the draft is not in the working tree");
+        backToMain.Should().Be(new GitSyncResult(GitSyncAction.Updated, mainTip));
+        using var repository = new Repository(Checkout);
+        repository.Branches[main]!.Tip.Sha.Should().Be(mainTip, "the main branch was not moved to the draft's commits");
+        repository.Branches["drafts"]!.Tip.Sha.Should().Be(drafts);
+    }
+
+    [Fact]
+    public void should_not_change_branch_while_the_checkout_has_changes()
+    {
+        _origin.CommitOnNewBranch("drafts", "Draft.md", "# draft");
+        Sync();
+        File.WriteAllText(Path.Combine(Checkout, "README.md"), "# edited by hand");
+
+        var failure = Assert.Throws<GitSyncException>(() => Sync("drafts"));
+
+        failure.Code.Should().Be(GitFailure.LocalChanges);
+        File.ReadAllText(Path.Combine(Checkout, "README.md")).Should().Be("# edited by hand");
+    }
+
+    [Fact]
     public void should_not_touch_a_checkout_that_is_ahead_of_the_remote()
     {
         Sync();
@@ -178,7 +224,7 @@ public sealed class LibGit2EngineFixture : IDisposable
 
         var failure = Assert.Throws<GitSyncException>(() => Sync(url: Path.Combine(_workspace.Root, "missing")));
 
-        failure.Code.Should().BeOneOf(GitFailure.RepositoryNotFound, GitFailure.Failed);
+        failure.Code.Should().Be(GitFailure.Failed, "libgit2 has no HTTP answer for a path that is not there; the 404 mapping is covered by its own theory");
         Directory.EnumerateFileSystemEntries(Checkout).Should().BeEmpty();
     }
 

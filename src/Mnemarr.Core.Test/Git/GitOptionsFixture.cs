@@ -11,7 +11,6 @@ public sealed class GitOptionsFixture
     public void should_accept_the_defaults()
     {
         Validate(new GitOptions()).Succeeded.Should().BeTrue();
-        new GitOptions().SyncIntervalSeconds.Should().Be(300);
     }
 
     [Theory]
@@ -24,6 +23,17 @@ public sealed class GitOptionsFixture
 
         result.Failed.Should().BeTrue();
         result.FailureMessage.Should().Contain("MNEMARR__GIT__SYNCINTERVALSECONDS");
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(3601)]
+    public void should_refuse_a_timeout_out_of_range_and_name_the_setting(int seconds)
+    {
+        var result = Validate(new GitOptions { SyncTimeoutSeconds = seconds });
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("MNEMARR__GIT__SYNCTIMEOUTSECONDS");
     }
 
     [Theory]
@@ -53,21 +63,17 @@ public sealed class GitOptionsFixture
     }
 
     [Theory]
-    [InlineData("", "t", null)]
-    [InlineData("github.example/x", "t", null)]
-    [InlineData("github.example", null, null)]
-    [InlineData("github.example", "t", "/run/secrets/token")]
-    [InlineData("github.example", null, "relative/token")]
-    public void should_refuse_a_credential_that_has_no_host_no_secret_two_secrets_or_a_relative_file_and_never_print_a_token(string host, string? token, string? file)
+    [InlineData("", "t", null, "Host")]
+    [InlineData("github.example/x", "t", null, "Host")]
+    [InlineData("github.example", null, null, "a Token or a TokenFile")]
+    [InlineData("github.example", "tok-must-not-leak", "/run/secrets/token", "and not both")]
+    [InlineData("github.example", null, "relative/token", "absolute path")]
+    public void should_refuse_a_credential_that_has_no_host_no_secret_two_secrets_or_a_relative_file_and_never_print_a_token(string host, string? token, string? file, string reason)
     {
         var result = Validate(new GitOptions { Credentials = { ["a"] = new GitCredentialOptions { Host = host, Token = token, TokenFile = file } } });
 
         result.Failed.Should().BeTrue();
-        result.FailureMessage.Should().Contain("Git:Credentials:a");
-        if (token is not null)
-        {
-            result.FailureMessage.Should().NotContain(token + "\n");
-        }
+        result.FailureMessage.Should().Contain("Git:Credentials:a").And.Contain(reason).And.NotContain("tok-must-not-leak");
     }
 }
 

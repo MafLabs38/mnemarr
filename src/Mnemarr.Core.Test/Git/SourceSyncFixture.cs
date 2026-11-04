@@ -15,14 +15,15 @@ public sealed class SourceSyncFixture : IDisposable
     private readonly SourceLocks _locks = new();
     private readonly SqliteNoteIndex _index;
     private readonly SourceSync _subject;
-    private readonly GitOptions _options = new() { Credentials = { ["github"] = new GitCredentialOptions { Host = "github.example", Token = "secret-token" } } };
+    private readonly GitOptions _options = new() { Hosts = ["github.example"], Credentials = { ["github"] = new GitCredentialOptions { Host = "github.example", Token = "secret-token" } } };
 
     public SourceSyncFixture()
     {
         _index = new SqliteNoteIndex(_workspace.Database);
         var paths = _workspace.Paths();
         var indexer = new SourceIndexer(_index, paths, new ScanOutcomes(), _clock, _locks);
-        _subject = new SourceSync(_engine, new GitCredentials(Options.Create(_options)), indexer, paths, _locks, _outcomes, _clock);
+        var wrapped = Options.Create(_options);
+        _subject = new SourceSync(_engine, new GitPolicy(wrapped, new GitCredentials(wrapped)), indexer, paths, _locks, _outcomes, _clock);
     }
 
     public void Dispose() => _workspace.Dispose();
@@ -139,6 +140,7 @@ public sealed class SourceSyncFixture : IDisposable
     [Fact]
     public async Task should_not_send_a_credential_to_a_host_that_is_not_its_own_even_if_a_row_says_so()
     {
+        _options.Hosts = ["github.example", "elsewhere.example"];
         var source = Git(_workspace.Folder("notes"), url: "https://elsewhere.example/org/notes");
 
         await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
@@ -159,7 +161,7 @@ public sealed class SourceSyncFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_refuse_a_folder_that_is_outside_the_roots_now_or_an_address_that_is_not_https()
+    public async Task should_refuse_a_folder_that_is_outside_the_roots_now_and_an_address_that_is_not_https()
     {
         var outside = Git(Path.Combine(Path.GetTempPath(), "outside-of-the-roots"));
         var plain = Git(_workspace.Folder("notes"), url: "http://github.example/org/notes", name: "plain");
@@ -169,7 +171,7 @@ public sealed class SourceSyncFixture : IDisposable
 
         _engine.Calls.Should().BeEmpty();
         _outcomes.Of(outside.Id)!.Error.Should().Be(GitFailure.OutsideRoots);
-        _outcomes.Of(plain.Id)!.Error.Should().Be(GitFailure.OutsideRoots);
+        _outcomes.Of(plain.Id)!.Error.Should().Be(GitFailure.HostNotAllowed);
     }
 
     [Fact]
@@ -220,14 +222,86 @@ public sealed class SourceSyncFixture : IDisposable
         _locks.Of(source.Id).CurrentCount.Should().Be(1);
     }
 
-    [Theory]
-    [InlineData("an-unknown-code")]
-    public void should_have_words_for_every_code_and_a_default(string unknown)
+    [Fact]
+    public async Task should_stop_a_host_the_operator_narrowed_away_at_the_next_sync_without_calling_the_engine()
     {
-        SourceSync.MessageOf(unknown).Should().Be("The repository could not be synchronised.");
-        foreach (var code in new[] { GitFailure.AuthFailed, GitFailure.RepositoryNotFound, GitFailure.Unreachable, GitFailure.BranchNotFound, GitFailure.Diverged, GitFailure.LocalChanges, GitFailure.FolderNotEmpty, GitFailure.DifferentRepository, GitFailure.CredentialMissing, GitFailure.OutsideRoots })
+        var source = Git(_workspace.Folder("notes"));
+        _options.Hosts = ["another.example"];
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
+
+        refusal.Message.Should().Be(SourceSync.MessageOf(GitFailure.HostNotAllowed));
+        _engine.Calls.Should().BeEmpty();
+        _outcomes.Of(source.Id)!.Error.Should().Be(GitFailure.HostNotAllowed);
+    }
+
+    [Fact]
+    public async Task should_give_up_a_sync_that_takes_longer_than_the_timeout_and_free_the_source()
+    {
+        var source = Git(_workspace.Folder("notes"));
+        _options.SyncTimeoutSeconds = 1;
+        _engine.Hang = true;
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
+
+        refusal.Message.Should().Be(SourceSync.MessageOf(GitFailure.Unreachable));
+        _outcomes.Of(source.Id)!.Error.Should().Be(GitFailure.Unreachable);
+        _locks.Of(source.Id).CurrentCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task should_not_record_a_failure_when_the_caller_stops_the_sync()
+    {
+        var source = Git(_workspace.Folder("notes"));
+        using var stop = new CancellationTokenSource();
+        _engine.During = stop.Cancel;
+        _engine.Hang = true;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _subject.SyncAsync(source, waitForTurn: false, stop.Token));
+
+        _outcomes.Of(source.Id).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task should_record_an_error_without_a_code_as_a_plain_failure_and_show_none_of_its_message()
+    {
+        var source = Git(_workspace.Folder("notes"));
+        _engine.Result = () => throw new InvalidOperationException("boom at /srv/secret/path with secret-token");
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
+
+        refusal.Message.Should().Be(SourceSync.MessageOf(GitFailure.Failed)).And.NotContain("/srv").And.NotContain("secret-token");
+        _outcomes.Of(source.Id)!.Error.Should().Be(GitFailure.Failed);
+    }
+
+    [Fact]
+    public async Task should_wait_for_a_pass_that_is_running_when_asked_to_and_go_on_once_it_ends()
+    {
+        var source = Git(_workspace.Folder("notes"));
+        var gate = _locks.Of(source.Id);
+        await gate.WaitAsync(Token);
+
+        var waiting = _subject.SyncAsync(source, waitForTurn: true, Token);
+        await Task.Delay(100, Token);
+        var finishedEarly = waiting.IsCompleted;
+        gate.Release();
+        var report = await waiting;
+
+        finishedEarly.Should().BeFalse();
+        report.Action.Should().Be(GitSyncAction.UpToDate);
+    }
+
+    [Fact]
+    public void should_have_words_for_every_code_and_a_default()
+    {
+        var unknown = SourceSync.MessageOf("an-unknown-code");
+        var codes = typeof(GitFailure).GetFields().Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()!).ToList();
+
+        unknown.Should().Be("The repository could not be synchronised.");
+        codes.Should().NotBeEmpty();
+        foreach (var code in codes.Where(code => code != GitFailure.Failed))
         {
-            SourceSync.MessageOf(code).Should().NotBe(SourceSync.MessageOf(unknown), code);
+            SourceSync.MessageOf(code).Should().NotBe(unknown, code);
         }
     }
 }

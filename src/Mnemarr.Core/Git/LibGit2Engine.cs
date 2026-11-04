@@ -65,10 +65,17 @@ public sealed class LibGit2Engine : IGitEngine
 
         var name = branch ?? repository.Head.FriendlyName;
         var remote = repository.Branches[$"{Remote}/{name}"]?.Tip ?? throw new GitSyncException(GitFailure.BranchNotFound, "The branch is not in the repository.");
+        var switched = repository.Head.FriendlyName != name;
+        if (switched)
+        {
+            // The source asks for another branch than the one that is checked out: move to it (a clean checkout only), then bring it up to date.
+            SwitchTo(repository, name, remote);
+        }
+
         var local = repository.Head.Tip;
         if (local is null || local.Id == remote.Id)
         {
-            return new GitSyncResult(GitSyncAction.UpToDate, Tip(repository));
+            return new GitSyncResult(switched ? GitSyncAction.Updated : GitSyncAction.UpToDate, Tip(repository));
         }
 
         var common = repository.ObjectDatabase.FindMergeBase(local, remote);
@@ -91,6 +98,16 @@ public sealed class LibGit2Engine : IGitEngine
         // A fast-forward: the working tree and the branch move to the remote commit; nothing is discarded, as the checkout is clean and is behind.
         repository.Reset(ResetMode.Hard, remote);
         return new GitSyncResult(GitSyncAction.Updated, Tip(repository));
+    }
+
+    private static void SwitchTo(Repository repository, string name, Commit remote)
+    {
+        if (repository.RetrieveStatus(new StatusOptions()).IsDirty)
+        {
+            throw new GitSyncException(GitFailure.LocalChanges, "The checkout has changes that are not committed: nothing was changed.");
+        }
+
+        Commands.Checkout(repository, repository.Branches[name] ?? repository.CreateBranch(name, remote));
     }
 
     private static void Configure(FetchOptions options, string url, GitSecret? secret, CancellationToken cancellationToken)
@@ -156,7 +173,7 @@ public sealed class LibGit2Engine : IGitEngine
             return GitFailure.AuthFailed;
         }
 
-        if (message.Contains("remote branch", StringComparison.Ordinal) || message.Contains("reference", StringComparison.Ordinal) && message.Contains("not found", StringComparison.Ordinal))
+        if (message.Contains("remote branch", StringComparison.Ordinal) || (message.Contains("reference", StringComparison.Ordinal) && message.Contains("not found", StringComparison.Ordinal)))
         {
             return GitFailure.BranchNotFound;
         }

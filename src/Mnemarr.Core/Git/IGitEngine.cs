@@ -29,7 +29,7 @@ public static class GitFailure
     public const string DifferentRepository = "different-repository";
     public const string CredentialMissing = "credential-missing";
     public const string OutsideRoots = "outside-roots";
-    public const string InvalidAddress = "invalid-address";
+    public const string HostNotAllowed = "host-not-allowed";
     public const string Failed = "sync-failed";
 }
 

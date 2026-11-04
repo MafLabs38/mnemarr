@@ -46,13 +46,14 @@ A source can be the checkout of a Git repository ([ADR 0022](adr/0022-git-source
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__GIT__SYNCINTERVALSECONDS` | `300` | How often every Git source is brought up to date (10 to 86400). A source can also be synchronised at once from the interface (`POST /api/v1/sources/{id}/sync`). |
-| `MNEMARR__GIT__HOSTS__0`, `__1`… | any host | The hosts a source may be cloned from, as host names (no scheme, port or path). Empty means any host over HTTPS: name them. |
+| `MNEMARR__GIT__HOSTS__0`, `__1`… | none | The hosts a source may be cloned from, as host names (no scheme, port or path). **Empty means none: no Git source is accepted until you name the hosts.** The list is read again at every sync. |
+| `MNEMARR__GIT__SYNCTIMEOUTSECONDS` | `600` | The longest one sync of one source may take (10 to 3600); it is then given up, and the next interval tries again. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__HOST` | none | The host the token is for. A credential is sent to this host and to no other. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__TOKENFILE` | none | A file that holds the access token (read at each sync, so a rotation needs no restart). Prefer it to `TOKEN`; mount it as a secret. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__TOKEN` | none | The token itself, when a file is not possible. Exactly one of `TOKEN` and `TOKENFILE`. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__USERNAME` | `x-access-token` | The user name sent with the token (GitHub, GitLab and Gitea accept any name with a token). |
 
-A source names a credential (`credential: github`), never a token; a public repository needs none. If a sync fails, the source shows a code (`lastSyncError`: `auth-failed`, `repository-not-found`, `unreachable`, `branch-not-found`, `diverged`, `local-changes`, `folder-not-empty`, `different-repository`, `credential-missing`, `outside-roots`, `sync-failed`) and `/health/ready` is degraded with the reason `source-unreadable`; the notes already read stay searchable. The words never carry an address, a path or a message from the host.
+A source names a credential (`credential: github`), never a token; a public repository needs none. If a sync fails, the source shows a code (`lastSyncError`: `auth-failed`, `repository-not-found`, `unreachable`, `branch-not-found`, `diverged`, `local-changes`, `folder-not-empty`, `different-repository`, `credential-missing`, `outside-roots`, `host-not-allowed`, `sync-failed`) and `/health/ready` is degraded with the reason `source-unreadable`; the notes already read stay searchable. The words never carry an address, a path or a message from the host. A repository address uses the https port, and a checkout folder cannot be inside the folder of another source nor contain one. Changing the branch of a source moves a clean checkout to it; changing the address of a source whose folder is already a checkout needs an empty folder.
 
 ## Configuration as code (`Config`)
 

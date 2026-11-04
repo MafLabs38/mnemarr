@@ -65,7 +65,7 @@ public sealed class SourceCatalog
         lock (Gate)
         {
             var checkedRepository = CheckedRepository(repository);
-            var source = new Source(Guid.NewGuid(), name, kind, mode, checkedRepository is null ? CheckedPath(path) : CheckedFolder(path), _clock.GetUtcNow(), Repository: checkedRepository);
+            var source = new Source(Guid.NewGuid(), name, kind, mode, checkedRepository is null ? CheckedPath(path) : CheckedCheckoutFolder(path, null), _clock.GetUtcNow(), Repository: checkedRepository);
             Insert(source, actor);
             return source;
         }
@@ -123,7 +123,7 @@ public sealed class SourceCatalog
             var current = Get(id, scope);
             RefuseIfManaged(current);
             // Before any look at the disk: a caller who may not change the folder must not learn, from the kind of refusal, what is there.
-            if (scope.Sources is not null && (name != current.Name || SourcePaths.Normalize(path) != current.Path || (repository is not null && repository != current.Repository) || (repository is null && current.Repository is not null)))
+            if (scope.Sources is not null && ChangesIdentity(current, name, path, repository))
             {
                 throw new RejectedException(Problem.Forbidden, "A key limited to some sources can change the mode of a source, not its name, its folder or its repository.");
             }
@@ -132,7 +132,7 @@ public sealed class SourceCatalog
             var folder = current.Path;
             if (scope.Sources is null)
             {
-                folder = checkedRepository is null ? CheckedPath(path) : CheckedFolder(path);
+                folder = checkedRepository is null ? CheckedPath(path) : CheckedCheckoutFolder(path, id);
             }
 
             var changed = current with { Name = name, Mode = mode, Path = folder, Repository = checkedRepository };
@@ -199,6 +199,25 @@ public sealed class SourceCatalog
 
     /// <summary>A folder a source may be in, that need not exist yet: the folder of a Git source is where its repository will be cloned.</summary>
     internal string CheckedFolder(string path) => _paths.Allowed(path);
+
+    /// <summary>
+    /// The folder a repository is cloned into: it is not inside the folder of another source, and holds none (what an outside repository
+    /// brings would otherwise appear as notes of that source, the memory vault included).
+    /// </summary>
+    internal string CheckedCheckoutFolder(string path, Guid? self, string? sameName = null)
+    {
+        var folder = CheckedFolder(path);
+        return _store.List().Where(other => other.Id != self && other.Name != sameName).Any(other => Contains(other.Path, folder) || Contains(folder, other.Path))
+            ? throw new RejectedException(Problem.Invalid, "A Git checkout cannot be inside the folder of another source, nor contain one.")
+            : folder;
+    }
+
+    private static bool Contains(string parent, string child) =>
+        string.Equals(parent, child, StringComparison.Ordinal) || child.StartsWith(parent.TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar, StringComparison.Ordinal);
+
+    /// <summary>Whether a change touches what makes a source this one: its name, its folder or its repository (compared as they are stored, not as typed).</summary>
+    private static bool ChangesIdentity(Source current, string name, string path, GitRepository? repository) =>
+        name != current.Name || SourcePaths.Normalize(path) != current.Path || !GitPolicy.Same(repository, current.Repository);
 
     /// <summary>The repository in its normal form, or a refusal. None is allowed (a source that is a plain folder).</summary>
     internal GitRepository? CheckedRepository(GitRepository? repository) =>

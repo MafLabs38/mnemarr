@@ -23,8 +23,8 @@ public sealed class SourceSyncServiceFixture : IDisposable
         var locks = new SourceLocks();
         var paths = _workspace.Paths();
         var indexer = new SourceIndexer(new SqliteNoteIndex(_workspace.Database), paths, new ScanOutcomes(), _clock, locks);
-        var options = Options.Create(new GitOptions());
-        var sync = new SourceSync(_engine, new GitCredentials(options), indexer, paths, locks, _outcomes, _clock);
+        var options = Options.Create(new GitOptions { Hosts = ["github.example"] });
+        var sync = new SourceSync(_engine, new GitPolicy(options, new GitCredentials(options)), indexer, paths, locks, _outcomes, _clock);
         _subject = new SourceSyncService(_sources, sync, _outcomes, options, _clock, new RecordingLogger(_logged));
     }
 
@@ -107,11 +107,14 @@ public sealed class SourceSyncServiceFixture : IDisposable
 
         await _subject.StartAsync(Token);
         await WaitUntilAsync(() => _engine.Calls.Count >= 1);
-        _clock.Advance(TimeSpan.FromSeconds(301));
+        _clock.Advance(TimeSpan.FromSeconds(299));
+        await Task.Delay(200, Token);
+        var beforeTheInterval = _engine.Calls.Count;
+        _clock.Advance(TimeSpan.FromSeconds(2));
         await WaitUntilAsync(() => _engine.Calls.Count >= 2);
         await _subject.StopAsync(Token);
 
-        _engine.Calls.Count.Should().BeGreaterThanOrEqualTo(2);
+        beforeTheInterval.Should().Be(1, "nothing is synchronised before the interval has passed");
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

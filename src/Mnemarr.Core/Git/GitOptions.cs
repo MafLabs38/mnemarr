@@ -8,9 +8,12 @@ public sealed class GitOptions
     /// <summary>How often every Git source is brought up to date, in seconds.</summary>
     public int SyncIntervalSeconds { get; set; } = 300;
 
+    /// <summary>How long one sync of one source may take, in seconds, before it is given up (the next interval tries again).</summary>
+    public int SyncTimeoutSeconds { get; set; } = 600;
+
     /// <summary>
-    /// The hosts a source may be cloned from. Empty means any host reached over HTTPS. Declaring a source is how an API user asks Mnemarr to
-    /// connect somewhere, so the operator can say where.
+    /// The hosts a source may be cloned from. <b>Empty means none</b>: declaring a source is how an API user asks Mnemarr to connect somewhere
+    /// (and to send a secret there), so the operator says where before any Git source is accepted.
     /// </summary>
     public string[] Hosts { get; set; } = [];
 
@@ -41,6 +44,11 @@ public sealed class GitOptionsValidator : IValidateOptions<GitOptions>
         if (options.SyncIntervalSeconds is < 10 or > 86_400)
         {
             return ValidateOptionsResult.Fail("Git:SyncIntervalSeconds (MNEMARR__GIT__SYNCINTERVALSECONDS) must be between 10 and 86400.");
+        }
+
+        if (options.SyncTimeoutSeconds is < 10 or > 3600)
+        {
+            return ValidateOptionsResult.Fail("Git:SyncTimeoutSeconds (MNEMARR__GIT__SYNCTIMEOUTSECONDS) must be between 10 and 3600.");
         }
 
         if (options.Hosts.Any(host => string.IsNullOrWhiteSpace(host) || host.Contains('/', StringComparison.Ordinal) || host.Contains(':', StringComparison.Ordinal)))

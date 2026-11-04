@@ -10,6 +10,7 @@ public sealed class GitPolicyFixture
     {
         var wrapped = Options.Create(options ?? new GitOptions
         {
+            Hosts = ["github.example", "elsewhere.example"],
             Credentials = { ["github"] = new GitCredentialOptions { Host = "github.example", Token = "secret-token" } },
         });
         return new GitPolicy(wrapped, new GitCredentials(wrapped));
@@ -72,6 +73,31 @@ public sealed class GitPolicyFixture
 
         Assert.Throws<RejectedException>(() => policy.Check(new GitRepository("https://elsewhere.example/org/notes"))).Message.Should().Contain("does not allow");
         policy.Check(new GitRepository("https://GITHUB.example/org/notes")).Url.Should().Be("https://github.example/org/notes");
+    }
+
+    [Fact]
+    public void should_accept_no_host_until_the_operator_names_some()
+    {
+        var refusal = Assert.Throws<RejectedException>(() => Policy(new GitOptions()).Check(new GitRepository("https://github.example/org/notes")));
+
+        refusal.Message.Should().Contain("Git:Hosts");
+    }
+
+    [Theory]
+    [InlineData("https://github.example:8443/org/notes")]
+    [InlineData("https://github.example:22/org/notes")]
+    public void should_refuse_a_port_other_than_the_https_one_because_it_is_another_service_that_would_get_the_token(string url)
+    {
+        Assert.Throws<RejectedException>(() => Policy().Check(new GitRepository(url, null, "github"))).Message.Should().Contain("port");
+    }
+
+    [Fact]
+    public void should_see_the_same_repository_through_case_a_trailing_slash_and_an_empty_branch()
+    {
+        GitPolicy.Same(new GitRepository("https://GitHub.example/org/notes/", "", " github "), new GitRepository("https://github.example/org/notes", null, "github")).Should().BeTrue();
+        GitPolicy.Same(new GitRepository("https://github.example/org/notes", "main"), new GitRepository("https://github.example/org/notes", "dev")).Should().BeFalse();
+        GitPolicy.Same(null, null).Should().BeTrue();
+        GitPolicy.Same(new GitRepository("https://github.example/org/notes"), null).Should().BeFalse();
     }
 
     [Fact]

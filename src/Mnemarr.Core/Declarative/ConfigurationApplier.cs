@@ -237,7 +237,7 @@ public sealed class ConfigurationApplier
         try
         {
             var repository = entry.Repository is null ? null : _catalog.CheckedRepository(new GitRepository(entry.Repository.Url ?? string.Empty, entry.Repository.Branch, entry.Repository.Credential));
-            var folder = repository is null ? _catalog.CheckedPath(entry.Path!) : _catalog.CheckedFolder(entry.Path!);
+            var folder = repository is null ? _catalog.CheckedPath(entry.Path!) : _catalog.CheckedCheckoutFolder(entry.Path!, null, name);
             wanted.Add(new Wanted(kind, SourceCatalog.CheckedName(name!), folder, mode, repository));
         }
         catch (RejectedException ex)

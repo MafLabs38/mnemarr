@@ -91,6 +91,49 @@ public sealed class SourceCatalogFixture : IDisposable
     }
 
     [Fact]
+    public void should_not_clone_into_the_folder_of_another_source_nor_around_one()
+    {
+        var catalog = GitCatalog();
+        var memory = _workspace.Folder("memory");
+        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, memory, SourceScope.All, "root");
+        var repository = new GitRepository("https://github.example/org/notes");
+
+        var inside = () => catalog.Add("a", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(memory, "imported"), SourceScope.All, "root", repository);
+        var same = () => catalog.Add("b", SourceKind.Knowledge, SourceMode.ReadOnly, memory, SourceScope.All, "root", repository);
+        var around = () => catalog.Add("c", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.SourcesFolder, SourceScope.All, "root", repository);
+        var beside = catalog.Add("d", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "memory-notes"), SourceScope.All, "root", repository);
+
+        inside.Should().Throw<RejectedException>().WithMessage("*another source*");
+        same.Should().Throw<RejectedException>();
+        around.Should().Throw<RejectedException>();
+        beside.Repository.Should().NotBeNull("a folder that only starts with the same letters is not inside");
+    }
+
+    [Fact]
+    public void should_let_a_git_source_keep_its_own_folder_when_it_is_changed()
+    {
+        var catalog = GitCatalog();
+        var folder = Path.Combine(_workspace.SourcesFolder, "notes");
+        var source = catalog.Add("notes", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/notes"));
+
+        var changed = catalog.Update(source.Id, "notes", SourceMode.ReadWrite, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/notes", "dev", null));
+
+        changed.Mode.Should().Be(SourceMode.ReadWrite);
+    }
+
+    [Fact]
+    public void should_see_the_same_repository_typed_another_way_as_no_change_for_a_key_limited_to_some_sources()
+    {
+        var catalog = GitCatalog();
+        var folder = _workspace.Folder("notes");
+        var source = catalog.Add("notes", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/notes", "main", null));
+
+        var changed = catalog.Update(source.Id, "notes", SourceMode.ReadWrite, folder, new SourceScope([source.Id]), "key", new GitRepository("https://GitHub.example/org/notes/", " main ", " "));
+
+        changed.Mode.Should().Be(SourceMode.ReadWrite);
+    }
+
+    [Fact]
     public void should_let_a_key_limited_to_some_sources_change_the_mode_only_not_the_repository()
     {
         var catalog = GitCatalog();

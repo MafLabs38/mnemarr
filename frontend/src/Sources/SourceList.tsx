@@ -71,6 +71,7 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
   const index = useIndexSource(source.id);
   const sync = useSyncSource(source.id);
   const remove = useDeleteSource(source.id);
+  const origin = repositoryText(source);
   const outcome = { onSuccess: () => onResult(null), onError: onResult };
   // The base cannot be taken apart: the last source a kind requires can be changed, not removed.
   const removable = kind.count > (kind.required ? 1 : 0);
@@ -80,7 +81,7 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
       <th scope="row">
         {source.name}
         {source.managed && <span className={styles.managed}>{translate('ManagedByConfig')}</span>}
-        {repositoryText(source) && <span className={styles.managed}>{repositoryText(source)}</span>}
+        {origin && <span className={styles.managed}>{origin}</span>}
       </th>
       <td>{translate(source.mode)}</td>
       <td className={styles.path}>{source.path}</td>

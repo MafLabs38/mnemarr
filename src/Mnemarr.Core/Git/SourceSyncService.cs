@@ -50,7 +50,13 @@ public sealed partial class SourceSyncService : BackgroundService
     public async Task SyncAllAsync(CancellationToken cancellationToken)
     {
         var declared = Declared();
-        _outcomes.Retain([.. declared.Select(source => source.Id)]);
+        var ids = declared.Select(source => source.Id).ToHashSet();
+        _outcomes.Retain([.. ids]);
+        foreach (var gone in _failures.Keys.Where(id => !ids.Contains(id)).ToList())
+        {
+            _failures.Remove(gone);
+        }
+
         foreach (var source in declared.Where(source => source.Repository is not null))
         {
             try
@@ -60,7 +66,7 @@ public sealed partial class SourceSyncService : BackgroundService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                var what = ex is RejectedException ? _outcomes.Of(source.Id)?.Error ?? "refused" : $"{ex.GetType().Name}: {ex.Message}";
+                var what = ex is RejectedException ? _outcomes.Of(source.Id)?.Error ?? "refused" : ex.GetType().Name;
                 if (!_failures.TryGetValue(source.Id, out var last) || last != what)
                 {
                     _failures[source.Id] = what;

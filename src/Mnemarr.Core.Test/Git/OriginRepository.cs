@@ -32,6 +32,19 @@ internal sealed class OriginRepository
         return repository.Commit($"change {path}", Author, Author).Sha;
     }
 
+    /// <summary>A branch of its own, with a commit that the main branch does not have; the repository is left on the main branch.</summary>
+    public string CommitOnNewBranch(string name, string path, string content)
+    {
+        using var repository = new Repository(Folder);
+        var main = repository.Head;
+        Commands.Checkout(repository, repository.CreateBranch(name));
+        TestWorkspace.Write(Folder, path, content);
+        Commands.Stage(repository, path);
+        var sha = repository.Commit($"change {path} on {name}", Author, Author).Sha;
+        Commands.Checkout(repository, main);
+        return sha;
+    }
+
     public void CreateBranch(string name)
     {
         using var repository = new Repository(Folder);

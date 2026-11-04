@@ -13,17 +13,17 @@ public sealed record SourceSyncReport(GitSyncAction Action, string Head, IndexRe
 public sealed class SourceSync
 {
     private readonly IGitEngine _engine;
-    private readonly GitCredentials _credentials;
+    private readonly GitPolicy _policy;
     private readonly SourceIndexer _indexer;
     private readonly SourcePaths _paths;
     private readonly SourceLocks _locks;
     private readonly SyncOutcomes _outcomes;
     private readonly TimeProvider _clock;
 
-    public SourceSync(IGitEngine engine, GitCredentials credentials, SourceIndexer indexer, SourcePaths paths, SourceLocks locks, SyncOutcomes outcomes, TimeProvider clock)
+    public SourceSync(IGitEngine engine, GitPolicy policy, SourceIndexer indexer, SourcePaths paths, SourceLocks locks, SyncOutcomes outcomes, TimeProvider clock)
     {
         _engine = engine;
-        _credentials = credentials;
+        _policy = policy;
         _indexer = indexer;
         _paths = paths;
         _locks = locks;
@@ -46,7 +46,10 @@ public sealed class SourceSync
         GitSyncResult result;
         try
         {
-            result = await Task.Run(() => Run(source, repository, cancellationToken), cancellationToken);
+            // A host that answers slowly holds this source for this long and no longer: the next interval tries again.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(_policy.SyncTimeout);
+            result = await Task.Run(() => Run(source, repository, cancellationToken, timeout.Token), CancellationToken.None);
         }
         finally
         {
@@ -64,29 +67,50 @@ public sealed class SourceSync
         return new SourceSyncReport(result.Action, result.Head, index);
     }
 
-    private GitSyncResult Run(Source source, GitRepository repository, CancellationToken cancellationToken)
+    private GitSyncResult Run(Source source, GitRepository repository, CancellationToken stopped, CancellationToken timedOut)
     {
+        var folder = FolderOf(source);
         try
         {
-            var folder = _paths.Allowed(source.Path);
             var url = GitPolicy.Address(repository.Url);
+            // The operator's list of hosts is read again at each sync: narrowing it stops the sources that were declared for a host that is out.
+            _policy.CheckHost(new Uri(url).Host);
             var secret = SecretFor(repository, url);
-            return _engine.Sync(url, GitPolicy.Branch(repository.Branch), folder, secret, cancellationToken);
+            return _engine.Sync(url, GitPolicy.Branch(repository.Branch), folder, secret, timedOut);
+        }
+        catch (OperationCanceledException) when (!stopped.IsCancellationRequested)
+        {
+            Failed(source, GitFailure.Unreachable);
+            throw new RejectedException(Problem.Conflict, MessageOf(GitFailure.Unreachable));
         }
         catch (GitSyncException ex)
         {
             Failed(source, ex.Code);
             throw new RejectedException(Problem.Conflict, MessageOf(ex.Code));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (RejectedException)
         {
-            // The disk refused (a folder that cannot be written): said by its code, with nothing of the path.
+            // The address is not what the policy allows any more (the hosts were narrowed, a row was edited).
+            Failed(source, GitFailure.HostNotAllowed);
+            throw new RejectedException(Problem.Conflict, MessageOf(GitFailure.HostNotAllowed));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Anything else (the disk refused, the library failed in a way that has no code): said by a code, with nothing of the path or the message.
             Failed(source, GitFailure.Failed);
             throw new RejectedException(Problem.Conflict, MessageOf(GitFailure.Failed));
         }
+    }
+
+    /// <summary>The folder of the source if it is still inside the roots; otherwise the sync stops, with its own code.</summary>
+    private string FolderOf(Source source)
+    {
+        try
+        {
+            return _paths.Allowed(source.Path);
+        }
         catch (RejectedException)
         {
-            // The folder or the address is not what the policy allows any more (the roots were narrowed, a row was edited).
             Failed(source, GitFailure.OutsideRoots);
             throw new RejectedException(Problem.Conflict, MessageOf(GitFailure.OutsideRoots));
         }
@@ -101,7 +125,7 @@ public sealed class SourceSync
 
         // A credential is sent to its own host and to no other, whatever the source says: checked here again, not only when the source was declared.
         var host = new Uri(url).Host;
-        return string.Equals(_credentials.HostOf(repository.Credential), host, StringComparison.OrdinalIgnoreCase) && _credentials.Secret(repository.Credential) is { } secret
+        return string.Equals(_policy.Credentials.HostOf(repository.Credential), host, StringComparison.OrdinalIgnoreCase) && _policy.Credentials.Secret(repository.Credential) is { } secret
             ? secret
             : throw new GitSyncException(GitFailure.CredentialMissing, MessageOf(GitFailure.CredentialMissing));
     }
@@ -120,7 +144,8 @@ public sealed class SourceSync
         GitFailure.FolderNotEmpty => "The folder of the source is not empty and is not a checkout: Mnemarr does not clone over what is there.",
         GitFailure.DifferentRepository => "The folder of the source is the checkout of another repository.",
         GitFailure.CredentialMissing => "The credential of the source is not there, or its token cannot be read.",
-        GitFailure.OutsideRoots => "The folder or the address of the source is not what the operator allows for sources any more.",
+        GitFailure.OutsideRoots => "The folder of the source is not inside the folders the operator allows for sources any more.",
+        GitFailure.HostNotAllowed => "The address of the source is not what the operator allows for Git sources any more.",
         _ => "The repository could not be synchronised.",
     };
 }

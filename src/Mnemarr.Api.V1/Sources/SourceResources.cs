@@ -34,7 +34,7 @@ public sealed record CreateSourceRequest(string Name, string Kind, string Mode, 
 /// <summary>What can change about a source: not its kind, which is the rule it lives under.</summary>
 public sealed record UpdateSourceRequest(string Name, string Mode, string Path, GitRepositoryResource? Repository = null);
 
-/// <summary>What a sync of a Git source did: how its checkout changed (<c>Cloned</c>, <c>FastForwarded</c> or <c>UpToDate</c>), the commit it is at, and what reading it found.</summary>
+/// <summary>What a sync of a Git source did: how its checkout changed (<c>Cloned</c>, <c>Updated</c> or <c>UpToDate</c>), the commit it is at, and what reading it found.</summary>
 public sealed record SyncReportResource(string Action, string Head, IndexReportResource? Index)
 {
     public static SyncReportResource From(SourceSyncReport report) =>
