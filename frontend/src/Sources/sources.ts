@@ -19,7 +19,7 @@ export interface SourceItem {
   /** When the last pass over the folder ended, since the server started. */
   lastScanAt: string | null;
   /** Why the last pass failed (a stable code), or null when it went well. */
-  lastError: 'folder-missing' | 'outside-roots' | 'unreadable' | null;
+  lastError: 'folder-missing' | 'outside-roots' | 'unreadable' | 'index-failed' | null;
   /** A configuration document owns it: it is changed by changing the document. */
   managed: boolean;
 }

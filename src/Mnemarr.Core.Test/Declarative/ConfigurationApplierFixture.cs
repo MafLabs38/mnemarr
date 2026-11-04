@@ -21,7 +21,7 @@ public sealed class ConfigurationApplierFixture : IDisposable
         _store = new SqliteSourceStore(_workspace.Database);
         _audit = new SqliteAuditLog(_workspace.Database, _clock);
         _catalog = new SourceCatalog(_store, _audit, _workspace.Paths(), _clock);
-        _subject = new ConfigurationApplier(_catalog, _store, _audit, _clock);
+        _subject = new ConfigurationApplier(_catalog, _store, _audit);
     }
 
     public void Dispose() => _workspace.Dispose();
@@ -48,6 +48,7 @@ public sealed class ConfigurationApplierFixture : IDisposable
         sources.Single(s => s.Name == "memory").Mode.Should().Be(SourceMode.ReadOnly, "writes are off unless a source asks for them");
         sources.Single(s => s.Name == "portarr").Mode.Should().Be(SourceMode.ReadOnly);
         _audit.Recent(10, "config.applied").Should().ContainSingle().Which.Actor.Should().Be("ci");
+        _audit.Recent(10, "source.added").Should().HaveCount(4, "a source that configuration makes is recorded like one made by hand, with its folder and mode");
     }
 
     [Fact]

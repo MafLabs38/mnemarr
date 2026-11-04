@@ -47,9 +47,11 @@ public sealed class SourceIndexer
             _outcomes.Succeeded(source.Id, _clock.GetUtcNow());
             return report;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not (OperationCanceledException or RejectedException))
         {
-            _outcomes.Failed(source.Id, _clock.GetUtcNow(), ScanOutcome.Unreadable);
+            // The disk (IOException, UnauthorizedAccessException) or the index (SqliteException): either way the pass did not finish, and the
+            // source must not look healthy. A refusal already recorded its own code, and a cancellation is not a failure.
+            _outcomes.Failed(source.Id, _clock.GetUtcNow(), ex is IOException or UnauthorizedAccessException ? ScanOutcome.Unreadable : ScanOutcome.IndexFailed);
             throw;
         }
         finally

@@ -34,7 +34,7 @@ See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each pr
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `MNEMARR__SOURCES__ROOTS__0`, `__1`… | the `sources` folder of the data folder | The folders a source may be in. A source is declared in the interface (Sources) or through the API with a folder inside one of them; anything else is refused. Mount a vault read-only and name its folder here. |
+| `MNEMARR__SOURCES__ROOTS__0`, `__1`… | the `sources` folder of the data folder | The folders a source may be in, each an absolute path (the application refuses to start otherwise). A source is declared in the interface (Sources) or through the API with a folder inside one of them; anything else is refused. Mount a vault read-only and name its folder here. |
 | `MNEMARR__INDEXING__SCANINTERVALSECONDS` | `30` | How often every source is compared with its folder (1 to 86400). A source can also be indexed at once from the interface. |
 
 Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not indexed. The folder of a source is checked against the roots again before every scan, and a link anywhere between the root and the folder is refused. If a scan fails (the folder was unmounted, or is outside the roots now), the source shows why (`lastError`) and `/health/ready` is degraded with the reason `source-unreadable`; its old notes stay searchable. `POST /api/v1/sources/{id}/index?rebuild=true` cuts every note again. The mode of a source is its write switch: read-only unless you turn writing on. Forgetting a source in the interface forgets its index, never its files.

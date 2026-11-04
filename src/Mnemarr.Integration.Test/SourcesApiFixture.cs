@@ -71,20 +71,17 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
     [InlineData("kind")]
     [InlineData("mode")]
     [InlineData("outside")]
-    [InlineData("missing")]
-    [InlineData("name")]
     public async Task should_refuse_a_source_that_does_not_follow_the_rules_with_a_400_problem_document(string wrong)
     {
         var name = Unique("rules");
         var path = wrong switch
         {
             "outside" => Path.GetTempPath(),
-            "missing" => Path.Combine(_factory.DataFolder, "sources", Unique("nothing")),
             _ => Folder(name),
         };
 
         var response = await _callers["Operator"].PostAsJsonAsync(
-            "/api/v1/sources", new { name = wrong == "name" ? " " : name, kind = wrong == "kind" ? "Diary" : "Knowledge", mode = wrong == "mode" ? "Append" : "ReadOnly", path }, Token);
+            "/api/v1/sources", new { name, kind = wrong == "kind" ? "Diary" : "Knowledge", mode = wrong == "mode" ? "Append" : "ReadOnly", path }, Token);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");

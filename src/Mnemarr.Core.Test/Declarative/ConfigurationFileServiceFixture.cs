@@ -35,7 +35,7 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
         var audit = new SqliteAuditLog(database, _clock);
         var catalog = new SourceCatalog(store, audit, _workspace.Paths(), _clock);
         return new ConfigurationFileService(
-            new ConfigurationApplier(catalog, store, audit, _clock), _state, Options.Create(new ConfigurationOptions { File = file }), _clock,
+            new ConfigurationApplier(catalog, store, audit), _state, Options.Create(new ConfigurationOptions { File = file }), _clock,
             NullLogger<ConfigurationFileService>.Instance);
     }
 

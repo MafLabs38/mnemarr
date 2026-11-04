@@ -61,18 +61,48 @@ public sealed class SourceCatalog
         name = CheckedName(name);
         lock (Gate)
         {
-            var rule = SourceKinds.Of(kind);
-            if (rule.Max is { } max && _store.List().Count(source => source.Kind == kind) >= max)
-            {
-                // The name of the one that exists is not given: a caller limited to some sources may not see it.
-                throw new RejectedException(Problem.Conflict, $"There is already a source of the kind {kind}: there can be only {max}. Change its folder instead.");
-            }
-
             var source = new Source(Guid.NewGuid(), name, kind, mode, CheckedPath(path), _clock.GetUtcNow());
-            _store.Add(source);
-            _audit.Append(actor, "source.added", source.Name, $"{kind}, {mode}");
+            Insert(source, actor);
             return source;
         }
+    }
+
+    /// <summary>
+    /// The writes of configuration as code (ADR 0020). They are the same writes as the hand path, with the same rules and the same audit
+    /// events, so that whatever a change of a source brings later is written once. The caller holds <see cref="Gate"/>, has checked the
+    /// document, and passes a name and a folder that were checked.
+    /// </summary>
+    internal void AddManaged(string name, SourceKind kind, SourceMode mode, string path, string actor) =>
+        Insert(new Source(Guid.NewGuid(), name, kind, mode, path, _clock.GetUtcNow(), Managed: true), actor);
+
+    internal void ChangeManaged(Source current, string name, SourceMode mode, string path, string actor)
+    {
+        var changed = current with { Name = name, Mode = mode, Path = path, Managed = true };
+        if (!_store.Update(changed))
+        {
+            throw new RejectedException(Problem.NotFound, "There is no such source.");
+        }
+
+        _audit.Append(actor, "source.changed", changed.Name, $"{changed.Mode}, {changed.Path}");
+    }
+
+    internal void RemoveManaged(Source source, string actor)
+    {
+        _store.Remove(source.Id);
+        _audit.Append(actor, "source.removed", source.Name);
+    }
+
+    private void Insert(Source source, string actor)
+    {
+        var rule = SourceKinds.Of(source.Kind);
+        if (rule.Max is { } max && _store.List().Count(other => other.Kind == source.Kind) >= max)
+        {
+            // The name of the one that exists is not given: a caller limited to some sources may not see it.
+            throw new RejectedException(Problem.Conflict, $"There is already a source of the kind {source.Kind}: there can be only {max}. Change its folder instead.");
+        }
+
+        _store.Add(source);
+        _audit.Append(actor, "source.added", source.Name, $"{source.Kind}, {source.Mode}");
     }
 
     /// <summary>

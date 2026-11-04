@@ -29,7 +29,7 @@ public sealed class ConfigController : ControllerBase
     }
 
     /// <summary>
-    /// The current state as a configuration document: what to keep in a repository, and what applying it back leaves unchanged. A key
+    /// The current state as a configuration document: what to keep in a repository, and what applying it back leaves unchanged once every source is managed (a source made by hand is taken over by it). A key
     /// limited to some sources gets no export: a document with only some of the sources would remove the others when it is applied back.
     /// </summary>
     [HttpGet]

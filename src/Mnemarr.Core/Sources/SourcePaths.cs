@@ -83,9 +83,10 @@ public sealed class SourcePaths
 
             return false;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return false;
+            // A check that cannot be completed is not a pass: the file is not read.
+            return true;
         }
     }
 

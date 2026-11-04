@@ -5,7 +5,7 @@ namespace Mnemarr.Api.V1.Sources;
 
 /// <summary>
 /// A declared source, with what is known of its index and of its last pass: <c>lastError</c> is a stable code (<c>folder-missing</c>,
-/// <c>outside-roots</c>, <c>unreadable</c>) when the last pass failed, and the notes of the source are then those of the pass before.
+/// <c>outside-roots</c>, <c>unreadable</c>, <c>index-failed</c>) when the last pass failed, and the notes of the source are then those of the pass before.
 /// <c>managed</c>: a configuration document owns it, and it is changed there.</summary>
 public sealed record SourceResource(
     Guid Id, string Name, string Kind, string Mode, string Path, DateTimeOffset CreatedAt, int Notes, int Chunks, DateTimeOffset? LastIndexedAt,

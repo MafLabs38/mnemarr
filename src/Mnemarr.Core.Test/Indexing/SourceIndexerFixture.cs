@@ -296,6 +296,20 @@ public sealed class SourceIndexerFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_record_a_pass_that_fails_in_the_index_so_that_the_source_does_not_look_healthy()
+    {
+        var folder = _workspace.Folder("courses");
+        TestWorkspace.Write(folder, "a.md", "# A\ntext");
+        var source = Declare("courses", folder);
+        var subject = new SourceIndexer(new BrokenIndex(), _workspace.Paths(), _outcomes, _clock);
+
+        var run = () => subject.IndexAsync(source, Token);
+
+        await run.Should().ThrowAsync<InvalidOperationException>();
+        _outcomes.Of(source.Id)!.Error.Should().Be(ScanOutcome.IndexFailed);
+    }
+
+    [Fact]
     [SupportedOSPlatform("linux")]
     public void should_see_a_link_in_a_folder_above_a_file_not_only_in_the_file()
     {
@@ -354,6 +368,19 @@ public sealed class SourceIndexerFixture : IDisposable
     }
 
     /// <summary>An index whose writes wait for the test: a pass that is running, for as long as the test wants.</summary>
+    private sealed class BrokenIndex : INoteIndex
+    {
+        public IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId) => throw new InvalidOperationException("the index is broken");
+
+        public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at) => throw new InvalidOperationException();
+
+        public void Remove(Guid sourceId, string path) => throw new InvalidOperationException();
+
+        public IndexCounts Counts(Guid sourceId) => throw new InvalidOperationException();
+
+        public IReadOnlyList<SearchHit> Search(SearchRequest request, SourceScope scope) => throw new InvalidOperationException();
+    }
+
     private sealed class GatedIndex(INoteIndex inner) : INoteIndex, IDisposable
     {
         public ManualResetEventSlim Entered { get; } = new();
@@ -371,7 +398,7 @@ public sealed class SourceIndexerFixture : IDisposable
         public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at)
         {
             Entered.Set();
-            Release.Wait();
+            Release.Wait(TimeSpan.FromSeconds(10));
             inner.Upsert(sourceId, file, title, contentHash, chunker, chunks, at);
         }
 

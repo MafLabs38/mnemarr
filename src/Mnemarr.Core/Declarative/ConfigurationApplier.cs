@@ -16,14 +16,12 @@ public sealed class ConfigurationApplier
     private readonly SourceCatalog _catalog;
     private readonly ISourceStore _store;
     private readonly IAuditLog _audit;
-    private readonly TimeProvider _clock;
 
-    public ConfigurationApplier(SourceCatalog catalog, ISourceStore store, IAuditLog audit, TimeProvider clock)
+    public ConfigurationApplier(SourceCatalog catalog, ISourceStore store, IAuditLog audit)
     {
         _catalog = catalog;
         _store = store;
         _audit = audit;
-        _clock = clock;
     }
 
     /// <summary>The sources a caller may touch, as a document.</summary>
@@ -34,7 +32,7 @@ public sealed class ConfigurationApplier
     {
         lock (_catalog.Gate)
         {
-            return Build(document).Plan;
+            return Build(document, string.Empty).Plan;
         }
     }
 
@@ -43,7 +41,7 @@ public sealed class ConfigurationApplier
     {
         lock (_catalog.Gate)
         {
-            var (plan, steps) = Build(document);
+            var (plan, steps) = Build(document, actor);
             if (!plan.Valid)
             {
                 return plan;
@@ -72,7 +70,7 @@ public sealed class ConfigurationApplier
         return removed.Count == 0 ? counts : $"{counts}; removed: {string.Join(", ", removed)}";
     }
 
-    private (ConfigPlan Plan, List<Action> Steps) Build(ConfigurationDocument document)
+    private (ConfigPlan Plan, List<Action> Steps) Build(ConfigurationDocument document, string actor)
     {
         var errors = new List<string>();
         var wanted = WantedSources(document, errors);
@@ -91,13 +89,13 @@ public sealed class ConfigurationApplier
 
         foreach (var w in wanted)
         {
-            PlanOne(w, current, freed, items, steps, errors);
+            PlanOne(w, current, freed, items, steps, errors, actor);
         }
 
         foreach (var source in gone)
         {
             items.Add(new PlanItem(PlanAction.Remove, source.Kind, source.Name, null, null));
-            steps.Removals.Add(() => _store.Remove(source.Id));
+            steps.Removals.Add(() => _catalog.RemoveManaged(source, actor));
         }
 
         // Removals first (they free names), then the changes to what exists, then what is new.
@@ -110,7 +108,7 @@ public sealed class ConfigurationApplier
             ? current.FirstOrDefault(source => source.Kind == SourceKind.Memory)
             : current.FirstOrDefault(source => source.Kind == w.Kind && source.Name == w.Name);
 
-    private void PlanOne(Wanted w, IReadOnlyList<Source> current, HashSet<Guid> freed, List<PlanItem> items, Steps steps, List<string> errors)
+    private void PlanOne(Wanted w, IReadOnlyList<Source> current, HashSet<Guid> freed, List<PlanItem> items, Steps steps, List<string> errors, string actor)
     {
         var existing = Find(current, w);
         if (current.FirstOrDefault(source => source.Name == w.Name && source.Id != existing?.Id && !freed.Contains(source.Id)) is { } owner)
@@ -122,7 +120,7 @@ public sealed class ConfigurationApplier
         if (existing is null)
         {
             items.Add(new PlanItem(PlanAction.Create, w.Kind, w.Name, w.Path, w.Mode));
-            steps.Creations.Add(() => _store.Add(new Source(Guid.NewGuid(), w.Name, w.Kind, w.Mode, w.Path, _clock.GetUtcNow(), Managed: true)));
+            steps.Creations.Add(() => _catalog.AddManaged(w.Name, w.Kind, w.Mode, w.Path, actor));
             return;
         }
 
@@ -130,7 +128,7 @@ public sealed class ConfigurationApplier
         items.Add(new PlanItem(action, w.Kind, w.Name, w.Path, w.Mode));
         if (action != PlanAction.Keep)
         {
-            steps.Changes.Add(() => _store.Update(existing with { Name = w.Name, Path = w.Path, Mode = w.Mode, Managed = true }));
+            steps.Changes.Add(() => _catalog.ChangeManaged(existing, w.Name, w.Mode, w.Path, actor));
         }
     }
 
@@ -192,9 +190,14 @@ public sealed class ConfigurationApplier
 
     private void AddAll(List<Wanted> wanted, List<string> errors, SourceKind kind, List<SourceEntry>? entries, string section)
     {
-        for (var i = 0; i < (entries?.Count ?? 0); i++)
+        if (entries is null)
         {
-            Add(wanted, errors, kind, entries![i], $"{section}[{i}]", null);
+            return;
+        }
+
+        for (var i = 0; i < entries.Count; i++)
+        {
+            Add(wanted, errors, kind, entries[i], $"{section}[{i}]", null);
         }
     }
 

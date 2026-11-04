@@ -43,7 +43,8 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<AdminAccountSeeder>();
 
-        services.AddOptions<SourcesOptions>().Bind(configuration.GetSection("Sources"));
+        services.AddOptions<SourcesOptions>().Bind(configuration.GetSection("Sources")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SourcesOptions>, SourcesOptionsValidator>();
         services.AddOptions<IndexingOptions>().Bind(configuration.GetSection("Indexing")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<IndexingOptions>, IndexingOptionsValidator>();
         services.AddSingleton<ISourceStore, SqliteSourceStore>();

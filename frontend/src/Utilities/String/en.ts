@@ -140,6 +140,7 @@ const en = {
   ScanFailed: 'The last scan failed: {reason}',
   'folder-missing': 'the folder is not there any more',
   'outside-roots': 'the folder is not inside the folders the operator allows any more',
+  'index-failed': 'the index could not be updated',
   unreadable: 'the folder cannot be read',
   SourceMissing: 'No source is declared for {kind}: what depends on it cannot work until one is.',
 } as const;

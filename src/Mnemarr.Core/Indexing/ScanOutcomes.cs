@@ -8,6 +8,7 @@ public sealed record ScanOutcome(DateTimeOffset At, string? Error)
     public const string FolderMissing = "folder-missing";
     public const string OutsideRoots = "outside-roots";
     public const string Unreadable = "unreadable";
+    public const string IndexFailed = "index-failed";
 
     public bool Failed => Error is not null;
 }

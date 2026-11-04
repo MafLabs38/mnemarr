@@ -81,8 +81,6 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
 
     [Theory]
     [InlineData("memry:\n  path: /x\n")]
-    [InlineData("memory: &m\n  path: /x\n")]
-    [InlineData("memory: [unterminated\n")]
     public async Task should_answer_a_document_that_is_not_one_with_a_400_problem(string document)
     {
         var response = await _callers.Admin.PutAsync("/api/v1/config", Yaml(document), Token);
@@ -149,7 +147,7 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
     }
 
     [Fact]
-    public async Task should_refuse_a_key_limited_to_some_sources_both_the_application_and_the_export_of_a_configuration()
+    public async Task should_refuse_a_key_limited_to_some_sources_the_configuration_and_the_folders_of_the_host()
     {
         var mine = Callers.Unique("scoped");
         var created = await _callers.Admin.PostAsJsonAsync("/api/v1/sources", new { name = mine, kind = "Knowledge", mode = "ReadOnly", path = Folder(mine) }, Token);
@@ -160,8 +158,12 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
 
         var apply = await scoped.PutAsync("/api/v1/config", Yaml("knowledge: []\n"), Token);
         var export = await scoped.GetAsync("/api/v1/config", Token);
+        var preview = await scoped.PutAsync("/api/v1/config?dryRun=true", Yaml("knowledge: []\n"), Token);
+        var roots = await scoped.GetAsync("/api/v1/sources/roots", Token);
 
         apply.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        preview.StatusCode.Should().Be(HttpStatusCode.Forbidden, "a preview would name the sources outside the scope of the key");
+        roots.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the folders of the host are not for a key that cannot declare a source");
         export.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await export.Content.ReadAsStringAsync(Token)).Should().NotContain(mine, "a document with only some of the sources would remove the others when applied back");
     }

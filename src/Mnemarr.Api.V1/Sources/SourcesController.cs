@@ -35,7 +35,10 @@ public sealed class SourcesController : ControllerBase
 
     /// <summary>The folders a source may be in: what the operator put at Mnemarr's disposal.</summary>
     [HttpGet("roots")]
-    public IReadOnlyList<string> GetRoots() => _catalog.Roots();
+    public IReadOnlyList<string> GetRoots() =>
+        User.Scope().Sources is null
+            ? _catalog.Roots()
+            : throw new RejectedException(Mnemarr.Core.Problem.Forbidden, "A key limited to some sources cannot see the folders of the host.");
 
     /// <summary>The kinds of source, the rule of each (required, unique) and how many are declared: what must be there, and what is missing.</summary>
     [HttpGet("kinds")]
