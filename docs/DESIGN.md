@@ -20,6 +20,7 @@ Decision D-18: Mnemarr's interface is minimal. It does not browse or edit memory
 | Entry | Content | State |
 |---|---|---|
 | Overview | The home page: is Mnemarr online, and the state of the memory | built |
+| Notes | The notes reader: the notes a person may read, rendered (D-37) | built |
 | Sources | The Git repositories Mnemarr reads and writes | soon |
 | Agents | The collector agents and their credentials | soon |
 | Settings | Model providers, schedules, retention, masking | soon |
