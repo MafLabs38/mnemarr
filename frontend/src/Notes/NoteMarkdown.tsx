@@ -8,7 +8,7 @@ import translate from 'Utilities/String/translate';
 
 import { FILE_SCHEME, NOTE_SCHEME, parseFileAddress, parseNoteAddress, UNRESOLVED_SCHEME } from './addresses';
 import MermaidDiagram from './MermaidDiagram';
-import { filePath, type Note, noteAddress } from './notes';
+import { filePath, headingSlug, type Note, noteAddress } from './notes';
 import styles from './Notes.module.css';
 import remarkCallouts from './remarkCallouts';
 import remarkLineBreaks from './remarkLineBreaks';
@@ -54,7 +54,7 @@ function NotePre({ children }: Readonly<{ children?: ReactNode }>) {
 function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: ReactNode }>) {
   if (href?.startsWith(NOTE_SCHEME)) {
     const target = parseNoteAddress(href);
-    return target ? <Link to={noteAddress(target)}>{children}</Link> : <span>{children}</span>;
+    return target ? <Link to={noteAddress(target, null, target.heading)}>{children}</Link> : <span>{children}</span>;
   }
   if (href?.startsWith(UNRESOLVED_SCHEME)) {
     return (
@@ -84,8 +84,40 @@ function NoteImage({ src, alt }: Readonly<{ src?: string; alt?: string }>) {
   );
 }
 
+/** The text of what a heading holds (its words, not its markup), for its id. */
+function textOf(children: ReactNode): string {
+  return Children.toArray(children)
+    .map((child) => {
+      if (typeof child === 'string' || typeof child === 'number') {
+        return String(child);
+      }
+      return typeof child === 'object' && 'props' in child
+        ? textOf((child.props as { children?: ReactNode }).children)
+        : '';
+    })
+    .join('');
+}
+
+/** A heading with an id, so that a link to `[[note#Heading]]` can lead to it. */
+function heading(Tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') {
+  return function NoteHeading({ children }: Readonly<{ children?: ReactNode }>) {
+    return <Tag id={headingSlug(textOf(children))}>{children}</Tag>;
+  };
+}
+
 // Defined once, outside any component: a new function at each render would be a new component type, and the diagrams would be drawn again.
-const components: Components = { code: NoteCode, pre: NotePre, a: NoteAnchor, img: NoteImage };
+const components: Components = {
+  code: NoteCode,
+  pre: NotePre,
+  a: NoteAnchor,
+  img: NoteImage,
+  h1: heading('h1'),
+  h2: heading('h2'),
+  h3: heading('h3'),
+  h4: heading('h4'),
+  h5: heading('h5'),
+  h6: heading('h6'),
+};
 const remarkPlugins = [remarkGfm, remarkCallouts, remarkLineBreaks];
 
 /** The Markdown of a note, rendered without raw HTML, with its wikilinks resolved, its images fetched from its own source, and its callouts. */

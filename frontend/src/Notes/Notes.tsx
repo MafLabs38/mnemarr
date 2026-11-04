@@ -11,6 +11,7 @@ import { permissions } from 'Session/session';
 import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
+import NewNote from './NewNote';
 import { useNoteTree, useTags } from './notes';
 import styles from './Notes.module.css';
 import NoteTree from './NoteTree';
@@ -47,6 +48,7 @@ export default function Notes() {
                 <SearchPanel />
               </section>
             )}
+            {can(permissions.notesWrite) && can(permissions.sourcesManage) && <NewNote />}
             <TextField
               label={translate('FilterNotes')}
               onChange={(event) => setFilter(event.target.value)}

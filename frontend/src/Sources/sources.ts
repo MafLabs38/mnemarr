@@ -51,6 +51,7 @@ export type SyncError =
   | 'credential-missing'
   | 'outside-roots'
   | 'host-not-allowed'
+  | 'push-rejected'
   | 'sync-failed';
 
 /** A kind of source, the rule behind it and how many are declared: what the base needs, and what is missing. */

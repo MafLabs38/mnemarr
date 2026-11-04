@@ -1,4 +1,8 @@
-import { useApiQuery } from 'Helpers/Hooks/useApiQuery';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { apiSend } from 'Helpers/Api/apiGet';
+import { isApiPath, useApiQuery } from 'Helpers/Hooks/useApiQuery';
+import type { SyncError } from 'Sources/sources';
 
 export interface NoteEntry {
   sourceId: string;
@@ -36,6 +40,12 @@ export interface Note {
   /** The first backlinks, and `backlinksTotal` of them in all. */
   backlinks: NoteRef[];
   backlinksTotal: number;
+  /** The whole text of the file, front matter included: what the editor changes. */
+  raw: string;
+  /** The version of the file as read: sent back with a change, so that a note that changed since is not overwritten. */
+  version: string;
+  /** Whether the person may write notes and the source is open for writing. */
+  writable: boolean;
 }
 
 export interface Tag {
@@ -55,13 +65,31 @@ export interface TagListing {
 }
 
 /** The address of the reader for a note: the one place it is built, so that every link to a note goes the same way. */
-export function noteAddress(note: Pick<NoteRef, 'sourceId' | 'path'>, tag?: string | null): string {
+export function noteAddress(
+  note: Pick<NoteRef, 'sourceId' | 'path'>,
+  tag?: string | null,
+  heading?: string | null,
+): string {
   const params = new URLSearchParams({ source: note.sourceId, path: note.path });
   if (tag) {
     // The notes of a tag are being read one after the other: the filter stays.
     params.set('tag', tag);
   }
-  return `/notes?${params.toString()}`;
+  const fragment = heading ? `#${encodeURIComponent(heading)}` : '';
+  return `/notes?${params.toString()}${fragment}`;
+}
+
+/** The id of a heading, so that a link can lead to it: the rule of the server (`Headings.Slug`), which writes the links. */
+export function headingSlug(heading: string): string {
+  let slug = '';
+  for (const character of heading.trim().toLowerCase()) {
+    if (/[\p{L}\p{N}_-]/u.test(character)) {
+      slug += character;
+    } else if (/\s/u.test(character)) {
+      slug += '-';
+    }
+  }
+  return slug;
 }
 
 function encodePath(path: string): string {
@@ -118,4 +146,76 @@ export interface SearchHit {
 /** The best matching chunks of the notes. Nothing is asked while there is nothing to look for. */
 export function useSearch(query: string) {
   return useApiQuery<SearchHit[]>(`/search?q=${encodeURIComponent(query)}`, { enabled: query.trim() !== '' });
+}
+
+/** What a change to the notes makes stale: the tree, a note, the tags, the searches, and the counts of the sources. */
+const isNotesQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/notes', '/search', '/sources');
+
+/** What became of the commit of a change to a Git source: pushed, or the code of why not (the commit is kept, and a later sync pushes it). */
+export interface GitPublish {
+  pushed: boolean;
+  error: SyncError | null;
+}
+
+export interface WriteResult {
+  path: string;
+  /** The version of the note as it is now, to send back with the next change. */
+  version: string;
+  git: GitPublish | null;
+}
+
+export interface RenameResult extends WriteResult {
+  linksRewritten: number;
+  notesRewritten: number;
+  /** Notes of other sources that link to the note and were left as they were. */
+  notesNotRewritten: number;
+}
+
+export function useCreateNote(sourceId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ path, content }: { path: string; content: string }) =>
+      apiSend<WriteResult>('POST', `/notes/${sourceId}/${encodePath(path)}`, { content }),
+    onSuccess: () => client.invalidateQueries({ predicate: isNotesQuery }),
+  });
+}
+
+/** Replaces the text of a note; refused (409) when the note is no longer the version that was read. */
+export function useUpdateNote(sourceId: string, path: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ content, version }: { content: string; version: string }) =>
+      apiSend<WriteResult>('PUT', `/notes/${sourceId}/${encodePath(path)}`, { content, version }),
+    onSuccess: () => client.invalidateQueries({ predicate: isNotesQuery }),
+  });
+}
+
+/** Moves a note; the links to it in the notes of the same source are rewritten by the server. */
+export function useRenameNote(sourceId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) =>
+      apiSend<RenameResult>('POST', `/notes/${sourceId}/rename`, { from, to }),
+    onSuccess: () => client.invalidateQueries({ predicate: isNotesQuery }),
+  });
+}
+
+export function useDeleteNote(sourceId: string, path: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (version: string) =>
+      apiSend<{ git: GitPublish | null }>(
+        'DELETE',
+        `/notes/${sourceId}/${encodePath(path)}?version=${encodeURIComponent(version)}`,
+      ),
+    onSuccess: () => client.invalidateQueries({ predicate: isNotesQuery }),
+  });
+}
+
+/** A text drawn as a note of the source it would be saved in, its links resolved by the server. Nothing is written. */
+export function usePreviewNote(sourceId: string) {
+  return useMutation({
+    mutationFn: ({ path, content }: { path: string; content: string }) =>
+      apiSend<{ rendered: string }>('POST', `/notes/${sourceId}/preview`, { path, content }),
+  });
 }

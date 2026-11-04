@@ -172,3 +172,37 @@
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
+
+.editor {
+  width: 100%;
+  min-height: 320px;
+  padding: 10px 12px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusSmall);
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--monoSpaceFontFamily);
+  font-size: var(--fontSizeMeta);
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.preview {
+  margin: 12px 0;
+  padding: 12px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusSmall);
+}

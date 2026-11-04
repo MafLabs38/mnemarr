@@ -33,6 +33,9 @@ function noteWith(markdown: string, extra: Partial<Note> = {}): Note {
     links: [],
     backlinks: [],
     backlinksTotal: 0,
+    raw: markdown,
+    version: 'v1',
+    writable: false,
     ...extra,
   };
 }
