@@ -6,7 +6,9 @@ namespace Mnemarr.Core.Declarative;
 
 /// <summary>
 /// Brings the sources to what a configuration document says (ADR 0020). Everything is checked before anything is changed: a document with
-/// a single error changes nothing. What the document owns is marked as managed, and only that is ever removed by it.
+/// a single error changes nothing. What the document owns is marked as managed, and only that is ever removed by it. The steps then run
+/// one after the other under the lock of the catalog, so nothing else changes the sources meanwhile; if the database fails halfway, the
+/// document is not fully applied and nothing says it was, and applying it again (the file service does) finishes the job: it is idempotent.
 /// </summary>
 public sealed class ConfigurationApplier
 {
@@ -55,11 +57,19 @@ public sealed class ConfigurationApplier
             var changes = plan.Items.Where(item => item.Action != PlanAction.Keep).ToList();
             if (changes.Count > 0)
             {
-                _audit.Append(actor, "config.applied", "sources", string.Join(", ", changes.GroupBy(item => item.Action).Select(group => $"{group.Count()} {group.Key.ToString().ToLowerInvariant()}")));
+                _audit.Append(actor, "config.applied", "sources", AuditDetail(changes));
             }
 
             return plan;
         }
+    }
+
+    /// <summary>"1 create, 2 remove (a, b)": what was done, and the names of what was removed, which is what an audit asks of configuration as code.</summary>
+    private static string AuditDetail(List<PlanItem> changes)
+    {
+        var counts = string.Join(", ", changes.GroupBy(item => item.Action).Select(group => $"{group.Count()} {group.Key.ToString().ToLowerInvariant()}"));
+        var removed = changes.Where(item => item.Action == PlanAction.Remove).Select(item => item.Name).ToList();
+        return removed.Count == 0 ? counts : $"{counts}; removed: {string.Join(", ", removed)}";
     }
 
     private (ConfigPlan Plan, List<Action> Steps) Build(ConfigurationDocument document)
@@ -69,33 +79,41 @@ public sealed class ConfigurationApplier
         var current = _store.List();
         var items = new List<PlanItem>();
         var steps = new Steps();
-        var matched = new HashSet<Guid>();
+
+        // What the document owns in a section it describes, and does not list any more, is removed. Known first: the names it frees
+        // can be taken again by the same document.
+        var kept = wanted.Select(w => Find(current, w)?.Id).OfType<Guid>().ToHashSet();
+        var gone = SectionsPresent(document)
+            .Where(kind => kind != SourceKind.Memory)
+            .SelectMany(kind => current.Where(source => source.Kind == kind && source.Managed && !kept.Contains(source.Id)))
+            .ToList();
+        var freed = gone.Select(source => source.Id).ToHashSet();
 
         foreach (var w in wanted)
         {
-            PlanOne(w, current, matched, items, steps, errors);
+            PlanOne(w, current, freed, items, steps, errors);
         }
 
-        foreach (var kind in SectionsPresent(document).Where(kind => kind != SourceKind.Memory))
+        foreach (var source in gone)
         {
-            foreach (var gone in current.Where(source => source.Kind == kind && source.Managed && !matched.Contains(source.Id)))
-            {
-                items.Add(new PlanItem(PlanAction.Remove, gone.Kind, gone.Name, null, null));
-                steps.Removals.Add(() => _store.Remove(gone.Id));
-            }
+            items.Add(new PlanItem(PlanAction.Remove, source.Kind, source.Name, null, null));
+            steps.Removals.Add(() => _store.Remove(source.Id));
         }
 
         // Removals first (they free names), then the changes to what exists, then what is new.
         return (new ConfigPlan(items, errors), [.. steps.Removals, .. steps.Changes, .. steps.Creations]);
     }
 
-    private void PlanOne(Wanted w, IReadOnlyList<Source> current, HashSet<Guid> matched, List<PlanItem> items, Steps steps, List<string> errors)
-    {
-        // The memory vault is one: it is the one that exists, whatever its name. Any other is found by its name.
-        var existing = w.Kind == SourceKind.Memory
+    /// <summary>The source an entry is about. The memory vault is one: it is the one that exists, whatever its name. Any other is found by its name.</summary>
+    private static Source? Find(IReadOnlyList<Source> current, Wanted w) =>
+        w.Kind == SourceKind.Memory
             ? current.FirstOrDefault(source => source.Kind == SourceKind.Memory)
             : current.FirstOrDefault(source => source.Kind == w.Kind && source.Name == w.Name);
-        if (current.FirstOrDefault(source => source.Name == w.Name && source.Id != existing?.Id) is { } owner)
+
+    private void PlanOne(Wanted w, IReadOnlyList<Source> current, HashSet<Guid> freed, List<PlanItem> items, Steps steps, List<string> errors)
+    {
+        var existing = Find(current, w);
+        if (current.FirstOrDefault(source => source.Name == w.Name && source.Id != existing?.Id && !freed.Contains(source.Id)) is { } owner)
         {
             errors.Add($"The name '{w.Name}' is already taken by a source of the kind {owner.Kind}.");
             return;
@@ -108,7 +126,6 @@ public sealed class ConfigurationApplier
             return;
         }
 
-        matched.Add(existing.Id);
         var action = ActionFor(existing, w);
         items.Add(new PlanItem(action, w.Kind, w.Name, w.Path, w.Mode));
         if (action != PlanAction.Keep)
@@ -181,8 +198,14 @@ public sealed class ConfigurationApplier
         }
     }
 
-    private void Add(List<Wanted> wanted, List<string> errors, SourceKind kind, SourceEntry entry, string where, string? defaultName)
+    private void Add(List<Wanted> wanted, List<string> errors, SourceKind kind, SourceEntry? entry, string where, string? defaultName)
     {
+        if (entry is null)
+        {
+            errors.Add($"{where}: it is empty.");
+            return;
+        }
+
         var name = string.IsNullOrWhiteSpace(entry.Name) ? defaultName : entry.Name;
         var problems = new List<string>();
         if (name is null)

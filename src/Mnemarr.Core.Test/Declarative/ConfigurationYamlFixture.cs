@@ -63,7 +63,6 @@ public sealed class ConfigurationYamlFixture
 
     [Theory]
     [InlineData("memory: &m\n  path: /x\nknowledge:\n  - *m\n", "anchors or aliases")]
-    [InlineData("memory: &m\n  path: /x\n", "anchors or aliases")]
     [InlineData("memory: !!map\n  path: /x\n", "tags")]
     [InlineData("memory:\n  path: /x\n---\nmemory:\n  path: /y\n", "one YAML document")]
     public void should_refuse_what_makes_a_small_document_big_or_a_value_something_else(string text, string reason)

@@ -91,6 +91,12 @@ public sealed partial class ConfigurationFileService : BackgroundService
         {
             Fail("The database cannot be reached, so the configuration could not be applied.");
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Whatever else goes wrong with one document is that document's failure, on the probe: it does not stop the host.
+            LogUnexpected(ex);
+            Fail("The configuration could not be applied.");
+        }
     }
 
     /// <summary>The file, or null (and the reason in the state) when it cannot be read: a folder that is not mounted yet is not a reason to stop.</summary>
@@ -98,6 +104,12 @@ public sealed partial class ConfigurationFileService : BackgroundService
     {
         try
         {
+            if (new FileInfo(file).Length > ConfigurationYaml.MaxBytes)
+            {
+                Fail($"The configuration file is larger than {ConfigurationYaml.MaxBytes / 1024} KB.");
+                return null;
+            }
+
             return await File.ReadAllTextAsync(file, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -141,6 +153,9 @@ public sealed partial class ConfigurationFileService : BackgroundService
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The configuration file was applied: {Changes} change(s).")]
     private partial void LogApplied(int changes);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The configuration file could not be applied because of an unexpected error.")]
+    private partial void LogUnexpected(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "The configuration file was not applied: {Reason}")]
     private partial void LogFailed(string reason);

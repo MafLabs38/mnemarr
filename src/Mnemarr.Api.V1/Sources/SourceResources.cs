@@ -3,12 +3,18 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Api.V1.Sources;
 
-/// <summary>A declared source, with what is known of its index. <c>managed</c>: a configuration document owns it, and it is changed there.</summary>
+/// <summary>
+/// A declared source, with what is known of its index and of its last pass: <c>lastError</c> is a stable code (<c>folder-missing</c>,
+/// <c>outside-roots</c>, <c>unreadable</c>) when the last pass failed, and the notes of the source are then those of the pass before.
+/// <c>managed</c>: a configuration document owns it, and it is changed there.</summary>
 public sealed record SourceResource(
-    Guid Id, string Name, string Kind, string Mode, string Path, DateTimeOffset CreatedAt, int Notes, int Chunks, DateTimeOffset? LastIndexedAt, bool Managed)
+    Guid Id, string Name, string Kind, string Mode, string Path, DateTimeOffset CreatedAt, int Notes, int Chunks, DateTimeOffset? LastIndexedAt,
+    DateTimeOffset? LastScanAt, string? LastError, bool Managed)
 {
-    public static SourceResource From(Source source, IndexCounts counts) =>
-        new(source.Id, source.Name, source.Kind.ToString(), source.Mode.ToString(), source.Path, source.CreatedAt, counts.Notes, counts.Chunks, counts.LastIndexedAt, source.Managed);
+    public static SourceResource From(Source source, IndexCounts counts, ScanOutcome? scan) =>
+        new(
+            source.Id, source.Name, source.Kind.ToString(), source.Mode.ToString(), source.Path, source.CreatedAt, counts.Notes, counts.Chunks,
+            counts.LastIndexedAt, scan?.At, scan?.Error, source.Managed);
 }
 
 public sealed record CreateSourceRequest(string Name, string Kind, string Mode, string Path);
@@ -17,10 +23,10 @@ public sealed record CreateSourceRequest(string Name, string Kind, string Mode, 
 public sealed record UpdateSourceRequest(string Name, string Mode, string Path);
 
 /// <summary>A kind of source, the rule behind it and how many are declared: the base the interface shows, with what is missing.</summary>
-public sealed record SourceKindResource(string Kind, string Title, string Purpose, bool Required, bool Unique, int Count, bool Satisfied, string DefaultMode)
+public sealed record SourceKindResource(string Kind, bool Required, bool Unique, int Count, bool Satisfied, string DefaultMode)
 {
     public static SourceKindResource From(KindStatus status) =>
-        new(status.Rule.Kind.ToString(), status.Rule.Title, status.Rule.Purpose, status.Rule.Required, status.Rule.Unique, status.Count, status.Satisfied, status.Rule.DefaultMode.ToString());
+        new(status.Rule.Kind.ToString(), status.Rule.Required, status.Rule.Unique, status.Count, status.Satisfied, status.Rule.DefaultMode.ToString());
 }
 
 /// <summary>What one pass over a source did.</summary>

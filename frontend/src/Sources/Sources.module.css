@@ -76,6 +76,12 @@
   font-weight: 400;
 }
 
+.scanFailed {
+  margin: 4px 0 0;
+  color: var(--dangerColor);
+  font-size: var(--fontSizeMeta);
+}
+
 .yaml {
   width: 100%;
   min-height: 160px;

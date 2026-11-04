@@ -20,12 +20,13 @@ export default function KindSection({
 }: Readonly<{ kind: SourceKindItem; sources: ReadonlyArray<SourceItem> }>) {
   const mine = sources.filter((source) => source.kind === kind.kind);
   const full = kind.unique && mine.length >= 1;
+  const title = translate(`${kind.kind}Title`);
 
   return (
-    <Card title={kind.title}>
-      <p className={styles.hint}>{kind.purpose}</p>
-      {kind.required && <p>{translate(kind.satisfied ? 'Required' : 'RequiredMissing', { kind: kind.title })}</p>}
-      {!kind.satisfied && <Alert>{translate('SourceMissing', { kind: kind.title })}</Alert>}
+    <Card title={title}>
+      <p className={styles.hint}>{translate(`${kind.kind}Purpose`)}</p>
+      {kind.required && <p>{translate(kind.satisfied ? 'Required' : 'RequiredMissing', { kind: title })}</p>}
+      {!kind.satisfied && <Alert>{translate('SourceMissing', { kind: title })}</Alert>}
       {mine.length > 0 && <SourceList kind={kind} sources={mine} />}
       {!full && <SourceForm kind={kind} suggestedName={suggestedNames[kind.kind]} />}
     </Card>

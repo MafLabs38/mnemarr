@@ -18,15 +18,17 @@ public sealed class SourcesController : ControllerBase
     private readonly SourceCatalog _catalog;
     private readonly INoteIndex _index;
     private readonly SourceIndexer _indexer;
+    private readonly ScanOutcomes _outcomes;
 
-    public SourcesController(SourceCatalog catalog, INoteIndex index, SourceIndexer indexer)
+    public SourcesController(SourceCatalog catalog, INoteIndex index, SourceIndexer indexer, ScanOutcomes outcomes)
     {
         _catalog = catalog;
         _index = index;
         _indexer = indexer;
+        _outcomes = outcomes;
     }
 
-    private SourceResource Resource(Source source) => SourceResource.From(source, _index.Counts(source.Id));
+    private SourceResource Resource(Source source) => SourceResource.From(source, _index.Counts(source.Id), _outcomes.Of(source.Id));
 
     [HttpGet]
     public IReadOnlyList<SourceResource> GetSources() => [.. _catalog.List(User.Scope()).Select(Resource)];
@@ -37,7 +39,7 @@ public sealed class SourcesController : ControllerBase
 
     /// <summary>The kinds of source, the rule of each (required, unique) and how many are declared: what must be there, and what is missing.</summary>
     [HttpGet("kinds")]
-    public IReadOnlyList<SourceKindResource> GetKinds() => [.. _catalog.Kinds().Select(SourceKindResource.From)];
+    public IReadOnlyList<SourceKindResource> GetKinds() => [.. _catalog.Kinds(User.Scope()).Select(SourceKindResource.From)];
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType<SourceResource>(StatusCodes.Status200OK)]
@@ -58,7 +60,7 @@ public sealed class SourcesController : ControllerBase
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The mode of a source is ReadOnly or ReadWrite.");
         }
 
-        var source = _catalog.Add(request.Name, kind, mode, request.Path, User.ActorName());
+        var source = _catalog.Add(request.Name, kind, mode, request.Path, User.Scope(), User.ActorName());
         return CreatedAtAction(nameof(GetSource), new { id = source.Id }, Resource(source));
     }
 
@@ -83,8 +85,11 @@ public sealed class SourcesController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Brings the index of a source in line with its folder now, without waiting for the next scan.</summary>
+    /// <summary>
+    /// Brings the index of a source in line with its folder now, without waiting for the next scan. With <c>rebuild=true</c> every note is
+    /// cut again, even those that did not change. The pass runs inside the request: it becomes a command when the commands exist (Q-30).
+    /// </summary>
     [HttpPost("{id:guid}/index")]
-    public async Task<IndexReportResource> IndexSource(Guid id, CancellationToken cancellationToken) =>
-        IndexReportResource.From(await _indexer.IndexAsync(_catalog.Get(id, User.Scope()), cancellationToken));
+    public async Task<IndexReportResource> IndexSource(Guid id, [FromQuery] bool rebuild = false, CancellationToken cancellationToken = default) =>
+        IndexReportResource.From(await _indexer.IndexAsync(_catalog.Get(id, User.Scope()), rebuild, cancellationToken));
 }

@@ -81,6 +81,42 @@ public sealed class MarkdownChunkerFixture
     }
 
     [Theory]
+    [InlineData("## Learning C#", "Learning C#")]
+    [InlineData("## Closed ##", "Closed")]
+    [InlineData("## Closed with spaces  ##  ", "Closed with spaces")]
+    [InlineData("##   Padded   ", "Padded")]
+    [InlineData("##\tTabbed", "Tabbed")]
+    public void should_read_the_title_of_a_heading_without_its_closing_marks_but_keeping_a_hash_that_belongs_to_it(string line, string expected)
+    {
+        MarkdownChunker.Split(line + "\ntext").Should().ContainSingle().Which.Heading.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("#nospace")]
+    [InlineData("####### seven")]
+    [InlineData("#")]
+    [InlineData("# ")]
+    [InlineData("# ###")]
+    [InlineData(" # indented")]
+    public void should_not_take_a_line_that_is_not_a_heading_for_one(string line)
+    {
+        MarkdownChunker.Split(line + "\ntext").Should().ContainSingle().Which.Heading.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void should_cut_a_hostile_heading_in_linear_time()
+    {
+        // A heading followed by a very long run of spaces is what makes a backtracking pattern take cubic time.
+        var hostile = "# a" + new string(' ', 200_000) + "x\n" + "#" + new string(' ', 200_000) + "\ntext";
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var chunks = MarkdownChunker.Split(hostile);
+
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        chunks.Should().NotBeEmpty();
+    }
+
+    [Theory]
     [InlineData("intro\n# The Title\n## Part", "The Title")]
     [InlineData("```\n# not a title\n```\nno heading", "note")]
     [InlineData("## only level two", "note")]

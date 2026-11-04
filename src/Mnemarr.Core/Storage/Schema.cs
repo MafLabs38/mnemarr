@@ -67,6 +67,7 @@ public static class Schema
             topic TEXT NOT NULL,
             title TEXT NOT NULL,
             content_hash TEXT NOT NULL,
+            chunker INTEGER NOT NULL DEFAULT 0,
             indexed_at TEXT NOT NULL,
             UNIQUE (source_id, path)
         );

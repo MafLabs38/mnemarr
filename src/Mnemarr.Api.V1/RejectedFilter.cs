@@ -38,6 +38,7 @@ public sealed class RejectedFilter : IExceptionFilter
         Problem.NotFound => (StatusCodes.Status404NotFound, "not-found"),
         Problem.Locked => (StatusCodes.Status429TooManyRequests, "locked"),
         Problem.Busy => (StatusCodes.Status429TooManyRequests, "busy"),
+        Problem.Forbidden => (StatusCodes.Status403Forbidden, "forbidden"),
         _ => throw new InvalidOperationException($"No status is chosen for {problem}."),
     };
 }

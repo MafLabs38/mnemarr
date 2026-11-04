@@ -3,17 +3,18 @@
 # A section that is absent is left alone; one that is present, even empty, is managed by this document.
 
 # The memory vault: exactly one, and required. Mnemarr is its only author.
+# The mode is the write switch, read-only unless you say otherwise.
 memory:
   path: /vaults/memory
   mode: ReadWrite
 
 # Knowledge vaults: hand-written notes, as many as there are (courses, notes taken for work).
 knowledge:
-  - name: cours
-    path: /vaults/cours
-  - name: travail
-    path: /vaults/travail
-    mode: ReadOnly
+  - name: courses
+    path: /vaults/courses
+  - name: work-notes
+    path: /vaults/work-notes
+    mode: ReadWrite
 
 # The documentation of applications, read from their repositories: one source per application.
 applicationDocs:

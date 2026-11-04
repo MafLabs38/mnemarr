@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Test;
@@ -25,6 +26,9 @@ internal sealed class TestWorkspace : IDisposable
     public IOptions<MnemarrOptions> Options { get; }
 
     public IDatabase Database { get; }
+
+    /// <summary>Where a source may be: the given roots, or the sources folder.</summary>
+    public SourcePaths Paths(params string[] roots) => new(Options, Microsoft.Extensions.Options.Options.Create(new SourcesOptions { Roots = roots }));
 
     /// <summary>A folder under the sources folder, created.</summary>
     public string Folder(string name) => Directory.CreateDirectory(Path.Combine(SourcesFolder, name)).FullName;

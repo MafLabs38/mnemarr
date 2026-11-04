@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Mnemarr.Core.Declarative;
 
 namespace Mnemarr.Integration.Test;
 
@@ -23,9 +24,11 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private string Folder(string name)
+    private string Folder(string name) => FolderIn(_factory, name);
+
+    private static string FolderIn(MnemarrFactory factory, string name)
     {
-        var folder = Path.Combine(_factory.DataFolder, "sources", name);
+        var folder = Path.Combine(factory.DataFolder, "sources", name);
         Directory.CreateDirectory(folder);
         return folder;
     }
@@ -99,29 +102,34 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
     }
 
     [Fact]
-    public async Task should_refuse_a_document_larger_than_the_limit_before_reading_it()
+    public async Task should_refuse_a_document_over_the_limit_with_a_400_problem()
     {
-        var response = await _callers.Admin.PutAsync("/api/v1/config", Yaml("# " + new string('x', 300 * 1024)), Token);
+        // The transport's limit (a 413 on a body far over it) is Kestrel's, which the test server does not have: the parser's own limit is tested.
+        var response = await _callers.Admin.PutAsync("/api/v1/config", Yaml("# " + new string('x', ConfigurationYaml.MaxBytes)), Token);
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.RequestEntityTooLarge);
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
     }
 
     [Fact]
     public async Task should_refuse_to_change_or_forget_by_hand_what_a_document_owns_with_a_409_and_still_let_a_person_declare_others()
     {
+        // Its own host: the last step removes everything the documents of the application docs section own, so no other test may have one.
+        await using var factory = new MnemarrFactory();
+        using var admin = await factory.SignedInClientAsync();
         var owned = Callers.Unique("owned");
-        await _callers.Admin.PutAsync("/api/v1/config", Yaml($"applicationDocs:\n  - name: {owned}\n    path: {Folder(owned)}\n"), Token);
-        var id = (await SourcesAsync()).EnumerateArray().Single(s => s.GetProperty("name").GetString() == owned).GetProperty("id").GetGuid();
+        await admin.PutAsync("/api/v1/config", Yaml($"applicationDocs:\n  - name: {owned}\n    path: {FolderIn(factory, owned)}\n"), Token);
+        var id = (await SourcesAsync(admin)).EnumerateArray().Single(s => s.GetProperty("name").GetString() == owned).GetProperty("id").GetGuid();
         var byHand = Callers.Unique("hand");
 
-        var change = await _callers.Admin.PutAsJsonAsync($"/api/v1/sources/{id}", new { name = owned, mode = "ReadWrite", path = Folder(owned) }, Token);
-        var forget = await _callers.Admin.DeleteAsync($"/api/v1/sources/{id}", Token);
-        var declare = await _callers.Admin.PostAsJsonAsync("/api/v1/sources", new { name = byHand, kind = "Knowledge", mode = "ReadWrite", path = Folder(byHand) }, Token);
+        var change = await admin.PutAsJsonAsync($"/api/v1/sources/{id}", new { name = owned, mode = "ReadWrite", path = FolderIn(factory, owned) }, Token);
+        var forget = await admin.DeleteAsync($"/api/v1/sources/{id}", Token);
+        var declare = await admin.PostAsJsonAsync("/api/v1/sources", new { name = byHand, kind = "Knowledge", mode = "ReadWrite", path = FolderIn(factory, byHand) }, Token);
 
         change.StatusCode.Should().Be(HttpStatusCode.Conflict);
         forget.StatusCode.Should().Be(HttpStatusCode.Conflict);
         declare.StatusCode.Should().Be(HttpStatusCode.Created);
-        (await (await _callers.Admin.PutAsync("/api/v1/config", Yaml("applicationDocs: []\n"), Token)).Content.ReadFromJsonAsync<JsonElement>(Token))
+        (await (await admin.PutAsync("/api/v1/config", Yaml("applicationDocs: []\n"), Token)).Content.ReadFromJsonAsync<JsonElement>(Token))
             .GetProperty("items").EnumerateArray().Should().ContainSingle().Which.GetProperty("action").GetString().Should().Be("Remove");
     }
 
@@ -136,12 +144,12 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
         var back = await (await _callers.Admin.PutAsync("/api/v1/config?dryRun=true", Yaml(text), Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
 
         exported.Content.Headers.ContentType!.MediaType.Should().Be("application/yaml");
-        text.Should().Contain(name).And.Contain("knowledge:");
+        ConfigurationYaml.Parse(text).Knowledge!.Select(entry => entry.Name).Should().Contain(name);
         back.GetProperty("items").EnumerateArray().Where(i => i.GetProperty("name").GetString() == name).Should().ContainSingle().Which.GetProperty("action").GetString().Should().Be("Adopt");
     }
 
     [Fact]
-    public async Task should_refuse_a_key_limited_to_some_sources_the_application_of_a_configuration_and_show_it_only_its_own_in_the_export()
+    public async Task should_refuse_a_key_limited_to_some_sources_both_the_application_and_the_export_of_a_configuration()
     {
         var mine = Callers.Unique("scoped");
         var created = await _callers.Admin.PostAsJsonAsync("/api/v1/sources", new { name = mine, kind = "Knowledge", mode = "ReadOnly", path = Folder(mine) }, Token);
@@ -151,11 +159,11 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
         using var scoped = _factory.CreateKeyClient((await key.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!);
 
         var apply = await scoped.PutAsync("/api/v1/config", Yaml("knowledge: []\n"), Token);
-        var export = await (await scoped.GetAsync("/api/v1/config", Token)).Content.ReadAsStringAsync(Token);
+        var export = await scoped.GetAsync("/api/v1/config", Token);
 
         apply.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        export.Should().Contain(mine);
-        export.Split('\n').Count(line => line.Contains("name:", StringComparison.Ordinal)).Should().Be(1);
+        export.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await export.Content.ReadAsStringAsync(Token)).Should().NotContain(mine, "a document with only some of the sources would remove the others when applied back");
     }
 
     [Theory]
@@ -186,12 +194,27 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
         await using var factory = new ConfigFileFactory();
         using var admin = await factory.SignedInClientAsync();
 
-        var ready = await WaitAsync(async () => await (await admin.GetAsync("/health/ready", Token)).Content.ReadAsStringAsync(Token) == "Healthy");
+        var applied = await WaitAsync(async () => (await admin.GetFromJsonAsync<JsonElement>("/api/v1/sources", Token)).GetArrayLength() == 2);
 
-        ready.Should().BeTrue("the configuration file is applied after the host starts");
+        applied.Should().BeTrue("the configuration file is applied after the host starts");
+        (await (await admin.GetAsync("/health/ready", Token)).Content.ReadAsStringAsync(Token)).Should().Be("Healthy");
         var sources = await admin.GetFromJsonAsync<JsonElement>("/api/v1/sources", Token);
         sources.EnumerateArray().Select(s => (s.GetProperty("name").GetString(), s.GetProperty("kind").GetString(), s.GetProperty("managed").GetBoolean()))
             .Should().BeEquivalentTo([("memory", "Memory", true), ("cours", "Knowledge", true)]);
+    }
+
+    [Fact]
+    public async Task should_refuse_to_apply_a_document_by_hand_when_the_configuration_is_a_file_and_still_preview_one()
+    {
+        await using var factory = new ConfigFileFactory();
+        using var admin = await factory.SignedInClientAsync();
+
+        var apply = await admin.PutAsync("/api/v1/config", Yaml("knowledge: []\n"), Token);
+        var preview = await admin.PutAsync("/api/v1/config?dryRun=true", Yaml("knowledge: []\n"), Token);
+
+        apply.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await apply.Content.ReadAsStringAsync(Token)).Should().Contain("file");
+        preview.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     private static async Task<bool> WaitAsync(Func<Task<bool>> condition)

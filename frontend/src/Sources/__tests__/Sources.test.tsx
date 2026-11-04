@@ -16,28 +16,22 @@ import type { SearchHit, SourceItem, SourceKindItem } from 'Sources/sources';
 const kindsWith = (counts: { Memory: number; Knowledge: number; ApplicationDocs: number }): SourceKindItem[] => [
   {
     kind: 'Memory',
-    title: 'Memory vault',
-    purpose: 'The consolidated memory.',
     required: true,
     unique: true,
     count: counts.Memory,
     satisfied: counts.Memory >= 1,
-    defaultMode: 'ReadWrite',
+    defaultMode: 'ReadOnly',
   },
   {
     kind: 'Knowledge',
-    title: 'Knowledge vaults',
-    purpose: 'Hand-written notes.',
     required: false,
     unique: false,
     count: counts.Knowledge,
     satisfied: true,
-    defaultMode: 'ReadWrite',
+    defaultMode: 'ReadOnly',
   },
   {
     kind: 'ApplicationDocs',
-    title: 'Application documentation',
-    purpose: 'The documentation of an application.',
     required: false,
     unique: false,
     count: counts.ApplicationDocs,
@@ -57,6 +51,8 @@ const sources: SourceItem[] = [
     notes: 12,
     chunks: 40,
     lastIndexedAt: '2026-11-03T10:30:00Z',
+    lastScanAt: '2026-11-03T10:30:00Z',
+    lastError: null,
     managed: false,
   },
   {
@@ -69,6 +65,8 @@ const sources: SourceItem[] = [
     notes: 0,
     chunks: 0,
     lastIndexedAt: null,
+    lastScanAt: null,
+    lastError: null,
     managed: false,
   },
 ];
@@ -172,7 +170,7 @@ describe('Sources', () => {
     expect(await within(memory).findByRole('alert')).toHaveTextContent('No source is declared for Memory vault');
     const form = within(memory).getByRole('form', { name: 'Declare a source of Memory vault' });
     expect(within(form).getByLabelText('Name')).toHaveValue('memory');
-    expect(within(form).getByLabelText('Mode')).toHaveValue('ReadWrite');
+    expect(within(form).getByLabelText('Mode')).toHaveValue('ReadOnly');
   });
 
   it('fills the memory vault slot with the kind of the section, not a kind the person chose', async () => {
@@ -192,7 +190,7 @@ describe('Sources', () => {
     expect(sentBody(callsOf(fetchMock, 'POST', '/api/v1/sources'))).toEqual({
       name: 'memory',
       kind: 'Memory',
-      mode: 'ReadWrite',
+      mode: 'ReadOnly',
       path: '/config/sources/memory',
     });
   });
@@ -261,6 +259,23 @@ describe('Sources', () => {
     expect(within(cours).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(within(cours).getByRole('button', { name: 'Index now for cours' })).toBeInTheDocument();
     expect(memory.queryByRole('button', { name: /Change/ })).not.toBeInTheDocument();
+  });
+
+  it('says why the last scan of a source failed, since its old notes are still there', async () => {
+    server(
+      () => undefined,
+      sources.map((source) => (source.name === 'cours' ? { ...source, lastError: 'folder-missing' as const } : source)),
+    );
+    renderWithProviders(<Sources />);
+
+    const cours = rowOf(await screen.findByRole('rowheader', { name: /cours/ }));
+
+    expect(within(cours).getByRole('alert')).toHaveTextContent(
+      'The last scan failed: the folder is not there any more',
+    );
+    expect(
+      within(rowOf(screen.getByRole('rowheader', { name: /memoire/ }))).queryByRole('alert'),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the current state as a configuration document to keep in a repository', async () => {

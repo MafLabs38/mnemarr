@@ -131,6 +131,16 @@ const en = {
   DeclareSourceOf: 'Declare a source of {kind}',
   Required: '{kind}: required, and there can be only one. Change its folder, it cannot be removed.',
   RequiredMissing: '{kind}: required, and there can be only one.',
+  ApplicationDocsPurpose: 'The documentation of an application, read from its repository. One per application.',
+  ApplicationDocsTitle: 'Application documentation',
+  KnowledgePurpose: 'Hand-written notes: courses, notes taken for work. As many as there are vaults to show.',
+  KnowledgeTitle: 'Knowledge vaults',
+  MemoryPurpose: 'The consolidated memory. Mnemarr is its only author: there is exactly one, and it is required.',
+  MemoryTitle: 'Memory vault',
+  ScanFailed: 'The last scan failed: {reason}',
+  'folder-missing': 'the folder is not there any more',
+  'outside-roots': 'the folder is not inside the folders the operator allows any more',
+  unreadable: 'the folder cannot be read',
   SourceMissing: 'No source is declared for {kind}: what depends on it cannot work until one is.',
 } as const;
 

@@ -11,6 +11,7 @@ public sealed class SourceIndexingServiceFixture : IDisposable
     private readonly TestWorkspace _workspace = new();
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero));
     private readonly SqliteNoteIndex _index;
+    private readonly ScanOutcomes _outcomes = new();
     private readonly SqliteSourceStore _sources;
     private readonly SourceIndexingService _subject;
 
@@ -19,7 +20,7 @@ public sealed class SourceIndexingServiceFixture : IDisposable
         _index = new SqliteNoteIndex(_workspace.Database);
         _sources = new SqliteSourceStore(_workspace.Database);
         _subject = new SourceIndexingService(
-            _sources, new SourceIndexer(_index, _clock), Options.Create(new IndexingOptions { ScanIntervalSeconds = 30 }), _clock,
+            _sources, new SourceIndexer(_index, _workspace.Paths(), _outcomes, _clock), Options.Create(new IndexingOptions { ScanIntervalSeconds = 30 }), _clock,
             NullLogger<SourceIndexingService>.Instance);
     }
 
@@ -54,28 +55,27 @@ public sealed class SourceIndexingServiceFixture : IDisposable
         var token = TestContext.Current.CancellationToken;
 
         await _subject.StartAsync(token);
-        await WaitUntil(() => _index.Counts(source.Id).Notes == 1, token);
+        await AdvanceUntil(() => _index.Counts(source.Id).Notes == 1, token);
 
         TestWorkspace.Write(folder, "b.md", "# B\nsecond");
-        await WaitUntil(() => _subject.ExecuteTask is { IsCompleted: false }, token);
-        _clock.Advance(TimeSpan.FromSeconds(30));
-        await WaitUntil(() => _index.Counts(source.Id).Notes == 2, token);
+        await AdvanceUntil(() => _index.Counts(source.Id).Notes == 2, token);
 
         await _subject.StopAsync(token);
         _subject.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue();
     }
 
-    private static async Task WaitUntil(Func<bool> condition, CancellationToken token)
+    /// <summary>
+    /// Lets the scan interval pass again and again until the condition holds. Whether the service had already waited for its timer when the
+    /// clock moved does not matter: a moment that is missed is made up at the next advance, and an extra pass finds nothing to do.
+    /// </summary>
+    private async Task AdvanceUntil(Func<bool> condition, CancellationToken token)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
+        limit.CancelAfter(TimeSpan.FromSeconds(30));
         while (!condition())
         {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException("The condition was not reached in 10 seconds.");
-            }
-
-            await Task.Delay(20, token);
+            _clock.Advance(TimeSpan.FromSeconds(30));
+            await Task.Delay(10, limit.Token);
         }
     }
 
@@ -84,7 +84,7 @@ public sealed class SourceIndexingServiceFixture : IDisposable
     {
         var gone = new Mnemarr.Core.Storage.Database(Options.Create(new Mnemarr.Core.Configuration.MnemarrOptions { DataFolder = Path.Combine(_workspace.Root, "gone") }));
         var subject = new SourceIndexingService(
-            new SqliteSourceStore(gone), new SourceIndexer(new SqliteNoteIndex(gone), _clock), Options.Create(new IndexingOptions()), _clock,
+            new SqliteSourceStore(gone), new SourceIndexer(new SqliteNoteIndex(gone), _workspace.Paths(), _outcomes, _clock), Options.Create(new IndexingOptions()), _clock,
             NullLogger<SourceIndexingService>.Instance);
 
         var scan = () => subject.ScanAllAsync(TestContext.Current.CancellationToken);

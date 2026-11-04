@@ -57,7 +57,7 @@ export default function SourceForm({ kind, source, suggestedName = '', onDone }:
 
   return (
     <form
-      aria-label={translate(source ? 'ChangeSource' : 'DeclareSourceOf', { kind: kind.title })}
+      aria-label={translate(source ? 'ChangeSource' : 'DeclareSourceOf', { kind: translate(`${kind.kind}Title`) })}
       className={styles.form}
       onSubmit={submit}
     >

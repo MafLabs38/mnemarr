@@ -48,12 +48,14 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<IndexingOptions>, IndexingOptionsValidator>();
         services.AddSingleton<ISourceStore, SqliteSourceStore>();
         services.AddSingleton<INoteIndex, SqliteNoteIndex>();
+        services.AddSingleton<SourcePaths>();
         services.AddSingleton<SourceCatalog>();
         services.AddSingleton<ConfigurationApplier>();
         services.AddOptions<ConfigurationOptions>().Bind(configuration.GetSection("Config")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<ConfigurationOptions>, ConfigurationOptionsValidator>();
         services.AddSingleton<ConfigurationState>();
         services.AddHostedService<ConfigurationFileService>();
+        services.AddSingleton<ScanOutcomes>();
         services.AddSingleton<SourceIndexer>();
         services.AddSingleton<SourceIndexingService>();
         services.AddHostedService(provider => provider.GetRequiredService<SourceIndexingService>());

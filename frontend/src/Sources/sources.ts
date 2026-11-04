@@ -16,6 +16,10 @@ export interface SourceItem {
   notes: number;
   chunks: number;
   lastIndexedAt: string | null;
+  /** When the last pass over the folder ended, since the server started. */
+  lastScanAt: string | null;
+  /** Why the last pass failed (a stable code), or null when it went well. */
+  lastError: 'folder-missing' | 'outside-roots' | 'unreadable' | null;
   /** A configuration document owns it: it is changed by changing the document. */
   managed: boolean;
 }
@@ -23,8 +27,6 @@ export interface SourceItem {
 /** A kind of source, the rule behind it and how many are declared: what the base needs, and what is missing. */
 export interface SourceKindItem {
   kind: SourceKind;
-  title: string;
-  purpose: string;
   required: boolean;
   unique: boolean;
   count: number;
@@ -62,11 +64,11 @@ export function useSources() {
   return useApiQuery<SourceItem[]>('/sources');
 }
 
-/** The folders the operator allows for sources: they do not change while the page is open. */
 export function useSourceKinds() {
   return useApiQuery<SourceKindItem[]>('/sources/kinds');
 }
 
+/** The folders the operator allows for sources: they do not change while the page is open. */
 export function useSourceRoots() {
   return useApiQuery<string[]>('/sources/roots', { staleTime: Infinity });
 }

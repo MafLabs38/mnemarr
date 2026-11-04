@@ -33,7 +33,7 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
         database ??= _workspace.Database;
         var store = new SqliteSourceStore(database);
         var audit = new SqliteAuditLog(database, _clock);
-        var catalog = new SourceCatalog(store, audit, _workspace.Options, Options.Create(new SourcesOptions()), _clock);
+        var catalog = new SourceCatalog(store, audit, _workspace.Paths(), _clock);
         return new ConfigurationFileService(
             new ConfigurationApplier(catalog, store, audit, _clock), _state, Options.Create(new ConfigurationOptions { File = file }), _clock,
             NullLogger<ConfigurationFileService>.Instance);
@@ -73,6 +73,28 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
         await service.ApplyOnceAsync(Token);
 
         _store.List().Select(s => s.Name).Should().Equal("cours");
+    }
+
+    [Fact]
+    public async Task should_report_a_file_with_an_empty_entry_instead_of_stopping_the_application()
+    {
+        File.WriteAllText(_file, "knowledge:\n  -\n");
+
+        var apply = () => Service(_file).ApplyOnceAsync(Token);
+
+        await apply.Should().NotThrowAsync();
+        _state.Error.Should().Contain("it is empty");
+    }
+
+    [Fact]
+    public async Task should_refuse_a_file_larger_than_the_limit_without_reading_it_in()
+    {
+        File.WriteAllText(_file, new string('#', ConfigurationYaml.MaxBytes + 1));
+
+        await Service(_file).ApplyOnceAsync(Token);
+
+        _state.Error.Should().Contain("larger than");
+        _store.List().Should().BeEmpty();
     }
 
     [Fact]

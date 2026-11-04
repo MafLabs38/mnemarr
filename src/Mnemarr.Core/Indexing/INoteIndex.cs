@@ -5,14 +5,17 @@ namespace Mnemarr.Core.Indexing;
 /// <summary>What is known of a source: how many notes and chunks, and when something was last indexed.</summary>
 public sealed record IndexCounts(int Notes, int Chunks, DateTimeOffset? LastIndexedAt);
 
+/// <summary>An indexed note: the hash of the content it was cut from, and the version of the chunker that cut it.</summary>
+public sealed record NoteState(string ContentHash, int Chunker);
+
 /// <summary>The notes of the sources, cut into chunks, with their full-text index.</summary>
 public interface INoteIndex
 {
-    /// <summary>The content hash of every note of a source, by path: what the next scan is compared with.</summary>
-    IReadOnlyDictionary<string, string> Hashes(Guid sourceId);
+    /// <summary>What is known of every note of a source, by path: what the next scan is compared with.</summary>
+    IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId);
 
-    /// <summary>Adds a note, or replaces it with its new content and chunks.</summary>
-    void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, IReadOnlyList<Chunk> chunks, DateTimeOffset at);
+    /// <summary>Adds a note, or replaces it with its new content and chunks, cut by the given version of the chunker.</summary>
+    void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at);
 
     void Remove(Guid sourceId, string path);
 

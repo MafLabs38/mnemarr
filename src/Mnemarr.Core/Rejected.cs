@@ -8,6 +8,7 @@ public enum Problem
     NotFound,
     Locked,
     Busy,
+    Forbidden,
 }
 
 /// <summary>An operation that cannot be done, with the reason to give to the person who tried. Every vertical refuses with this one type.</summary>

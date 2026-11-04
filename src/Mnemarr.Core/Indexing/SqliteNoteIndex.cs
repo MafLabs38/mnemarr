@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Storage;
@@ -8,6 +9,12 @@ namespace Mnemarr.Core.Indexing;
 public sealed class SqliteNoteIndex : INoteIndex
 {
     private const string SourceParameter = "$source";
+
+    /// <summary>The most hits one search returns, whatever is asked.</summary>
+    private const int MaxLimit = 50;
+
+    /// <summary>How many words of a chunk the snippet of a hit shows around the match.</summary>
+    private const int SnippetWords = 32;
     private readonly IDatabase _database;
 
     public SqliteNoteIndex(IDatabase database)
@@ -15,23 +22,23 @@ public sealed class SqliteNoteIndex : INoteIndex
         _database = database;
     }
 
-    public IReadOnlyDictionary<string, string> Hashes(Guid sourceId)
+    public IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT path, content_hash FROM notes WHERE source_id = $source";
+        command.CommandText = "SELECT path, content_hash, chunker FROM notes WHERE source_id = $source";
         command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
         using var reader = command.ExecuteReader();
-        var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
+        var notes = new Dictionary<string, NoteState>(StringComparer.Ordinal);
         while (reader.Read())
         {
-            hashes[reader.GetString(0)] = reader.GetString(1);
+            notes[reader.GetString(0)] = new NoteState(reader.GetString(1), reader.GetInt32(2));
         }
 
-        return hashes;
+        return notes;
     }
 
-    public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, IReadOnlyList<Chunk> chunks, DateTimeOffset at)
+    public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at)
     {
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
@@ -42,8 +49,8 @@ public sealed class SqliteNoteIndex : INoteIndex
         {
             insert.Transaction = transaction;
             insert.CommandText = """
-                INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at)
-                VALUES ($source, $path, $topic, $title, $hash, $at)
+                INSERT INTO notes (source_id, path, topic, title, content_hash, chunker, indexed_at)
+                VALUES ($source, $path, $topic, $title, $hash, $chunker, $at)
                 RETURNING id
                 """;
             insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
@@ -51,6 +58,7 @@ public sealed class SqliteNoteIndex : INoteIndex
             insert.Parameters.AddWithValue("$topic", file.Topic);
             insert.Parameters.AddWithValue("$title", title);
             insert.Parameters.AddWithValue("$hash", contentHash);
+            insert.Parameters.AddWithValue("$chunker", chunker);
             insert.Parameters.AddWithValue("$at", StorageText.Format(at));
             noteId = (long)insert.ExecuteScalar()!;
         }
@@ -106,7 +114,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.name, n.path, n.topic, n.title, c.heading,
-                   snippet(chunks_fts, 0, '', '', ' … ', 32), -bm25(chunks_fts)
+                   snippet(chunks_fts, 0, '', '', ' … ', $snippetWords), -bm25(chunks_fts)
             FROM chunks_fts
             JOIN chunks c ON c.id = chunks_fts.rowid
             JOIN notes n ON n.id = c.note_id
@@ -122,8 +130,9 @@ public sealed class SqliteNoteIndex : INoteIndex
         command.Parameters.AddWithValue(SourceParameter, request.SourceId?.ToString() ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$topic", request.Topic ?? (object)DBNull.Value);
         // A caller limited to some sources sees those, even when it is none: an empty list matches nothing, never everything.
-        command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? System.Text.Json.JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
-        command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, 50));
+        command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
+        command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, MaxLimit));
+        command.Parameters.AddWithValue("$snippetWords", SnippetWords);
 
         using var reader = command.ExecuteReader();
         var hits = new List<SearchHit>();

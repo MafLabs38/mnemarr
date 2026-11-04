@@ -23,14 +23,14 @@ public sealed class SourceCatalogFixture : IDisposable
     public void Dispose() => _workspace.Dispose();
 
     private SourceCatalog Catalog(params string[] roots) =>
-        new(_store, _audit, _workspace.Options, Options.Create(new SourcesOptions { Roots = roots }), _clock);
+        new(_store, _audit, _workspace.Paths(roots), _clock);
 
     [Fact]
     public void should_declare_a_folder_of_the_sources_folder_by_default()
     {
         var folder = _workspace.Folder("cours");
 
-        var source = Catalog().Add("  Cours  ", SourceKind.Knowledge, SourceMode.ReadWrite, folder + Path.DirectorySeparatorChar, "root");
+        var source = Catalog().Add("  Cours  ", SourceKind.Knowledge, SourceMode.ReadWrite, folder + Path.DirectorySeparatorChar, SourceScope.All, "root");
 
         source.Should().Match<Source>(s => s.Name == "Cours" && s.Path == folder && s.Kind == SourceKind.Knowledge && s.Mode == SourceMode.ReadWrite);
         _store.Get(source.Id).Should().Be(source);
@@ -43,7 +43,7 @@ public sealed class SourceCatalogFixture : IDisposable
         using var vaults = new TempFolder();
         var vault = Directory.CreateDirectory(Path.Combine(vaults.Path, "memory")).FullName;
 
-        Catalog(vaults.Path).Add("memory", SourceKind.Memory, SourceMode.ReadWrite, vault, "root").Path.Should().Be(vault);
+        Catalog(vaults.Path).Add("memory", SourceKind.Memory, SourceMode.ReadWrite, vault, SourceScope.All, "root").Path.Should().Be(vault);
         Catalog(vaults.Path).Roots().Should().Equal(vaults.Path);
     }
 
@@ -52,7 +52,7 @@ public sealed class SourceCatalogFixture : IDisposable
     [InlineData("/etc", "inside one of the folders")]
     public void should_refuse_a_path_that_is_not_absolute_or_not_allowed(string path, string reason)
     {
-        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, path, "root");
+        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, path, SourceScope.All, "root");
 
         add.Should().Throw<RejectedException>().WithMessage($"*{reason}*");
     }
@@ -60,7 +60,7 @@ public sealed class SourceCatalogFixture : IDisposable
     [Fact]
     public void should_refuse_a_path_that_climbs_out_of_the_allowed_folder()
     {
-        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "..", "data-other"), "root");
+        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "..", "data-other"), SourceScope.All, "root");
 
         add.Should().Throw<RejectedException>().WithMessage("*inside one of the folders*");
     }
@@ -70,7 +70,7 @@ public sealed class SourceCatalogFixture : IDisposable
     {
         var sibling = Directory.CreateDirectory(_workspace.SourcesFolder + "-evil").FullName;
 
-        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, sibling, "root");
+        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, sibling, SourceScope.All, "root");
 
         add.Should().Throw<RejectedException>().WithMessage("*inside one of the folders*");
     }
@@ -78,7 +78,7 @@ public sealed class SourceCatalogFixture : IDisposable
     [Fact]
     public void should_refuse_a_folder_that_does_not_exist()
     {
-        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "nothing"), "root");
+        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "nothing"), SourceScope.All, "root");
 
         add.Should().Throw<RejectedException>().WithMessage("*does not exist*");
     }
@@ -92,25 +92,47 @@ public sealed class SourceCatalogFixture : IDisposable
         var link = Path.Combine(_workspace.SourcesFolder, "link");
         Directory.CreateSymbolicLink(link, outside.Path);
 
-        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, link, "root");
+        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, link, SourceScope.All, "root");
 
-        add.Should().Throw<RejectedException>().WithMessage("*cannot be a link*");
+        add.Should().Throw<RejectedException>().WithMessage("*link*");
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void should_refuse_a_folder_below_a_link_even_when_the_folder_itself_is_not_one()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Creating a link needs no privilege on Linux only.");
+        using var outside = new TempFolder();
+        Directory.CreateDirectory(Path.Combine(outside.Path, "deep", "vault"));
+        Directory.CreateSymbolicLink(Path.Combine(_workspace.SourcesFolder, "esc"), outside.Path);
+
+        var add = () => Catalog().Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "esc", "deep", "vault"), SourceScope.All, "root");
+
+        add.Should().Throw<RejectedException>().WithMessage("*link*");
+    }
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public void should_accept_a_root_that_is_itself_a_link_because_the_operator_chose_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "Creating a link needs no privilege on Linux only.");
+        using var real = new TempFolder();
+        Directory.CreateDirectory(Path.Combine(real.Path, "vault"));
+        var rootLink = Path.Combine(_workspace.Root, "root-link");
+        Directory.CreateSymbolicLink(rootLink, real.Path);
+
+        var source = Catalog(rootLink).Add("x", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(rootLink, "vault"), SourceScope.All, "root");
+
+        source.Path.Should().Be(Path.Combine(rootLink, "vault"));
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void should_refuse_a_source_without_a_name(string name)
+    [InlineData("nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn")]
+    public void should_refuse_a_source_whose_name_is_empty_or_too_long(string name)
     {
-        var add = () => Catalog().Add(name, SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), "root");
-
-        add.Should().Throw<RejectedException>().WithMessage("*name*");
-    }
-
-    [Fact]
-    public void should_refuse_a_name_that_is_too_long()
-    {
-        var add = () => Catalog().Add(new string('n', 101), SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), "root");
+        var add = () => Catalog().Add(name, SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
 
         add.Should().Throw<RejectedException>().WithMessage("*name*");
     }
@@ -119,9 +141,9 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_refuse_a_name_that_is_already_taken_and_keep_the_first_source()
     {
         var catalog = Catalog();
-        catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), "root");
+        catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "root");
 
-        var again = () => catalog.Add("cours", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("b"), "root");
+        var again = () => catalog.Add("cours", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("b"), SourceScope.All, "root");
 
         again.Should().Throw<RejectedException>().WithMessage("*already exists*");
         _store.List().Should().ContainSingle().Which.Kind.Should().Be(SourceKind.Knowledge);
@@ -130,7 +152,7 @@ public sealed class SourceCatalogFixture : IDisposable
     [Fact]
     public void should_remove_a_source_once_and_say_so_when_there_was_none()
     {
-        var source = Catalog().Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), "root");
+        var source = Catalog().Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "root");
 
         _store.Remove(source.Id).Should().BeTrue();
         _store.Remove(source.Id).Should().BeFalse();
@@ -148,7 +170,7 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_audit_what_is_declared_and_forgotten_and_say_so_when_a_source_is_not_there()
     {
         var catalog = Catalog();
-        var source = catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), "alice");
+        var source = catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "alice");
 
         catalog.Remove(source.Id, SourceScope.All, "bob");
 
@@ -163,8 +185,8 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_show_a_caller_limited_to_some_sources_those_and_treat_the_others_as_absent()
     {
         var catalog = Catalog();
-        var mine = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), "root");
-        var other = catalog.Add("other", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("b"), "root");
+        var mine = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
+        var other = catalog.Add("other", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("b"), SourceScope.All, "root");
         var scope = new SourceScope([mine.Id]);
 
         catalog.List(scope).Should().ContainSingle().Which.Name.Should().Be("mine");
@@ -180,13 +202,13 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_declare_only_one_memory_vault_and_as_many_knowledge_vaults_and_application_docs_as_there_are()
     {
         var catalog = Catalog();
-        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), "root");
-        catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k1"), "root");
-        catalog.Add("travail", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k2"), "root");
-        catalog.Add("app-a", SourceKind.ApplicationDocs, SourceMode.ReadOnly, _workspace.Folder("a1"), "root");
-        catalog.Add("app-b", SourceKind.ApplicationDocs, SourceMode.ReadOnly, _workspace.Folder("a2"), "root");
+        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), SourceScope.All, "root");
+        catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k1"), SourceScope.All, "root");
+        catalog.Add("travail", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k2"), SourceScope.All, "root");
+        catalog.Add("app-a", SourceKind.ApplicationDocs, SourceMode.ReadOnly, _workspace.Folder("a1"), SourceScope.All, "root");
+        catalog.Add("app-b", SourceKind.ApplicationDocs, SourceMode.ReadOnly, _workspace.Folder("a2"), SourceScope.All, "root");
 
-        var second = () => catalog.Add("memory-2", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m2"), "root");
+        var second = () => catalog.Add("memory-2", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m2"), SourceScope.All, "root");
 
         second.Should().Throw<RejectedException>().Which.Should().Match<RejectedException>(e => e.Problem == Problem.Conflict && e.Message.Contains("only 1") && !e.Message.Contains("memory"));
         _store.List().Should().HaveCount(5);
@@ -198,7 +220,7 @@ public sealed class SourceCatalogFixture : IDisposable
         var catalog = Catalog();
 
         var before = catalog.Kinds();
-        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), "root");
+        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), SourceScope.All, "root");
         var after = catalog.Kinds();
 
         before.Single(k => k.Rule.Kind == SourceKind.Memory).Should().Match<KindStatus>(k => k.Count == 0 && !k.Satisfied && k.Rule.Required && k.Rule.Unique);
@@ -210,8 +232,8 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_not_let_the_required_memory_vault_be_forgotten_but_let_the_optional_ones_go()
     {
         var catalog = Catalog();
-        var memory = catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), "root");
-        var cours = catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k"), "root");
+        var memory = catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), SourceScope.All, "root");
+        var cours = catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k"), SourceScope.All, "root");
 
         var forget = () => catalog.Remove(memory.Id, SourceScope.All, "root");
         catalog.Remove(cours.Id, SourceScope.All, "root");
@@ -224,7 +246,7 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_change_the_folder_the_mode_and_the_name_of_a_source_but_never_its_kind()
     {
         var catalog = Catalog();
-        var memory = catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), "root");
+        var memory = catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), SourceScope.All, "root");
         var other = _workspace.Folder("m-new");
 
         var changed = catalog.Update(memory.Id, " memoire ", SourceMode.ReadOnly, other, SourceScope.All, "alice");
@@ -238,8 +260,8 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_refuse_a_change_that_leaves_the_allowed_roots_takes_a_name_or_targets_a_source_out_of_scope_and_change_nothing()
     {
         var catalog = Catalog();
-        var one = catalog.Add("one", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), "root");
-        var two = catalog.Add("two", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("b"), "root");
+        var one = catalog.Add("one", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "root");
+        var two = catalog.Add("two", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("b"), SourceScope.All, "root");
 
         var outside = () => catalog.Update(one.Id, "one", SourceMode.ReadWrite, "/etc", SourceScope.All, "x");
         var taken = () => catalog.Update(one.Id, "two", SourceMode.ReadWrite, one.Path, SourceScope.All, "x");
@@ -249,5 +271,50 @@ public sealed class SourceCatalogFixture : IDisposable
         taken.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict);
         hidden.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
         _store.List().Select(s => s.Name).Should().Equal("one", "two");
+    }
+
+    [Fact]
+    public void should_not_let_a_caller_limited_to_some_sources_declare_a_source_or_repoint_one()
+    {
+        var catalog = Catalog();
+        var mine = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
+        var other = catalog.Add("other", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("b"), SourceScope.All, "root");
+        var scope = new SourceScope([mine.Id]);
+
+        var declare = () => catalog.Add("new", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("c"), scope, "key");
+        var repoint = () => catalog.Update(mine.Id, "mine", SourceMode.ReadOnly, other.Path, scope, "key");
+        var rename = () => catalog.Update(mine.Id, "other", SourceMode.ReadOnly, mine.Path, scope, "key");
+        var toTheRoot = () => catalog.Update(mine.Id, "mine", SourceMode.ReadOnly, _workspace.SourcesFolder, scope, "key");
+
+        declare.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+        repoint.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+        rename.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+        toTheRoot.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+        _store.List().Select(s => (s.Name, s.Path)).Should().BeEquivalentTo([("mine", mine.Path), ("other", other.Path)]);
+    }
+
+    [Fact]
+    public void should_let_a_caller_limited_to_some_sources_change_the_mode_of_its_own_source()
+    {
+        var catalog = Catalog();
+        var mine = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
+
+        var changed = catalog.Update(mine.Id, "mine", SourceMode.ReadWrite, mine.Path, new SourceScope([mine.Id]), "key");
+
+        changed.Mode.Should().Be(SourceMode.ReadWrite);
+    }
+
+    [Fact]
+    public void should_count_only_the_sources_a_caller_can_see_in_the_kinds()
+    {
+        var catalog = Catalog();
+        var mine = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
+        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("m"), SourceScope.All, "root");
+
+        var seen = catalog.Kinds(new SourceScope([mine.Id]));
+
+        seen.Single(k => k.Rule.Kind == SourceKind.Knowledge).Count.Should().Be(1);
+        seen.Single(k => k.Rule.Kind == SourceKind.Memory).Count.Should().Be(0);
+        catalog.Kinds().Single(k => k.Rule.Kind == SourceKind.Memory).Count.Should().Be(1);
     }
 }

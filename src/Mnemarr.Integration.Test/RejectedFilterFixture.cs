@@ -29,6 +29,7 @@ public sealed class RejectedFilterFixture
     [InlineData(Problem.Conflict, 409, "conflict")]
     [InlineData(Problem.NotFound, 404, "not-found")]
     [InlineData(Problem.Locked, 429, "locked")]
+    [InlineData(Problem.Forbidden, 403, "forbidden")]
     [InlineData(Problem.Busy, 429, "busy")]
     public void should_answer_each_refusal_with_its_status_and_a_stable_type(Problem problem, int status, string kind)
     {

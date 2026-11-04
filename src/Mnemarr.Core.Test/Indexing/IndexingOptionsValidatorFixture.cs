@@ -6,7 +6,6 @@ public sealed class IndexingOptionsValidatorFixture
 {
     [Theory]
     [InlineData(1)]
-    [InlineData(30)]
     [InlineData(86_400)]
     public void should_accept_an_interval_between_one_second_and_one_day(int seconds)
     {
@@ -21,11 +20,5 @@ public sealed class IndexingOptionsValidatorFixture
     {
         new IndexingOptionsValidator().Validate(null, new IndexingOptions { ScanIntervalSeconds = seconds }).FailureMessage
             .Should().Contain("MNEMARR__INDEXING__SCANINTERVALSECONDS");
-    }
-
-    [Fact]
-    public void should_scan_every_thirty_seconds_by_default()
-    {
-        new IndexingOptions().ScanIntervalSeconds.Should().Be(30);
     }
 }

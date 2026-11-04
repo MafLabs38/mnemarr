@@ -11,6 +11,7 @@ public sealed class SourceIndexerFixture : IDisposable
     private readonly TestWorkspace _workspace = new();
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 3, 9, 0, 0, TimeSpan.Zero));
     private readonly SqliteNoteIndex _index;
+    private readonly ScanOutcomes _outcomes = new();
     private readonly SqliteSourceStore _sources;
     private readonly SourceIndexer _subject;
 
@@ -18,7 +19,7 @@ public sealed class SourceIndexerFixture : IDisposable
     {
         _index = new SqliteNoteIndex(_workspace.Database);
         _sources = new SqliteSourceStore(_workspace.Database);
-        _subject = new SourceIndexer(_index, _clock);
+        _subject = new SourceIndexer(_index, _workspace.Paths(), _outcomes, _clock);
     }
 
     public void Dispose() => _workspace.Dispose();
@@ -181,6 +182,108 @@ public sealed class SourceIndexerFixture : IDisposable
         var index = () => _subject.IndexAsync(source, Token);
 
         (await index.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        _outcomes.Of(source.Id).Should().Be(new ScanOutcome(_clock.GetUtcNow(), ScanOutcome.FolderMissing));
+    }
+
+    [Fact]
+    public async Task should_keep_how_the_last_pass_ended_and_clear_a_failure_when_the_next_one_goes_well()
+    {
+        var folder = _workspace.Folder("cours");
+        var source = Declare("cours", folder);
+        Directory.Delete(folder);
+        await FluentActions.Awaiting(() => _subject.IndexAsync(source, Token)).Should().ThrowAsync<RejectedException>();
+        Directory.CreateDirectory(folder);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+
+        await _subject.IndexAsync(source, Token);
+
+        _outcomes.Of(source.Id).Should().Be(new ScanOutcome(_clock.GetUtcNow(), null));
+        _outcomes.Of(Guid.NewGuid()).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task should_refuse_a_source_that_is_not_inside_the_roots_any_more_and_say_why()
+    {
+        var folder = _workspace.Folder("cours");
+        TestWorkspace.Write(folder, "a.md", "# A\ntext");
+        var source = Declare("cours", folder);
+        await _subject.IndexAsync(source, Token);
+        var narrowed = new SourceIndexer(_index, _workspace.Paths(_workspace.Folder("elsewhere")), _outcomes, _clock);
+
+        var index = () => narrowed.IndexAsync(source, Token);
+
+        (await index.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        _outcomes.Of(source.Id)!.Error.Should().Be(ScanOutcome.OutsideRoots);
+    }
+
+    [Fact]
+    public async Task should_cut_again_a_note_that_was_cut_by_another_version_of_the_chunker()
+    {
+        var folder = _workspace.Folder("cours");
+        TestWorkspace.Write(folder, "a.md", "# A\ntext");
+        var source = Declare("cours", folder);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(folder, "a.md"))));
+        _index.Upsert(source.Id, new ScannedFile("a.md", Path.Combine(folder, "a.md")), "A", hash, chunker: MarkdownChunker.Version - 1, [new Chunk("A", "text")], _clock.GetUtcNow());
+
+        var report = await _subject.IndexAsync(source, Token);
+
+        report.Should().Be(new IndexReport(Added: 0, Updated: 1, Removed: 0, Unchanged: 0));
+        (await _subject.IndexAsync(source, Token)).Should().Be(new IndexReport(Added: 0, Updated: 0, Removed: 0, Unchanged: 1));
+    }
+
+    [Fact]
+    public async Task should_cut_every_note_again_when_a_rebuild_is_asked_for()
+    {
+        var folder = _workspace.Folder("cours");
+        TestWorkspace.Write(folder, "a.md", "# A\ntext");
+        var source = Declare("cours", folder);
+        await _subject.IndexAsync(source, Token);
+
+        var report = await _subject.IndexAsync(source, rebuild: true, Token);
+
+        report.Should().Be(new IndexReport(Added: 0, Updated: 1, Removed: 0, Unchanged: 0));
+    }
+
+    [Fact]
+    public async Task should_read_the_title_of_a_note_that_starts_with_a_byte_order_mark()
+    {
+        var folder = _workspace.Folder("cours");
+        File.WriteAllText(Path.Combine(folder, "windows.md"), "# From Windows\nbody text", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        await _subject.IndexAsync(Declare("cours", folder), Token);
+
+        var hit = _index.Search(new SearchRequest("body"), SourceScope.All).Should().ContainSingle().Subject;
+
+        hit.Should().Match<SearchHit>(h => h.Title == "From Windows" && h.Heading == "From Windows");
+    }
+
+    [Fact]
+    public async Task should_drop_the_chunks_of_a_note_that_was_edited_to_nothing()
+    {
+        var folder = _workspace.Folder("cours");
+        TestWorkspace.Write(folder, "a.md", "# A\nredis");
+        var source = Declare("cours", folder);
+        await _subject.IndexAsync(source, Token);
+        TestWorkspace.Write(folder, "a.md", string.Empty);
+
+        var report = await _subject.IndexAsync(source, Token);
+
+        report.Should().Be(new IndexReport(Added: 0, Updated: 1, Removed: 0, Unchanged: 0));
+        _index.Counts(source.Id).Should().Match<IndexCounts>(counts => counts.Notes == 1 && counts.Chunks == 0);
+        _index.Search(new SearchRequest("redis"), SourceScope.All).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task should_never_return_more_than_fifty_hits_whatever_the_limit_asked()
+    {
+        var folder = _workspace.Folder("cours");
+        foreach (var i in Enumerable.Range(0, 60))
+        {
+            TestWorkspace.Write(folder, $"n{i}.md", $"# N{i}\nshared words");
+        }
+
+        await _subject.IndexAsync(Declare("cours", folder), Token);
+
+        _index.Search(new SearchRequest("shared", Limit: 1000), SourceScope.All).Should().HaveCount(50);
     }
 
     [Fact]

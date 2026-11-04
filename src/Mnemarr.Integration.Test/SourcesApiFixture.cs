@@ -155,6 +155,77 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task should_not_let_a_key_limited_to_some_sources_declare_a_source_or_repoint_its_own_at_another_folder()
+    {
+        var mine = Unique("mine");
+        var other = Unique("other");
+        var mineFolder = Folder(mine, ("a.md", "# A\nmine"));
+        var otherFolder = Folder(other, ("b.md", "# B\nother"));
+        var mineId = (await DeclareAsync(_callers.Admin, mine, mineFolder)).GetProperty("id").GetGuid();
+        var otherId = (await DeclareAsync(_callers.Admin, other, otherFolder)).GetProperty("id").GetGuid();
+        var service = await Callers.CreateAsync(_callers.Admin, new { name = Unique("svc"), kind = "Service", role = "Operator" });
+        var created = await _callers.Admin.PostAsJsonAsync($"/api/v1/accounts/{service}/keys", new { name = "scoped", sources = new[] { mineId } }, Token);
+        using var scoped = _factory.CreateKeyClient((await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!);
+
+        var declare = await scoped.PostAsJsonAsync("/api/v1/sources", new { name = Unique("new"), kind = "Knowledge", mode = "ReadOnly", path = Folder(Unique("new")) }, Token);
+        var toOther = await scoped.PutAsJsonAsync($"/api/v1/sources/{mineId}", new { name = mine, mode = "ReadOnly", path = otherFolder }, Token);
+        var toRoot = await scoped.PutAsJsonAsync($"/api/v1/sources/{mineId}", new { name = mine, mode = "ReadOnly", path = Path.Combine(_factory.DataFolder, "sources") }, Token);
+        var outOfScope = await scoped.PutAsJsonAsync($"/api/v1/sources/{otherId}", new { name = other, mode = "ReadOnly", path = otherFolder }, Token);
+        var mode = await scoped.PutAsJsonAsync($"/api/v1/sources/{mineId}", new { name = mine, mode = "ReadWrite", path = mineFolder }, Token);
+
+        declare.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        toOther.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        toRoot.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        outOfScope.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        mode.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{mineId}", Token)).GetProperty("path").GetString().Should().Be(mineFolder);
+    }
+
+    [Fact]
+    public async Task should_count_in_the_kinds_only_the_sources_a_key_is_limited_to()
+    {
+        await using var factory = new MnemarrFactory();
+        using var admin = await factory.SignedInClientAsync();
+        string Make(string name) => Directory.CreateDirectory(Path.Combine(factory.DataFolder, "sources", name)).FullName;
+        var memory = await admin.PostAsJsonAsync("/api/v1/sources", new { name = "memory", kind = "Memory", mode = "ReadOnly", path = Make("m") }, Token);
+        var notes = await admin.PostAsJsonAsync("/api/v1/sources", new { name = "notes", kind = "Knowledge", mode = "ReadOnly", path = Make("k") }, Token);
+        var notesId = (await notes.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+        memory.StatusCode.Should().Be(HttpStatusCode.Created);
+        var service = await Callers.CreateAsync(admin, new { name = Unique("svc"), kind = "Service", role = "Operator" });
+        var key = await admin.PostAsJsonAsync($"/api/v1/accounts/{service}/keys", new { name = "scoped", sources = new[] { notesId } }, Token);
+        using var scoped = factory.CreateKeyClient((await key.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!);
+
+        var kinds = await scoped.GetFromJsonAsync<JsonElement>("/api/v1/sources/kinds", Token);
+
+        kinds.EnumerateArray().Single(k => k.GetProperty("kind").GetString() == "Memory").GetProperty("count").GetInt32().Should().Be(0);
+        kinds.EnumerateArray().Single(k => k.GetProperty("kind").GetString() == "Knowledge").GetProperty("count").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task should_show_on_the_source_why_its_last_scan_failed_and_cut_every_note_again_on_a_rebuild()
+    {
+        var name = Unique("scan");
+        var folder = Folder(name, ("a.md", "# A\nrebuildword"));
+        var id = (await DeclareAsync(_callers.Admin, name, folder)).GetProperty("id").GetGuid();
+        var first = await (await _callers.Admin.PostAsync($"/api/v1/sources/{id}/index", null, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var again = await (await _callers.Admin.PostAsync($"/api/v1/sources/{id}/index?rebuild=true", null, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var healthy = await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{id}", Token);
+
+        Directory.Delete(folder, recursive: true);
+        var failed = await _callers.Admin.PostAsync($"/api/v1/sources/{id}/index", null, Token);
+        var shown = await _callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{id}", Token);
+
+        first.GetProperty("added").GetInt32().Should().Be(1);
+        again.GetProperty("updated").GetInt32().Should().Be(1);
+        healthy.GetProperty("lastError").ValueKind.Should().Be(JsonValueKind.Null);
+        healthy.GetProperty("lastScanAt").ValueKind.Should().Be(JsonValueKind.String);
+        failed.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        shown.GetProperty("lastError").GetString().Should().Be("folder-missing");
+        shown.GetProperty("notes").GetInt32().Should().Be(1, "the notes of the last good pass are kept and still searchable");
+        (await _callers.Admin.DeleteAsync($"/api/v1/sources/{id}", Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
     public async Task should_answer_a_search_with_no_word_in_it_with_nothing_rather_than_an_error()
     {
         (await _callers["Reader"].GetFromJsonAsync<JsonElement>("/api/v1/search?q=%3F%21", Token)).GetArrayLength().Should().Be(0);
@@ -186,7 +257,7 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
         memory.GetProperty("required").GetBoolean().Should().BeTrue();
         memory.GetProperty("unique").GetBoolean().Should().BeTrue();
         memory.GetProperty("satisfied").GetBoolean().Should().BeFalse();
-        memory.GetProperty("defaultMode").GetString().Should().Be("ReadWrite");
+        memory.GetProperty("defaultMode").GetString().Should().Be("ReadOnly", "writes are off unless a source asks for them");
         knowledge.GetProperty("required").GetBoolean().Should().BeFalse();
         knowledge.GetProperty("unique").GetBoolean().Should().BeFalse();
         knowledge.GetProperty("satisfied").GetBoolean().Should().BeTrue();

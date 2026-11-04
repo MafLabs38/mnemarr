@@ -38,7 +38,14 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
       <td className={styles.path}>{source.path}</td>
       <td>{source.notes}</td>
       <td>{source.chunks}</td>
-      <td>{source.lastIndexedAt ? formatDateTime(source.lastIndexedAt) : translate('NeverIndexed')}</td>
+      <td>
+        {source.lastIndexedAt ? formatDateTime(source.lastIndexedAt) : translate('NeverIndexed')}
+        {source.lastError && (
+          <p className={styles.scanFailed} role="alert">
+            {translate('ScanFailed', { reason: translate(source.lastError) })}
+          </p>
+        )}
+      </td>
       <td>
         <div className={styles.actions}>
           <Button

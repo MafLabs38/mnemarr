@@ -57,6 +57,14 @@ public sealed class MarkdownFileScannerFixture : IDisposable
     }
 
     [Fact]
+    public void should_take_a_file_of_exactly_the_largest_size_of_a_note()
+    {
+        File.WriteAllBytes(Path.Combine(_root, "edge.md"), new byte[MarkdownFileScanner.MaxFileBytes]);
+
+        MarkdownFileScanner.Scan(_root).Select(file => file.RelativePath).Should().Equal("edge.md");
+    }
+
+    [Fact]
     [SupportedOSPlatform("linux")]
     public void should_not_follow_a_link_that_leaves_the_source()
     {

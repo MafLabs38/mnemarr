@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Mnemarr.Core.Indexing;
 
@@ -7,12 +6,17 @@ namespace Mnemarr.Core.Indexing;
 /// Cuts a Markdown note into chunks that follow its headings. A section that is too long is cut again at paragraph
 /// boundaries, then at a space. A heading inside a fenced code block is code, not a heading.
 /// </summary>
-public static partial class MarkdownChunker
+public static class MarkdownChunker
 {
     public const int DefaultMaxChars = 1200;
 
-    [GeneratedRegex(@"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")]
-    private static partial Regex HeadingPattern();
+    /// <summary>
+    /// The version of the cut. A note that was cut by another version is cut again at the next pass even if its content did not change, so
+    /// that a change to the chunker (its size, how it reads a heading) reaches the notes that are already indexed. Raise it with the change.
+    /// </summary>
+    public const int Version = 1;
+
+    private const int MaxHeadingLevel = 6;
 
     public static IReadOnlyList<Chunk> Split(string markdown, int maxChars = DefaultMaxChars)
     {
@@ -29,11 +33,10 @@ public static partial class MarkdownChunker
                 inFence = !inFence;
             }
 
-            var heading = inFence ? Match.Empty : HeadingPattern().Match(line);
-            if (heading.Success)
+            if (!inFence && TryReadHeading(line, out var level, out var heading))
             {
                 Flush(chunks, path.Current, section, maxChars);
-                path.Enter(heading.Groups[1].Length, heading.Groups[2].Value);
+                path.Enter(level, heading);
                 continue;
             }
 
@@ -55,14 +58,48 @@ public static partial class MarkdownChunker
                 inFence = !inFence;
             }
 
-            var heading = inFence ? Match.Empty : HeadingPattern().Match(line);
-            if (heading.Success && heading.Groups[1].Length == 1)
+            if (!inFence && TryReadHeading(line, out var level, out var heading) && level == 1)
             {
-                return heading.Groups[2].Value;
+                return heading;
             }
         }
 
         return Path.GetFileNameWithoutExtension(fileName);
+    }
+
+    /// <summary>
+    /// An ATX heading: one to six <c>#</c>, a space or a tab, the title, and optionally a closing run of <c>#</c> that is set apart by a
+    /// space (so <c>## Learning C#</c> keeps its <c>#</c>). Read by hand, in one pass: a note is untrusted text, and a pattern with
+    /// backtracking can be made to take cubic time on a line of spaces.
+    /// </summary>
+    private static bool TryReadHeading(string line, out int level, out string title)
+    {
+        level = 0;
+        title = string.Empty;
+        while (level < line.Length && line[level] == '#')
+        {
+            level++;
+        }
+
+        if (level is 0 or > MaxHeadingLevel || level >= line.Length || line[level] is not (' ' or '\t'))
+        {
+            return false;
+        }
+
+        var text = line.AsSpan(level).Trim([' ', '\t']);
+        var end = text.TrimEnd('#');
+        if (end.Length == 0 || (end.Length < text.Length && end[^1] is ' ' or '\t'))
+        {
+            text = end.TrimEnd([' ', '\t']);
+        }
+
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        title = text.ToString();
+        return true;
     }
 
     private static bool IsFence(string line) =>
