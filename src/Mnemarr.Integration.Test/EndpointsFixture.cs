@@ -49,6 +49,11 @@ public sealed class EndpointsFixture
         "api/v1/config/status",
         "api/v1/notes",
         "api/v1/notes/tags",
+        "api/v1/notes/{sourceId:guid}/preview",
+        "api/v1/notes/{sourceId:guid}/rename",
+        "api/v1/notes/{sourceId:guid}/{**path}",
+        "api/v1/notes/{sourceId:guid}/{**path}",
+        "api/v1/notes/{sourceId:guid}/{**path}",
         "api/v1/notes/{sourceId:guid}/{**path}",
         "api/v1/roles",
         "api/v1/search",
@@ -63,6 +68,8 @@ public sealed class EndpointsFixture
         "api/v1/sources/{id:guid}/sync",
         "api/v1/sources/{sourceId:guid}/files/{**path}",
             "api/v1/system/status",
+            "mcp",
+            "mcp",
             "{*path:nonfile}");
     }
 
@@ -88,6 +95,7 @@ public sealed class EndpointsFixture
             .Order(StringComparer.Ordinal);
 
         // For any signed-in person: ending the session, who am I, changing one's own password, and what the fallback closes.
-        withoutPermission.Should().Equal("/api/{**path}", "/openapi/{documentName}.json", "api/v1/auth/logout", "api/v1/auth/password", "api/v1/auth/session");
+        // The MCP endpoint is for whoever is signed in; what each tool needs is checked by the tool (and a tool that is not allowed is not even listed).
+        withoutPermission.Should().Equal("/api/{**path}", "/openapi/{documentName}.json", "api/v1/auth/logout", "api/v1/auth/password", "api/v1/auth/session", "mcp", "mcp");
     }
 }

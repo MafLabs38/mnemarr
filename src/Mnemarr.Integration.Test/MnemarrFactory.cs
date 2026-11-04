@@ -275,3 +275,18 @@ public sealed class ConfigFileFactory : MnemarrFactoryBase
     protected override string? ConfigurationText =>
         $"memory:\n  path: {Path.Combine(DataFolder, "sources", "memory")}\nknowledge:\n  - name: cours\n    path: {Path.Combine(DataFolder, "sources", "cours")}\n";
 }
+
+/// <summary>An application whose operator turned the MCP write tools on (<c>Mcp:WriteTools</c>).</summary>
+public sealed class McpWriteFactory : MnemarrFactoryBase
+{
+    public McpWriteFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Mcp:WriteTools", "true");
+    }
+}
