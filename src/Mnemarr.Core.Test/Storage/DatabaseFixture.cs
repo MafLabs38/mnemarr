@@ -26,6 +26,31 @@ public sealed class DatabaseFixture : IDisposable
         Scalar("PRAGMA user_version").Should().Be((long)Schema.Version);
         File.Exists(Path.Combine(_workspace.DataFolder, "mnemarr.db")).Should().BeTrue();
         Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('accounts', 'api_keys', 'sessions', 'audit_events')").Should().Be(4L);
+        Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name IN ('sources', 'notes', 'chunks', 'chunks_fts')").Should().Be(4L);
+    }
+
+    [Fact]
+    public void should_bring_a_database_made_by_the_previous_version_up_to_date_without_touching_what_it_holds()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now');
+                DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
+                PRAGMA user_version = 1;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var tables = upgraded.CreateCommand();
+        tables.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name IN ('sources', 'notes', 'chunks', 'chunks_fts')";
+        tables.ExecuteScalar().Should().Be(4L);
+        using var accounts = upgraded.CreateCommand();
+        accounts.CommandText = "SELECT COUNT(*) FROM accounts";
+        accounts.ExecuteScalar().Should().Be(1L);
     }
 
     [Fact]

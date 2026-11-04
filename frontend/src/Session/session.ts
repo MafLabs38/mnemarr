@@ -18,6 +18,8 @@ export const permissions = {
   systemRead: 'system.read',
   accountsManage: 'accounts.manage',
   auditRead: 'audit.read',
+  sourcesManage: 'sources.manage',
+  search: 'search',
 } as const;
 
 /** The session, or null when nobody is signed in (the API answers 401). Any other failure is an error. */

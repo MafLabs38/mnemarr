@@ -20,7 +20,8 @@ describe('Page', () => {
     expect(menu).toHaveTextContent(/Overview.*Sources.*Agents.*Settings.*System.*Accounts/s);
     expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: 'System' })).toHaveAttribute('href', '/system/status');
-    for (const name of ['Sources', 'Agents', 'Settings']) {
+    expect(screen.getByRole('link', { name: 'Sources' })).toHaveAttribute('href', '/sources');
+    for (const name of ['Agents', 'Settings']) {
       expect(screen.queryByRole('link', { name: new RegExp(name) })).not.toBeInTheDocument();
       const entry = screen.getByText(name).closest('[aria-disabled="true"]');
       expect(entry).toHaveTextContent('Soon');

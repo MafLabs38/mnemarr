@@ -15,6 +15,7 @@ const aliases = [
   'Login',
   'Overview',
   'Session',
+  'Sources',
   'Styles',
   'System',
   'Utilities',

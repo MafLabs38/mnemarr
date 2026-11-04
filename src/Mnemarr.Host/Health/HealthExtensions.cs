@@ -15,7 +15,9 @@ public static class HealthExtensions
         services.AddHealthChecks()
             .AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag])
             .AddCheck<DatabaseHealthCheck>("database", tags: [ReadyTag])
-            .AddCheck<AccountsHealthCheck>("accounts", tags: [ReadyTag]);
+            .AddCheck<AccountsHealthCheck>("accounts", tags: [ReadyTag])
+            .AddCheck<SourcesHealthCheck>("sources", tags: [ReadyTag])
+            .AddCheck<ConfigurationHealthCheck>("configuration", tags: [ReadyTag]);
         return services;
     }
 

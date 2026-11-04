@@ -34,6 +34,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     /// <summary>How long a session lasts at most; a test of the absolute lifetime shortens it instead of living through a month.</summary>
     protected virtual int SessionMaxDays => 30;
 
+    /// <summary>The configuration document to give the host as a file (configuration as code), written when the host is configured; none by default.</summary>
+    protected virtual string? ConfigurationText => null;
+
     /// <summary>The password that a break-glass reset gives to <see cref="AdminName"/> at start, when a test restarts a host with one.</summary>
     protected virtual string? ResetPassword => null;
 
@@ -46,6 +49,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     public const string AdminPassword = "integration-test-password";
 
     private readonly string _passwordFile = Path.Combine(Path.GetTempPath(), $"mnemarr-admin-{Guid.NewGuid():N}");
+    /// <summary>Where the configuration document is, for a host that has one.</summary>
+    public string ConfigurationFile { get; } = Path.Combine(Path.GetTempPath(), $"mnemarr-config-{Guid.NewGuid():N}.yaml");
+
     private readonly string _resetFile = Path.Combine(Path.GetTempPath(), $"mnemarr-reset-{Guid.NewGuid():N}");
 
     /// <summary>The application's clock, so that a test can let time pass without waiting.</summary>
@@ -55,6 +61,10 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     {
         builder.UseSetting("DataFolder", DataFolder);
         File.WriteAllText(_passwordFile, AdminPassword);
+        if (ConfigurationText is { } configuration)
+        {
+            File.WriteAllText(ConfigurationFile, configuration);
+        }
         if (ResetPassword is { } reset)
         {
             File.WriteAllText(_resetFile, reset);
@@ -65,6 +75,11 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             // Applied after every source, the MNEMARR__ variables of the machine included.
             services.PostConfigure<MnemarrOptions>(options => options.DataFolder = DataFolder);
+            services.PostConfigure<Mnemarr.Core.Declarative.ConfigurationOptions>(options =>
+            {
+                options.File = ConfigurationText is null ? null : ConfigurationFile;
+                options.ReloadSeconds = 1;
+            });
             services.PostConfigure<AuthOptions>(options =>
             {
                 options.AdminUser = HasAdministrator ? AdminName : null;
@@ -115,6 +130,7 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
         {
             File.Delete(_passwordFile);
             File.Delete(_resetFile);
+            File.Delete(ConfigurationFile);
         }
 
         if (disposing && _createFolder && Directory.Exists(DataFolder))
@@ -234,4 +250,18 @@ public sealed class ScopeProbeFactory : MnemarrFactoryBase
             next(app);
         };
     }
+}
+
+/// <summary>An application given a configuration document as a file, which it applies at start: a memory vault and a knowledge vault.</summary>
+public sealed class ConfigFileFactory : MnemarrFactoryBase
+{
+    public ConfigFileFactory()
+        : base(createFolder: true)
+    {
+        Directory.CreateDirectory(Path.Combine(DataFolder, "sources", "memory"));
+        Directory.CreateDirectory(Path.Combine(DataFolder, "sources", "cours"));
+    }
+
+    protected override string? ConfigurationText =>
+        $"memory:\n  path: {Path.Combine(DataFolder, "sources", "memory")}\nknowledge:\n  - name: cours\n    path: {Path.Combine(DataFolder, "sources", "cours")}\n";
 }

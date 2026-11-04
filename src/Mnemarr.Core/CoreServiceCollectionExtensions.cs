@@ -6,6 +6,9 @@ using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Declarative;
+using Mnemarr.Core.Indexing;
+using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
 
@@ -39,6 +42,24 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SignInService>();
         services.AddSingleton<ApiKeyService>();
         services.AddSingleton<AdminAccountSeeder>();
+
+        services.AddOptions<SourcesOptions>().Bind(configuration.GetSection("Sources")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SourcesOptions>, SourcesOptionsValidator>();
+        services.AddOptions<IndexingOptions>().Bind(configuration.GetSection("Indexing")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<IndexingOptions>, IndexingOptionsValidator>();
+        services.AddSingleton<ISourceStore, SqliteSourceStore>();
+        services.AddSingleton<INoteIndex, SqliteNoteIndex>();
+        services.AddSingleton<SourcePaths>();
+        services.AddSingleton<SourceCatalog>();
+        services.AddSingleton<ConfigurationApplier>();
+        services.AddOptions<ConfigurationOptions>().Bind(configuration.GetSection("Config")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ConfigurationOptions>, ConfigurationOptionsValidator>();
+        services.AddSingleton<ConfigurationState>();
+        services.AddHostedService<ConfigurationFileService>();
+        services.AddSingleton<ScanOutcomes>();
+        services.AddSingleton<SourceIndexer>();
+        services.AddSingleton<SourceIndexingService>();
+        services.AddHostedService(provider => provider.GetRequiredService<SourceIndexingService>());
         return services;
     }
 }

@@ -51,7 +51,7 @@ public sealed partial class AdminAccountSeeder
         {
             _service.Reset(options.ResetPasswordUser, ReadPassword(options.ResetPasswordFile, "reset"));
         }
-        catch (AccountRejectedException ex)
+        catch (RejectedException ex)
         {
             throw new InvalidOperationException($"The password reset of '{options.ResetPasswordUser}' was refused: {ex.Message}", ex);
         }
@@ -77,7 +77,7 @@ public sealed partial class AdminAccountSeeder
         {
             _service.Create(options.AdminUser, AccountKind.User, Roles.Admin, ReadPassword(options.AdminPasswordFile, "first administrator"), AuditActors.System);
         }
-        catch (AccountRejectedException ex)
+        catch (RejectedException ex)
         {
             throw new InvalidOperationException($"The first administrator was refused: {ex.Message}", ex);
         }

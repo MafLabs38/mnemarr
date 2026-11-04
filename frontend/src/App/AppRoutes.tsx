@@ -6,6 +6,7 @@ import MyAccount from 'Accounts/MyAccount';
 import Overview from 'Overview/Overview';
 import RequirePermission from 'Session/RequirePermission';
 import { permissions } from 'Session/session';
+import Sources from 'Sources/Sources';
 import Status from 'System/Status/Status';
 
 import NotFound from './NotFound';
@@ -22,6 +23,14 @@ export default function AppRoutes() {
           </RequirePermission>
         }
         path="/system/status"
+      />
+      <Route
+        element={
+          <RequirePermission permission={permissions.sourcesManage}>
+            <Sources />
+          </RequirePermission>
+        }
+        path="/sources"
       />
       <Route element={<MyAccount />} path="/account" />
       <Route

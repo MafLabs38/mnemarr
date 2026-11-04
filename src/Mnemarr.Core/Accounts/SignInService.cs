@@ -145,7 +145,7 @@ public sealed class SignInService
             _audit.Append(actor, action, actor);
         }
 
-        throw new AccountRejectedException(AccountProblem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(counter) ?? LoginThrottle.Window);
+        throw new RejectedException(Problem.Locked, "Too many failed attempts. Try again later.", _throttle.LockedFor(counter) ?? LoginThrottle.Window);
     }
 
     /// <summary>The hash the sessions are bound to: the stored one, or the new one when the cost of hashing has changed since it was made.</summary>
@@ -165,7 +165,7 @@ public sealed class SignInService
     {
         if (!await _hashSlots.WaitAsync(HashWait, cancellationToken))
         {
-            throw new AccountRejectedException(AccountProblem.Busy, "The server is busy checking passwords. Try again in a moment.", BusyRetryAfter);
+            throw new RejectedException(Problem.Busy, "The server is busy checking passwords. Try again in a moment.", BusyRetryAfter);
         }
 
         return new SlotReleaser(_hashSlots);

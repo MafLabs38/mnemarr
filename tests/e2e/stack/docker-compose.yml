@@ -15,10 +15,42 @@ services:
       MNEMARR__AUTH__ADMINPASSWORDFILE: /run/admin-password
       # The tests speak plain HTTP: the session cookie cannot be Secure here.
       MNEMARR__AUTH__COOKIESECURITY: SameAsRequest
+      # Where sources may be: a folder of notes mounted read-only, as an operator would mount a vault.
+      MNEMARR__SOURCES__ROOTS__0: /notes
+      # Configuration as code: the stack is described by a document, as a deployment would be.
+      MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
     configs:
       - source: admin_password
         target: /run/admin-password
         mode: 0444
+      - source: demo_note
+        target: /notes/demo/docker.md
+        mode: 0444
+      - source: memory_note
+        target: /notes/memory/decision.md
+        mode: 0444
+      - source: mnemarr_config
+        target: /config-as-code/mnemarr.yaml
+        mode: 0444
 configs:
   admin_password:
     content: e2e-admin-password
+  demo_note:
+    content: |
+      # Docker
+
+      ## Images
+
+      An image is made of read-only layers: a layer for each instruction of the build.
+  memory_note:
+    content: |
+      # A decision
+
+      The memory vault of the end-to-end stack.
+  mnemarr_config:
+    content: |
+      memory:
+        path: /notes/memory
+      knowledge:
+        - name: seeded
+          path: /notes/demo

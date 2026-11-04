@@ -35,7 +35,7 @@ public sealed class SqliteAccountStore : IAccountStore
         }
         catch (SqliteException ex) when (ex.SqliteExtendedErrorCode == UniqueViolation)
         {
-            throw new AccountRejectedException(AccountProblem.Conflict, $"An account named '{account.Name}' already exists.");
+            throw new RejectedException(Problem.Conflict, $"An account named '{account.Name}' already exists.");
         }
     }
 

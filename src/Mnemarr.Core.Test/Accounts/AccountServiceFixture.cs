@@ -42,7 +42,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var create = () => Subject.Create(name, AccountKind.User, Roles.Reader, Password, "root");
 
-        create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        create.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var create = () => Subject.Create(new string('a', AccountNames.MaxLength + 1), AccountKind.User, Roles.Reader, Password, "root");
 
-        create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        create.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
     }
 
     [Theory]
@@ -72,7 +72,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var create = () => Subject.Create("someone", kind, role, kind == AccountKind.User ? Password : null, "root");
 
-        create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        create.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
     }
 
     [Theory]
@@ -86,7 +86,7 @@ public sealed class AccountServiceFixture : IDisposable
 
         var change = () => Subject.Update(account.Id, role, enabled: true, "root");
 
-        change.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        change.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
         _h.Accounts.Get(account.Id)!.Role.Should().Be(account.Role);
     }
 
@@ -95,7 +95,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var change = () => Subject.Update(Guid.NewGuid(), Roles.Reader, enabled: true, "root");
 
-        change.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.NotFound);
+        change.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
     }
 
     [Theory]
@@ -106,7 +106,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var create = () => Subject.Create(name, AccountKind.Service, Roles.Reader, null, "root");
 
-        create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Invalid);
+        create.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
     }
 
     [Theory]
@@ -116,7 +116,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var create = () => Subject.Create("alice", AccountKind.User, Roles.Reader, password, "root");
 
-        create.Should().Throw<AccountRejectedException>().Which.Should().Match<AccountRejectedException>(e => e.Problem == AccountProblem.Invalid && e.Message.Contains(reason));
+        create.Should().Throw<RejectedException>().Which.Should().Match<RejectedException>(e => e.Problem == Problem.Invalid && e.Message.Contains(reason));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var create = () => Subject.Create("svc", AccountKind.Service, Roles.Reader, Password, "root");
 
-        create.Should().Throw<AccountRejectedException>().WithMessage("*no password*");
+        create.Should().Throw<RejectedException>().WithMessage("*no password*");
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public sealed class AccountServiceFixture : IDisposable
 
         var create = () => Subject.Create("alice", AccountKind.User, Roles.Reader, Password, "root");
 
-        create.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Conflict);
+        create.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public sealed class AccountServiceFixture : IDisposable
 
         var update = () => Subject.Update(root.Id, Roles.Admin, enabled: false, "root");
 
-        update.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Conflict);
+        update.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict);
         _h.Accounts.Get(root.Id).Should().Match<Account>(a => a.Enabled && a.Role == Roles.Admin);
     }
 
@@ -201,7 +201,7 @@ public sealed class AccountServiceFixture : IDisposable
             _ => () => Subject.Delete(root.Id, "x"),
         };
 
-        change.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.Conflict);
+        change.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict);
         _h.Accounts.CountEnabledAdmins().Should().Be(1);
     }
 
@@ -212,7 +212,7 @@ public sealed class AccountServiceFixture : IDisposable
         var second = _h.Admin("second");
 
         Subject.SetEnabled(second.Id, false, "x");
-        new Action(() => Subject.Delete(root.Id, "x")).Should().Throw<AccountRejectedException>();
+        new Action(() => Subject.Delete(root.Id, "x")).Should().Throw<RejectedException>();
         Subject.SetEnabled(second.Id, true, "x");
 
         Subject.Delete(root.Id, "x");
@@ -257,7 +257,7 @@ public sealed class AccountServiceFixture : IDisposable
     {
         var svc = _h.Robot();
 
-        new Action(() => Subject.SetPassword(svc.Id, Password, "x")).Should().Throw<AccountRejectedException>().WithMessage("*no password*");
+        new Action(() => Subject.SetPassword(svc.Id, Password, "x")).Should().Throw<RejectedException>().WithMessage("*no password*");
     }
 
     [Theory]
@@ -277,7 +277,7 @@ public sealed class AccountServiceFixture : IDisposable
             _ => () => Subject.Delete(id, "x"),
         };
 
-        action.Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(AccountProblem.NotFound);
+        action.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
     }
 
     [Fact]
@@ -293,14 +293,14 @@ public sealed class AccountServiceFixture : IDisposable
     }
 
     [Theory]
-    [InlineData("nobody", "a brand new password", AccountProblem.NotFound)]
-    [InlineData("agent", "a brand new password", AccountProblem.Invalid)]
-    [InlineData("alice", "short", AccountProblem.Invalid)]
-    public void should_refuse_a_reset_of_nobody_of_a_service_or_to_a_weak_password(string name, string password, AccountProblem problem)
+    [InlineData("nobody", "a brand new password", Problem.NotFound)]
+    [InlineData("agent", "a brand new password", Problem.Invalid)]
+    [InlineData("alice", "short", Problem.Invalid)]
+    public void should_refuse_a_reset_of_nobody_of_a_service_or_to_a_weak_password(string name, string password, Problem problem)
     {
         _h.Reader();
         _h.Robot();
 
-        new Action(() => Subject.Reset(name, password)).Should().Throw<AccountRejectedException>().Which.Problem.Should().Be(problem);
+        new Action(() => Subject.Reset(name, password)).Should().Throw<RejectedException>().Which.Problem.Should().Be(problem);
     }
 }
