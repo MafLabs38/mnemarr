@@ -285,9 +285,9 @@ test.describe('smoke @smoke', () => {
       page.getByRole('region', { name: 'Memory vault' }).getByText(/required, and there can be only one/),
     ).toBeVisible();
     const form = page.getByRole('form', { name: 'Declare a source of Knowledge vaults' });
-    await expect(form.getByText('A source is a folder inside one of: /notes')).toBeVisible();
+    await expect(form.getByText('A source is a folder inside one of: /notes, /config/sources')).toBeVisible();
     await form.getByLabel('Name').fill(name);
-    await form.getByLabel('Folder').fill('/notes/demo');
+    await form.getByLabel('Folder', { exact: true }).fill('/notes/demo');
     await form.getByRole('button', { name: 'Create' }).click();
     const row = page.getByRole('row', { name: new RegExp(name) });
     await expect(row).toBeVisible();
@@ -308,6 +308,38 @@ test.describe('smoke @smoke', () => {
     const declared = page.getByRole('row', { name: new RegExp(name) });
     await declared.getByRole('button', { name: 'Delete' }).click();
     await declared.getByRole('button', { name: `Confirm: delete ${name}` }).click();
+    await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  test('an operator declares a Git source, is told when the host is not allowed, and sees why a sync failed', async ({
+    page,
+  }) => {
+    const name = unique('git');
+    await signIn(page, '/sources');
+    const form = page.getByRole('form', { name: 'Declare a source of Knowledge vaults' });
+    await form.getByLabel('Name').fill(name);
+    await form.getByLabel('Origin').selectOption('git');
+    await form.getByLabel('Folder to clone into').fill(`/config/sources/${name}`);
+
+    // A host the operator did not allow is refused, in words, and nothing is declared.
+    await form.getByLabel('Repository address').fill('https://elsewhere.example/team/notes');
+    await form.getByRole('button', { name: 'Create' }).click();
+    await expect(form.getByRole('alert')).toContainText('does not allow');
+    await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+
+    await form.getByLabel('Repository address').fill('https://git.example/team/notes');
+    await form.getByRole('button', { name: 'Create' }).click();
+    const row = page.getByRole('row', { name: new RegExp(name) });
+    await expect(row).toContainText('Git: https://git.example/team/notes');
+    await expect(row).toContainText('Not synchronised yet');
+
+    // The real engine runs in the real image: the host cannot be resolved, which is said as a code and in words, not as a message of the library.
+    await row.getByRole('button', { name: `Sync now for ${name}` }).click();
+    await expect(row.getByRole('alert')).toContainText('The last sync failed: the host could not be reached');
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    await row.getByRole('button', { name: 'Delete' }).click();
+    await row.getByRole('button', { name: `Confirm: delete ${name}` }).click();
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
   });
 

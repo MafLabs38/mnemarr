@@ -22,7 +22,35 @@ export interface SourceItem {
   lastError: 'folder-missing' | 'outside-roots' | 'unreadable' | 'index-failed' | null;
   /** A configuration document owns it: it is changed by changing the document. */
   managed: boolean;
+  /** The Git repository the folder is the checkout of; null for a plain folder. */
+  repository: GitRepository | null;
+  /** When the last sync of the repository ended, since the server started. */
+  lastSyncAt: string | null;
+  /** Why the last sync failed (a stable code), or null when it went well. */
+  lastSyncError: SyncError | null;
+  /** The commit the checkout is at. */
+  head: string | null;
 }
+
+/** The repository a source is the checkout of: never a secret, only the name of the credential it uses. */
+export interface GitRepository {
+  url: string;
+  branch: string | null;
+  credential: string | null;
+}
+
+export type SyncError =
+  | 'auth-failed'
+  | 'repository-not-found'
+  | 'unreachable'
+  | 'branch-not-found'
+  | 'diverged'
+  | 'local-changes'
+  | 'folder-not-empty'
+  | 'different-repository'
+  | 'credential-missing'
+  | 'outside-roots'
+  | 'sync-failed';
 
 /** A kind of source, the rule behind it and how many are declared: what the base needs, and what is missing. */
 export interface SourceKindItem {
@@ -39,6 +67,15 @@ export interface NewSource {
   kind: SourceKind;
   mode: SourceMode;
   path: string;
+  repository?: GitRepository;
+}
+
+/** What can change about a source. No repository makes it a plain folder. */
+export interface SourceChange {
+  name: string;
+  mode: SourceMode;
+  path: string;
+  repository?: GitRepository;
 }
 
 /** What one pass over a source did. */
@@ -78,7 +115,7 @@ export function useCreateSource() {
 export function useUpdateSource(id: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (change: { name: string; mode: SourceMode; path: string }) => apiSend('PUT', `/sources/${id}`, change),
+    mutationFn: (change: SourceChange) => apiSend('PUT', `/sources/${id}`, change),
     onSuccess: () => client.invalidateQueries({ predicate: isSourcesQuery }),
   });
 }
@@ -97,6 +134,23 @@ export function useIndexSource(id: string) {
   return useMutation({
     mutationFn: () => apiSend<IndexReport>('POST', `/sources/${id}/index`),
     onSuccess: () => client.invalidateQueries({ predicate: isSourcesQuery }),
+  });
+}
+
+/** What a sync of a Git source did: how the checkout changed, where it is now, and what reading it found. */
+export interface SyncReport {
+  action: 'Cloned' | 'Updated' | 'UpToDate';
+  head: string;
+  index: IndexReport | null;
+}
+
+/** Brings the checkout of a Git source up to date now (a clone or a fast-forward, never a merge), and reads what came in. */
+export function useSyncSource(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend<SyncReport>('POST', `/sources/${id}/sync`),
+    // A failed sync is recorded on the source too: the list shows why, even when the call itself says so.
+    onSettled: () => client.invalidateQueries({ predicate: isSourcesQuery }),
   });
 }
 

@@ -46,6 +46,10 @@ const sources: SourceItem[] = [
     lastScanAt: '2026-11-03T10:30:00Z',
     lastError: null,
     managed: false,
+    repository: null,
+    lastSyncAt: null,
+    lastSyncError: null,
+    head: null,
   },
   {
     id: 's2',
@@ -60,6 +64,10 @@ const sources: SourceItem[] = [
     lastScanAt: null,
     lastError: null,
     managed: false,
+    repository: null,
+    lastSyncAt: null,
+    lastSyncError: null,
+    head: null,
   },
 ];
 
@@ -394,6 +402,143 @@ describe('Sources', () => {
 
     expect(await screen.findByText('3 added, 1 updated, 0 removed.')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/sources/s1/index', expect.objectContaining({ method: 'POST' }));
+  });
+
+  describe('Git sources', () => {
+    const gitSource: SourceItem = {
+      ...(sources[0] as SourceItem),
+      id: 'g1',
+      name: 'notes-git',
+      path: '/config/sources/notes-git',
+      repository: { url: 'https://github.example/org/notes', branch: 'main', credential: 'github' },
+      lastSyncAt: '2026-11-04T09:00:00Z',
+      head: 'abcdef0123456789',
+    };
+
+    it('shows where a Git source comes from and where its checkout is, and offers to sync only Git sources', async () => {
+      server(() => undefined, [...sources, gitSource]);
+      renderWithProviders(<Sources />);
+
+      const row = rowOf(await screen.findByRole('rowheader', { name: /notes-git/u }));
+
+      expect(within(row).getByText('Git: https://github.example/org/notes (main)')).toBeInTheDocument();
+      expect(within(row).getByText(/Synchronised .*, at abcdef0/u)).toBeInTheDocument();
+      expect(within(row).getByRole('button', { name: 'Sync now for notes-git' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Sync now for cours' })).not.toBeInTheDocument();
+    });
+
+    it('syncs a source now and says what that did', async () => {
+      const fetchMock = server(
+        (method, path) =>
+          method === 'POST' && path === '/sources/g1/sync'
+            ? { body: { action: 'Updated', head: '1234567890abcdef', index: null } }
+            : undefined,
+        [...sources, gitSource],
+      );
+      renderWithProviders(<Sources />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Sync now for notes-git' }));
+
+      expect(await screen.findByText('Brought up to date at 1234567.')).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/sources/g1/sync', expect.objectContaining({ method: 'POST' }));
+    });
+
+    it('says why the last sync failed, in words, since the old notes are still there', async () => {
+      server(() => undefined, [...sources, { ...gitSource, lastSyncError: 'auth-failed' }]);
+      renderWithProviders(<Sources />);
+
+      expect(
+        await screen.findByText('The last sync failed: the host refused the credential, or the repository needs one'),
+      ).toBeInTheDocument();
+    });
+
+    it('says when a repository was never synchronised', async () => {
+      server(() => undefined, [...sources, { ...gitSource, lastSyncAt: null, head: null }]);
+      renderWithProviders(<Sources />);
+
+      expect(await screen.findByText('Not synchronised yet')).toBeInTheDocument();
+    });
+
+    it('shows why a sync was refused', async () => {
+      server(
+        (method, path) =>
+          method === 'POST' && path === '/sources/g1/sync'
+            ? { status: 409, body: { title: 'The host could not be reached.' } }
+            : undefined,
+        [...sources, gitSource],
+      );
+      renderWithProviders(<Sources />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Sync now for notes-git' }));
+
+      expect(await screen.findByText('The host could not be reached.')).toBeInTheDocument();
+    });
+
+    it('declares a Git source with its address, branch and the name of a credential, and sends no secret', async () => {
+      const fetchMock = server();
+      renderWithProviders(<Sources />);
+      const declare = await screen.findByRole('form', { name: 'Declare a source of Knowledge vaults' });
+
+      await userEvent.selectOptions(within(declare).getByLabelText('Origin'), 'git');
+      await userEvent.type(within(declare).getByLabelText('Name'), 'notes-git');
+      await userEvent.type(within(declare).getByLabelText('Repository address'), ' https://github.example/org/notes ');
+      await userEvent.type(within(declare).getByLabelText('Branch'), 'main');
+      await userEvent.type(within(declare).getByLabelText('Credential'), 'github');
+      await userEvent.type(within(declare).getByLabelText('Folder to clone into'), '/config/sources/notes-git');
+      await userEvent.click(within(declare).getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(callsOf(fetchMock, 'POST', '/api/v1/sources')).toBeDefined());
+      expect(sentBody(callsOf(fetchMock, 'POST', '/api/v1/sources'))).toEqual({
+        name: 'notes-git',
+        kind: 'Knowledge',
+        mode: 'ReadOnly',
+        path: '/config/sources/notes-git',
+        repository: { url: 'https://github.example/org/notes', branch: 'main', credential: 'github' },
+      });
+    });
+
+    it('leaves the branch and the credential out when they are empty, and sends no repository for a folder', async () => {
+      const fetchMock = server();
+      renderWithProviders(<Sources />);
+      const knowledge = within(await screen.findByRole('form', { name: 'Declare a source of Knowledge vaults' }));
+
+      await userEvent.type(knowledge.getByLabelText('Name'), 'plain');
+      await userEvent.type(knowledge.getByLabelText('Folder'), '/config/sources/plain');
+      await userEvent.click(knowledge.getByRole('button', { name: 'Create' }));
+
+      await waitFor(() => expect(callsOf(fetchMock, 'POST', '/api/v1/sources')).toBeDefined());
+      expect(sentBody(callsOf(fetchMock, 'POST', '/api/v1/sources'))).not.toHaveProperty('repository');
+    });
+
+    it('changes the repository of a source and leaves an empty branch out', async () => {
+      const fetchMock = server(() => undefined, [...sources, gitSource]);
+      renderWithProviders(<Sources />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Change notes-git' }));
+      const form = await screen.findByRole('form', { name: /Change/u });
+      expect(within(form).getByLabelText('Repository address')).toHaveValue('https://github.example/org/notes');
+      await userEvent.clear(within(form).getByLabelText('Branch'));
+      await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(callsOf(fetchMock, 'PUT', '/api/v1/sources/g1')).toBeDefined());
+      expect(sentBody(callsOf(fetchMock, 'PUT', '/api/v1/sources/g1'))).toMatchObject({
+        repository: { url: 'https://github.example/org/notes', branch: null, credential: 'github' },
+      });
+    });
+
+    it('turns a Git source back into a folder by choosing a folder as its origin', async () => {
+      const fetchMock = server(() => undefined, [...sources, gitSource]);
+      renderWithProviders(<Sources />);
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Change notes-git' }));
+      const form = await screen.findByRole('form', { name: /Change/u });
+      await userEvent.selectOptions(within(form).getByLabelText('Origin'), 'folder');
+      expect(within(form).queryByLabelText('Repository address')).not.toBeInTheDocument();
+      await userEvent.click(within(form).getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(callsOf(fetchMock, 'PUT', '/api/v1/sources/g1')).toBeDefined());
+      expect(sentBody(callsOf(fetchMock, 'PUT', '/api/v1/sources/g1'))).not.toHaveProperty('repository');
+    });
   });
 
   it('forgets an optional source only after a second press that names it, and lets the deletion be given up', async () => {

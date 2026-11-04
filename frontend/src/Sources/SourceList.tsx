@@ -6,11 +6,57 @@ import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
 import SourceForm from './SourceForm';
-import { type IndexReport, type SourceItem, type SourceKindItem, useDeleteSource, useIndexSource } from './sources';
+import {
+  type IndexReport,
+  type SourceItem,
+  type SourceKindItem,
+  type SyncReport,
+  useDeleteSource,
+  useIndexSource,
+  useSyncSource,
+} from './sources';
 import styles from './Sources.module.css';
 
 function reportText(report: IndexReport): string {
   return translate('IndexReport', { added: report.added, updated: report.updated, removed: report.removed });
+}
+
+const shortHead = (head: string) => head.slice(0, 7);
+
+function syncReportText(report: SyncReport): string {
+  return translate(`SyncReport${report.action}`, { head: shortHead(report.head) });
+}
+
+/** Where a Git source comes from: its address and branch, never a credential. */
+function repositoryText(source: SourceItem): string | null {
+  const repository = source.repository;
+  if (!repository) {
+    return null;
+  }
+  return repository.branch
+    ? translate('GitSourceBranch', { url: repository.url, branch: repository.branch })
+    : translate('GitSource', { url: repository.url });
+}
+
+/** How the last sync of a Git source ended: where the checkout is, or why it could not be brought up to date. */
+function SyncStatus({ source }: Readonly<{ source: SourceItem }>) {
+  if (!source.repository) {
+    return null;
+  }
+  if (source.lastSyncError) {
+    return (
+      <p className={styles.scanFailed} role="alert">
+        {translate('SyncFailed', { reason: translate(source.lastSyncError) })}
+      </p>
+    );
+  }
+  return (
+    <p className={styles.hint}>
+      {source.lastSyncAt && source.head
+        ? translate('SyncedAt', { when: formatDateTime(source.lastSyncAt), head: shortHead(source.head) })
+        : translate('NeverSynced')}
+    </p>
+  );
 }
 
 interface RowProps {
@@ -23,6 +69,7 @@ interface RowProps {
 function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const index = useIndexSource(source.id);
+  const sync = useSyncSource(source.id);
   const remove = useDeleteSource(source.id);
   const outcome = { onSuccess: () => onResult(null), onError: onResult };
   // The base cannot be taken apart: the last source a kind requires can be changed, not removed.
@@ -33,6 +80,7 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
       <th scope="row">
         {source.name}
         {source.managed && <span className={styles.managed}>{translate('ManagedByConfig')}</span>}
+        {repositoryText(source) && <span className={styles.managed}>{repositoryText(source)}</span>}
       </th>
       <td>{translate(source.mode)}</td>
       <td className={styles.path}>{source.path}</td>
@@ -45,9 +93,20 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
             {translate('ScanFailed', { reason: translate(source.lastError) })}
           </p>
         )}
+        <SyncStatus source={source} />
       </td>
       <td>
         <div className={styles.actions}>
+          {source.repository && (
+            <Button
+              aria-label={translate('SyncNowFor', { name: source.name })}
+              disabled={sync.isPending}
+              onClick={() => sync.mutate(undefined, outcome)}
+              variant="quiet"
+            >
+              {translate('SyncNow')}
+            </Button>
+          )}
           <Button
             aria-label={translate('IndexNowFor', { name: source.name })}
             disabled={index.isPending}
@@ -76,6 +135,7 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
             </Button>
           )}
           {index.data && <output>{reportText(index.data)}</output>}
+          {sync.data && <output>{syncReportText(sync.data)}</output>}
         </div>
       </td>
     </tr>

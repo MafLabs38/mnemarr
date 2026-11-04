@@ -17,6 +17,10 @@ services:
       MNEMARR__AUTH__COOKIESECURITY: SameAsRequest
       # Where sources may be: a folder of notes mounted read-only, as an operator would mount a vault.
       MNEMARR__SOURCES__ROOTS__0: /notes
+      # A Git source is cloned into a folder the application can write: the data folder's own sources folder.
+      MNEMARR__SOURCES__ROOTS__1: /config/sources
+      # Where Mnemarr may clone from. The host never resolves (a reserved name), so that a sync fails the same way offline and in CI.
+      MNEMARR__GIT__HOSTS__0: git.example
       # Configuration as code: the stack is described by a document, as a deployment would be.
       MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
     configs:
