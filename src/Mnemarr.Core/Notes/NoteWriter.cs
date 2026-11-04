@@ -170,9 +170,11 @@ public sealed class NoteWriter
     {
         // A source out of the caller's scope is as absent as one that does not exist.
         var source = _catalog.Get(sourceId, actor.Scope);
-        if (source.Mode != SourceMode.ReadWrite)
+        // The permission was checked by the caller; what is checked here is what belongs to the source: its kind, then its write switch.
+        var rights = NoteRights.Evaluate(source.Kind, source.Mode, mayWriteNotes: true);
+        if (!rights.CanWrite)
         {
-            throw new RejectedException(Problem.Forbidden, "This source is read-only: whoever manages sources turns writing on for it.");
+            throw new RejectedException(Problem.Forbidden, rights.Refusal);
         }
 
         string folder;

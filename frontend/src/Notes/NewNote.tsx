@@ -1,15 +1,16 @@
 import { type FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import SelectField from 'Components/Form/SelectField';
 import TextField from 'Components/Form/TextField';
-import { useSources } from 'Sources/sources';
+import { permissions } from 'Session/session';
+import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
 import { PushNotice } from './NoteActions';
-import { noteAddress, useCreateNote } from './notes';
+import { noteAddress, type NoteSource, useCreateNote } from './notes';
 import styles from './Notes.module.css';
 
 /** The title a new note starts with: the name of its file, without the folder and the extension. */
@@ -18,10 +19,7 @@ function titleOf(path: string): string {
   return name.replace(/\.(md|markdown)$/iu, '');
 }
 
-function Form({
-  sources,
-  onCreated,
-}: Readonly<{ sources: ReadonlyArray<{ id: string; name: string }>; onCreated: () => void }>) {
+function Form({ sources, onCreated }: Readonly<{ sources: ReadonlyArray<NoteSource>; onCreated: () => void }>) {
   const navigate = useNavigate();
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? '');
   const [path, setPath] = useState('');
@@ -66,15 +64,29 @@ function Form({
   );
 }
 
-/** Starts a note in a source that is open for writing. Offered to whoever may manage sources (they are the ones who know which are open). */
-export default function NewNote() {
-  const { data: sources } = useSources();
+/**
+ * Starts a note in a source that is open for writing. When there is none, it says so and says what to do, instead of disappearing: a missing
+ * button that nobody explains is what made the notes look read-only for no reason.
+ */
+export default function NewNote({ sources }: Readonly<{ sources: ReadonlyArray<NoteSource> }>) {
+  const { can } = usePermissions();
   const [open, setOpen] = useState(false);
-  const writable = (sources ?? []).filter((source) => source.mode === 'ReadWrite');
-  return writable.length === 0 ? null : (
+  const writable = sources.filter((source) => source.rights.canWrite);
+  return (
     <details onToggle={(event) => setOpen(event.currentTarget.open)} open={open}>
       <summary>{translate('NewNote')}</summary>
-      <Form onCreated={() => setOpen(false)} sources={writable} />
+      {writable.length > 0 ? (
+        <Form onCreated={() => setOpen(false)} sources={writable} />
+      ) : (
+        <p className={styles.hint}>
+          {translate('NoWritableSource')}{' '}
+          {can(permissions.sourcesManage) ? (
+            <Link to="/sources">{translate('OpenSourcesToWrite')}</Link>
+          ) : (
+            translate('AskWhoManagesSources')
+          )}
+        </p>
+      )}
     </details>
   );
 }

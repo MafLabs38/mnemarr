@@ -125,6 +125,51 @@ public sealed class NotesWriteApiFixture : IClassFixture<MnemarrFactory>, IAsync
     }
 
     [Fact]
+    public async Task should_say_what_each_caller_may_do_to_a_note_and_why_on_the_note_and_in_the_tree()
+    {
+        var (open, _) = await SourceAsync(Callers.Unique("open"));
+        var (closed, closedFolder) = await SourceAsync(Callers.Unique("closed"), "ReadOnly");
+        File.WriteAllText(Path.Combine(closedFolder, "r.md"), "# R");
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{closed}/index", null, Token);
+        await _callers["Operator"].PostAsJsonAsync(Note(open, "w.md"), new { content = "# W" }, Token);
+
+        var asAdmin = await GetAsync(_callers.Admin, open, "w.md");
+        var asReader = await GetAsync(_callers["Reader"], open, "w.md");
+        var readOnly = await GetAsync(_callers.Admin, closed, "r.md");
+        var tree = await _callers["Reader"].GetFromJsonAsync<JsonElement>("/api/v1/notes", Token);
+        var treeSources = tree.GetProperty("sources").EnumerateArray().ToDictionary(s => s.GetProperty("id").GetGuid());
+
+        asAdmin.GetProperty("rights").GetProperty("reason").GetString().Should().Be("writable");
+        asAdmin.GetProperty("rights").GetProperty("role").GetString().Should().Be("Admin");
+        asAdmin.GetProperty("sourceKind").GetString().Should().Be("Knowledge");
+        asReader.GetProperty("rights").GetProperty("reason").GetString().Should().Be("no-permission");
+        asReader.GetProperty("writable").GetBoolean().Should().BeFalse();
+        readOnly.GetProperty("rights").GetProperty("reason").GetString().Should().Be("source-read-only");
+        readOnly.GetProperty("sourceMode").GetString().Should().Be("ReadOnly");
+        treeSources[open].GetProperty("rights").GetProperty("reason").GetString().Should().Be("no-permission");
+        treeSources[closed].GetProperty("mode").GetString().Should().Be("ReadOnly");
+    }
+
+    [Fact]
+    public async Task should_refuse_to_write_the_documentation_of_an_application_and_say_why()
+    {
+        var name = Callers.Unique("docs");
+        var folder = Path.Combine(_factory.DataFolder, "sources", name);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "d.md"), "# D");
+        var created = await _callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name, kind = "ApplicationDocs", mode = "ReadWrite", path = folder }, Token);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token);
+
+        var note = await GetAsync(_callers.Admin, id, "d.md");
+        var refused = await _callers.Admin.PostAsJsonAsync(Note(id, "new.md"), new { content = "# N" }, Token);
+
+        note.GetProperty("rights").GetProperty("reason").GetString().Should().Be("kind-not-writable");
+        refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await refused.Content.ReadAsStringAsync(Token)).Should().Contain("repository");
+    }
+
+    [Fact]
     public async Task should_treat_a_source_out_of_the_scope_of_a_key_as_absent_when_writing()
     {
         var (mine, _) = await SourceAsync(Callers.Unique("mine"));

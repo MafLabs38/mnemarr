@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Notes;
+using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Api.V1.Notes;
 
@@ -18,26 +19,32 @@ public sealed class NotesController : ControllerBase
 {
     private readonly NoteReader _reader;
     private readonly NoteWriter _writer;
+    private readonly SourceCatalog _catalog;
 
-    public NotesController(NoteReader reader, NoteWriter writer)
+    public NotesController(NoteReader reader, NoteWriter writer, SourceCatalog catalog)
     {
         _reader = reader;
         _writer = writer;
+        _catalog = catalog;
     }
+
+    private bool MayWrite => User.HasClaim(MnemarrClaims.Permission, Permissions.NotesWrite);
+
+    private string Role => User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
 
     private NoteActor Actor => new(User.Scope(), User.ActorName());
 
     /// <summary>The notes, by source and path; of one source or carrying one tag when asked. A very large vault is cut short, and <c>total</c> says by how much: the search is the way in beyond it.</summary>
     [HttpGet]
     public NoteListResource List([FromQuery] Guid? source = null, [FromQuery] string? tag = null) =>
-        NoteListResource.From(_reader.List(User.Scope(), source, tag));
+        NoteListResource.From(_reader.List(User.Scope(), source, tag), _catalog.List(User.Scope()), MayWrite, Role);
 
     /// <summary>A note: its Markdown as written, the same with its links rewritten to where they lead for the caller (never trusted by whoever draws it), its tags, links and backlinks.</summary>
     [HttpGet("{sourceId:guid}/{**path}")]
     [ProducesResponseType<NoteResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public NoteResource Get(Guid sourceId, string path) =>
-        NoteResource.From(_reader.Read(sourceId, path, User.Scope()), User.HasClaim(MnemarrClaims.Permission, Permissions.NotesWrite));
+        NoteResource.From(_reader.Read(sourceId, path, User.Scope()), MayWrite, Role);
 
     /// <summary>Creates a note, in a source that is open for writing: written whole and at once, read into the index at once, and, in a Git source, committed and pushed.</summary>
     [HttpPost("{sourceId:guid}/{**path}")]

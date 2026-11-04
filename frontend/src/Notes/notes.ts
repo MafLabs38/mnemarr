@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiSend } from 'Helpers/Api/apiGet';
 import { isApiPath, useApiQuery } from 'Helpers/Hooks/useApiQuery';
-import type { SyncError } from 'Sources/sources';
+import type { SourceKind, SourceMode, SyncError } from 'Sources/sources';
 
 export interface NoteEntry {
   sourceId: string;
@@ -26,6 +26,25 @@ export interface NoteLink {
   note: NoteRef | null;
 }
 
+/** Why a person may or may not write the notes of a source (the server decides; the interface explains). */
+export type RightsReason = 'writable' | 'source-read-only' | 'kind-not-writable' | 'no-permission';
+
+export interface NoteRights {
+  canWrite: boolean;
+  reason: RightsReason;
+  /** The role of the person, to say it in words. */
+  role: string;
+}
+
+/** A source of notes the person may read: what kind of notes it holds, whether it is open for writing, and what the person may do there. */
+export interface NoteSource {
+  id: string;
+  name: string;
+  kind: SourceKind;
+  mode: SourceMode;
+  rights: NoteRights;
+}
+
 export interface Note {
   sourceId: string;
   sourceName: string;
@@ -44,8 +63,11 @@ export interface Note {
   raw: string;
   /** The version of the file as read: sent back with a change, so that a note that changed since is not overwritten. */
   version: string;
-  /** Whether the person may write notes and the source is open for writing. */
+  /** Whether the person may write this note (`rights.canWrite`). */
   writable: boolean;
+  sourceKind: SourceKind;
+  sourceMode: SourceMode;
+  rights: NoteRights;
 }
 
 export interface Tag {
@@ -57,6 +79,8 @@ export interface Tag {
 export interface NoteListing {
   notes: NoteEntry[];
   total: number;
+  /** The sources the notes are in, with their kind, their mode and what the person may do in each (also those with no note yet). */
+  sources: NoteSource[];
 }
 
 export interface TagListing {

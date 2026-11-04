@@ -43,7 +43,9 @@ public sealed class NoteWriterFixture : IDisposable
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private Source Declare(string name, SourceMode mode = SourceMode.ReadWrite, bool git = false, params (string Path, string Text)[] notes)
+    private Source Declare(string name, SourceMode mode = SourceMode.ReadWrite, bool git = false, params (string Path, string Text)[] notes) => Declare(name, SourceKind.Knowledge, mode, git, notes);
+
+    private Source Declare(string name, SourceKind kind, SourceMode mode, bool git, params (string Path, string Text)[] notes)
     {
         var folder = _workspace.Folder(name);
         foreach (var (path, text) in notes)
@@ -51,7 +53,7 @@ public sealed class NoteWriterFixture : IDisposable
             TestWorkspace.Write(folder, path, text);
         }
 
-        var source = new Source(Guid.NewGuid(), name, SourceKind.Knowledge, mode, folder, _clock.GetUtcNow(), Repository: git ? new GitRepository("https://github.example/org/notes", "main", "github") : null);
+        var source = new Source(Guid.NewGuid(), name, kind, mode, folder, _clock.GetUtcNow(), Repository: git ? new GitRepository("https://github.example/org/notes", "main", "github") : null);
         _store.Add(source);
         return source;
     }
@@ -201,6 +203,28 @@ public sealed class NoteWriterFixture : IDisposable
         hidden.Problem.Should().Be(Problem.NotFound);
         missing.Problem.Should().Be(Problem.NotFound);
         Directory.EnumerateFiles(readOnly.Path).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task should_never_write_the_documentation_of_an_application_even_if_its_source_is_declared_read_write()
+    {
+        var docs = Declare("portarr", SourceKind.ApplicationDocs, SourceMode.ReadWrite, git: false);
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _writer.CreateAsync(Alice, docs.Id, "a.md", "x", Token));
+
+        refusal.Problem.Should().Be(Problem.Forbidden);
+        refusal.Message.Should().Contain("repository");
+        Directory.EnumerateFiles(docs.Path).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task should_write_the_memory_vault_when_it_is_open_for_writing()
+    {
+        var memory = Declare("memory", SourceKind.Memory, SourceMode.ReadWrite, git: false);
+
+        await _writer.CreateAsync(Alice, memory.Id, "decisions/one.md", "# One", Token);
+
+        File.Exists(Path.Combine(memory.Path, "decisions/one.md")).Should().BeTrue();
     }
 
     [Fact]

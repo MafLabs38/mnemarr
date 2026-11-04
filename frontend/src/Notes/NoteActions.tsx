@@ -61,10 +61,9 @@ export default function NoteActions({ note }: Readonly<{ note: Note }>) {
   const [notice, setNotice] = useState<GitPublish | null>(null);
   const remove = useDeleteNote(note.sourceId, note.path);
 
-  if (!note.writable) {
-    return null;
-  }
-  if (mode === 'edit') {
+  const allowed = note.rights.canWrite;
+  const why = allowed ? undefined : translate(`RightsShort_${note.rights.reason}`);
+  if (allowed && mode === 'edit') {
     return (
       <NoteEditor
         note={note}
@@ -75,7 +74,7 @@ export default function NoteActions({ note }: Readonly<{ note: Note }>) {
       />
     );
   }
-  if (mode === 'rename') {
+  if (allowed && mode === 'rename') {
     return <RenameForm note={note} onDone={() => setMode('view')} />;
   }
   return (
@@ -83,14 +82,15 @@ export default function NoteActions({ note }: Readonly<{ note: Note }>) {
       <PushNotice git={notice} />
       {remove.error && <Alert>{remove.error.message}</Alert>}
       <div className={styles.actions}>
-        <Button onClick={() => setMode('edit')} variant="quiet">
+        <Button disabled={!allowed} onClick={() => setMode('edit')} title={why} variant="quiet">
           {translate('EditNote')}
         </Button>
-        <Button onClick={() => setMode('rename')} variant="quiet">
+        <Button disabled={!allowed} onClick={() => setMode('rename')} title={why} variant="quiet">
           {translate('RenameNote')}
         </Button>
         <Button
-          disabled={remove.isPending}
+          disabled={!allowed || remove.isPending}
+          title={why}
           onClick={() =>
             confirming ? remove.mutate(note.version, { onSuccess: () => navigate('/notes') }) : setConfirming(true)
           }

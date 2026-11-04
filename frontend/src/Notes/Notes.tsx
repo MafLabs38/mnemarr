@@ -48,7 +48,7 @@ export default function Notes() {
                 <SearchPanel />
               </section>
             )}
-            {can(permissions.notesWrite) && can(permissions.sourcesManage) && <NewNote />}
+            {can(permissions.notesWrite) && tree.data && <NewNote sources={tree.data.sources} />}
             <TextField
               label={translate('FilterNotes')}
               onChange={(event) => setFilter(event.target.value)}
@@ -64,6 +64,7 @@ export default function Notes() {
             {tree.data && (
               <NoteTree
                 entries={entries}
+                sources={tree.data.sources}
                 filtering={words !== ''}
                 tag={tag}
                 selected={source && path ? `${source}/${path}` : null}

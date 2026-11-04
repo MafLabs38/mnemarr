@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { type ApiAnswer, findCall, readerSession, renderWithProviders, sentBody, stubApi } from '__tests__/render';
 import Notes from 'Notes/Notes';
-import { headingSlug, type Note } from 'Notes/notes';
+import { headingSlug, type Note, type NoteSource } from 'Notes/notes';
 import type { SourceItem } from 'Sources/sources';
 
 vi.mock('Notes/mermaid', () => ({ drawDiagram: () => Promise.resolve(''), MAX_DIAGRAM_CHARS: 20_000 }));
@@ -25,7 +25,14 @@ const note: Note = {
   raw: '---\ntags: [infra]\n---\n# Docker\nImages.',
   version: 'v1',
   writable: true,
+  sourceKind: 'Knowledge',
+  sourceMode: 'ReadWrite',
+  rights: { canWrite: true, reason: 'writable', role: 'Admin' },
 };
+
+const readOnlyRights = { canWrite: false, reason: 'source-read-only', role: 'Admin' } as const;
+const writableRights = { canWrite: true, reason: 'writable', role: 'Admin' } as const;
+const cours: NoteSource = { id: S1, name: 'cours', kind: 'Knowledge', mode: 'ReadWrite', rights: writableRights };
 
 const writableSource: SourceItem = {
   id: S1,
@@ -46,6 +53,12 @@ const writableSource: SourceItem = {
   head: null,
 };
 
+let sourcesInTree: NoteSource[] = [cours];
+
+beforeEach(() => {
+  sourcesInTree = [cours];
+});
+
 function server(
   extra: (method: string, path: string, init?: RequestInit) => ApiAnswer | undefined = () => undefined,
   current: Note = note,
@@ -60,6 +73,7 @@ function server(
         body: {
           notes: [{ sourceId: S1, sourceName: 'cours', path: 'devops/docker.md', title: 'Docker', topic: 'devops' }],
           total: 1,
+          sources: sourcesInTree,
         },
       };
     }
@@ -80,14 +94,74 @@ const callOf = (fetchMock: ReturnType<typeof server>, method: string, url: strin
   findCall(fetchMock, ([u, init]) => u === `/api/v1${url}` && (init as RequestInit | undefined)?.method === method);
 
 describe('writing notes', () => {
-  it('offers to edit, move and remove a note only when it is writable', async () => {
-    server(() => undefined, { ...note, writable: false });
-    renderWithProviders(<Notes />, open, readerSession);
+  it('shows the buttons to edit, move and remove, enabled and with a green verdict, when the note may be written', async () => {
+    server();
+    renderWithProviders(<Notes />, open);
 
-    expect(await screen.findByRole('heading', { name: 'Docker' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+    const banner = await screen.findByRole('region', { name: 'What you may do with this note' });
+    expect(within(banner).getByText('You can edit this note')).toBeInTheDocument();
+    expect(within(banner).getByText('You are Admin, and the source cours is open for writing.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled();
+  });
+
+  it.each([
+    [
+      'source-read-only',
+      'This note is read-only',
+      'The source cours is declared read-only: nothing is written there until someone turns writing on.',
+    ],
+    [
+      'kind-not-writable',
+      'This note is edited in its repository',
+      'The documentation of an application is read from its repository: it is edited there, then read again here.',
+    ],
+    [
+      'no-permission',
+      'Your role cannot write notes',
+      'You are Admin. Writing notes takes the notes.write permission, which Operator, Assistant and Admin have.',
+    ],
+  ] as const)(
+    'keeps the buttons in view but grey, and says why, when the reason is %s',
+    async (reason, title, text) => {
+      server(() => undefined, { ...note, writable: false, rights: { canWrite: false, reason, role: 'Admin' } });
+      renderWithProviders(<Notes />, open);
+
+      const banner = await screen.findByRole('region', { name: 'What you may do with this note' });
+      expect(within(banner).getByText(title)).toBeInTheDocument();
+      expect(within(banner).getByText(text)).toBeInTheDocument();
+      for (const name of ['Edit', 'Rename', 'Remove']) {
+        expect(screen.getByRole('button', { name })).toBeDisabled();
+      }
+      await userEvent.click(within(banner).getByText('Why?'));
+      expect(within(banner).getByText(/./u, { selector: 'details p' })).toBeVisible();
+    },
+  );
+
+  it('sends whoever manages sources to the page that turns writing on, and tells the others to ask', async () => {
+    const readOnly = { ...note, writable: false, rights: { ...readOnlyRights } };
+    server(() => undefined, readOnly);
+    const { unmount } = renderWithProviders(<Notes />, open);
+    expect(await screen.findByRole('link', { name: 'Open Sources to turn writing on' })).toHaveAttribute(
+      'href',
+      '/sources',
+    );
+    unmount();
+
+    server(() => undefined, readOnly);
+    renderWithProviders(<Notes />, open, readerSession);
+    expect(await screen.findByText('Ask whoever manages sources to turn writing on.')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open Sources to turn writing on' })).not.toBeInTheDocument();
+  });
+
+  it('colours and names the kind of a note, and says it is the memory of Mnemarr when it is', async () => {
+    server(() => undefined, { ...note, sourceKind: 'Memory' });
+    renderWithProviders(<Notes />, open);
+
+    const frame = (await screen.findByRole('heading', { name: 'Docker' })).closest('article') as HTMLElement;
+    expect(within(frame).getByText('Memory vault')).toBeInTheDocument();
+    expect(within(frame).getByText(/This is Mnemarr’s memory/u)).toBeInTheDocument();
   });
 
   it('edits the whole text of a note and sends back the version that was read', async () => {
@@ -233,19 +307,49 @@ describe('writing notes', () => {
     });
   });
 
-  it('offers no new note to someone who may not write, nor when no source is open for writing', async () => {
+  it('offers no new note to someone who may not write, and says what to do when no source is open for writing', async () => {
     server();
     const { unmount } = renderWithProviders(<Notes />, '/notes', readerSession);
     await screen.findByText('Docker');
     expect(screen.queryByText('New note')).not.toBeInTheDocument();
     unmount();
 
-    server((method, path) =>
-      method === 'GET' && path === '/sources' ? { body: [{ ...writableSource, mode: 'ReadOnly' }] } : undefined,
-    );
+    sourcesInTree = [{ ...cours, mode: 'ReadOnly', rights: { ...readOnlyRights } }];
+    server();
     renderWithProviders(<Notes />, '/notes');
-    await screen.findByText('Docker');
-    expect(screen.queryByText('New note')).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByText('New note'));
+    expect(screen.getByText(/No source is open for writing yet\./u)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open Sources to turn writing on' })).toBeInTheDocument();
+  });
+});
+
+describe('the tree of notes', () => {
+  it('groups the sources by kind, each with its icon, its count and its purpose, and says for each source whether it is editable', async () => {
+    sourcesInTree = [
+      { id: 'm', name: 'memoire', kind: 'Memory', mode: 'ReadOnly', rights: { ...readOnlyRights } },
+      cours,
+      {
+        id: 'd',
+        name: 'portarr',
+        kind: 'ApplicationDocs',
+        mode: 'ReadOnly',
+        rights: { canWrite: false, reason: 'kind-not-writable', role: 'Admin' },
+      },
+    ];
+    server();
+    renderWithProviders(<Notes />, '/notes');
+
+    const tree = await screen.findByRole('navigation', { name: 'Notes' });
+    const kinds = within(tree)
+      .getAllByRole('heading', { level: 2 })
+      .map((heading) => heading.textContent);
+    expect(kinds).toEqual(['Memory vault0 notes', 'Knowledge vaults1 notes', 'Application documentation0 notes']);
+    expect(within(within(tree).getByRole('region', { name: 'cours' })).getByText('Editable')).toBeInTheDocument();
+    expect(within(within(tree).getByRole('region', { name: 'memoire' })).getByText('Read-only')).toBeInTheDocument();
+    expect(
+      within(within(tree).getByRole('region', { name: 'memoire' })).getByText('No notes yet.'),
+    ).toBeInTheDocument();
+    expect(within(tree).getByText(/Edited there, never here\./u)).toBeInTheDocument();
   });
 });
 

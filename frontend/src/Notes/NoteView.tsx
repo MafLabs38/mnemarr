@@ -6,10 +6,13 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import { ApiError } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
+import { KindBadge } from './KindBadge';
+import { kindLook } from './kinds';
 import NoteActions from './NoteActions';
 import NoteMarkdown from './NoteMarkdown';
 import { noteAddress, noteToRead, useNote } from './notes';
 import styles from './Notes.module.css';
+import RightsBanner from './RightsBanner';
 
 /** Whether the text of the note already shows its title as a level-one heading (that is where the title comes from). */
 function hasOwnTitle(markdown: string, title: string): boolean {
@@ -42,11 +45,15 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
     );
   }
   return (
-    <article>
+    <article className={`${styles.noteCard} ${styles[kindLook[note.sourceKind].className] ?? ''}`}>
+      <header className={styles.noteHeader}>
+        <KindBadge kind={note.sourceKind} />
+        <p className={styles.noteWhere}>
+          {note.sourceName} · {note.path}
+        </p>
+      </header>
       {!hasOwnTitle(note.markdown, note.title) && <h2 className={styles.noteTitle}>{note.title}</h2>}
-      <p className={styles.noteWhere}>
-        {note.sourceName} · {note.path}
-      </p>
+      <RightsBanner note={note} />
       {note.tags.length > 0 && (
         <ul aria-label={translate('Tags')} className={styles.tags}>
           {note.tags.map((tag) => (

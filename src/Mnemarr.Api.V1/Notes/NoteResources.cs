@@ -1,5 +1,6 @@
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Notes;
+using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Api.V1.Notes;
 
@@ -9,10 +10,26 @@ public sealed record NoteEntryResource(Guid SourceId, string SourceName, string 
     public static NoteEntryResource From(NoteEntry entry) => new(entry.SourceId, entry.SourceName, entry.Path, entry.Title, entry.Topic);
 }
 
-/// <summary>The notes of the tree and how many there are in all: when the tree is cut, <c>total</c> is larger than the list.</summary>
-public sealed record NoteListResource(IReadOnlyList<NoteEntryResource> Notes, int Total)
+/// <summary>What a caller may do to the notes of a source, and why: <c>reason</c> is <c>writable</c>, <c>source-read-only</c>, <c>kind-not-writable</c> or <c>no-permission</c>; <c>role</c> is the caller's, to say it in words.</summary>
+public sealed record NoteRightsResource(bool CanWrite, string Reason, string Role)
 {
-    public static NoteListResource From(NoteListing listing) => new([.. listing.Notes.Select(NoteEntryResource.From)], listing.Total);
+    public static NoteRightsResource For(SourceKind kind, SourceMode mode, bool mayWrite, string role)
+    {
+        var rights = NoteRights.Evaluate(kind, mode, mayWrite);
+        return new(rights.CanWrite, rights.Reason, role);
+    }
+}
+
+/// <summary>A source of notes the caller may read, as the tree draws it: its kind, its mode, and what the caller may do there.</summary>
+public sealed record NoteSourceResource(Guid Id, string Name, string Kind, string Mode, NoteRightsResource Rights);
+
+/// <summary>The notes of the tree and how many there are in all (when the tree is cut, <c>total</c> is larger than the list), and the sources they are in, with what the caller may do in each.</summary>
+public sealed record NoteListResource(IReadOnlyList<NoteEntryResource> Notes, int Total, IReadOnlyList<NoteSourceResource> Sources)
+{
+    public static NoteListResource From(NoteListing listing, IEnumerable<Source> sources, bool mayWrite, string role) =>
+        new(
+            [.. listing.Notes.Select(NoteEntryResource.From)], listing.Total,
+            [.. sources.Select(source => new NoteSourceResource(source.Id, source.Name, source.Kind.ToString(), source.Mode.ToString(), NoteRightsResource.For(source.Kind, source.Mode, mayWrite, role)))]);
 }
 
 /// <summary>Where a note is: enough to open it.</summary>
@@ -32,15 +49,20 @@ public sealed record NoteLinkResource(string Target, NoteRefResource? Note);
 /// </summary>
 public sealed record NoteResource(
     Guid SourceId, string SourceName, string Path, string Title, string Markdown, string Rendered, IReadOnlyList<string> Tags,
-    IReadOnlyList<NoteLinkResource> Links, IReadOnlyList<NoteRefResource> Backlinks, int BacklinksTotal, string Raw, string Version, bool Writable)
+    IReadOnlyList<NoteLinkResource> Links, IReadOnlyList<NoteRefResource> Backlinks, int BacklinksTotal, string Raw, string Version, bool Writable,
+    string SourceKind, string SourceMode, NoteRightsResource Rights)
 {
     /// <summary>The note, for a caller who may or may not write: <c>writable</c> is true when the caller may write notes and the source is open for writing.</summary>
-    public static NoteResource From(NoteContent content, bool mayWrite) =>
+    public static NoteResource From(NoteContent content, bool mayWrite, string role) =>
+        From(content, NoteRightsResource.For(content.Kind, content.Mode, mayWrite, role));
+
+    private static NoteResource From(NoteContent content, NoteRightsResource rights) =>
         new(
             content.Detail.Note.SourceId, content.Detail.Note.SourceName, content.Detail.Note.Path, content.Detail.Note.Title, content.Markdown, content.Rendered,
             content.Detail.Tags,
             [.. content.Detail.Links.Select(link => new NoteLinkResource(link.Target, link.Note is null ? null : NoteRefResource.From(link.Note)))],
-            [.. content.Detail.Backlinks.Select(NoteRefResource.From)], content.Detail.BacklinksTotal, content.Raw, content.Version, mayWrite && content.SourceWritable);
+            [.. content.Detail.Backlinks.Select(NoteRefResource.From)], content.Detail.BacklinksTotal, content.Raw, content.Version, rights.CanWrite,
+            content.Kind.ToString(), content.Mode.ToString(), rights);
 }
 
 /// <summary>The whole text of a new note (front matter included).</summary>

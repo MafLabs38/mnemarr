@@ -81,10 +81,10 @@ public sealed class McpTools
         var actor = new NoteActor(caller.Scope, caller.Name);
         object result = tool.Name switch
         {
-            "list_sources" => ListSources(caller.Scope),
+            "list_sources" => ListSources(caller),
             "search" => Search(arguments, caller.Scope),
             "list_notes" => ListNotes(arguments, caller.Scope),
-            "read_note" => Read(arguments, caller.Scope),
+            "read_note" => Read(arguments, caller),
             "list_tags" => _reader.Tags(caller.Scope),
             "create_note" => await _writer.CreateAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Text(arguments, ContentKey), cancellationToken),
             "update_note" => await _writer.UpdateAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Text(arguments, ContentKey), Text(arguments, VersionKey), cancellationToken),
@@ -97,8 +97,8 @@ public sealed class McpTools
 
     private static object DeleteResult(Mnemarr.Core.Git.GitPublish? published) => new { removed = true, git = published };
 
-    private object ListSources(SourceScope scope) =>
-        _catalog.List(scope).Select(source => new { name = source.Name, kind = source.Kind.ToString(), writable = source.Mode == SourceMode.ReadWrite, notes = _index.Counts(source.Id).Notes }).ToList();
+    private object ListSources(McpCaller caller) =>
+        _catalog.List(caller.Scope).Select(source => new { name = source.Name, kind = source.Kind.ToString(), writable = NoteRights.Evaluate(source.Kind, source.Mode, caller.Has(Permissions.NotesWrite)).CanWrite, notes = _index.Counts(source.Id).Notes }).ToList();
 
     private object Search(JsonElement arguments, SourceScope scope)
     {
@@ -115,9 +115,9 @@ public sealed class McpTools
         return new { total = listing.Total, notes = listing.Notes.Take(MaxListed).Select(note => new { source = note.SourceName, path = note.Path, title = note.Title }).ToList() };
     }
 
-    private object Read(JsonElement arguments, SourceScope scope)
+    private object Read(JsonElement arguments, McpCaller caller)
     {
-        var note = _reader.Read(SourceId(arguments, scope), Text(arguments, PathKey), scope);
+        var note = _reader.Read(SourceId(arguments, caller.Scope), Text(arguments, PathKey), caller.Scope);
         return new
         {
             source = note.Detail.Note.SourceName,
@@ -125,7 +125,8 @@ public sealed class McpTools
             title = note.Detail.Note.Title,
             tags = note.Detail.Tags,
             version = note.Version,
-            writable = note.SourceWritable,
+            kind = note.Kind.ToString(),
+            writable = NoteRights.Evaluate(note.Kind, note.Mode, caller.Has(Permissions.NotesWrite)).CanWrite,
             content = note.Raw,
             linkedFrom = note.Detail.Backlinks.Select(backlink => new { source = backlink.SourceName, path = backlink.Path }).ToList(),
         };
