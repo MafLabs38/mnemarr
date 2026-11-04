@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Test.Sources;
@@ -24,6 +25,88 @@ public sealed class SourceCatalogFixture : IDisposable
 
     private SourceCatalog Catalog(params string[] roots) =>
         new(_store, _audit, _workspace.Paths(roots), _clock);
+
+    private SourceCatalog GitCatalog(GitOptions? options = null)
+    {
+        var wrapped = Options.Create(options ?? new GitOptions { Hosts = ["github.example"], Credentials = { ["github"] = new GitCredentialOptions { Host = "github.example", Token = "secret-token" } } });
+        return new SourceCatalog(_store, _audit, _workspace.Paths(), _clock, new GitPolicy(wrapped, new GitCredentials(wrapped)));
+    }
+
+    [Fact]
+    public void should_declare_a_git_source_in_a_folder_that_does_not_exist_yet_and_keep_the_repository_in_its_normal_form()
+    {
+        var folder = Path.Combine(_workspace.SourcesFolder, "notes");
+
+        var source = GitCatalog().Add("notes", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://GitHub.example/org/notes/", "main", "github"));
+
+        source.Repository.Should().Be(new GitRepository("https://github.example/org/notes", "main", "github"));
+        source.Path.Should().Be(folder);
+        _store.Get(source.Id)!.Repository.Should().Be(source.Repository);
+        Directory.Exists(folder).Should().BeFalse("the clone creates it");
+    }
+
+    [Fact]
+    public void should_write_the_address_but_never_a_credential_in_the_audit_trail()
+    {
+        GitCatalog().Add("notes", SourceKind.Knowledge, SourceMode.ReadOnly, Path.Combine(_workspace.SourcesFolder, "notes"), SourceScope.All, "root", new GitRepository("https://github.example/org/notes", null, "github"));
+
+        var events = _audit.Recent(10, "source.added");
+
+        events.Should().ContainSingle().Which.Detail.Should().Contain("https://github.example/org/notes");
+        events.Single().Detail.Should().NotContain("secret-token");
+    }
+
+    [Fact]
+    public void should_refuse_a_git_source_when_git_is_not_available_or_the_policy_refuses_it()
+    {
+        var folder = Path.Combine(_workspace.SourcesFolder, "notes");
+
+        Catalog().Invoking(c => c.Add("a", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/notes")))
+            .Should().Throw<RejectedException>().WithMessage("*not available*");
+        GitCatalog().Invoking(c => c.Add("b", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://elsewhere.example/org/notes")))
+            .Should().Throw<RejectedException>().WithMessage("*does not allow*");
+        _store.List().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void should_not_let_a_git_source_be_cloned_outside_the_roots()
+    {
+        GitCatalog().Invoking(c => c.Add("a", SourceKind.Knowledge, SourceMode.ReadOnly, "/etc/notes", SourceScope.All, "root", new GitRepository("https://github.example/org/notes")))
+            .Should().Throw<RejectedException>().WithMessage("*inside one of the folders*");
+    }
+
+    [Fact]
+    public void should_change_the_repository_of_a_source_and_turn_a_git_source_back_into_a_folder()
+    {
+        var catalog = GitCatalog();
+        var folder = _workspace.Folder("notes");
+        var source = catalog.Add("notes", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/notes", "main", null));
+
+        var moved = catalog.Update(source.Id, "notes", SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/other", "dev", "github"));
+        var plain = catalog.Update(source.Id, "notes", SourceMode.ReadOnly, folder, SourceScope.All, "root");
+
+        moved.Repository.Should().Be(new GitRepository("https://github.example/org/other", "dev", "github"));
+        plain.Repository.Should().BeNull();
+        _store.Get(source.Id)!.Repository.Should().BeNull();
+    }
+
+    [Fact]
+    public void should_let_a_key_limited_to_some_sources_change_the_mode_only_not_the_repository()
+    {
+        var catalog = GitCatalog();
+        var folder = _workspace.Folder("notes");
+        var source = catalog.Add("notes", SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "root", new GitRepository("https://github.example/org/notes", "main", null));
+        var scope = new SourceScope([source.Id]);
+
+        var sameButMode = catalog.Update(source.Id, "notes", SourceMode.ReadWrite, folder, scope, "key", new GitRepository("https://github.example/org/notes", "main", null));
+        var elsewhere = () => catalog.Update(source.Id, "notes", SourceMode.ReadWrite, folder, scope, "key", new GitRepository("https://github.example/org/elsewhere", "main", null));
+        var dropped = () => catalog.Update(source.Id, "notes", SourceMode.ReadWrite, folder, scope, "key");
+
+        sameButMode.Mode.Should().Be(SourceMode.ReadWrite);
+        sameButMode.Repository.Should().Be(source.Repository);
+        elsewhere.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+        dropped.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Forbidden);
+    }
 
     [Fact]
     public void should_declare_a_folder_of_the_sources_folder_by_default()

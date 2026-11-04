@@ -1,5 +1,6 @@
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Declarative;
@@ -120,7 +121,7 @@ public sealed class ConfigurationApplier
         if (existing is null)
         {
             items.Add(new PlanItem(PlanAction.Create, w.Kind, w.Name, w.Path, w.Mode));
-            steps.Creations.Add(() => _catalog.AddManaged(w.Name, w.Kind, w.Mode, w.Path, actor));
+            steps.Creations.Add(() => _catalog.AddManaged(w.Name, w.Kind, w.Mode, w.Path, w.Repository, actor));
             return;
         }
 
@@ -128,7 +129,7 @@ public sealed class ConfigurationApplier
         items.Add(new PlanItem(action, w.Kind, w.Name, w.Path, w.Mode));
         if (action != PlanAction.Keep)
         {
-            steps.Changes.Add(() => _catalog.ChangeManaged(existing, w.Name, w.Mode, w.Path, actor));
+            steps.Changes.Add(() => _catalog.ChangeManaged(existing, w.Name, w.Mode, w.Path, w.Repository, actor));
         }
     }
 
@@ -140,7 +141,7 @@ public sealed class ConfigurationApplier
             return PlanAction.Adopt;
         }
 
-        return existing.Name == w.Name && existing.Path == w.Path && existing.Mode == w.Mode ? PlanAction.Keep : PlanAction.Update;
+        return existing.Name == w.Name && existing.Path == w.Path && existing.Mode == w.Mode && existing.Repository == w.Repository ? PlanAction.Keep : PlanAction.Update;
     }
 
     private sealed class Steps
@@ -235,7 +236,9 @@ public sealed class ConfigurationApplier
 
         try
         {
-            wanted.Add(new Wanted(kind, SourceCatalog.CheckedName(name!), _catalog.CheckedPath(entry.Path!), mode));
+            var repository = entry.Repository is null ? null : _catalog.CheckedRepository(new GitRepository(entry.Repository.Url ?? string.Empty, entry.Repository.Branch, entry.Repository.Credential));
+            var folder = repository is null ? _catalog.CheckedPath(entry.Path!) : _catalog.CheckedFolder(entry.Path!);
+            wanted.Add(new Wanted(kind, SourceCatalog.CheckedName(name!), folder, mode, repository));
         }
         catch (RejectedException ex)
         {
@@ -243,5 +246,5 @@ public sealed class ConfigurationApplier
         }
     }
 
-    private sealed record Wanted(SourceKind Kind, string Name, string Path, SourceMode Mode);
+    private sealed record Wanted(SourceKind Kind, string Name, string Path, SourceMode Mode, GitRepository? Repository);
 }

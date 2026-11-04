@@ -1,5 +1,6 @@
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Git;
 
 namespace Mnemarr.Core.Sources;
 
@@ -19,9 +20,11 @@ public sealed class SourceCatalog
     private readonly IAuditLog _audit;
     private readonly SourcePaths _paths;
     private readonly TimeProvider _clock;
+    private readonly GitPolicy? _git;
 
-    public SourceCatalog(ISourceStore store, IAuditLog audit, SourcePaths paths, TimeProvider clock)
+    public SourceCatalog(ISourceStore store, IAuditLog audit, SourcePaths paths, TimeProvider clock, GitPolicy? git = null)
     {
+        _git = git;
         _store = store;
         _audit = audit;
         _paths = paths;
@@ -55,13 +58,14 @@ public sealed class SourceCatalog
     /// Declares a source. A caller limited to some sources cannot: the new source would be outside what it may touch, and a folder is
     /// how a caller asks Mnemarr to read it.
     /// </summary>
-    public Source Add(string name, SourceKind kind, SourceMode mode, string path, SourceScope scope, string actor)
+    public Source Add(string name, SourceKind kind, SourceMode mode, string path, SourceScope scope, string actor, GitRepository? repository = null)
     {
         RefuseIfScoped(scope, "declare a source");
         name = CheckedName(name);
         lock (Gate)
         {
-            var source = new Source(Guid.NewGuid(), name, kind, mode, CheckedPath(path), _clock.GetUtcNow());
+            var checkedRepository = CheckedRepository(repository);
+            var source = new Source(Guid.NewGuid(), name, kind, mode, checkedRepository is null ? CheckedPath(path) : CheckedFolder(path), _clock.GetUtcNow(), Repository: checkedRepository);
             Insert(source, actor);
             return source;
         }
@@ -72,18 +76,18 @@ public sealed class SourceCatalog
     /// events, so that whatever a change of a source brings later is written once. The caller holds <see cref="Gate"/>, has checked the
     /// document, and passes a name and a folder that were checked.
     /// </summary>
-    internal void AddManaged(string name, SourceKind kind, SourceMode mode, string path, string actor) =>
-        Insert(new Source(Guid.NewGuid(), name, kind, mode, path, _clock.GetUtcNow(), Managed: true), actor);
+    internal void AddManaged(string name, SourceKind kind, SourceMode mode, string path, GitRepository? repository, string actor) =>
+        Insert(new Source(Guid.NewGuid(), name, kind, mode, path, _clock.GetUtcNow(), Managed: true, Repository: repository), actor);
 
-    internal void ChangeManaged(Source current, string name, SourceMode mode, string path, string actor)
+    internal void ChangeManaged(Source current, string name, SourceMode mode, string path, GitRepository? repository, string actor)
     {
-        var changed = current with { Name = name, Mode = mode, Path = path, Managed = true };
+        var changed = current with { Name = name, Mode = mode, Path = path, Managed = true, Repository = repository };
         if (!_store.Update(changed))
         {
             throw new RejectedException(Problem.NotFound, "There is no such source.");
         }
 
-        _audit.Append(actor, "source.changed", changed.Name, $"{changed.Mode}, {changed.Path}");
+        _audit.Append(actor, "source.changed", changed.Name, $"{changed.Mode}, {changed.Path}{Describe(changed.Repository)}");
     }
 
     internal void RemoveManaged(Source source, string actor)
@@ -102,7 +106,7 @@ public sealed class SourceCatalog
         }
 
         _store.Add(source);
-        _audit.Append(actor, "source.added", source.Name, $"{source.Kind}, {source.Mode}");
+        _audit.Append(actor, "source.added", source.Name, $"{source.Kind}, {source.Mode}{Describe(source.Repository)}");
     }
 
     /// <summary>
@@ -111,7 +115,7 @@ public sealed class SourceCatalog
     /// A caller limited to some sources changes the mode only: the name and the folder say which part of the disk is read, and repointing
     /// a source at another source's folder would give the caller that folder's notes.
     /// </summary>
-    public Source Update(Guid id, string name, SourceMode mode, string path, SourceScope scope, string actor)
+    public Source Update(Guid id, string name, SourceMode mode, string path, SourceScope scope, string actor, GitRepository? repository = null)
     {
         name = CheckedName(name);
         lock (Gate)
@@ -119,19 +123,26 @@ public sealed class SourceCatalog
             var current = Get(id, scope);
             RefuseIfManaged(current);
             // Before any look at the disk: a caller who may not change the folder must not learn, from the kind of refusal, what is there.
-            if (scope.Sources is not null && (name != current.Name || SourcePaths.Normalize(path) != current.Path))
+            if (scope.Sources is not null && (name != current.Name || SourcePaths.Normalize(path) != current.Path || (repository is not null && repository != current.Repository) || (repository is null && current.Repository is not null)))
             {
-                throw new RejectedException(Problem.Forbidden, "A key limited to some sources can change the mode of a source, not its name or its folder.");
+                throw new RejectedException(Problem.Forbidden, "A key limited to some sources can change the mode of a source, not its name, its folder or its repository.");
             }
 
-            var changed = current with { Name = name, Mode = mode, Path = scope.Sources is null ? CheckedPath(path) : current.Path };
+            var checkedRepository = scope.Sources is null ? CheckedRepository(repository) : current.Repository;
+            var folder = current.Path;
+            if (scope.Sources is null)
+            {
+                folder = checkedRepository is null ? CheckedPath(path) : CheckedFolder(path);
+            }
+
+            var changed = current with { Name = name, Mode = mode, Path = folder, Repository = checkedRepository };
 
             if (!_store.Update(changed))
             {
                 throw new RejectedException(Problem.NotFound, "There is no such source.");
             }
 
-            _audit.Append(actor, "source.changed", changed.Name, $"{changed.Mode}, {changed.Path}");
+            _audit.Append(actor, "source.changed", changed.Name, $"{changed.Mode}, {changed.Path}{Describe(changed.Repository)}");
             return changed;
         }
     }
@@ -185,6 +196,15 @@ public sealed class SourceCatalog
         var full = _paths.Allowed(path);
         return Directory.Exists(full) ? full : throw new RejectedException(Problem.Invalid, "The folder of the source does not exist.");
     }
+
+    /// <summary>A folder a source may be in, that need not exist yet: the folder of a Git source is where its repository will be cloned.</summary>
+    internal string CheckedFolder(string path) => _paths.Allowed(path);
+
+    /// <summary>The repository in its normal form, or a refusal. None is allowed (a source that is a plain folder).</summary>
+    internal GitRepository? CheckedRepository(GitRepository? repository) =>
+        repository is null ? null : (_git ?? throw new RejectedException(Problem.Invalid, "Git sources are not available.")).Check(repository);
+
+    private static string Describe(GitRepository? repository) => repository is null ? string.Empty : $", git {repository.Url}";
 }
 
 /// <summary>A kind of source with its rule and how many sources of it exist.</summary>

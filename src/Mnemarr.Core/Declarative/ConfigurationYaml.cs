@@ -74,7 +74,13 @@ public static class ConfigurationYaml
         return Writer.Serialize(document);
     }
 
-    private static SourceEntry Entry(Source source) => new() { Name = source.Name, Path = source.Path, Mode = source.Mode.ToString() };
+    private static SourceEntry Entry(Source source) => new()
+    {
+        Name = source.Name,
+        Path = source.Path,
+        Mode = source.Mode.ToString(),
+        Repository = source.Repository is null ? null : new RepositoryEntry { Url = source.Repository.Url, Branch = source.Repository.Branch, Credential = source.Repository.Credential },
+    };
 
     /// <summary>Reads the events of the document, without building anything: what is not allowed is refused before it can cost anything.</summary>
     private static void CheckShape(string text)

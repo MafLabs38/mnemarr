@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Mnemarr.Core.Sources;
@@ -19,10 +18,11 @@ public sealed class SourceIndexer
     private readonly SourcePaths _paths;
     private readonly ScanOutcomes _outcomes;
     private readonly TimeProvider _clock;
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _passes = new();
+    private readonly SourceLocks _locks;
 
-    public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock)
+    public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock, SourceLocks? locks = null)
     {
+        _locks = locks ?? new SourceLocks();
         _index = index;
         _paths = paths;
         _outcomes = outcomes;
@@ -35,7 +35,7 @@ public sealed class SourceIndexer
     /// <param name="cancellationToken">Stops the pass.</param>
     public async Task<IndexReport> IndexAsync(Source source, bool rebuild, bool waitForTurn, CancellationToken cancellationToken)
     {
-        var onePass = _passes.GetOrAdd(source.Id, _ => new SemaphoreSlim(1, 1));
+        var onePass = _locks.Of(source.Id);
         if (!await onePass.WaitAsync(waitForTurn ? Timeout.InfiniteTimeSpan : TimeSpan.Zero, cancellationToken))
         {
             throw new RejectedException(Problem.Busy, "A pass over this source is running: try again in a moment.", TimeSpan.FromSeconds(5));
@@ -44,7 +44,12 @@ public sealed class SourceIndexer
         try
         {
             // After the wait, not before: the roots or the folder can change while a pass ahead of this one runs.
-            CheckFolder(source);
+            if (!CheckFolder(source))
+            {
+                // A Git source whose repository has not been cloned yet has nothing to read: that is not a failure.
+                return new IndexReport(0, 0, 0, 0);
+            }
+
             var report = await PassAsync(source, rebuild, cancellationToken);
             _outcomes.Succeeded(source.Id, _clock.GetUtcNow());
             return report;
@@ -70,14 +75,11 @@ public sealed class SourceIndexer
     public void Retain(IReadOnlyCollection<Guid> declared)
     {
         _outcomes.Retain(declared);
-        foreach (var id in _passes.Keys.Where(id => !declared.Contains(id)))
-        {
-            _passes.TryRemove(id, out _);
-        }
+        _locks.Retain(declared);
     }
 
-    /// <summary>The folder is still one a source may be in, and is still there: the roots can be narrowed, and a folder can go or become a link, after the declaration.</summary>
-    private void CheckFolder(Source source)
+    /// <summary>True when the folder is still one a source may be in and is there (false: a Git source not cloned yet); else a refusal: the roots can be narrowed, and a folder can go or become a link, after the declaration.</summary>
+    private bool CheckFolder(Source source)
     {
         try
         {
@@ -88,10 +90,14 @@ public sealed class SourceIndexer
             throw Failed(source, ScanOutcome.OutsideRoots, $"The folder of the source '{source.Name}' is not inside the folders the operator allows for sources any more.");
         }
 
-        if (!Directory.Exists(source.Path))
+        if (Directory.Exists(source.Path))
         {
-            throw Failed(source, ScanOutcome.FolderMissing, $"The folder of the source '{source.Name}' does not exist any more.");
+            return true;
         }
+
+        return source.Repository is not null
+            ? false
+            : throw Failed(source, ScanOutcome.FolderMissing, $"The folder of the source '{source.Name}' does not exist any more.");
     }
 
     private RejectedException Failed(Source source, string code, string message)
