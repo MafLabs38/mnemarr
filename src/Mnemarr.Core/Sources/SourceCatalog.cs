@@ -174,8 +174,8 @@ public sealed class SourceCatalog
     internal static string CheckedName(string name)
     {
         name = name.Trim();
-        return name.Length is 0 or > MaxNameLength
-            ? throw new RejectedException(Problem.Invalid, $"The name of a source is 1 to {MaxNameLength} characters.")
+        return name.Length is 0 or > MaxNameLength || name.Any(char.IsControl)
+            ? throw new RejectedException(Problem.Invalid, $"The name of a source is 1 to {MaxNameLength} characters, with no control character: it is written in logs and in the audit trail.")
             : name;
     }
 

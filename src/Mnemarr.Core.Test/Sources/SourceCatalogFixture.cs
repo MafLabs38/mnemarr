@@ -146,8 +146,9 @@ public sealed class SourceCatalogFixture : IDisposable
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
+    [InlineData("two\nlines")]
     [InlineData("nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn")]
-    public void should_refuse_a_source_whose_name_is_empty_or_too_long(string name)
+    public void should_refuse_a_source_whose_name_is_empty_too_long_or_holds_a_control_character(string name)
     {
         var add = () => Catalog().Add(name, SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
 

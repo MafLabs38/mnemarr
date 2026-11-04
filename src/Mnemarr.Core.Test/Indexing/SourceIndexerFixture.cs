@@ -282,17 +282,23 @@ public sealed class SourceIndexerFixture : IDisposable
         var folder = _workspace.Folder("courses");
         var source = Declare("courses", folder);
         var outside = Directory.CreateTempSubdirectory("mnemarr-outside-");
-        TestWorkspace.Write(outside.FullName, "secret.md", "# Secret\nleakedword");
-        Directory.Delete(folder);
-        Directory.CreateSymbolicLink(folder, outside.FullName);
+        try
+        {
+            TestWorkspace.Write(outside.FullName, "secret.md", "# Secret\nleakedword");
+            Directory.Delete(folder);
+            Directory.CreateSymbolicLink(folder, outside.FullName);
 
-        var index = () => _subject.IndexAsync(source, Token);
+            var index = () => _subject.IndexAsync(source, Token);
 
-        (await index.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
-        _outcomes.Of(source.Id)!.Error.Should().Be(ScanOutcome.OutsideRoots);
-        _index.Search(new SearchRequest("leakedword"), SourceScope.All).Should().BeEmpty();
-        File.Delete(folder);
-        outside.Delete(recursive: true);
+            (await index.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+            _outcomes.Of(source.Id)!.Error.Should().Be(ScanOutcome.OutsideRoots);
+            _index.Search(new SearchRequest("leakedword"), SourceScope.All).Should().BeEmpty();
+        }
+        finally
+        {
+            File.Delete(folder);
+            outside.Delete(recursive: true);
+        }
     }
 
     [Fact]
@@ -367,7 +373,7 @@ public sealed class SourceIndexerFixture : IDisposable
         (await running).Added.Should().Be(1);
     }
 
-    /// <summary>An index whose writes wait for the test: a pass that is running, for as long as the test wants.</summary>
+    /// <summary>An index that fails whatever it is asked.</summary>
     private sealed class BrokenIndex : INoteIndex
     {
         public IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId) => throw new InvalidOperationException("the index is broken");
@@ -381,6 +387,7 @@ public sealed class SourceIndexerFixture : IDisposable
         public IReadOnlyList<SearchHit> Search(SearchRequest request, SourceScope scope) => throw new InvalidOperationException();
     }
 
+    /// <summary>An index whose writes wait for the test: a pass that is running, for as long as the test wants.</summary>
     private sealed class GatedIndex(INoteIndex inner) : INoteIndex, IDisposable
     {
         public ManualResetEventSlim Entered { get; } = new();

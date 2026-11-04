@@ -30,6 +30,8 @@ public sealed partial class SourceIndexingService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // The first pass reads disks synchronously for a while: it must not run on the thread that starts the host.
+        await Task.Yield();
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.Value.ScanIntervalSeconds), _clock);
         do
         {

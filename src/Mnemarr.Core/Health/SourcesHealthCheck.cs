@@ -28,15 +28,16 @@ public sealed class SourcesHealthCheck : IHealthCheck
         try
         {
             var missing = _catalog.Kinds().Where(status => !status.Satisfied).Select(status => status.Rule.Kind.ToString()).ToList();
+            var unreadable = _catalog.List(SourceScope.All).Where(source => _outcomes.Of(source.Id)?.Failed == true).Select(source => source.Name).ToList();
+            var failed = $"The last scan of a source failed: {string.Join(", ", unreadable)}.";
             if (missing.Count > 0)
             {
-                return Task.FromResult(HealthReasons.Degraded("source-missing", $"A required source is not declared: {string.Join(", ", missing)}."));
+                // Both are said: a source whose folder was unmounted must not hide behind the memory vault that is not there yet.
+                var missingText = $"A required source is not declared: {string.Join(", ", missing)}.";
+                return Task.FromResult(HealthReasons.Degraded("source-missing", unreadable.Count == 0 ? missingText : $"{missingText} {failed}"));
             }
 
-            var unreadable = _catalog.List(SourceScope.All).Where(source => _outcomes.Of(source.Id)?.Failed == true).Select(source => source.Name).ToList();
-            return Task.FromResult(unreadable.Count == 0
-                ? HealthCheckResult.Healthy()
-                : HealthReasons.Degraded("source-unreadable", $"The last scan of a source failed: {string.Join(", ", unreadable)}."));
+            return Task.FromResult(unreadable.Count == 0 ? HealthCheckResult.Healthy() : HealthReasons.Degraded("source-unreadable", failed));
         }
         catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {

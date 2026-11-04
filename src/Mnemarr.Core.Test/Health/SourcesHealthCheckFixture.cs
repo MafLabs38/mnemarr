@@ -38,6 +38,20 @@ public sealed class SourcesHealthCheckFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_say_a_failed_scan_too_while_the_memory_vault_is_not_declared()
+    {
+        var catalog = Catalog();
+        var courses = catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("k"), SourceScope.All, "root");
+        var outcomes = new ScanOutcomes();
+        outcomes.Failed(courses.Id, _clock.GetUtcNow(), ScanOutcome.FolderMissing);
+
+        var result = await Check(catalog, outcomes);
+
+        result.Data["reason"].Should().Be("source-missing");
+        result.Description.Should().Contain("Memory").And.Contain("courses");
+    }
+
+    [Fact]
     public async Task should_be_healthy_once_the_base_is_there()
     {
         var catalog = Catalog();
