@@ -7,7 +7,7 @@ namespace Mnemarr.Core.Notes;
 
 public sealed class SqliteNoteBrowser : INoteBrowser
 {
-    /// <summary>The most notes the tree lists: a vault of this size is the limit of a tree, and the search is the way in beyond it.</summary>
+    /// <summary>The most notes the tree lists for one source: a vault of this size is the limit of a tree, and the search is the way in beyond it.</summary>
     internal const int MaxEntries = 10_000;
 
     private const int MaxTags = 200;
@@ -24,14 +24,21 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     public NoteListing List(SourceScope scope, Guid? sourceId, string? tag)
     {
         using var connection = _database.Open();
-        using var command = connection.CreateCommand();
         const string FromClause = $"""
             FROM notes n JOIN sources s ON s.id = n.source_id
             WHERE {ScopeFilter}
               AND ($source IS NULL OR s.id = $source)
               AND ($tag IS NULL OR EXISTS (SELECT 1 FROM note_tags t WHERE t.note_id = n.id AND t.tag = $tag))
             """;
-        command.CommandText = $"SELECT s.id, s.name, n.path, n.title, n.topic {FromClause} ORDER BY s.name, n.path LIMIT $limit";
+        using var command = connection.CreateCommand();
+        // The limit is per source: a large vault must not push the others out of the tree.
+        command.CommandText = $"""
+            SELECT id, name, path, title, topic FROM (
+                SELECT s.id AS id, s.name AS name, n.path AS path, n.title AS title, n.topic AS topic,
+                       ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY n.path) AS position
+                {FromClause}
+            ) WHERE position <= $limit ORDER BY name, path
+            """;
         BindListing(command, scope, sourceId, tag);
         command.Parameters.AddWithValue("$limit", MaxEntries);
         var entries = new List<NoteEntry>();
@@ -41,11 +48,6 @@ public sealed class SqliteNoteBrowser : INoteBrowser
             {
                 entries.Add(new NoteEntry(Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4)));
             }
-        }
-
-        if (entries.Count < MaxEntries)
-        {
-            return new NoteListing(entries, entries.Count);
         }
 
         using var count = connection.CreateCommand();

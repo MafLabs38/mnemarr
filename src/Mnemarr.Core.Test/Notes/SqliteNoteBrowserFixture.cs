@@ -126,9 +126,10 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
     }
 
     [Fact]
-    public async Task should_say_how_many_notes_there_are_when_the_tree_is_cut_short()
+    public async Task should_cut_the_tree_per_source_and_say_how_many_notes_there_are()
     {
-        var source = await SourceWithAsync("big", ("a.md", "# A"));
+        var big = await SourceWithAsync("a-big", ("a.md", "# A"));
+        await SourceWithAsync("z-small", ("z.md", "# Z"));
         using (var connection = Workspace.Database.Open())
         {
             using var fill = connection.CreateCommand();
@@ -136,14 +137,15 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
                 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10100)
                 INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at) SELECT $source, 'bulk/' || i || '.md', 'bulk', 'Bulk ' || i, 'h', 'now' FROM n
                 """;
-            fill.Parameters.AddWithValue("$source", source.Id.ToString());
+            fill.Parameters.AddWithValue("$source", big.Id.ToString());
             fill.ExecuteNonQuery();
         }
 
         var listing = Browser.List(SourceScope.All, null, null);
 
-        listing.Notes.Should().HaveCount(SqliteNoteBrowser.MaxEntries);
-        listing.Total.Should().Be(10_101, "the list is cut, and the total says by how much");
+        listing.Notes.Count(note => note.SourceName == "a-big").Should().Be(SqliteNoteBrowser.MaxEntries);
+        listing.Notes.Should().Contain(note => note.SourceName == "z-small", "a large source does not push the others out of the tree");
+        listing.Total.Should().Be(10_102, "the list is cut, and the total says by how much");
     }
 
     [Fact]
