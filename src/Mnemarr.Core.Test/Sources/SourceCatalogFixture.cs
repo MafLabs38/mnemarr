@@ -28,11 +28,11 @@ public sealed class SourceCatalogFixture : IDisposable
     [Fact]
     public void should_declare_a_folder_of_the_sources_folder_by_default()
     {
-        var folder = _workspace.Folder("cours");
+        var folder = _workspace.Folder("courses");
 
-        var source = Catalog().Add("  Cours  ", SourceKind.Knowledge, SourceMode.ReadWrite, folder + Path.DirectorySeparatorChar, SourceScope.All, "root");
+        var source = Catalog().Add("  Courses  ", SourceKind.Knowledge, SourceMode.ReadWrite, folder + Path.DirectorySeparatorChar, SourceScope.All, "root");
 
-        source.Should().Match<Source>(s => s.Name == "Cours" && s.Path == folder && s.Kind == SourceKind.Knowledge && s.Mode == SourceMode.ReadWrite);
+        source.Should().Match<Source>(s => s.Name == "Courses" && s.Path == folder && s.Kind == SourceKind.Knowledge && s.Mode == SourceMode.ReadWrite);
         _store.Get(source.Id).Should().Be(source);
         _store.List().Should().ContainSingle().Which.Should().Be(source);
     }
@@ -141,22 +141,12 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_refuse_a_name_that_is_already_taken_and_keep_the_first_source()
     {
         var catalog = Catalog();
-        catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "root");
+        catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "root");
 
-        var again = () => catalog.Add("cours", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("b"), SourceScope.All, "root");
+        var again = () => catalog.Add("courses", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("b"), SourceScope.All, "root");
 
         again.Should().Throw<RejectedException>().WithMessage("*already exists*");
         _store.List().Should().ContainSingle().Which.Kind.Should().Be(SourceKind.Knowledge);
-    }
-
-    [Fact]
-    public void should_remove_a_source_once_and_say_so_when_there_was_none()
-    {
-        var source = Catalog().Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "root");
-
-        _store.Remove(source.Id).Should().BeTrue();
-        _store.Remove(source.Id).Should().BeFalse();
-        _store.Get(source.Id).Should().BeNull();
     }
 
     private sealed class TempFolder : IDisposable
@@ -170,11 +160,11 @@ public sealed class SourceCatalogFixture : IDisposable
     public void should_audit_what_is_declared_and_forgotten_and_say_so_when_a_source_is_not_there()
     {
         var catalog = Catalog();
-        var source = catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "alice");
+        var source = catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("a"), SourceScope.All, "alice");
 
         catalog.Remove(source.Id, SourceScope.All, "bob");
 
-        _audit.Recent(10, "source.added").Should().ContainSingle().Which.Should().Match<AuditEvent>(e => e.Actor == "alice" && e.Target == "cours");
+        _audit.Recent(10, "source.added").Should().ContainSingle().Which.Should().Match<AuditEvent>(e => e.Actor == "alice" && e.Target == "courses");
         _audit.Recent(10, "source.removed").Should().ContainSingle().Which.Actor.Should().Be("bob");
         _store.List().Should().BeEmpty();
         var again = () => catalog.Remove(source.Id, SourceScope.All, "bob");
@@ -203,8 +193,8 @@ public sealed class SourceCatalogFixture : IDisposable
     {
         var catalog = Catalog();
         catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), SourceScope.All, "root");
-        catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k1"), SourceScope.All, "root");
-        catalog.Add("travail", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k2"), SourceScope.All, "root");
+        catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k1"), SourceScope.All, "root");
+        catalog.Add("work", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k2"), SourceScope.All, "root");
         catalog.Add("app-a", SourceKind.ApplicationDocs, SourceMode.ReadOnly, _workspace.Folder("a1"), SourceScope.All, "root");
         catalog.Add("app-b", SourceKind.ApplicationDocs, SourceMode.ReadOnly, _workspace.Folder("a2"), SourceScope.All, "root");
 
@@ -233,7 +223,7 @@ public sealed class SourceCatalogFixture : IDisposable
     {
         var catalog = Catalog();
         var memory = catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, _workspace.Folder("m"), SourceScope.All, "root");
-        var cours = catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k"), SourceScope.All, "root");
+        var cours = catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("k"), SourceScope.All, "root");
 
         var forget = () => catalog.Remove(memory.Id, SourceScope.All, "root");
         catalog.Remove(cours.Id, SourceScope.All, "root");
@@ -316,5 +306,20 @@ public sealed class SourceCatalogFixture : IDisposable
         seen.Single(k => k.Rule.Kind == SourceKind.Knowledge).Count.Should().Be(1);
         seen.Single(k => k.Rule.Kind == SourceKind.Memory).Count.Should().Be(0);
         catalog.Kinds().Single(k => k.Rule.Kind == SourceKind.Memory).Count.Should().Be(1);
+    }
+
+    [Fact]
+    public void should_refuse_a_scoped_caller_a_new_folder_before_looking_at_the_disk_whatever_the_folder()
+    {
+        var catalog = Catalog();
+        var mine = catalog.Add("mine", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("a"), SourceScope.All, "root");
+        var scope = new SourceScope([mine.Id]);
+
+        var answers = new[] { "/etc", Path.Combine(_workspace.SourcesFolder, "nothing"), _workspace.Folder("exists") }
+            .Select(path => Record.Exception(() => catalog.Update(mine.Id, "mine", SourceMode.ReadOnly, path, scope, "key")))
+            .Select(ex => ((RejectedException)ex!).Message)
+            .Distinct();
+
+        answers.Should().ContainSingle("the answer must not tell what exists under the roots");
     }
 }

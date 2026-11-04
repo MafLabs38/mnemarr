@@ -50,13 +50,13 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
     [Fact]
     public async Task should_apply_the_file_and_not_apply_it_again_while_it_does_not_change()
     {
-        File.WriteAllText(_file, Yaml("cours"));
+        File.WriteAllText(_file, Yaml("courses"));
         var service = Service(_file);
 
         await service.ApplyOnceAsync(Token);
         await service.ApplyOnceAsync(Token);
 
-        _store.List().Should().ContainSingle().Which.Should().Match<Source>(s => s.Name == "cours" && s.Managed);
+        _store.List().Should().ContainSingle().Which.Should().Match<Source>(s => s.Name == "courses" && s.Managed);
         _audit.Recent(10, "config.applied").Should().ContainSingle();
         _state.Error.Should().BeNull();
         _state.Attempted.Should().BeTrue();
@@ -66,13 +66,13 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
     public async Task should_apply_the_file_again_when_it_changes_and_remove_what_it_no_longer_lists()
     {
         var service = Service(_file);
-        File.WriteAllText(_file, Yaml("cours", "travail"));
+        File.WriteAllText(_file, Yaml("courses", "work"));
         await service.ApplyOnceAsync(Token);
 
-        File.WriteAllText(_file, Yaml("cours"));
+        File.WriteAllText(_file, Yaml("courses"));
         await service.ApplyOnceAsync(Token);
 
-        _store.List().Select(s => s.Name).Should().Equal("cours");
+        _store.List().Select(s => s.Name).Should().Equal("courses");
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
 
         await service.ApplyOnceAsync(Token);
         var broken = await Health(_file);
-        File.WriteAllText(_file, Yaml("cours"));
+        File.WriteAllText(_file, Yaml("courses"));
         await service.ApplyOnceAsync(Token);
         var fixedUp = await Health(_file);
 
@@ -143,7 +143,7 @@ public sealed class ConfigurationFileServiceFixture : IDisposable
     [Fact]
     public async Task should_stay_up_and_say_so_when_the_database_cannot_be_reached()
     {
-        File.WriteAllText(_file, Yaml("cours"));
+        File.WriteAllText(_file, Yaml("courses"));
         var gone = new Database(Options.Create(new Mnemarr.Core.Configuration.MnemarrOptions { DataFolder = Path.Combine(_workspace.Root, "gone") }));
 
         var apply = () => Service(_file, gone).ApplyOnceAsync(Token);

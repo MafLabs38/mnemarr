@@ -20,6 +20,19 @@ public static class MarkdownFileScanner
     /// <summary>A file larger than this is not a note.</summary>
     public const long MaxFileBytes = 2 * 1024 * 1024;
 
+    /// <summary>A file of a size a note can have. One that is removed between the listing and this look is not a note: the pass goes on.</summary>
+    private static bool IsNote(FileInfo file)
+    {
+        try
+        {
+            return file.Length <= MaxFileBytes;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
     public static IEnumerable<ScannedFile> Scan(string root)
     {
         var options = new EnumerationOptions
@@ -32,7 +45,7 @@ public static class MarkdownFileScanner
 
         return new DirectoryInfo(root)
             .EnumerateFiles("*.md", options)
-            .Where(file => file.Length <= MaxFileBytes)
+            .Where(IsNote)
             .Select(file => new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName));
     }
 }

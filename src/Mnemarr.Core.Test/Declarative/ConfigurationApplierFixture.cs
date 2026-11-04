@@ -38,13 +38,13 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_declare_what_the_document_says_as_managed_sources_with_the_default_name_and_mode_of_the_kind()
     {
-        var plan = _subject.Apply(Document(memory: "m", knowledge: ["cours", "travail"], docs: ["portarr"]), "ci");
+        var plan = _subject.Apply(Document(memory: "m", knowledge: ["courses", "work"], docs: ["portarr"]), "ci");
 
         plan.Valid.Should().BeTrue();
         plan.Items.Should().OnlyContain(i => i.Action == PlanAction.Create);
         var sources = _store.List();
         sources.Should().OnlyContain(s => s.Managed);
-        sources.Select(s => s.Name).Should().BeEquivalentTo("memory", "cours", "travail", "portarr");
+        sources.Select(s => s.Name).Should().BeEquivalentTo("memory", "courses", "work", "portarr");
         sources.Single(s => s.Name == "memory").Mode.Should().Be(SourceMode.ReadOnly, "writes are off unless a source asks for them");
         sources.Single(s => s.Name == "portarr").Mode.Should().Be(SourceMode.ReadOnly);
         _audit.Recent(10, "config.applied").Should().ContainSingle().Which.Actor.Should().Be("ci");
@@ -53,7 +53,7 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_change_nothing_when_the_same_document_is_applied_again()
     {
-        var document = Document(memory: "m", knowledge: ["cours"]);
+        var document = Document(memory: "m", knowledge: ["courses"]);
         _subject.Apply(document, "ci");
         var before = _store.List();
 
@@ -67,26 +67,26 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_update_a_managed_source_whose_folder_or_mode_changed_and_remove_the_managed_one_the_document_no_longer_lists()
     {
-        _subject.Apply(Document(knowledge: ["cours", "travail"]), "ci");
-        var changed = Document(knowledge: ["cours"]);
+        _subject.Apply(Document(knowledge: ["courses", "work"]), "ci");
+        var changed = Document(knowledge: ["courses"]);
         changed.Knowledge![0].Mode = "ReadWrite";
 
         var plan = _subject.Apply(changed, "ci");
 
-        plan.Items.Select(i => (i.Name, i.Action)).Should().BeEquivalentTo([("cours", PlanAction.Update), ("travail", PlanAction.Remove)]);
-        _store.List().Should().ContainSingle().Which.Should().Match<Source>(s => s.Name == "cours" && s.Mode == SourceMode.ReadWrite);
+        plan.Items.Select(i => (i.Name, i.Action)).Should().BeEquivalentTo([("courses", PlanAction.Update), ("work", PlanAction.Remove)]);
+        _store.List().Should().ContainSingle().Which.Should().Match<Source>(s => s.Name == "courses" && s.Mode == SourceMode.ReadWrite);
     }
 
     [Fact]
     public void should_adopt_a_source_made_by_hand_and_never_remove_one_it_does_not_own()
     {
-        var byHand = _catalog.Add("cours", SourceKind.Knowledge, SourceMode.ReadWrite, Folder("cours-old"), SourceScope.All, "alice");
-        var untouched = _catalog.Add("notes-perso", SourceKind.Knowledge, SourceMode.ReadWrite, Folder("perso"), SourceScope.All, "alice");
+        var byHand = _catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadWrite, Folder("courses-old"), SourceScope.All, "alice");
+        var untouched = _catalog.Add("notes-personal", SourceKind.Knowledge, SourceMode.ReadWrite, Folder("perso"), SourceScope.All, "alice");
 
-        var plan = _subject.Apply(Document(knowledge: ["cours"]), "ci");
+        var plan = _subject.Apply(Document(knowledge: ["courses"]), "ci");
 
         plan.Items.Should().ContainSingle().Which.Action.Should().Be(PlanAction.Adopt);
-        _store.Get(byHand.Id)!.Should().Match<Source>(s => s.Managed && s.Path == Folder("cours"));
+        _store.Get(byHand.Id)!.Should().Match<Source>(s => s.Managed && s.Path == Folder("courses"));
         _store.Get(untouched.Id).Should().NotBeNull("what is made by hand is not the document's to remove");
         _store.Get(untouched.Id)!.Managed.Should().BeFalse();
     }
@@ -95,11 +95,11 @@ public sealed class ConfigurationApplierFixture : IDisposable
     public void should_leave_alone_a_section_that_is_absent_and_empty_one_that_is_present()
     {
         var m = _catalog.Add("memory", SourceKind.Memory, SourceMode.ReadWrite, Folder("m"), SourceScope.All, "alice");
-        _subject.Apply(Document(knowledge: ["cours"], docs: ["portarr"]), "ci");
+        _subject.Apply(Document(knowledge: ["courses"], docs: ["portarr"]), "ci");
 
         _subject.Apply(new ConfigurationDocument { ApplicationDocs = [] }, "ci");
 
-        _store.List().Select(s => s.Name).Should().BeEquivalentTo("memory", "cours");
+        _store.List().Select(s => s.Name).Should().BeEquivalentTo("memory", "courses");
         _store.Get(m.Id)!.Managed.Should().BeFalse("a section that is absent is not managed");
     }
 
@@ -119,9 +119,9 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_apply_none_of_a_document_that_has_an_error_and_say_every_error()
     {
-        var document = Document(knowledge: ["cours"]);
+        var document = Document(knowledge: ["courses"]);
         document.Knowledge!.Add(new SourceEntry { Name = "elsewhere", Path = "/etc" });
-        document.Knowledge.Add(new SourceEntry { Name = "cours", Path = Folder("again") });
+        document.Knowledge.Add(new SourceEntry { Name = "courses", Path = Folder("again") });
         document.Knowledge.Add(new SourceEntry { Path = Folder("nameless"), Mode = "Append" });
 
         var plan = _subject.Apply(document, "ci");
@@ -145,7 +145,7 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_say_what_it_would_do_without_doing_it()
     {
-        var plan = _subject.Plan(Document(memory: "m", knowledge: ["cours"]));
+        var plan = _subject.Plan(Document(memory: "m", knowledge: ["courses"]));
 
         plan.Items.Should().HaveCount(2).And.OnlyContain(i => i.Action == PlanAction.Create);
         _store.List().Should().BeEmpty();
@@ -165,10 +165,10 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_refuse_to_change_or_forget_by_hand_a_source_the_document_owns()
     {
-        _subject.Apply(Document(knowledge: ["cours"]), "ci");
+        _subject.Apply(Document(knowledge: ["courses"]), "ci");
         var owned = _store.List().Single();
 
-        var change = () => _catalog.Update(owned.Id, "cours", SourceMode.ReadOnly, owned.Path, SourceScope.All, "alice");
+        var change = () => _catalog.Update(owned.Id, "courses", SourceMode.ReadOnly, owned.Path, SourceScope.All, "alice");
         var forget = () => _catalog.Remove(owned.Id, SourceScope.All, "alice");
 
         change.Should().Throw<RejectedException>().Which.Should().Match<RejectedException>(e => e.Problem == Problem.Conflict && e.Message.Contains("managed by configuration"));
@@ -179,7 +179,7 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_report_an_entry_that_is_empty_instead_of_failing()
     {
-        var document = Document(knowledge: ["cours"]);
+        var document = Document(knowledge: ["courses"]);
         document.Knowledge!.Add(null!);
 
         var apply = () => _subject.Apply(document, "ci");
@@ -203,22 +203,22 @@ public sealed class ConfigurationApplierFixture : IDisposable
     [Fact]
     public void should_refuse_to_move_a_managed_source_outside_the_roots_and_keep_its_folder()
     {
-        _subject.Apply(Document(knowledge: ["cours"]), "ci");
-        var moved = new ConfigurationDocument { Knowledge = [new SourceEntry { Name = "cours", Path = "/etc" }] };
+        _subject.Apply(Document(knowledge: ["courses"]), "ci");
+        var moved = new ConfigurationDocument { Knowledge = [new SourceEntry { Name = "courses", Path = "/etc" }] };
 
         var plan = _subject.Apply(moved, "ci");
 
         plan.Errors.Should().ContainSingle().Which.Should().Contain("inside one of the folders");
-        _store.List().Should().ContainSingle().Which.Path.Should().Be(Folder("cours"));
+        _store.List().Should().ContainSingle().Which.Path.Should().Be(Folder("courses"));
     }
 
     [Fact]
     public void should_name_what_was_removed_in_the_audit_trail()
     {
-        _subject.Apply(Document(knowledge: ["cours", "travail"]), "ci");
+        _subject.Apply(Document(knowledge: ["courses", "work"]), "ci");
 
-        _subject.Apply(Document(knowledge: ["cours"]), "ci");
+        _subject.Apply(Document(knowledge: ["courses"]), "ci");
 
-        _audit.Recent(10, "config.applied").First().Detail.Should().Contain("1 remove").And.Contain("removed: travail");
+        _audit.Recent(10, "config.applied").First().Detail.Should().Contain("1 remove").And.Contain("removed: work");
     }
 }

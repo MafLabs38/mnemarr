@@ -30,11 +30,16 @@ public sealed class SourceIndexer
 
     /// <param name="source">The source to bring up to date.</param>
     /// <param name="rebuild">Cut every note again, even those that did not change: the index is derived and can always be rebuilt (D-03).</param>
+    /// <param name="waitForTurn">Wait for the pass that is running (the background scan does); otherwise refuse with <see cref="Problem.Busy"/>, so that requests cannot queue without limit.</param>
     /// <param name="cancellationToken">Stops the pass.</param>
-    public async Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken)
+    public async Task<IndexReport> IndexAsync(Source source, bool rebuild, bool waitForTurn, CancellationToken cancellationToken)
     {
         CheckFolder(source);
-        await _onePass.WaitAsync(cancellationToken);
+        if (!await _onePass.WaitAsync(waitForTurn ? Timeout.InfiniteTimeSpan : TimeSpan.Zero, cancellationToken))
+        {
+            throw new RejectedException(Problem.Busy, "A pass over the sources is running: try again in a moment.", TimeSpan.FromSeconds(5));
+        }
+
         try
         {
             var report = await PassAsync(source, rebuild, cancellationToken);
@@ -52,7 +57,9 @@ public sealed class SourceIndexer
         }
     }
 
-    public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, cancellationToken);
+    public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, waitForTurn: true, cancellationToken);
+
+    public Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken) => IndexAsync(source, rebuild, waitForTurn: true, cancellationToken);
 
     /// <summary>The folder is still one a source may be in, and is still there: the roots can be narrowed, and a folder can go or become a link, after the declaration.</summary>
     private void CheckFolder(Source source)
@@ -87,6 +94,12 @@ public sealed class SourceIndexer
         foreach (var file in MarkdownFileScanner.Scan(source.Path))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsLink(file.FullPath))
+            {
+                // Swapped for a link since the listing (a pull can do it): not a note any more, and what it led to is not read.
+                continue;
+            }
+
             if (await ReadAsync(file, cancellationToken) is not { } bytes)
             {
                 // Gone since the scan: it is removed below. One that is there but cannot be read keeps what it had.
@@ -127,6 +140,18 @@ public sealed class SourceIndexer
         }
 
         return new IndexReport(added, updated, removed, unchanged);
+    }
+
+    private static bool IsLink(string path)
+    {
+        try
+        {
+            return new FileInfo(path).LinkTarget is not null;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

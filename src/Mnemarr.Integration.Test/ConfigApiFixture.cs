@@ -41,7 +41,7 @@ public sealed class ConfigApiFixture : IClassFixture<MnemarrFactory>, IAsyncLife
     [Fact]
     public async Task should_apply_a_document_and_declare_its_sources_as_managed_by_configuration()
     {
-        var name = Callers.Unique("cours");
+        var name = Callers.Unique("courses");
 
         var response = await _callers["Operator"].PutAsync("/api/v1/config", Yaml($"knowledge:\n  - name: {name}\n    path: {Folder(name)}\n"), Token);
 

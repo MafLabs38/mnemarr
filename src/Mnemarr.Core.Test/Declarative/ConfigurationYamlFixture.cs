@@ -10,10 +10,10 @@ public sealed class ConfigurationYamlFixture
           path: /vaults/memory
           mode: ReadWrite
         knowledge:
-          - name: cours
-            path: /vaults/cours
-          - name: travail
-            path: /vaults/travail
+          - name: courses
+            path: /vaults/courses
+          - name: work
+            path: /vaults/work
             mode: ReadOnly
         applicationDocs: []
         """;
@@ -24,7 +24,7 @@ public sealed class ConfigurationYamlFixture
         var document = ConfigurationYaml.Parse(Full);
 
         document.Memory.Should().BeEquivalentTo(new SourceEntry { Path = "/vaults/memory", Mode = "ReadWrite" });
-        document.Knowledge!.Select(e => e.Name).Should().Equal("cours", "travail");
+        document.Knowledge!.Select(e => e.Name).Should().Equal("courses", "work");
         document.Knowledge![1].Mode.Should().Be("ReadOnly");
         document.ApplicationDocs.Should().BeEmpty("a section that is present and empty is a section that is managed");
     }
@@ -94,9 +94,9 @@ public sealed class ConfigurationYamlFixture
         var at = DateTimeOffset.UnixEpoch;
         var sources = new[]
         {
-            new Source(Guid.NewGuid(), "travail", SourceKind.Knowledge, SourceMode.ReadOnly, "/vaults/travail", at),
+            new Source(Guid.NewGuid(), "work", SourceKind.Knowledge, SourceMode.ReadOnly, "/vaults/work", at),
             new Source(Guid.NewGuid(), "memory", SourceKind.Memory, SourceMode.ReadWrite, "/vaults/memory", at, Managed: true),
-            new Source(Guid.NewGuid(), "cours", SourceKind.Knowledge, SourceMode.ReadWrite, "/vaults/cours", at),
+            new Source(Guid.NewGuid(), "courses", SourceKind.Knowledge, SourceMode.ReadWrite, "/vaults/courses", at),
         };
 
         var text = ConfigurationYaml.Export(sources);
@@ -104,7 +104,7 @@ public sealed class ConfigurationYamlFixture
 
         text.Should().Contain("memory:").And.Contain("knowledge:").And.Contain("applicationDocs: []");
         back.Memory.Should().BeEquivalentTo(new SourceEntry { Name = "memory", Path = "/vaults/memory", Mode = "ReadWrite" });
-        back.Knowledge!.Select(e => e.Name).Should().Equal("cours", "travail");
+        back.Knowledge!.Select(e => e.Name).Should().Equal("courses", "work");
         back.ApplicationDocs.Should().BeEmpty();
     }
 

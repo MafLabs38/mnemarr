@@ -49,7 +49,7 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
     [Fact]
     public async Task should_declare_a_folder_index_it_and_find_its_notes_by_their_words_with_the_source_shown()
     {
-        var name = Unique("cours");
+        var name = Unique("courses");
         var folder = Folder(name, ("02 - DevOps/docker.md", "# Docker\n## Images\nUne image est faite de couches.\n"), ("04 - Angular/signals.md", "# Signals\nLes signals remplacent zone.js.\n"));
 
         var source = await DeclareAsync(_callers["Operator"], name, folder);

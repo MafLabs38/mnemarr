@@ -38,20 +38,22 @@ public sealed class SourceIndexingServiceFixture : IDisposable
     {
         var healthy = _workspace.Folder("healthy");
         TestWorkspace.Write(healthy, "a.md", "# A\nhello");
-        Declare("a-broken", Path.Combine(_workspace.SourcesFolder, "gone"));
+        var broken = Declare("a-broken", Path.Combine(_workspace.SourcesFolder, "gone"));
         var source = Declare("b-healthy", healthy);
 
         await _subject.ScanAllAsync(TestContext.Current.CancellationToken);
 
         _index.Counts(source.Id).Notes.Should().Be(1);
+        _outcomes.Of(broken.Id)!.Error.Should().Be(ScanOutcome.FolderMissing);
+        _outcomes.Of(source.Id)!.Failed.Should().BeFalse();
     }
 
     [Fact]
     public async Task should_scan_at_start_then_again_when_the_interval_has_passed_and_stop_when_asked()
     {
-        var folder = _workspace.Folder("cours");
+        var folder = _workspace.Folder("courses");
         TestWorkspace.Write(folder, "a.md", "# A\nfirst");
-        var source = Declare("cours", folder);
+        var source = Declare("courses", folder);
         var token = TestContext.Current.CancellationToken;
 
         await _subject.StartAsync(token);

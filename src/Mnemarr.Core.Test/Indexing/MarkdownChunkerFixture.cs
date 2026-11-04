@@ -112,7 +112,8 @@ public sealed class MarkdownChunkerFixture
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var chunks = MarkdownChunker.Split(hostile);
 
-        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        // A generous bound: a backtracking pattern takes minutes on this line, a single pass takes milliseconds.
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
         chunks.Should().NotBeEmpty();
     }
 

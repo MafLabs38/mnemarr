@@ -87,9 +87,9 @@ public sealed class SourcesController : ControllerBase
 
     /// <summary>
     /// Brings the index of a source in line with its folder now, without waiting for the next scan. With <c>rebuild=true</c> every note is
-    /// cut again, even those that did not change. The pass runs inside the request: it becomes a command when the commands exist (Q-30).
+    /// cut again, even those that did not change. The pass runs inside the request, and a request does not wait for a pass that is running (429, busy): it becomes a command when the commands exist (Q-30).
     /// </summary>
     [HttpPost("{id:guid}/index")]
     public async Task<IndexReportResource> IndexSource(Guid id, [FromQuery] bool rebuild = false, CancellationToken cancellationToken = default) =>
-        IndexReportResource.From(await _indexer.IndexAsync(_catalog.Get(id, User.Scope()), rebuild, cancellationToken));
+        IndexReportResource.From(await _indexer.IndexAsync(_catalog.Get(id, User.Scope()), rebuild, waitForTurn: false, cancellationToken));
 }

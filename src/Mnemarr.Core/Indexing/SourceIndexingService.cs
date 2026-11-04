@@ -41,7 +41,7 @@ public sealed partial class SourceIndexingService : BackgroundService
         while (await WaitForNextAsync(timer, stoppingToken));
     }
 
-    /// <summary>One pass over every source. Public so that a person can ask for it and a test can run it.</summary>
+    /// <summary>One pass over every source. Public so that a test can run it.</summary>
     public async Task ScanAllAsync(CancellationToken cancellationToken)
     {
         foreach (var source in DeclaredSources())
