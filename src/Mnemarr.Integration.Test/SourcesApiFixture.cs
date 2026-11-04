@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Mnemarr.Core.Git;
 
 namespace Mnemarr.Integration.Test;
 
@@ -315,5 +316,139 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
 
         badMode.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private async Task<JsonElement> DeclareGitAsync(HttpClient client, string name, string url = "https://github.example/org/notes", string? credential = "github", string? branch = "main")
+    {
+        var path = Path.Combine(_factory.DataFolder, "sources", name);
+        var response = await client.PostAsJsonAsync("/api/v1/sources", new { name, kind = "Knowledge", mode = "ReadOnly", path, repository = new { url, branch, credential } }, Token);
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync(Token));
+        return await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+    }
+
+    [Fact]
+    public async Task should_declare_a_git_source_show_its_repository_and_never_a_secret()
+    {
+        var name = Unique("git");
+
+        var source = await DeclareGitAsync(_callers["Operator"], name, "https://GitHub.example/org/notes/");
+        var text = await _callers["Operator"].GetStringAsync($"/api/v1/sources/{source.GetProperty("id").GetGuid()}", Token);
+
+        var repository = source.GetProperty("repository");
+        repository.GetProperty("url").GetString().Should().Be("https://github.example/org/notes");
+        repository.GetProperty("branch").GetString().Should().Be("main");
+        repository.GetProperty("credential").GetString().Should().Be("github");
+        source.GetProperty("lastSyncAt").ValueKind.Should().Be(JsonValueKind.Null);
+        text.Should().Contain("\"repository\"").And.NotContain("secret-token-do-not-leak");
+    }
+
+    [Theory]
+    [InlineData("http://github.example/org/notes", "github", "https")]
+    [InlineData("https://user:pw@github.example/org/notes", "github", "never written")]
+    [InlineData("https://elsewhere.example/org/notes", null, "does not allow")]
+    [InlineData("https://github.example/org/notes", "nope", "no credential")]
+    public async Task should_refuse_a_repository_that_the_policy_does_not_allow(string url, string? credential, string reason)
+    {
+        var path = Path.Combine(_factory.DataFolder, "sources", Unique("bad"));
+
+        var response = await _callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name = Unique("bad"), kind = "Knowledge", mode = "ReadOnly", path, repository = new { url, credential } }, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync(Token);
+        body.Should().Contain(reason).And.NotContain("secret-token-do-not-leak").And.NotContain("pw@");
+    }
+
+    [Fact]
+    public async Task should_sync_a_git_source_now_and_show_how_it_ended()
+    {
+        var source = await DeclareGitAsync(_callers["Operator"], Unique("git"));
+        var id = source.GetProperty("id").GetGuid();
+        _factory.Git.Result = _ => new GitSyncResult(GitSyncAction.Updated, "def4567");
+
+        var response = await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/sync", null, Token);
+        var report = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+        var after = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/sources/{id}", Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        report.GetProperty("action").GetString().Should().Be("Updated");
+        report.GetProperty("head").GetString().Should().Be("def4567");
+        after.GetProperty("head").GetString().Should().Be("def4567");
+        after.GetProperty("lastSyncAt").ValueKind.Should().Be(JsonValueKind.String);
+        after.GetProperty("lastSyncError").ValueKind.Should().Be(JsonValueKind.Null);
+        _factory.Git.Calls.Should().Contain(call => call.Folder.EndsWith(source.GetProperty("name").GetString()!, StringComparison.Ordinal) && call.Secret != null && call.Secret.Token == "secret-token-do-not-leak");
+    }
+
+    [Fact]
+    public async Task should_answer_a_conflict_in_fixed_words_when_a_sync_fails_and_degrade_readiness_until_it_works_again()
+    {
+        await using var factory = new MnemarrFactory();
+        using var admin = await factory.SignedInClientAsync();
+        var memory = Path.Combine(factory.DataFolder, "sources", "memory");
+        Directory.CreateDirectory(memory);
+        await admin.PostAsJsonAsync("/api/v1/sources", new { name = "memory", kind = "Memory", mode = "ReadWrite", path = memory }, Token);
+        var path = Path.Combine(factory.DataFolder, "sources", "notes");
+        var created = await admin.PostAsJsonAsync("/api/v1/sources", new { name = "notes", kind = "Knowledge", mode = "ReadOnly", path, repository = new { url = "https://github.example/org/notes", credential = "github" } }, Token);
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+        factory.Git.Result = _ => throw new GitSyncException(GitFailure.AuthFailed, "401 for https://github.example/org/notes with secret-token-do-not-leak");
+
+        var failure = await admin.PostAsync($"/api/v1/sources/{id}/sync", null, Token);
+        var body = await failure.Content.ReadAsStringAsync(Token);
+        var shown = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{id}", Token);
+        var degraded = await (await admin.GetAsync("/health/ready", Token)).Content.ReadAsStringAsync(Token);
+        factory.Git.Result = _ => new GitSyncResult(GitSyncAction.UpToDate, "abc123");
+        await admin.PostAsync($"/api/v1/sources/{id}/sync", null, Token);
+        var recovered = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/sources/{id}", Token);
+        var ready = await (await admin.GetAsync("/health/ready", Token)).Content.ReadAsStringAsync(Token);
+
+        failure.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        body.Should().Contain("The host refused the credential").And.NotContain("secret-token-do-not-leak").And.NotContain("github.example");
+        shown.GetProperty("lastSyncError").GetString().Should().Be("auth-failed");
+        degraded.Should().Be("Degraded");
+        recovered.GetProperty("lastSyncError").ValueKind.Should().Be(JsonValueKind.Null);
+        ready.Should().Be("Healthy");
+    }
+
+    [Fact]
+    public async Task should_refuse_to_sync_a_source_that_is_a_folder_and_one_that_is_not_there()
+    {
+        var name = Unique("plain");
+        var plain = await DeclareAsync(_callers["Operator"], name, Folder(name));
+
+        var folder = await _callers["Operator"].PostAsync($"/api/v1/sources/{plain.GetProperty("id").GetGuid()}/sync", null, Token);
+        var missing = await _callers["Operator"].PostAsync($"/api/v1/sources/{Guid.NewGuid()}/sync", null, Token);
+
+        folder.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task should_let_only_who_manages_sources_sync_and_only_the_sources_of_a_limited_key()
+    {
+        var mine = (await DeclareGitAsync(_callers.Admin, Unique("mine"))).GetProperty("id").GetGuid();
+        var other = (await DeclareGitAsync(_callers.Admin, Unique("other"))).GetProperty("id").GetGuid();
+        var service = await Callers.CreateAsync(_callers.Admin, new { name = Unique("svc"), kind = "Service", role = "Operator" });
+        var created = await _callers.Admin.PostAsJsonAsync($"/api/v1/accounts/{service}/keys", new { name = "scoped", sources = new[] { mine } }, Token);
+        using var scoped = _factory.CreateKeyClient((await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!);
+
+        (await _callers["Reader"].PostAsync($"/api/v1/sources/{mine}/sync", null, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _callers.Anonymous.PostAsync($"/api/v1/sources/{mine}/sync", null, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await scoped.PostAsync($"/api/v1/sources/{mine}/sync", null, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await scoped.PostAsync($"/api/v1/sources/{other}/sync", null, Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task should_change_the_repository_of_a_source_and_turn_it_back_into_a_folder()
+    {
+        var name = Unique("git");
+        var source = await DeclareGitAsync(_callers["Operator"], name);
+        var id = source.GetProperty("id").GetGuid();
+        var path = Path.Combine(_factory.DataFolder, "sources", name);
+
+        var moved = await (await _callers["Operator"].PutAsJsonAsync($"/api/v1/sources/{id}", new { name, mode = "ReadOnly", path, repository = new { url = "https://github.example/org/other", branch = "dev", credential = "github" } }, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        Directory.CreateDirectory(path);
+        var plain = await (await _callers["Operator"].PutAsJsonAsync($"/api/v1/sources/{id}", new { name, mode = "ReadOnly", path }, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+
+        moved.GetProperty("repository").GetProperty("branch").GetString().Should().Be("dev");
+        plain.GetProperty("repository").ValueKind.Should().Be(JsonValueKind.Null);
     }
 }

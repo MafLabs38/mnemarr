@@ -117,6 +117,12 @@ public static class Schema
         );
         CREATE INDEX images_by_name ON images (source_id, name);
         """,
+        // 4: a source can be the checkout of a Git repository (its address, branch, and the name of the credential to use; never the credential).
+        """
+        ALTER TABLE sources ADD COLUMN repository_url TEXT;
+        ALTER TABLE sources ADD COLUMN repository_branch TEXT;
+        ALTER TABLE sources ADD COLUMN repository_credential TEXT;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

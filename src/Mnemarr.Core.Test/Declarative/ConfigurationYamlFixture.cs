@@ -1,4 +1,5 @@
 using Mnemarr.Core.Declarative;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Test.Declarative;
@@ -27,6 +28,33 @@ public sealed class ConfigurationYamlFixture
         document.Knowledge!.Select(e => e.Name).Should().Equal("courses", "work");
         document.Knowledge![1].Mode.Should().Be("ReadOnly");
         document.ApplicationDocs.Should().BeEmpty("a section that is present and empty is a section that is managed");
+    }
+
+    [Fact]
+    public void should_read_the_repository_of_a_source_and_write_it_back_in_an_export()
+    {
+        var document = ConfigurationYaml.Parse("""
+            knowledge:
+              - name: notes
+                path: /vaults/notes
+                repository:
+                  url: https://github.example/org/notes
+                  branch: main
+                  credential: github
+            """);
+
+        document.Knowledge!.Single().Repository.Should().BeEquivalentTo(new RepositoryEntry { Url = "https://github.example/org/notes", Branch = "main", Credential = "github" });
+        var exported = ConfigurationYaml.Export([new Source(Guid.NewGuid(), "notes", SourceKind.Knowledge, SourceMode.ReadOnly, "/vaults/notes", DateTimeOffset.UnixEpoch, Repository: new GitRepository("https://github.example/org/notes", null, null))]);
+        exported.Should().Contain("repository:").And.Contain("url: https://github.example/org/notes").And.NotContain("branch").And.NotContain("credential");
+        ConfigurationYaml.Parse(exported).Knowledge!.Single().Repository!.Url.Should().Be("https://github.example/org/notes");
+    }
+
+    [Fact]
+    public void should_refuse_a_repository_key_that_is_not_known_such_as_a_token_in_the_document()
+    {
+        var parse = () => ConfigurationYaml.Parse("knowledge:\n  - name: n\n    path: /p\n    repository:\n      url: https://github.example/o/n\n      token: abc\n");
+
+        parse.Should().Throw<RejectedException>();
     }
 
     [Fact]

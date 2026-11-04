@@ -21,7 +21,13 @@ public enum SourceMode
 }
 
 /// <summary>
-/// A folder of Markdown notes that Mnemarr indexes. <paramref name="Managed"/> says that a configuration document owns it (configuration as code):
+/// A folder of Markdown notes that Mnemarr indexes, or the checkout of a Git repository (<paramref name="Repository"/>). <paramref name="Managed"/> says that a configuration document owns it (configuration as code):
 /// it is changed by changing the document, not by hand.
 /// </summary>
-public sealed record Source(Guid Id, string Name, SourceKind Kind, SourceMode Mode, string Path, DateTimeOffset CreatedAt, bool Managed = false);
+public sealed record Source(Guid Id, string Name, SourceKind Kind, SourceMode Mode, string Path, DateTimeOffset CreatedAt, bool Managed = false, GitRepository? Repository = null);
+
+/// <summary>
+/// The Git repository a source is the checkout of (ADR 0022): an HTTPS address with no credentials in it, a branch (the default branch of the
+/// repository when null), and the name of the operator's credential to use (none for a public repository). The folder of the source is where it is cloned.
+/// </summary>
+public sealed record GitRepository(string Url, string? Branch = null, string? Credential = null);

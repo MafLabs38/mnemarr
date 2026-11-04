@@ -4,6 +4,7 @@ using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Health;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Sources;
@@ -24,8 +25,8 @@ public sealed class SourcesHealthCheckFixture : IDisposable
         return new SourceCatalog(new SqliteSourceStore(database), new SqliteAuditLog(database, _clock), _workspace.Paths(), _clock);
     }
 
-    private static Task<HealthCheckResult> Check(SourceCatalog catalog, ScanOutcomes? outcomes = null) =>
-        new SourcesHealthCheck(catalog, outcomes ?? new ScanOutcomes()).CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
+    private static Task<HealthCheckResult> Check(SourceCatalog catalog, ScanOutcomes? outcomes = null, SyncOutcomes? syncs = null) =>
+        new SourcesHealthCheck(catalog, outcomes ?? new ScanOutcomes(), syncs ?? new SyncOutcomes()).CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
 
     [Fact]
     public async Task should_be_degraded_with_the_kind_while_the_memory_vault_is_not_declared()
@@ -49,6 +50,25 @@ public sealed class SourcesHealthCheckFixture : IDisposable
 
         result.Data["reason"].Should().Be("source-missing");
         result.Description.Should().Contain("Memory").And.Contain("courses");
+    }
+
+    [Fact]
+    public async Task should_be_degraded_with_the_name_of_a_git_source_that_cannot_be_brought_up_to_date_and_healthy_again_once_it_can()
+    {
+        var catalog = Catalog();
+        catalog.Add("memory", SourceKind.Memory, SourceMode.ReadOnly, _workspace.Folder("m"), SourceScope.All, "root");
+        var courses = catalog.Add("courses", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("k"), SourceScope.All, "root");
+        var syncs = new SyncOutcomes();
+        syncs.Failed(courses.Id, _clock.GetUtcNow(), GitFailure.Unreachable);
+
+        var failing = await Check(catalog, syncs: syncs);
+        syncs.Succeeded(courses.Id, _clock.GetUtcNow(), "abc123");
+        var recovered = await Check(catalog, syncs: syncs);
+
+        failing.Status.Should().Be(HealthStatus.Degraded);
+        failing.Data["reason"].Should().Be("source-unreadable");
+        failing.Description.Should().Contain("courses").And.NotContain(courses.Path);
+        recovered.Status.Should().Be(HealthStatus.Healthy);
     }
 
     [Fact]

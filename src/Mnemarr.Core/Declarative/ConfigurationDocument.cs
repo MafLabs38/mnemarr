@@ -22,4 +22,17 @@ public sealed class SourceEntry
     public string? Path { get; set; }
 
     public string? Mode { get; set; }
+
+    /// <summary>The Git repository the folder is the checkout of, if it is one (ADR 0022).</summary>
+    public RepositoryEntry? Repository { get; set; }
+}
+
+/// <summary>A Git repository as the document says it: an https address, a branch (the default one when absent) and the name of a credential (none for a public repository).</summary>
+public sealed class RepositoryEntry
+{
+    public string? Url { get; set; }
+
+    public string? Branch { get; set; }
+
+    public string? Credential { get; set; }
 }

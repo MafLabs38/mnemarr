@@ -7,6 +7,7 @@ import TextField from 'Components/Form/TextField';
 import translate from 'Utilities/String/translate';
 
 import {
+  type GitRepository,
   type SourceItem,
   type SourceKindItem,
   type SourceMode,
@@ -17,6 +18,15 @@ import {
 import styles from './Sources.module.css';
 
 const modeOptions = (['ReadOnly', 'ReadWrite'] as const).map((mode) => ({ value: mode, label: translate(mode) }));
+const originOptions = [
+  { value: 'folder', label: translate('OriginFolder') },
+  { value: 'git', label: translate('OriginGit') },
+];
+
+/** The repository the fields describe, with what is left empty left out. */
+function repositoryOf(url: string, branch: string, credential: string): GitRepository {
+  return { url: url.trim(), branch: branch.trim() || null, credential: credential.trim() || null };
+}
 
 interface SourceFormProps {
   kind: SourceKindItem;
@@ -35,7 +45,12 @@ export default function SourceForm({ kind, source, suggestedName = '', onDone }:
   const [name, setName] = useState(source?.name ?? suggestedName);
   const [mode, setMode] = useState<SourceMode>(source?.mode ?? kind.defaultMode);
   const [path, setPath] = useState(source?.path ?? '');
+  const [origin, setOrigin] = useState(source?.repository ? 'git' : 'folder');
+  const [url, setUrl] = useState(source?.repository?.url ?? '');
+  const [branch, setBranch] = useState(source?.repository?.branch ?? '');
+  const [credential, setCredential] = useState(source?.repository?.credential ?? '');
   const mutation = source ? update : create;
+  const git = origin === 'git';
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -44,14 +59,18 @@ export default function SourceForm({ kind, source, suggestedName = '', onDone }:
         if (!source) {
           setName(suggestedName);
           setPath('');
+          setUrl('');
+          setBranch('');
+          setCredential('');
         }
         onDone?.();
       },
     };
+    const repository = git ? repositoryOf(url, branch, credential) : undefined;
     if (source) {
-      update.mutate({ name, mode, path }, done);
+      update.mutate({ name, mode, path, repository }, done);
     } else {
-      create.mutate({ name, kind: kind.kind, mode, path }, done);
+      create.mutate({ name, kind: kind.kind, mode, path, repository }, done);
     }
   }
 
@@ -69,13 +88,40 @@ export default function SourceForm({ kind, source, suggestedName = '', onDone }:
         options={modeOptions}
         value={mode}
       />
+      <SelectField
+        label={translate('Origin')}
+        onChange={(event) => setOrigin(event.target.value)}
+        options={originOptions}
+        value={origin}
+      />
+      {git && (
+        <>
+          <TextField
+            label={translate('RepositoryUrl')}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://github.com/org/notes"
+            required
+            value={url}
+          />
+          <p className={styles.hint}>{translate('RepositoryUrlHint')}</p>
+          <TextField label={translate('Branch')} onChange={(event) => setBranch(event.target.value)} value={branch} />
+          <p className={styles.hint}>{translate('BranchHint')}</p>
+          <TextField
+            label={translate('Credential')}
+            onChange={(event) => setCredential(event.target.value)}
+            value={credential}
+          />
+          <p className={styles.hint}>{translate('CredentialHint')}</p>
+        </>
+      )}
       <TextField
-        label={translate('Folder')}
+        label={translate(git ? 'CloneFolder' : 'Folder')}
         onChange={(event) => setPath(event.target.value)}
         placeholder={roots[0] ?? ''}
         required
         value={path}
       />
+      {git && <p className={styles.hint}>{translate('CloneFolderHint')}</p>}
       {roots.length > 0 && <p className={styles.hint}>{translate('SourceRoots', { roots: roots.join(', ') })}</p>}
       <div className={styles.actions}>
         <Button disabled={mutation.isPending} type="submit">

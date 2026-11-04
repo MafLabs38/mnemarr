@@ -3,6 +3,7 @@ using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 using Mnemarr.Core.Declarative;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Test.Declarative;
@@ -34,6 +35,88 @@ public sealed class ConfigurationApplierFixture : IDisposable
         Knowledge = knowledge is null ? null : [.. knowledge.Select(name => new SourceEntry { Name = name, Path = Folder(name) })],
         ApplicationDocs = docs is null ? null : [.. docs.Select(name => new SourceEntry { Name = name, Path = Folder(name), Mode = "ReadOnly" })],
     };
+
+    private ConfigurationApplier GitApplier()
+    {
+        var options = Options.Create(new GitOptions { Hosts = ["github.example"], Credentials = { ["github"] = new GitCredentialOptions { Host = "github.example", Token = "secret-token" } } });
+        var catalog = new SourceCatalog(_store, _audit, _workspace.Paths(), _clock, new GitPolicy(options, new GitCredentials(options)));
+        return new ConfigurationApplier(catalog, _store, _audit);
+    }
+
+    private ConfigurationDocument GitDocument(string url = "https://github.example/org/notes", string? branch = "main", string? credential = "github") => new()
+    {
+        Knowledge = [new SourceEntry { Name = "notes", Path = Path.Combine(_workspace.SourcesFolder, "notes"), Repository = new RepositoryEntry { Url = url, Branch = branch, Credential = credential } }],
+    };
+
+    [Fact]
+    public void should_declare_a_source_that_is_a_git_checkout_and_keep_it_when_the_same_document_is_applied_again()
+    {
+        var applier = GitApplier();
+
+        var first = applier.Apply(GitDocument(), "ci");
+        var again = applier.Apply(GitDocument(), "ci");
+
+        first.Items.Should().ContainSingle().Which.Action.Should().Be(PlanAction.Create);
+        again.Items.Should().ContainSingle().Which.Action.Should().Be(PlanAction.Keep);
+        _store.List().Should().ContainSingle().Which.Should().Match<Source>(s => s.Managed && s.Repository == new GitRepository("https://github.example/org/notes", "main", "github"));
+    }
+
+    [Fact]
+    public void should_update_a_managed_source_whose_repository_or_branch_changed()
+    {
+        var applier = GitApplier();
+        applier.Apply(GitDocument(), "ci");
+
+        var plan = applier.Apply(GitDocument(branch: "dev"), "ci");
+
+        plan.Items.Should().ContainSingle().Which.Action.Should().Be(PlanAction.Update);
+        _store.List().Single().Repository!.Branch.Should().Be("dev");
+        _audit.Recent(10, "source.changed").Should().ContainSingle().Which.Detail.Should().Contain("https://github.example/org/notes");
+    }
+
+    [Fact]
+    public void should_turn_a_managed_git_source_back_into_a_folder_when_the_document_drops_the_repository()
+    {
+        var applier = GitApplier();
+        applier.Apply(GitDocument(), "ci");
+        var folder = new ConfigurationDocument { Knowledge = [new SourceEntry { Name = "notes", Path = Path.Combine(_workspace.SourcesFolder, "notes") }] };
+        Directory.CreateDirectory(Path.Combine(_workspace.SourcesFolder, "notes"));
+
+        applier.Apply(folder, "ci").Items.Should().ContainSingle().Which.Action.Should().Be(PlanAction.Update);
+
+        _store.List().Single().Repository.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("http://github.example/org/notes", "main", "github", "https")]
+    [InlineData("https://elsewhere.example/org/notes", "main", "github", "does not allow")]
+    [InlineData("https://github.example/org/notes", "main", "nope", "no credential")]
+    [InlineData("https://github.example/org/notes", "-x", "github", "branch")]
+    public void should_refuse_the_whole_document_when_a_repository_is_not_allowed_and_change_nothing(string url, string branch, string credential, string reason)
+    {
+        var plan = GitApplier().Apply(GitDocument(url, branch, credential), "ci");
+
+        plan.Valid.Should().BeFalse();
+        plan.Errors.Should().ContainSingle().Which.Should().Contain(reason).And.NotContain("secret-token");
+        _store.List().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void should_refuse_a_repository_with_no_address()
+    {
+        var plan = GitApplier().Apply(GitDocument(url: string.Empty), "ci");
+
+        plan.Valid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void should_refuse_a_repository_when_git_is_not_available()
+    {
+        var plan = _subject.Apply(GitDocument(), "ci");
+
+        plan.Valid.Should().BeFalse();
+        plan.Errors.Should().ContainSingle().Which.Should().Contain("not available");
+    }
 
     [Fact]
     public void should_declare_what_the_document_says_as_managed_sources_with_the_default_name_and_mode_of_the_kind()

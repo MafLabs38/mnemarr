@@ -60,6 +60,7 @@ public sealed class EndpointsFixture
         "api/v1/sources/{id:guid}",
         "api/v1/sources/{id:guid}",
         "api/v1/sources/{id:guid}/index",
+        "api/v1/sources/{id:guid}/sync",
         "api/v1/sources/{sourceId:guid}/files/{**path}",
             "api/v1/system/status",
             "{*path:nonfile}");
