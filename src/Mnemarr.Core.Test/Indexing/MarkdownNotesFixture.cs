@@ -14,12 +14,12 @@ public sealed class MarkdownNotesFixture
     }
 
     [Fact]
-    public void should_keep_embedded_files_apart_from_links()
+    public void should_keep_embedded_images_apart_from_links_and_take_an_embedded_note_for_a_link()
     {
-        var meta = MarkdownNotes.Parse("![[plan.png]] and ![[images/schema.png|300]] but [[a note]]");
+        var meta = MarkdownNotes.Parse("![[plan.png]] and ![[images/schema.png|300]] but [[a note]] and ![[Other note#Part]]");
 
         meta.Embeds.Should().Equal("plan.png", "images/schema.png");
-        meta.Links.Should().ContainSingle().Which.Target.Should().Be("a note");
+        meta.Links.Select(link => link.Target).Should().Equal("a note", "other note");
     }
 
     [Fact]
@@ -75,7 +75,7 @@ public sealed class MarkdownNotesFixture
     }
 
     [Theory]
-    [InlineData("04 - Angular/Basics.md", "../01 - Java/Index", "01 - java/index")]
+    [InlineData("04 - Topic B/Basics.md", "../01 - Topic A/Index", "01 - topic a/index")]
     [InlineData("a/b/c.md", "../../x", "x")]
     [InlineData("a/b/c.md", "./d", "a/b/d")]
     [InlineData("c.md", "../outside", null)]

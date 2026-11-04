@@ -64,13 +64,13 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
     [Fact]
     public async Task should_resolve_and_backlink_a_link_written_from_the_folder_of_its_note()
     {
-        var source = await SourceWithAsync("courses", ("01 - Java/Index.md", "# Index"), ("04 - Angular/Basics.md", "[[../01 - Java/Index|the index]] [[../../outside]]"));
+        var source = await SourceWithAsync("courses", ("01 - Topic A/Index.md", "# Index"), ("04 - Topic B/Basics.md", "[[../01 - Topic A/Index|the index]] [[../../outside]]"));
 
-        var basics = Browser.Find(source.Id, "04 - Angular/Basics.md", SourceScope.All)!;
-        var index = Browser.Find(source.Id, "01 - Java/Index.md", SourceScope.All)!;
+        var basics = Browser.Find(source.Id, "04 - Topic B/Basics.md", SourceScope.All)!;
+        var index = Browser.Find(source.Id, "01 - Topic A/Index.md", SourceScope.All)!;
 
-        basics.Links.Should().ContainSingle().Which.Note!.Path.Should().Be("01 - Java/Index.md");
-        index.Backlinks.Should().ContainSingle().Which.Path.Should().Be("04 - Angular/Basics.md");
+        basics.Links.Should().ContainSingle().Which.Note!.Path.Should().Be("01 - Topic A/Index.md");
+        index.Backlinks.Should().ContainSingle().Which.Path.Should().Be("04 - Topic B/Basics.md");
     }
 
     [Fact]
@@ -179,6 +179,18 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
 
         detail.Links.Should().HaveCount(2, "the first and the third say the same thing").And.OnlyContain(l => l.Note != null, "SQLite only folds ASCII: the case is folded in code, as when the index was written");
         summer.Backlinks.Should().ContainSingle().Which.Path.Should().Be("Cours/Élèves.md");
+    }
+
+    [Fact]
+    public async Task should_list_a_note_that_embeds_another_as_a_backlink_of_it()
+    {
+        var source = await SourceWithAsync("s", ("Other note.md", "# Other"), ("host.md", "Shown in place: ![[Other note]]"));
+
+        var other = Browser.Find(source.Id, "Other note.md", SourceScope.All)!;
+        var host = Browser.Find(source.Id, "host.md", SourceScope.All)!;
+
+        other.Backlinks.Should().ContainSingle().Which.Path.Should().Be("host.md");
+        host.Links.Should().ContainSingle().Which.Note!.Path.Should().Be("Other note.md");
     }
 
     [Fact]

@@ -317,11 +317,11 @@ describe('Notes', () => {
 
   it('follows a link written from the folder of its note: the server returns it as the note wrote it', async () => {
     server(
-      noteWith('Back to [[../01 - Java/Index|the index]] and [[../../outside]].', {
+      noteWith('Back to [[../01 - Topic A/Index|the index]] and [[../../outside]].', {
         links: [
           {
-            target: '../01 - java/index',
-            note: { sourceId: S1, sourceName: 'cours', path: '01 - Java/Index.md', title: 'Index' },
+            target: '../01 - topic a/index',
+            note: { sourceId: S1, sourceName: 'cours', path: '01 - Topic A/Index.md', title: 'Index' },
           },
           { target: '../../outside', note: null },
         ],
@@ -333,7 +333,7 @@ describe('Notes', () => {
 
     expect(within(body).getByRole('link', { name: 'the index' })).toHaveAttribute(
       'href',
-      `/notes?source=${S1}&path=01+-+Java%2FIndex.md`,
+      `/notes?source=${S1}&path=01+-+Topic+A%2FIndex.md`,
     );
     expect(within(body).queryByRole('link', { name: '../../outside' })).not.toBeInTheDocument();
   });

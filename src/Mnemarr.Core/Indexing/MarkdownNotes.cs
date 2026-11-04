@@ -15,8 +15,8 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
     public static NoteMeta Empty { get; } = new([], [], []);
 
     /// <summary>
-    /// The links as paths from the root of the source. <c>[[../01 - Java/Index]]</c>, written in the note <c>04 - Angular/Basics.md</c>, points at
-    /// <c>01 - java/index</c>: Obsidian reads it from the folder of the note. A link that climbs out of the source points at nothing and is dropped.
+    /// The links as paths from the root of the source. <c>[[../01 - Topic A/Index]]</c>, written in the note <c>04 - Topic B/Basics.md</c>, points at
+    /// <c>01 - topic a/index</c>: Obsidian reads it from the folder of the note. A link that climbs out of the source points at nothing and is dropped.
     /// </summary>
     public NoteMeta ResolvedFrom(string notePath)
     {
@@ -286,10 +286,9 @@ public static class MarkdownNotes
         var bar = inner.IndexOf('|', StringComparison.Ordinal);
         var target = (bar >= 0 ? inner[..bar] : inner).Trim();
         var alias = bar >= 0 ? inner[(bar + 1)..].Trim() : null;
-        if (embedded)
+        if (embedded && ImageFormats.Is(FileOf(target)))
         {
-            var hash = target.IndexOf('#', StringComparison.Ordinal);
-            var file = (hash >= 0 ? target[..hash] : target).Trim().Replace('\\', '/');
+            var file = FileOf(target);
             if (file.Length is > 0 and <= MaxLength && embeds.Count < MaxItems * 2)
             {
                 embeds.Add(file);
@@ -298,10 +297,18 @@ public static class MarkdownNotes
             return;
         }
 
+        // Anything else that is embedded (`![[Other note]]`) is a note shown in place: for the index it is a link, and the embedding note is a backlink of it.
         if (NormalizeTarget(target) is { } normalized && links.Count < MaxItems * 2)
         {
             links.Add(new WikiLink(normalized, string.IsNullOrEmpty(alias) ? null : alias[..Math.Min(alias.Length, MaxLength)]));
         }
+    }
+
+    /// <summary>The file a link or an embed names: no heading, trimmed, with <c>/</c>.</summary>
+    private static string FileOf(string target)
+    {
+        var hash = target.IndexOf('#', StringComparison.Ordinal);
+        return (hash >= 0 ? target[..hash] : target).Trim().Replace('\\', '/');
     }
 
     private static bool IsTagChar(char c) => char.IsLetterOrDigit(c) || c is '_' or '-' or '/';

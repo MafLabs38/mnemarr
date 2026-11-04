@@ -52,7 +52,7 @@ function themeVariables() {
 
 /**
  * What a diagram cannot change. A diagram may carry a `%%{init: ...}%%` directive that Mermaid merges into its settings: spacing and
- * the like are welcome (the courses use them), but the safety of the drawing and the look of the page are not the note's to set.
+ * the like are welcome (notes commonly do), but the safety of the drawing and the look of the page are not the note's to set.
  * Setting `secure` replaces Mermaid's own list, so what it protects by default (`secure`, `securityLevel`, `startOnLoad`, `maxTextSize`,
  * `suppressErrorRendering`, `maxEdges`) is repeated here, with what we add.
  */
