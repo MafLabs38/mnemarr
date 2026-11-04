@@ -54,6 +54,7 @@ export default function Notes() {
               <NoteTree
                 entries={entries}
                 filtering={words !== ''}
+                tag={tag}
                 selected={source && path ? `${source}/${path}` : null}
               />
             )}

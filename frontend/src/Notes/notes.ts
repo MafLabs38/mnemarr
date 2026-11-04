@@ -52,8 +52,13 @@ export interface TagListing {
 }
 
 /** The address of the reader for a note: the one place it is built, so that every link to a note goes the same way. */
-export function noteAddress(note: Pick<NoteRef, 'sourceId' | 'path'>): string {
-  return `/notes?${new URLSearchParams({ source: note.sourceId, path: note.path }).toString()}`;
+export function noteAddress(note: Pick<NoteRef, 'sourceId' | 'path'>, tag?: string | null): string {
+  const params = new URLSearchParams({ source: note.sourceId, path: note.path });
+  if (tag) {
+    // The notes of a tag are being read one after the other: the filter stays.
+    params.set('tag', tag);
+  }
+  return `/notes?${params.toString()}`;
 }
 
 function encodePath(path: string): string {

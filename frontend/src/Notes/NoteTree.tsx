@@ -35,7 +35,15 @@ function Contents({
   path,
   open,
   forceOpen,
-}: Readonly<{ folder: Folder; selected: string | null; path: string; open: Set<string>; forceOpen: boolean }>) {
+  tag,
+}: Readonly<{
+  folder: Folder;
+  selected: string | null;
+  path: string;
+  open: Set<string>;
+  forceOpen: boolean;
+  tag: string | null;
+}>) {
   return (
     <ul className={styles.tree}>
       {[...folder.folders.values()].map((child) => (
@@ -46,6 +54,7 @@ function Contents({
               folder={child}
               forceOpen={forceOpen}
               open={open}
+              tag={tag}
               path={`${path}/${child.name}`}
               selected={selected}
             />
@@ -57,7 +66,7 @@ function Contents({
           <Link
             aria-current={selected === `${note.sourceId}/${note.path}` ? 'page' : undefined}
             className={styles.noteLink}
-            to={noteAddress(note)}
+            to={noteAddress(note, tag)}
           >
             {note.title}
           </Link>
@@ -82,7 +91,8 @@ export default function NoteTree({
   entries,
   selected,
   filtering = false,
-}: Readonly<{ entries: ReadonlyArray<NoteEntry>; selected: string | null; filtering?: boolean }>) {
+  tag = null,
+}: Readonly<{ entries: ReadonlyArray<NoteEntry>; selected: string | null; filtering?: boolean; tag?: string | null }>) {
   const grouped = new Map<string, NoteEntry[]>();
   for (const entry of entries) {
     const list = grouped.get(entry.sourceId) ?? [];
@@ -99,7 +109,14 @@ export default function NoteTree({
       {sources.map(([sourceId, notes]) => (
         <section aria-label={notes[0]?.sourceName} key={sourceId}>
           <h2 className={styles.sourceName}>{notes[0]?.sourceName}</h2>
-          <Contents folder={build(notes)} forceOpen={filtering} open={open} path={sourceId} selected={selected} />
+          <Contents
+            folder={build(notes)}
+            forceOpen={filtering}
+            open={open}
+            tag={tag}
+            path={sourceId}
+            selected={selected}
+          />
         </section>
       ))}
     </nav>

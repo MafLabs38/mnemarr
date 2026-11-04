@@ -146,6 +146,21 @@ describe('Notes', () => {
     expect(await screen.findByText('No note links to this one.')).toBeInTheDocument();
   });
 
+  it('keeps the tag when a note of the tag is opened, so that the notes of the tag can be read one after the other', async () => {
+    server(noteWith('# Docker'));
+    renderWithProviders(<Notes />, '/notes?tag=infra', readerSession);
+    const tree = await screen.findByRole('navigation', { name: 'Notes' });
+
+    expect(within(tree).getByRole('link', { name: 'Docker' })).toHaveAttribute(
+      'href',
+      `/notes?source=${S1}&path=devops%2Fdocker.md&tag=infra`,
+    );
+    await userEvent.click(within(tree).getByRole('link', { name: 'Docker' }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: '#infra' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'All notes' })).toBeInTheDocument();
+  });
+
   it('asks only for the notes of a tag when one is chosen', async () => {
     const mock = server(noteWith('# Docker'));
     renderWithProviders(<Notes />, '/notes?tag=infra', readerSession);

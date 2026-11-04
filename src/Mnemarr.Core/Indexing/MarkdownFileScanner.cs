@@ -49,7 +49,7 @@ public static class MarkdownFileScanner
             .Select(file => new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName, file.Length, file.LastWriteTimeUtc.Ticks));
     }
 
-    /// <summary>The most images of a source that are recorded: a source of this size is the limit of what a note can find by name.</summary>
+    /// <summary>The most images of a source that are recorded: past it, the first in path order are kept.</summary>
     public const int MaxImages = 50_000;
 
     /// <summary>The paths, from the root of the source and with <c>/</c>, of the image files a note may show (see <see cref="ImageFormats"/>): the same folders as the notes, none hidden or behind a link.</summary>
@@ -65,7 +65,9 @@ public static class MarkdownFileScanner
         return new DirectoryInfo(root)
             .EnumerateFiles("*", options)
             .Where(file => ImageFormats.Is(file.Name))
-            .Take(MaxImages)
-            .Select(file => Path.GetRelativePath(root, file.FullName).Replace('\\', '/'));
+            .Select(file => Path.GetRelativePath(root, file.FullName).Replace('\\', '/'))
+            // In path order before the cut, so that a source over the limit keeps the same images at every pass.
+            .Order(StringComparer.Ordinal)
+            .Take(MaxImages);
     }
 }
