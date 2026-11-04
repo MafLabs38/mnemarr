@@ -54,6 +54,8 @@ public sealed class ConfigurationYamlFixture
     [InlineData("memory:\n  path: /x\n  colour: red\n", "colour")]
     [InlineData("knowledge: not-a-list\n", "line 1")]
     [InlineData("memory: [unterminated\n", "line")]
+    [InlineData("knowledge:\n", "'knowledge' has no value")]
+    [InlineData("memory: ~\napplicationDocs: []\n", "'memory' has no value")]
     public void should_refuse_what_it_does_not_know_with_the_line_instead_of_ignoring_it(string text, string mentioned)
     {
         var parse = () => ConfigurationYaml.Parse(text);

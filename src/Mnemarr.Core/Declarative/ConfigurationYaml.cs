@@ -34,11 +34,29 @@ public static class ConfigurationYaml
         try
         {
             CheckShape(text);
-            return Reader.Deserialize<ConfigurationDocument?>(text) ?? new ConfigurationDocument();
+            var document = Reader.Deserialize<ConfigurationDocument?>(text) ?? new ConfigurationDocument();
+            RefuseSectionWithoutValue(text);
+            return document;
         }
         catch (YamlException ex)
         {
             throw Invalid($"The configuration is not valid YAML for Mnemarr, line {ex.Start.Line}: {Innermost(ex).Message}");
+        }
+    }
+
+    /// <summary>
+    /// A section that is written with no value (<c>knowledge:</c>) reads as null, which is the same as a section that is not there: it would
+    /// leave the sources of that section alone while looking like it describes none. Only <c>[]</c> says that a section holds nothing.
+    /// </summary>
+    private static void RefuseSectionWithoutValue(string text)
+    {
+        var raw = Reader.Deserialize<Dictionary<string, object?>?>(text);
+        foreach (var section in new[] { "memory", "knowledge", "applicationDocs" })
+        {
+            if (raw is not null && raw.TryGetValue(section, out var value) && value is null)
+            {
+                throw Invalid($"'{section}' has no value: leave it out to leave that section alone, or describe it (a list can be written [] to say that it holds no source).");
+            }
         }
     }
 
