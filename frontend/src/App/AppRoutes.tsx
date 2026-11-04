@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AccountKeys from 'Accounts/AccountKeys';
 import Accounts from 'Accounts/Accounts';
 import MyAccount from 'Accounts/MyAccount';
+import Notes from 'Notes/Notes';
 import Overview from 'Overview/Overview';
 import RequirePermission from 'Session/RequirePermission';
 import { permissions } from 'Session/session';
@@ -23,6 +24,14 @@ export default function AppRoutes() {
           </RequirePermission>
         }
         path="/system/status"
+      />
+      <Route
+        element={
+          <RequirePermission permission={permissions.notesRead}>
+            <Notes />
+          </RequirePermission>
+        }
+        path="/notes"
       />
       <Route
         element={

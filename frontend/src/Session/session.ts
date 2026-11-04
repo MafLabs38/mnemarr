@@ -18,6 +18,7 @@ export const permissions = {
   systemRead: 'system.read',
   accountsManage: 'accounts.manage',
   auditRead: 'audit.read',
+  notesRead: 'notes.read',
   sourcesManage: 'sources.manage',
   search: 'search',
 } as const;

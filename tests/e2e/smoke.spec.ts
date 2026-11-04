@@ -101,6 +101,7 @@ test.describe('smoke @smoke', () => {
     const menu = page.getByRole('navigation', { name: 'Main menu' });
     await expect(menu.getByRole('link', { name: 'Overview' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'System' })).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Notes' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Sources' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Agents' })).toHaveCount(0);
     await expect(menu).toContainText('Agents');
@@ -303,6 +304,32 @@ test.describe('smoke @smoke', () => {
     await row.getByRole('button', { name: 'Delete' }).click();
     await row.getByRole('button', { name: `Confirm: delete ${name}` }).click();
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  test('a person reads the notes: the tree, a rendered note, a wikilink to another source, and the backlinks', async ({
+    page,
+  }) => {
+    await signIn(page, '/notes');
+
+    const tree = page.getByRole('navigation', { name: 'Notes' });
+    await expect(tree.getByText('seeded')).toBeVisible();
+    await tree.getByRole('link', { name: 'Docker' }).click();
+    await expect(page.getByRole('heading', { name: 'Docker' })).toBeVisible();
+    await expect(page.getByText('An image is made of read-only layers')).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Tags' }).getByRole('link', { name: '#infra' })).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'A decision' }),
+    ).toBeVisible();
+    // A Mermaid diagram is drawn in the real browser, under the real Content-Security-Policy, as an image.
+    const diagram = page.getByRole('img', { name: 'Diagram' });
+    await expect(diagram).toBeVisible();
+    expect(await diagram.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    expect(await diagram.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    await page.getByRole('link', { name: 'decision', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'A decision' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Docker' })).toBeVisible();
   });
 
   test('the configuration file given at start is applied: its sources are managed and cannot be changed by hand', async ({

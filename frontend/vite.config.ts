@@ -13,6 +13,7 @@ const aliases = [
   'Components',
   'Helpers',
   'Login',
+  'Notes',
   'Overview',
   'Session',
   'Sources',

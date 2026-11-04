@@ -42,11 +42,20 @@ configs:
       ## Images
 
       An image is made of read-only layers: a layer for each instruction of the build.
+
+      > [!tip] Related
+      > The choice that was made is in [[decision]]. #infra
+
+      ```mermaid
+      flowchart TB
+        A[Dockerfile] --> B[Image]
+        B --> C[Container]
+      ```
   memory_note:
     content: |
       # A decision
 
-      The memory vault of the end-to-end stack.
+      The memory vault of the end-to-end stack, and [[docker]] is where it began.
   mnemarr_config:
     content: |
       memory:

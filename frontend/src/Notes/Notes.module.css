@@ -1,0 +1,141 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.side {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.main {
+  min-width: 0;
+}
+
+.sourceName {
+  margin: 12px 0 4px;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+  text-transform: uppercase;
+}
+
+.tree,
+.tags {
+  margin: 0;
+  padding-left: 14px;
+  list-style: none;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding-left: 0;
+}
+
+.tree summary {
+  cursor: pointer;
+}
+
+.noteLink[aria-current='page'] {
+  font-weight: 700;
+}
+
+.noteTitle {
+  margin: 0;
+}
+
+.noteWhere,
+.hint {
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}
+
+.unresolved {
+  color: var(--inkMuted);
+  text-decoration: underline dotted;
+}
+
+.backlinks {
+  margin-top: 24px;
+  border-top: 1px solid var(--hairline);
+}
+
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown img {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown pre {
+  overflow-x: auto;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radiusSmall);
+  font-family: var(--monoSpaceFontFamily);
+}
+
+.markdown code {
+  font-family: var(--monoSpaceFontFamily);
+}
+
+.markdown table {
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+}
+
+.markdown blockquote {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--hairline);
+  color: var(--inkMuted);
+}
+
+.markdown :global(.callout) {
+  margin: 12px 0;
+  padding: 8px 14px;
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radiusSmall);
+  color: var(--ink);
+}
+
+.diagram {
+  margin: 16px 0;
+}
+
+.diagram img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram summary {
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+  cursor: pointer;
+}
+
+.diagramError {
+  margin: 16px 0;
+  padding: 8px 14px;
+  border: 1px solid var(--dangerColor);
+  border-radius: var(--radiusSmall);
+}

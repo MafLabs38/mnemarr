@@ -44,7 +44,7 @@ export default tseslint.config(
           groups: [
             [String.raw`^\u0000`],
             [String.raw`^@?\w`],
-            ['^(__tests__|Accounts|App|Components|Helpers|Login|Overview|Session|Sources|Styles|System|Utilities)(/|$)'],
+            ['^(__tests__|Accounts|App|Components|Helpers|Login|Notes|Overview|Session|Sources|Styles|System|Utilities)(/|$)'],
             [String.raw`^\.`],
           ],
         },
