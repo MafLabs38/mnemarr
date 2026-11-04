@@ -15,6 +15,14 @@ knowledge:
   - name: work-notes
     path: /vaults/work-notes
     mode: ReadWrite
+  # A source can be the checkout of a Git repository (ADR 0022): the folder is where it is cloned (empty or not there yet).
+  # The credential is the name of a token the operator configured (MNEMARR__GIT__CREDENTIALS__github__...): never write a token here.
+  - name: team-notes
+    path: /config/sources/team-notes
+    repository:
+      url: https://github.com/<owner>/team-notes
+      branch: main
+      credential: github
 
 # The documentation of applications, read from their repositories: one source per application.
 applicationDocs:

@@ -1,0 +1,31 @@
+# 0022 — Git sources are cloned and pulled in-process, over HTTPS with a named token
+
+- **Status**: accepted
+- **Date**: 2026-11-04
+- **Spec**: D-42 (answers Q-32; builds on [ADR 0015](0015-sources-are-read-write-capable.md) and [ADR 0019](0019-sources-are-declared-through-the-api-and-scanned-into-a-searchable-index.md), D-39)
+
+## Context
+
+Vaults live in Git repositories (ADR 0003), so a source must be able to be the checkout of one. Q-32 asked how: the `git` binary needs another base image (the chiseled image has no `git`, no shell), while a library keeps the image as it is. Declaring a Git source is also a request, made through the API, for Mnemarr to connect to a host and to send it a secret, which must not become a way to reach internal addresses or to exfiltrate a token.
+
+## Decision
+
+1. **LibGit2Sharp (libgit2), in the process.** No `git` binary, no shell, no child process: libgit2 runs no hook and no configured command, so nothing a repository holds can be executed, and the chiseled image stays. The native library is published for each architecture with the application (a portable publish carries `runtimes/<rid>/native`), and the multi-architecture image needs nothing else. New dependency: **LibGit2Sharp 0.31.0** (and its native binaries), to be accepted by the maintainer.
+2. **HTTPS and a token only; SSH is a known limit.** The address of a repository is an `https` address with a host and a path, and **nothing else in it**: a user name, a password, a query or a fragment is refused, because a secret does not go in an address (it would be stored, exported and shown). SSH keys would mean key files, host-key checking and an agent: they come if an operator asks.
+3. **A credential is named, bound to a host, and held by the operator.** `Git:Credentials:<name>` has a `Host` and a `Token` (environment) or a `TokenFile` (read at each sync, so a rotation needs no restart) and a user name (`x-access-token` by default, which GitHub, GitLab and Gitea accept with a token). A source says `credential: <name>`, never a token. The token is **sent to the host it is bound to and to no other**: checked when the source is declared (a credential that does not exist and one that is for another host get the same answer, so a caller learns nothing about the credentials) and again at each sync (whatever a row of the database says). The engine offers it once and never retries it: a second request means it was refused. The token is never stored in the database, never in the configuration document, never in an answer, an audit event or a log.
+4. **The operator says where Mnemarr may connect.** `Git:Hosts` (empty means any host over HTTPS) limits the hosts a source may name; the folder of a Git source must be inside `Sources:Roots` like any source, and it is where the repository is cloned.
+5. **Clone, and fast-forward; never anything else.** A source whose folder is not a checkout is cloned (into a folder that does not exist or is empty: **Mnemarr never clones over what is there**, and a clone that fails leaves nothing behind). A checkout is brought up to date by fetching and **fast-forwarding** to the remote branch. It is never merged, never forced, never reset over work: a checkout that **has diverged**, **has changes that are not committed**, is the checkout of **another repository**, or whose branch is not in the repository is **reported and left as it is**. A checkout that is ahead of the remote (commits not pushed) has nothing to bring in and is left as it is. Writing back (commit, push, pull request) comes with the write mode of ADR 0015 in its own vertical; this one only reads.
+6. **A sync and a scan never overlap on a source.** They share one lock per source: a pass never reads a folder that a checkout is changing. A request for a sync does not wait for a sync or a pass that is running (429, busy); the background service waits.
+7. **Syncs are automatic and on demand.** At start and every `Git:SyncIntervalSeconds` (default 300, 10 to 86400) every Git source is synchronised and, when something came in, read at once; `POST /api/v1/sources/{id}/sync` does it now (the permission that manages sources, within the scope of the key). A failure of one source does not stop the others.
+8. **A failure is a code, and the words are fixed.** `auth-failed`, `repository-not-found` (GitHub answers an authentication request for a repository that does not exist or that a credential cannot see, so the two are told together), `unreachable`, `branch-not-found`, `diverged`, `local-changes`, `folder-not-empty`, `different-repository`, `credential-missing`, `outside-roots`, `sync-failed`. The answer (409), the source (`lastSyncError`) and readiness give the code and fixed words; **nothing from the host, the disk or libgit2 is shown** (an address, a path or a message could hold a secret). The failure is kept in memory with the time and the commit the checkout is at (`head`); a failed sync **degrades `/health/ready`** (`source-unreadable`, with the name of the source) because its notes are old, and the log says it once, not at every interval.
+9. **The repository is part of the source and of the document.** `repository: { url, branch, credential }` is an optional field of the source resource and of the configuration document (ADR 0020: adding a field breaks no file), stored in three columns (schema step 4). A source with a repository is changed or turned back into a folder by the same calls; a key limited to some sources can change the mode and nothing of the repository, like the folder.
+
+## Consequences
+
+- The chiseled image is kept; the cost is a native library per architecture (checked by cloning over HTTPS from the built image).
+- A host that is down, a revoked token or a diverged checkout shows on the source and on readiness, and the notes already read stay searchable.
+- An operator limits the hosts, names the credentials and rotates a token by changing a file.
+- A Git source over SSH, a self-signed host and a proxy are not supported yet.
+- A repository that holds large files is cloned whole (no shallow clone, no LFS): vaults are text, and a clone that is too large is a repository to split.
+
+See [ADR 0015](0015-sources-are-read-write-capable.md) for what writing back will respect.

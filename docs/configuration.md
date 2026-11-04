@@ -39,6 +39,21 @@ See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each pr
 
 Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not indexed. A pass lists the folder and reads only the notes whose size or last write time changed, so a vault on a share is not read in full every interval; `POST /api/v1/sources/{id}/index?rebuild=true` reads everything. The folder of a source is checked against the roots again before every scan, and a link anywhere between the root and the folder is refused. If a scan fails (the folder was unmounted, or is outside the roots now), the source shows why (`lastError`) and `/health/ready` is degraded with the reason `source-unreadable`; its old notes stay searchable. `POST /api/v1/sources/{id}/index?rebuild=true` cuts every note again. The mode of a source is its write switch: read-only unless you turn writing on. Forgetting a source in the interface forgets its index, never its files.
 
+## Git sources (`Git`)
+
+A source can be the checkout of a Git repository ([ADR 0022](adr/0022-git-sources-are-cloned-and-pulled-in-process-over-https.md)): declare it with a `repository` (an `https` address, optionally a branch and the name of a credential) and a folder inside the roots, where it is cloned. Mnemarr clones into a folder that does not exist or is empty, then fast-forwards; it never merges, never forces, and reports a checkout that has diverged or has uncommitted changes without touching it. SSH is not supported.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__GIT__SYNCINTERVALSECONDS` | `300` | How often every Git source is brought up to date (10 to 86400). A source can also be synchronised at once from the interface (`POST /api/v1/sources/{id}/sync`). |
+| `MNEMARR__GIT__HOSTS__0`, `__1`… | any host | The hosts a source may be cloned from, as host names (no scheme, port or path). Empty means any host over HTTPS: name them. |
+| `MNEMARR__GIT__CREDENTIALS__<name>__HOST` | none | The host the token is for. A credential is sent to this host and to no other. |
+| `MNEMARR__GIT__CREDENTIALS__<name>__TOKENFILE` | none | A file that holds the access token (read at each sync, so a rotation needs no restart). Prefer it to `TOKEN`; mount it as a secret. |
+| `MNEMARR__GIT__CREDENTIALS__<name>__TOKEN` | none | The token itself, when a file is not possible. Exactly one of `TOKEN` and `TOKENFILE`. |
+| `MNEMARR__GIT__CREDENTIALS__<name>__USERNAME` | `x-access-token` | The user name sent with the token (GitHub, GitLab and Gitea accept any name with a token). |
+
+A source names a credential (`credential: github`), never a token; a public repository needs none. If a sync fails, the source shows a code (`lastSyncError`: `auth-failed`, `repository-not-found`, `unreachable`, `branch-not-found`, `diverged`, `local-changes`, `folder-not-empty`, `different-repository`, `credential-missing`, `outside-roots`, `sync-failed`) and `/health/ready` is degraded with the reason `source-unreadable`; the notes already read stay searchable. The words never carry an address, a path or a message from the host.
+
 ## Configuration as code (`Config`)
 
 `GET /api/v1/config/status` says whether a file is in charge, whether it was applied and why not (in words that give no path); the interface shows it and does not offer to apply a document while a file is in charge.
@@ -48,7 +63,7 @@ Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not i
 | `MNEMARR__CONFIG__FILE` | none | A configuration document (YAML) applied at start and again whenever it changes, or after a failure (a folder mounted late). An absolute path. A file that cannot be applied does not stop Mnemarr: `/health/ready` is degraded with the reason. |
 | `MNEMARR__CONFIG__RELOADSECONDS` | `30` | How often the file is looked at again (1 to 86400). |
 
-The same document can be previewed and applied through the API (`PUT /api/v1/config`, `?dryRun=true` to preview; `GET /api/v1/config` exports the current state) or in the interface (Sources). It describes the memory vault (one object) and the knowledge vaults and application documentation (lists); see [deploy/mnemarr.config.example.yaml](../deploy/mnemarr.config.example.yaml) and [ADR 0020](adr/0020-configuration-as-code.md). A section that is absent is left alone; one that is present, even empty, is managed. What a document owns is marked *managed by configuration* and is changed by changing the document. When `MNEMARR__CONFIG__FILE` is set, the file is the one document: `PUT /api/v1/config` only previews (`?dryRun=true`) and refuses to apply (409). Never put a secret in it.
+The same document can be previewed and applied through the API (`PUT /api/v1/config`, `?dryRun=true` to preview; `GET /api/v1/config` exports the current state) or in the interface (Sources). It describes the memory vault (one object) and the knowledge vaults and application documentation (lists), each with an optional `repository` for a Git source; see [deploy/mnemarr.config.example.yaml](../deploy/mnemarr.config.example.yaml) and [ADR 0020](adr/0020-configuration-as-code.md). A section that is absent is left alone; one that is present, even empty, is managed. What a document owns is marked *managed by configuration* and is changed by changing the document. When `MNEMARR__CONFIG__FILE` is set, the file is the one document: `PUT /api/v1/config` only previews (`?dryRun=true`) and refuses to apply (409). Never put a secret in it.
 
 ## Service accounts and keys
 
