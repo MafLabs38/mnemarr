@@ -1,0 +1,111 @@
+using Mnemarr.Core.Accounts;
+
+namespace Mnemarr.Core.Test.Notes;
+
+public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
+{
+    [Fact]
+    public async Task should_list_the_notes_by_source_and_path_and_only_those_with_a_tag_when_asked()
+    {
+        var courses = await SourceWithAsync("courses", ("devops/docker.md", "# Docker\n#infra"), ("angular/signals.md", "# Signals"));
+        await SourceWithAsync("memory", ("decisions/network.md", "# Network choice\n#infra #decision"));
+
+        var all = Browser.List(SourceScope.All, null, null);
+        var tagged = Browser.List(SourceScope.All, null, "INFRA");
+        var one = Browser.List(SourceScope.All, courses.Id, null);
+
+        all.Select(n => $"{n.SourceName}:{n.Path}").Should().Equal("courses:angular/signals.md", "courses:devops/docker.md", "memory:decisions/network.md");
+        all.Single(n => n.Path == "devops/docker.md").Should().Match<Mnemarr.Core.Notes.NoteEntry>(n => n.Title == "Docker" && n.Topic == "devops");
+        tagged.Select(n => n.Path).Should().Equal("devops/docker.md", "decisions/network.md");
+        one.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task should_count_the_tags_of_the_notes_a_caller_may_read_most_used_first()
+    {
+        var mine = await SourceWithAsync("mine", ("a.md", "#infra #only-mine"), ("b.md", "#infra"));
+        await SourceWithAsync("other", ("c.md", "#infra #secret"));
+
+        var everyone = Browser.Tags(SourceScope.All);
+        var scoped = Browser.Tags(new SourceScope([mine.Id]));
+
+        everyone.Should().Equal(new Mnemarr.Core.Notes.TagCount("infra", 3), new Mnemarr.Core.Notes.TagCount("only-mine", 1), new Mnemarr.Core.Notes.TagCount("secret", 1));
+        scoped.Should().Equal(new Mnemarr.Core.Notes.TagCount("infra", 2), new Mnemarr.Core.Notes.TagCount("only-mine", 1));
+    }
+
+    [Fact]
+    public async Task should_resolve_a_link_by_name_across_sources_and_prefer_the_same_source_then_the_shortest_path()
+    {
+        var courses = await SourceWithAsync("courses", ("index.md", "[[docker]] [[nope]] [[devops/kubernetes]]"), ("devops/docker.md", "# Docker here"), ("devops/kubernetes.md", "# K8s"));
+        await SourceWithAsync("memory", ("docker.md", "# Docker in memory"), ("deep/er/docker.md", "# Deeper"));
+
+        var detail = Browser.Find(courses.Id, "index.md", SourceScope.All)!;
+
+        detail.Links.Single(l => l.Target == "docker").Note.Should().Match<Mnemarr.Core.Notes.NoteRef>(n => n.SourceName == "courses" && n.Path == "devops/docker.md");
+        detail.Links.Single(l => l.Target == "devops/kubernetes").Note!.Path.Should().Be("devops/kubernetes.md");
+        detail.Links.Single(l => l.Target == "nope").Note.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task should_find_the_backlinks_of_a_note_by_its_name_or_its_path()
+    {
+        var courses = await SourceWithAsync("courses", ("devops/docker.md", "# Docker"), ("a.md", "[[docker]]"), ("b.md", "[[devops/docker|full path]]"), ("c.md", "[[docker]] [[docker]]"), ("d.md", "no link"), ("self.md", "[[self]]"));
+
+        var backlinks = Browser.Find(courses.Id, "devops/docker.md", SourceScope.All)!.Backlinks;
+        var self = Browser.Find(courses.Id, "self.md", SourceScope.All)!.Backlinks;
+
+        backlinks.Select(b => b.Path).Should().Equal("a.md", "b.md", "c.md");
+        self.Should().BeEmpty("a note that links to itself is not its own backlink");
+    }
+
+    [Fact]
+    public async Task should_resolve_and_backlink_a_link_written_from_the_folder_of_its_note()
+    {
+        var source = await SourceWithAsync("courses", ("01 - Java/Index.md", "# Index"), ("04 - Angular/Basics.md", "[[../01 - Java/Index|the index]] [[../../outside]]"));
+
+        var basics = Browser.Find(source.Id, "04 - Angular/Basics.md", SourceScope.All)!;
+        var index = Browser.Find(source.Id, "01 - Java/Index.md", SourceScope.All)!;
+
+        basics.Links.Should().ContainSingle().Which.Note!.Path.Should().Be("01 - Java/Index.md");
+        index.Backlinks.Should().ContainSingle().Which.Path.Should().Be("04 - Angular/Basics.md");
+    }
+
+    [Fact]
+    public async Task should_not_resolve_link_or_backlink_through_a_source_the_caller_may_not_read()
+    {
+        var mine = await SourceWithAsync("mine", ("a.md", "[[secret-plan]]"), ("topic.md", "# Topic"));
+        await SourceWithAsync("hidden", ("secret-plan.md", "# Secret [[topic]]"));
+        var scope = new SourceScope([mine.Id]);
+
+        var detail = Browser.Find(mine.Id, "a.md", scope)!;
+        var topic = Browser.Find(mine.Id, "topic.md", scope)!;
+        var allowed = Browser.Find(mine.Id, "topic.md", SourceScope.All)!;
+
+        detail.Links.Single().Note.Should().BeNull("the note exists, but not for this caller");
+        topic.Backlinks.Should().BeEmpty();
+        allowed.Backlinks.Should().ContainSingle().Which.SourceName.Should().Be("hidden");
+    }
+
+    [Fact]
+    public async Task should_answer_nothing_for_a_note_that_is_not_indexed_or_out_of_scope()
+    {
+        var mine = await SourceWithAsync("mine", ("a.md", "# A"));
+        var other = await SourceWithAsync("other", ("b.md", "# B"));
+
+        Browser.Find(mine.Id, "missing.md", SourceScope.All).Should().BeNull();
+        Browser.Find(other.Id, "b.md", new SourceScope([mine.Id])).Should().BeNull();
+        Browser.Find(other.Id, "b.md", new SourceScope([])).Should().BeNull();
+        Browser.List(new SourceScope([]), null, null).Should().BeEmpty("an empty scope matches nothing, never everything");
+    }
+
+    [Fact]
+    public async Task should_treat_percent_and_underscore_in_a_link_as_text_not_as_a_pattern()
+    {
+        var source = await SourceWithAsync("s", ("x/100%_done.md", "# Done"), ("x/1000 done.md", "# Not it"), ("a.md", "[[x/100%_done]] [[x/100_%]]"));
+
+        var detail = Browser.Find(source.Id, "a.md", SourceScope.All)!;
+
+        detail.Links.Single(l => l.Target == "x/100%_done").Note!.Path.Should().Be("x/100%_done.md");
+        detail.Links.Single(l => l.Target == "x/100_%").Note.Should().BeNull();
+    }
+}

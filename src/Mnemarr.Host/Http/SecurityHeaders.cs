@@ -2,8 +2,10 @@ namespace Mnemarr.Host.Http;
 
 public static class SecurityHeaders
 {
+    // Scripts, fonts, connections, frames and objects come from the application only. Styles may also be inline, which is what Mermaid
+    // needs to measure and draw a diagram (ADR 0021); a style cannot run anything, and a note cannot put one in the page (no raw HTML).
     private const string ContentSecurityPolicy =
-        "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
     /// <summary>
     /// Conservative headers on every response, errors included: they are set when the response starts, because the

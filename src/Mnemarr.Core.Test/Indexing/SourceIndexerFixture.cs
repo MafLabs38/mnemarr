@@ -225,7 +225,7 @@ public sealed class SourceIndexerFixture : IDisposable
         TestWorkspace.Write(folder, "a.md", "# A\ntext");
         var source = Declare("courses", folder);
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(folder, "a.md"))));
-        _index.Upsert(source.Id, new ScannedFile("a.md", Path.Combine(folder, "a.md")), "A", hash, chunker: MarkdownChunker.Version - 1, [new Chunk("A", "text")], _clock.GetUtcNow());
+        _index.Upsert(source.Id, new ScannedFile("a.md", Path.Combine(folder, "a.md")), new IndexedNote("A", hash, MarkdownChunker.Version - 1, [new Chunk("A", "text")], NoteMeta.Empty), _clock.GetUtcNow());
 
         var report = await _subject.IndexAsync(source, Token);
 
@@ -443,7 +443,7 @@ public sealed class SourceIndexerFixture : IDisposable
     {
         public IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId) => throw new InvalidOperationException("the index is broken");
 
-        public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at) => throw new InvalidOperationException();
+        public void Upsert(Guid sourceId, ScannedFile file, IndexedNote note, DateTimeOffset at) => throw new InvalidOperationException();
 
         public void Touch(Guid sourceId, ScannedFile file) => throw new InvalidOperationException();
 
@@ -469,11 +469,11 @@ public sealed class SourceIndexerFixture : IDisposable
 
         public IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId) => inner.Notes(sourceId);
 
-        public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at)
+        public void Upsert(Guid sourceId, ScannedFile file, IndexedNote note, DateTimeOffset at)
         {
             Entered.Set();
             Release.Wait(TimeSpan.FromSeconds(10));
-            inner.Upsert(sourceId, file, title, contentHash, chunker, chunks, at);
+            inner.Upsert(sourceId, file, note, at);
         }
 
         public int Touched { get; private set; }

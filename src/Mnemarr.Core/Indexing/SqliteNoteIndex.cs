@@ -38,7 +38,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         return notes;
     }
 
-    public void Upsert(Guid sourceId, ScannedFile file, string title, string contentHash, int chunker, IReadOnlyList<Chunk> chunks, DateTimeOffset at)
+    public void Upsert(Guid sourceId, ScannedFile file, IndexedNote note, DateTimeOffset at)
     {
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
@@ -49,16 +49,17 @@ public sealed class SqliteNoteIndex : INoteIndex
         {
             insert.Transaction = transaction;
             insert.CommandText = """
-                INSERT INTO notes (source_id, path, topic, title, content_hash, chunker, size, modified_ticks, indexed_at)
-                VALUES ($source, $path, $topic, $title, $hash, $chunker, $size, $modified, $at)
+                INSERT INTO notes (source_id, path, topic, title, name, content_hash, chunker, size, modified_ticks, indexed_at)
+                VALUES ($source, $path, $topic, $title, $name, $hash, $chunker, $size, $modified, $at)
                 RETURNING id
                 """;
             insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
             insert.Parameters.AddWithValue("$path", file.RelativePath);
             insert.Parameters.AddWithValue("$topic", file.Topic);
-            insert.Parameters.AddWithValue("$title", title);
-            insert.Parameters.AddWithValue("$hash", contentHash);
-            insert.Parameters.AddWithValue("$chunker", chunker);
+            insert.Parameters.AddWithValue("$title", note.Title);
+            insert.Parameters.AddWithValue("$name", System.IO.Path.GetFileNameWithoutExtension(file.RelativePath).ToLowerInvariant());
+            insert.Parameters.AddWithValue("$hash", note.ContentHash);
+            insert.Parameters.AddWithValue("$chunker", note.Chunker);
             insert.Parameters.AddWithValue("$size", file.Length);
             insert.Parameters.AddWithValue("$modified", file.ModifiedTicks);
             insert.Parameters.AddWithValue("$at", StorageText.Format(at));
@@ -72,15 +73,31 @@ public sealed class SqliteNoteIndex : INoteIndex
         var headingParameter = chunk.Parameters.AddWithValue("$heading", string.Empty);
         var textParameter = chunk.Parameters.AddWithValue("$text", string.Empty);
         chunk.Parameters.AddWithValue("$note", noteId);
-        for (var ordinal = 0; ordinal < chunks.Count; ordinal++)
+        for (var ordinal = 0; ordinal < note.Chunks.Count; ordinal++)
         {
             ordinalParameter.Value = ordinal;
-            headingParameter.Value = chunks[ordinal].Heading;
-            textParameter.Value = chunks[ordinal].Text;
+            headingParameter.Value = note.Chunks[ordinal].Heading;
+            textParameter.Value = note.Chunks[ordinal].Text;
             chunk.ExecuteNonQuery();
         }
 
+        InsertEach(connection, transaction, "INSERT INTO note_links (note_id, target) VALUES ($note, $value)", noteId, note.Meta.Links.Select(link => link.Target).Distinct(StringComparer.Ordinal));
+        InsertEach(connection, transaction, "INSERT INTO note_tags (note_id, tag) VALUES ($note, $value)", noteId, note.Meta.Tags);
         transaction.Commit();
+    }
+
+    private static void InsertEach(SqliteConnection connection, SqliteTransaction transaction, string sql, long noteId, IEnumerable<string> values)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("$note", noteId);
+        var value = command.Parameters.AddWithValue("$value", string.Empty);
+        foreach (var text in values)
+        {
+            value.Value = text;
+            command.ExecuteNonQuery();
+        }
     }
 
     public void Touch(Guid sourceId, ScannedFile file)

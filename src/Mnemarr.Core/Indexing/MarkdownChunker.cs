@@ -12,9 +12,9 @@ public static class MarkdownChunker
 
     /// <summary>
     /// The version of the cut. A note that was cut by another version is cut again at the next pass even if its content did not change, so
-    /// that a change to the chunker (its size, how it reads a heading) reaches the notes that are already indexed. Raise it with the change.
+    /// that a change to the chunker (its size, how it reads a heading) reaches the notes that are already indexed. Raise it with the change (2: the links and tags of a note are read with it; 3: a link written from the folder of its note is stored from the root).
     /// </summary>
-    public const int Version = 1;
+    public const int Version = 3;
 
     private const int MaxHeadingLevel = 6;
 

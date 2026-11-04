@@ -68,4 +68,15 @@ public sealed class SystemApiFixture : IAsyncLifetime
         response.Headers.GetValues("Referrer-Policy").Should().ContainSingle().Which.Should().Be("no-referrer");
         response.Headers.GetValues("Content-Security-Policy").Should().ContainSingle().Which.Should().Contain("frame-ancestors 'none'");
     }
+
+    [Fact]
+    public async Task should_allow_inline_styles_for_diagrams_and_nothing_inline_or_dynamic_for_scripts()
+    {
+        var response = await _client.GetAsync("/health/live", TestContext.Current.CancellationToken);
+
+        var policy = response.Headers.GetValues("Content-Security-Policy").Single();
+
+        policy.Should().Contain("default-src 'self'").And.Contain("style-src 'self' 'unsafe-inline'");
+        policy.Should().NotContain("script-src", "scripts follow default-src: the application's own files only").And.NotContain("unsafe-eval");
+    }
 }

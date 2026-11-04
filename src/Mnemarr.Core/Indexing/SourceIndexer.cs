@@ -169,7 +169,8 @@ public sealed class SourceIndexer
         }
 
         var text = Decode(bytes);
-        _index.Upsert(source.Id, file, MarkdownChunker.Title(text, file.RelativePath), hash, MarkdownChunker.Version, MarkdownChunker.Split(text), _clock.GetUtcNow());
+        var note = new IndexedNote(MarkdownChunker.Title(text, file.RelativePath), hash, MarkdownChunker.Version, MarkdownChunker.Split(text), MarkdownNotes.Parse(text).ResolvedFrom(file.RelativePath));
+        _index.Upsert(source.Id, file, note, _clock.GetUtcNow());
         return previous is null ? FileResult.Added : FileResult.Updated;
     }
 

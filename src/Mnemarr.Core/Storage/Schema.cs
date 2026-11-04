@@ -90,6 +90,24 @@ public static class Schema
             INSERT INTO chunks_fts (chunks_fts, rowid, text, heading) VALUES ('delete', old.id, old.text, old.heading);
         END;
         """,
+        // 3: what a note says about other notes (wikilinks, for the reader and its backlinks) and its tags. The name of a note is its file
+        // name without the extension, lower case: what a [[wikilink]] points at.
+        """
+        ALTER TABLE notes ADD COLUMN name TEXT NOT NULL DEFAULT '';
+        CREATE INDEX notes_by_name ON notes (name);
+        CREATE TABLE note_links (
+            note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            target TEXT NOT NULL
+        );
+        CREATE INDEX note_links_by_note ON note_links (note_id);
+        CREATE INDEX note_links_by_target ON note_links (target);
+        CREATE TABLE note_tags (
+            note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            tag TEXT NOT NULL
+        );
+        CREATE INDEX note_tags_by_note ON note_tags (note_id);
+        CREATE INDEX note_tags_by_tag ON note_tags (tag);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

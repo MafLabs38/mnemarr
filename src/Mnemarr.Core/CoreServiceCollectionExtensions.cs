@@ -8,6 +8,7 @@ using Mnemarr.Core.Audit;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Declarative;
 using Mnemarr.Core.Indexing;
+using Mnemarr.Core.Notes;
 using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
@@ -49,6 +50,8 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<IndexingOptions>, IndexingOptionsValidator>();
         services.AddSingleton<ISourceStore, SqliteSourceStore>();
         services.AddSingleton<INoteIndex, SqliteNoteIndex>();
+        services.AddSingleton<INoteBrowser, SqliteNoteBrowser>();
+        services.AddSingleton<NoteReader>();
         services.AddSingleton<SourcePaths>();
         services.AddSingleton<SourceCatalog>();
         services.AddSingleton<ConfigurationApplier>();
