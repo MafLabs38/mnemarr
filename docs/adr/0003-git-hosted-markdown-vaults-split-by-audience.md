@@ -1,6 +1,6 @@
 # 0003 — Markdown vaults hosted in Git, split by audience
 
-- **Status**: accepted
+- **Status**: accepted; the write rules of the knowledge vault and of application documentation are superseded by [0015](0015-sources-are-read-write-capable.md)
 - **Date**: 2026-11-01
 - **Spec**: D-03, D-04, D-05
 

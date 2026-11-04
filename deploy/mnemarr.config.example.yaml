@@ -1,0 +1,22 @@
+# A configuration document for Mnemarr (configuration as code, ADR 0020). Keep it in your own infrastructure repository.
+# Give it to Mnemarr as a file (MNEMARR__CONFIG__FILE=/config-as-code/mnemarr.yaml), or apply it with PUT /api/v1/config.
+# A section that is absent is left alone; one that is present, even empty, is managed by this document.
+
+# The memory vault: exactly one, and required. Mnemarr is its only author.
+memory:
+  path: /vaults/memory
+  mode: ReadWrite
+
+# Knowledge vaults: hand-written notes, as many as there are (courses, notes taken for work).
+knowledge:
+  - name: cours
+    path: /vaults/cours
+  - name: travail
+    path: /vaults/travail
+    mode: ReadOnly
+
+# The documentation of applications, read from their repositories: one source per application.
+applicationDocs:
+  - name: portarr
+    path: /vaults/portarr
+    mode: ReadOnly

@@ -19,5 +19,9 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0012](0012-vector-store-and-embeddings-spikes.md) | Vector store and embeddings model: results of the two spikes | D-30, D-31 |
 | [0013](0013-releases-with-semantic-release-consumed-by-pulling.md) | Releases are decided by semantic-release from main, and consumed by pulling | D-33 |
 | [0014](0014-the-agent-merges-technical-pull-requests.md) | The agent merges technical pull requests; the maintainer decides verticals, releases and the rules themselves | D-34 |
+| [0015](0015-sources-are-read-write-capable.md) | Sources are read-write capable: Mnemarr writes in the document repositories it owns and proposes changes elsewhere | D-35 |
 | [0016](0016-accounts-roles-and-service-accounts.md) | Accounts, permission-based roles and service accounts | D-36 |
+| [0017](0017-a-notes-reader-in-the-interface.md) | A notes reader in the interface | D-37 |
 | [0018](0018-storage-layer-ado-net-and-numbered-schema-steps.md) | Storage layer: ADO.NET over SQLite, a schema in numbered steps | D-38 |
+| [0019](0019-sources-are-declared-through-the-api-and-scanned-into-a-searchable-index.md) | Sources are declared through the API and scanned into a searchable index | D-39 |
+| [0020](0020-configuration-as-code.md) | Configuration as code: a YAML document, applied through the API or as a file | D-40 |

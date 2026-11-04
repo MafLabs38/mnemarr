@@ -30,6 +30,24 @@ Mnemarr reads its settings from `appsettings.json`, then environment variables (
 
 See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each protects.
 
+## Sources and indexing (`Sources`, `Indexing`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__SOURCES__ROOTS__0`, `__1`… | the `sources` folder of the data folder | The folders a source may be in. A source is declared in the interface (Sources) or through the API with a folder inside one of them; anything else is refused. Mount a vault read-only and name its folder here. |
+| `MNEMARR__INDEXING__SCANINTERVALSECONDS` | `30` | How often every source is compared with its folder (1 to 86400). A source can also be indexed at once from the interface. |
+
+Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not indexed. Forgetting a source in the interface forgets its index, never its files.
+
+## Configuration as code (`Config`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__CONFIG__FILE` | none | A configuration document (YAML) applied at start and again whenever it changes, or after a failure (a folder mounted late). An absolute path. A file that cannot be applied does not stop Mnemarr: `/health/ready` is degraded with the reason. |
+| `MNEMARR__CONFIG__RELOADSECONDS` | `30` | How often the file is looked at again (1 to 86400). |
+
+The same document can be previewed and applied through the API (`PUT /api/v1/config`, `?dryRun=true` to preview; `GET /api/v1/config` exports the current state) or in the interface (Sources). It describes the memory vault (one object) and the knowledge vaults and application documentation (lists); see [deploy/mnemarr.config.example.yaml](../deploy/mnemarr.config.example.yaml) and [ADR 0020](adr/0020-configuration-as-code.md). A section that is absent is left alone; one that is present, even empty, is managed. What a document owns is marked *managed by configuration* and is changed by changing the document. Never put a secret in it.
+
 ## Service accounts and keys
 
 Anything that is not a person (an assistant, a collector, a companion such as Portarr) signs in with a **key** that belongs to a **service account**, created in the interface (Accounts, then Keys) or through the API:

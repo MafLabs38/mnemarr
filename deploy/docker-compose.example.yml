@@ -16,6 +16,10 @@ services:
       # Choose a name that is not obvious: whoever knows it can lock that account for fifteen minutes (five wrong passwords).
       MNEMARR__AUTH__ADMINUSER: change-me-admin-name
       MNEMARR__AUTH__ADMINPASSWORDFILE: /run/secrets/mnemarr_admin_password
+      # Where sources may be: mount a vault read-only (volumes: - /path/to/vault:/vaults/notes:ro) and name its parent here.
+      # MNEMARR__SOURCES__ROOTS__0: /vaults
+      # Describe the sources as code (see mnemarr.config.example.yaml): mount the file and name it.
+      # MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
     secrets:
       - mnemarr_admin_password
     # Hardening: nothing writes outside the data folder and a temporary folder.
