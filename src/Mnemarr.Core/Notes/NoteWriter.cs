@@ -151,7 +151,13 @@ public sealed class NoteWriter
 
             if (source.Repository is null)
             {
-                var kept = Path.Combine(folder, TrashFolder, DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture), path);
+                var trash = Path.Combine(folder, TrashFolder);
+                var kept = Path.GetFullPath(Path.Combine(trash, DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture), path));
+                if (!kept.StartsWith(trash + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                {
+                    throw new RejectedException(Problem.Invalid, "The path of a note stays inside its source, and never goes through a link.");
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(kept)!);
                 File.Move(full, kept);
             }
@@ -195,6 +201,11 @@ public sealed class NoteWriter
 
         try
         {
+            if (source.Repository is not null)
+            {
+                await _sync.BringUpToDateAsync(source, cancellationToken);
+            }
+
             return await change(source, folder);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

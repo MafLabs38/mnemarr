@@ -43,6 +43,26 @@ public sealed class SourceIndexer
 
         try
         {
+            return await PassHeldAsync(source, rebuild, cancellationToken);
+        }
+        finally
+        {
+            onePass.Release();
+        }
+    }
+
+    public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, waitForTurn: true, cancellationToken);
+
+    public Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken) => IndexAsync(source, rebuild, waitForTurn: true, cancellationToken);
+
+    /// <summary>
+    /// A pass over a source whose lock the caller already holds (a write that has just brought a checkout up to date reads what came in, and cannot
+    /// wait for a lock it holds itself).
+    /// </summary>
+    public async Task<IndexReport> PassHeldAsync(Source source, bool rebuild, CancellationToken cancellationToken)
+    {
+        try
+        {
             // After the wait, not before: the roots or the folder can change while a pass ahead of this one runs.
             if (!CheckFolder(source))
             {
@@ -61,15 +81,7 @@ public sealed class SourceIndexer
             _outcomes.Failed(source.Id, _clock.GetUtcNow(), ex is IOException or UnauthorizedAccessException ? ScanOutcome.Unreadable : ScanOutcome.IndexFailed);
             throw;
         }
-        finally
-        {
-            onePass.Release();
-        }
     }
-
-    public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, waitForTurn: true, cancellationToken);
-
-    public Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken) => IndexAsync(source, rebuild, waitForTurn: true, cancellationToken);
 
     /// <summary>
     /// Reads one note again, now: the note a change of notes has just written. The caller holds the lock of the source (it is changing the

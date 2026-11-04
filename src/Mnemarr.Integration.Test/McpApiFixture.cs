@@ -66,9 +66,33 @@ public sealed class McpApiFixture : IClassFixture<MnemarrFactory>, IClassFixture
     [Fact]
     public async Task should_answer_nobody_who_is_not_signed_in()
     {
-        var response = await _readOnly.CreateClient().PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "ping" }, Token);
+        using var anonymous = _readOnly.CreateBrowserClient();
+
+        var response = await anonymous.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "ping" }, Token);
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task should_not_take_a_cross_site_request_that_rides_on_a_session_cookie()
+    {
+        using var browser = await _writable.SignedInClientAsync();
+        browser.DefaultRequestHeaders.Remove("X-Mnemarr-Request");
+        var forged = new StringContent("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", System.Text.Encoding.UTF8, "text/plain");
+
+        var response = await browser.PostAsync("/mcp", forged, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden, "a form from another site cannot add the header, and must not reach the tools with the person's cookie");
+    }
+
+    [Fact]
+    public async Task should_take_only_json()
+    {
+        using var client = await KeyAsync(_readOnly, "Reader");
+
+        var response = await client.PostAsync("/mcp", new StringContent("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", System.Text.Encoding.UTF8, "text/plain"), Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnsupportedMediaType);
     }
 
     [Fact]

@@ -114,6 +114,43 @@ public sealed class SourceSync
     }
 
     /// <summary>
+    /// Brings the checkout up to date before a note is written (D-35: write after bringing the working copy up to date), so that the push that
+    /// follows is a fast-forward. The caller holds the lock of the source. A checkout that has diverged refuses the write (nothing is piled on a
+    /// branch that cannot be pushed); a host that cannot be reached does not: the change is committed and pushed by a later sync.
+    /// </summary>
+    public async Task BringUpToDateAsync(Source source, CancellationToken cancellationToken)
+    {
+        var repository = source.Repository ?? throw new RejectedException(Problem.Invalid, "This source is a folder, not a Git repository.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_policy.SyncTimeout);
+        GitSyncResult? synced = null;
+        try
+        {
+            var url = GitPolicy.Address(repository.Url);
+            _policy.CheckHost(new Uri(url).Host);
+            var secret = SecretFor(repository, url);
+            var branch = GitPolicy.Branch(repository.Branch);
+            var folder = FolderOf(source);
+            synced = await Task.Run(() => _engine.Sync(url, branch, folder, secret, timeout.Token), CancellationToken.None);
+        }
+        catch (GitSyncException ex) when (ex.Code == GitFailure.Diverged)
+        {
+            Failed(source, ex.Code);
+            throw new RejectedException(Problem.Conflict, "The checkout and the remote branch have diverged: nothing was written. Bring the checkout back in line with the remote first.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // The host is down, the token is refused, the address is not allowed any more: the write goes on, and its push says why it did not leave.
+            synced = null;
+        }
+
+        if (synced is { Action: not GitSyncAction.UpToDate })
+        {
+            await _indexer.PassHeldAsync(source, rebuild: false, cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Commits what a change of notes did to the checkout of a source, as the account that made it, and pushes it. The caller holds the lock of the
     /// source. A push that fails is not an error of the change: the note is written and committed, the failure is recorded as a code (on the
     /// source and in readiness), and the next sync pushes it.
@@ -129,7 +166,10 @@ public sealed class SourceSync
             var secret = SecretFor(repository, url);
             var author = new GitAuthor(string.IsNullOrWhiteSpace(actor) ? "mnemarr" : actor, _policy.CommitEmail);
             _engine.Commit(folder, paths, message, author);
-            _engine.Push(url, GitPolicy.Branch(repository.Branch), folder, secret, cancellationToken);
+            // A host that stalls holds the change (and the lock of the source) for the time of a sync at most; the commit is kept and the next sync pushes it.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(_policy.SyncTimeout);
+            _engine.Push(url, GitPolicy.Branch(repository.Branch), folder, secret, timeout.Token);
             return new GitPublish(true, null);
         }
         catch (GitSyncException ex)

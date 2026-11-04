@@ -32,6 +32,7 @@ public sealed class McpController : ControllerBase
     private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission));
 
     [HttpPost]
+    [Consumes("application/json")]
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<IActionResult> Post(CancellationToken cancellationToken)
     {

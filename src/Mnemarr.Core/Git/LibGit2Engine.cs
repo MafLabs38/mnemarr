@@ -139,7 +139,13 @@ public sealed class LibGit2Engine : IGitEngine
             }
 
             string? refused = null;
-            var options = new PushOptions { OnPushStatusError = error => refused = error.Message };
+            // A host that accepts the connection and then stalls must not hold the caller (and the lock of the source) for ever: libgit2 stops when a callback says no.
+            var options = new PushOptions
+            {
+                OnPushStatusError = error => refused = error.Message,
+                OnPushTransferProgress = (_, _, _) => !cancellationToken.IsCancellationRequested,
+                OnPackBuilderProgress = (_, _, _) => !cancellationToken.IsCancellationRequested,
+            };
             if (secret is not null)
             {
                 options.CredentialsProvider = OfferOnce(url, secret);

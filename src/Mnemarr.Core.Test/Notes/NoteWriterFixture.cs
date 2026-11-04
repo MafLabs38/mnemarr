@@ -359,4 +359,44 @@ public sealed class NoteWriterFixture : IDisposable
         File.Exists(Path.Combine(source.Path, NoteWriter.TrashFolder)).Should().BeFalse("a Git source keeps what it removes in its history, not in a folder");
         Directory.Exists(Path.Combine(source.Path, NoteWriter.TrashFolder)).Should().BeFalse();
     }
+
+    [Fact]
+    public async Task should_bring_a_git_source_up_to_date_before_it_writes()
+    {
+        var source = Declare("repo", git: true);
+        var order = new List<string>();
+        _engine.During = () => order.Add("sync");
+        _engine.OnPush = () => order.Add("push");
+
+        await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        order.Should().Equal("sync", "push");
+    }
+
+    [Fact]
+    public async Task should_refuse_to_write_in_a_checkout_that_has_diverged_instead_of_piling_commits_on_it()
+    {
+        var source = Declare("repo", git: true);
+        _engine.Result = () => throw new GitSyncException(GitFailure.Diverged, "diverged: /srv/x");
+
+        var write = () => _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        (await write.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        File.Exists(Path.Combine(source.Path, "a.md")).Should().BeFalse();
+        _engine.Commits.Should().BeEmpty();
+        _syncs.Of(source.Id)!.Error.Should().Be(GitFailure.Diverged);
+    }
+
+    [Fact]
+    public async Task should_write_and_commit_locally_when_the_host_cannot_be_reached()
+    {
+        var source = Declare("repo", git: true);
+        _engine.Result = () => throw new GitSyncException(GitFailure.Unreachable, "no route to host");
+
+        var result = await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        File.Exists(Path.Combine(source.Path, "a.md")).Should().BeTrue();
+        _engine.Commits.Should().ContainSingle();
+        result.Git.Should().NotBeNull();
+    }
 }
