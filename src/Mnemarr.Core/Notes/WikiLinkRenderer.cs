@@ -20,6 +20,11 @@ internal sealed class WikiLinkRenderer
     private readonly string _notePath;
     private readonly SourceScope _scope;
     private readonly Dictionary<string, NoteRef?> _resolved = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string?> _images = new(StringComparer.OrdinalIgnoreCase);
+    private int _rewritten;
+
+    /// <summary>The most links and embeds of a note that are looked up: the index keeps as many, and a note can hold far more. The rest stay as written.</summary>
+    public const int MaxLookups = 400;
 
     public WikiLinkRenderer(INoteBrowser browser, Guid sourceId, string notePath, SourceScope scope)
     {
@@ -33,11 +38,21 @@ internal sealed class WikiLinkRenderer
 
     private string? RenderToken(WikiToken token)
     {
+        if (++_rewritten > MaxLookups)
+        {
+            return null;
+        }
+
         var (target, alias) = MarkdownNotes.Split(token.Inner);
         var file = MarkdownNotes.FileOf(target);
         if (token.Embedded && ImageFormats.Is(file))
         {
-            var image = _browser.FindImage(_sourceId, _notePath, file);
+            if (!_images.TryGetValue(file, out var image))
+            {
+                image = _browser.FindImage(_sourceId, _notePath, file);
+                _images[file] = image;
+            }
+
             return $"![{Escape(file)}]({(image is null ? UnresolvedScheme : FileScheme + Uri.EscapeDataString(image))})";
         }
 

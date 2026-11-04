@@ -25,6 +25,7 @@ ADR 0017 decided that the interface has a read-only notes reader and what it mus
 - A source out of scope is as absent as one that does not exist, in the tree, the tags, the links, the backlinks and the images.
 - New dependencies in the interface (`react-markdown`, `remark-gfm`, `mermaid` and what they bring: Mermaid is the heavy one, loaded on demand); they parse untrusted text, and the tests include hostile notes.
 - The tree lists at most 10,000 notes, the tags at most 200 and the backlinks of a note at most 200: the answer carries the total, and the interface says "showing N of M" instead of looking like a smaller vault; a vault of that size is searched, not browsed.
+- Ordinary Markdown links (`[text](other.md)`) are not read by the index: the interface follows a relative one inside its source by itself, and they give no backlinks yet. Reading them with the same scanner, so that a vault written without wikilinks has backlinks too, is the next step of the reader.
 - A heading anchor (`[[note#Heading]]`) leads to the note, not to the heading; a note embed (`![[note]]`) is a link, not a transclusion.
 
 ## Alternatives considered

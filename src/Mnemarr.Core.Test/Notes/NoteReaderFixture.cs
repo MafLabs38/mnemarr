@@ -65,6 +65,18 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_look_up_only_as_many_links_of_a_note_as_the_index_keeps_and_leave_the_rest_as_written()
+    {
+        var many = string.Concat(Enumerable.Range(0, 1_000).Select(i => $"[[n{i}]] "));
+        var source = await SourceWithAsync("s", ("a.md", many), ("n0.md", "# N0"), ("n999.md", "# N999"));
+
+        var rendered = Reader.Read(source.Id, "a.md", SourceScope.All).Rendered;
+
+        rendered.Should().Contain($"[n0](mnemarr-note:{source.Id}/n0.md)", "the first links are looked up");
+        rendered.Should().Contain("[[n999]]", "past the limit a link stays as it was written, and costs nothing");
+    }
+
+    [Fact]
     public async Task should_rewrite_a_link_to_a_note_the_caller_may_not_read_as_a_link_that_leads_nowhere()
     {
         var mine = await SourceWithAsync("mine", ("a.md", "[[secret]]"));
