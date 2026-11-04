@@ -33,19 +33,62 @@ public static class MarkdownFileScanner
         }
     }
 
-    public static IEnumerable<ScannedFile> Scan(string root)
+    /// <summary>The most images of a source that are recorded: past it, the first in path order are kept.</summary>
+    public const int MaxImages = 50_000;
+
+    /// <summary>The notes of a source, found lazily as the caller reads them; the images are known only once the walk is complete.</summary>
+    public sealed class Walk
     {
+        private readonly List<string> _images = [];
+
+        internal Walk(string root)
+        {
+            Notes = Find(root, _images, () => Completed = true);
+        }
+
+        public IEnumerable<ScannedFile> Notes { get; }
+
+        /// <summary>Whether every note was read to the end, so that <see cref="Images"/> is all of the images (in path order, at most <see cref="MaxImages"/>).</summary>
+        public bool Completed { get; private set; }
+
+        public IReadOnlyList<string> Images => Completed ? [.. _images.Order(StringComparer.Ordinal).Take(MaxImages)] : throw new InvalidOperationException("The walk is not complete.");
+    }
+
+    /// <summary>
+    /// Walks a source once for its notes and its images (the image files a note may show, see <see cref="ImageFormats"/>; none hidden or behind a
+    /// link): one walk, not two.
+    /// </summary>
+    public static Walk WalkOf(string root) => new(root);
+
+    /// <summary>The notes of a source (no images): what a walk finds, read to the end.</summary>
+    public static IEnumerable<ScannedFile> Scan(string root) => Find(root, null, null);
+
+    private static IEnumerable<ScannedFile> Find(string root, List<string>? images, Action? completed)
+    {
+        // A walk read again starts again: the images are those of the walk that reaches its end.
+        images?.Clear();
         var options = new EnumerationOptions
         {
             RecurseSubdirectories = true,
             IgnoreInaccessible = true,
-            MatchCasing = MatchCasing.CaseInsensitive,
             AttributesToSkip = FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint,
         };
 
-        return new DirectoryInfo(root)
-            .EnumerateFiles("*.md", options)
-            .Where(IsNote)
-            .Select(file => new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName, file.Length, file.LastWriteTimeUtc.Ticks));
+        foreach (var file in new DirectoryInfo(root).EnumerateFiles("*", options))
+        {
+            if (file.Extension.Equals(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                if (IsNote(file))
+                {
+                    yield return new ScannedFile(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'), file.FullName, file.Length, file.LastWriteTimeUtc.Ticks);
+                }
+            }
+            else if (images is not null && ImageFormats.Is(file.Name))
+            {
+                images.Add(Path.GetRelativePath(root, file.FullName).Replace('\\', '/'));
+            }
+        }
+
+        completed?.Invoke();
     }
 }

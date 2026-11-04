@@ -1,6 +1,6 @@
 # 0017 — A notes reader in the interface
 
-- **Status**: accepted
+- **Status**: accepted; point 4 ("the content-security policy of the interface stays as strict as it is") is partly superseded by [0021](0021-the-reader-reads-links-from-the-index-and-renders-notes-as-untrusted-text.md), which allows inline styles for diagrams
 - **Date**: 2026-11-03
 - **Spec**: D-37 (amends D-18)
 

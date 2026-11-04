@@ -105,8 +105,9 @@ public sealed class SourceIndexer
         var known = _index.Notes(source.Id);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var counts = new Dictionary<FileResult, int>();
+        var walk = MarkdownFileScanner.WalkOf(source.Path);
 
-        foreach (var file in MarkdownFileScanner.Scan(source.Path))
+        foreach (var file in walk.Notes)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (SourcePaths.CrossesLink(file.FullPath, source.Path))
@@ -132,7 +133,24 @@ public sealed class SourceIndexer
             removed++;
         }
 
+        RecordImages(source, walk);
         return new IndexReport(counts.GetValueOrDefault(FileResult.Added), counts.GetValueOrDefault(FileResult.Updated), removed, counts.GetValueOrDefault(FileResult.Unchanged));
+    }
+
+    /// <summary>The image files of the source, for the notes that show them: written only when they are not what the last pass found.</summary>
+    private void RecordImages(Source source, MarkdownFileScanner.Walk walk)
+    {
+        if (!walk.Completed)
+        {
+            // A walk that did not reach its end knows only some of the images: what is recorded is not replaced by part of it.
+            return;
+        }
+
+        var found = walk.Images.ToHashSet(StringComparer.Ordinal);
+        if (!found.SetEquals(_index.Images(source.Id)))
+        {
+            _index.ReplaceImages(source.Id, found);
+        }
     }
 
     private enum FileResult
@@ -149,7 +167,7 @@ public sealed class SourceIndexer
 
     private async Task<FileResult> IndexFileAsync(Source source, ScannedFile file, NoteState? previous, bool rebuild, CancellationToken cancellationToken)
     {
-        if (!rebuild && previous is { } same && same.Chunker == MarkdownChunker.Version && same.Length == file.Length && same.ModifiedTicks == file.ModifiedTicks)
+        if (!rebuild && previous is { } same && same.Chunker == MarkdownChunker.Version && same.MetaVersion == MarkdownNotes.Version && same.Length == file.Length && same.ModifiedTicks == file.ModifiedTicks)
         {
             // Same size and same time as when it was read: not read again, so that a pass costs what changed and not the size of the vault.
             return FileResult.Unchanged;
@@ -163,13 +181,23 @@ public sealed class SourceIndexer
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
         if (!rebuild && previous is { } state && state.ContentHash == hash && state.Chunker == MarkdownChunker.Version)
         {
-            // Touched, not changed: the content is what was cut, so only what the next pass compares with is brought up to date.
-            _index.Touch(source.Id, file);
+            // Touched, not changed: the content is what was cut. Only what the next pass compares with is brought up to date, and the links
+            // and tags are read again if they were read by an older version, without cutting the note again.
+            if (state.MetaVersion == MarkdownNotes.Version)
+            {
+                _index.Touch(source.Id, file);
+            }
+            else
+            {
+                _index.UpdateMeta(source.Id, file, MarkdownNotes.Parse(Decode(bytes)).ResolvedFrom(file.RelativePath), MarkdownNotes.Version);
+            }
+
             return FileResult.Unchanged;
         }
 
         var text = Decode(bytes);
-        _index.Upsert(source.Id, file, MarkdownChunker.Title(text, file.RelativePath), hash, MarkdownChunker.Version, MarkdownChunker.Split(text), _clock.GetUtcNow());
+        var note = new IndexedNote(MarkdownChunker.Title(text, file.RelativePath), hash, MarkdownChunker.Version, MarkdownChunker.Split(text), MarkdownNotes.Parse(text).ResolvedFrom(file.RelativePath), MarkdownNotes.Version);
+        _index.Upsert(source.Id, file, note, _clock.GetUtcNow());
         return previous is null ? FileResult.Added : FileResult.Updated;
     }
 

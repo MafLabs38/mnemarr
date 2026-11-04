@@ -19,6 +19,11 @@ export class ApiError extends Error {
 
 const API_BASE = '/api/v1';
 
+/** The address of a path of the API, for what the browser fetches by itself (an image): the base is added here, like everywhere. */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 /** The header the server requires on a write that does not carry an API key (docs/adr/0016): a browser cannot add it to a form. */
 const REQUEST_HEADER = 'X-Mnemarr-Request';
 

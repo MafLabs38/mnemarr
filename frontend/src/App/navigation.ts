@@ -14,9 +14,10 @@ export interface MenuEntry {
   permission?: string;
 }
 
-/** The menu of the application. Mnemarr's interface only configures and watches the brain (docs/SPEC.md, D-18). */
+/** The menu of the application. Mnemarr's interface configures and watches the brain (D-18) and has a read-only reader of its notes (D-37), in docs/SPEC.md. */
 export const menuEntries: ReadonlyArray<MenuEntry> = [
   { to: '/', label: 'Overview', icon: icons.OVERVIEW, available: true },
+  { to: '/notes', label: 'Notes', icon: icons.NOTES, available: true, permission: permissions.notesRead },
   { to: '/sources', label: 'Sources', icon: icons.SOURCES, available: true, permission: permissions.sourcesManage },
   { to: '/agents', label: 'Agents', icon: icons.AGENTS, available: false },
   { to: '/settings', label: 'Settings', icon: icons.SETTINGS, available: false },

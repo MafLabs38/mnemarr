@@ -40,35 +40,6 @@
   font-size: var(--fontSizeMeta);
 }
 
-.search {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px;
-}
-
-.results {
-  display: grid;
-  gap: 14px;
-  margin: 16px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.hitTitle {
-  font-weight: 600;
-}
-
-.hitWhere {
-  color: var(--inkMuted);
-  font-size: var(--fontSizeMeta);
-}
-
-.snippet {
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
-}
-
 .managed {
   display: block;
   color: var(--inkMuted);

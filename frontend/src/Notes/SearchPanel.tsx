@@ -1,16 +1,20 @@
 import { type FormEvent, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import TextField from 'Components/Form/TextField';
 import LoadingIndicator from 'Components/LoadingIndicator';
+import { permissions } from 'Session/session';
+import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
-import { useSearch } from './sources';
-import styles from './Sources.module.css';
+import { noteAddress, useSearch } from './notes';
+import styles from './Notes.module.css';
 
 function Results({ query }: Readonly<{ query: string }>) {
   const { data: hits, isFetching, isError } = useSearch(query);
+  const { can } = usePermissions();
 
   if (isFetching) {
     return <LoadingIndicator />;
@@ -25,7 +29,9 @@ function Results({ query }: Readonly<{ query: string }>) {
     <ul className={styles.results}>
       {hits.map((hit) => (
         <li key={`${hit.sourceId}/${hit.path}/${hit.heading}/${hit.snippet}`}>
-          <div className={styles.hitTitle}>{hit.title}</div>
+          <div className={styles.hitTitle}>
+            {can(permissions.notesRead) ? <Link to={noteAddress(hit)}>{hit.title}</Link> : hit.title}
+          </div>
           <div className={styles.hitWhere}>
             {hit.sourceName} · {hit.path}
             {hit.heading && ` · ${hit.heading}`}
@@ -37,7 +43,7 @@ function Results({ query }: Readonly<{ query: string }>) {
   );
 }
 
-/** Tries the keyword search over the indexed notes, to see that what was declared is found. */
+/** The keyword search over the notes the person may read, with each hit leading to its note. */
 export default function SearchPanel() {
   const [text, setText] = useState('');
   const [asked, setAsked] = useState('');

@@ -37,7 +37,7 @@ public sealed class DatabaseFixture : IDisposable
             using var back = connection.CreateCommand();
             back.CommandText = """
                 INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now');
-                DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
+                DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -51,6 +51,30 @@ public sealed class DatabaseFixture : IDisposable
         using var accounts = upgraded.CreateCommand();
         accounts.CommandText = "SELECT COUNT(*) FROM accounts";
         accounts.ExecuteScalar().Should().Be(1L);
+    }
+
+    [Fact]
+    public void should_add_the_links_and_tags_to_a_database_that_has_sources_and_notes_without_losing_a_note()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
+                INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at) VALUES ('s', 'a.md', '', 'A', 'h', 'now');
+                DROP INDEX notes_by_name; DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; ALTER TABLE notes DROP COLUMN name; ALTER TABLE notes DROP COLUMN meta_version;
+                PRAGMA user_version = 2;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var command = upgraded.CreateCommand();
+        command.CommandText = "SELECT (SELECT COUNT(*) FROM notes), (SELECT COUNT(*) FROM note_links) + (SELECT COUNT(*) FROM note_tags), (SELECT name FROM notes)";
+        using var reader = command.ExecuteReader();
+        reader.Read().Should().BeTrue();
+        (reader.GetInt64(0), reader.GetInt64(1), reader.GetString(2)).Should().Be((1L, 0L, string.Empty), "the note stays; the next pass reads its links, as its chunker version is older");
     }
 
     [Fact]

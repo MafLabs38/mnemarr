@@ -25,3 +25,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0018](0018-storage-layer-ado-net-and-numbered-schema-steps.md) | Storage layer: ADO.NET over SQLite, a schema in numbered steps | D-38 |
 | [0019](0019-sources-are-declared-through-the-api-and-scanned-into-a-searchable-index.md) | Sources are declared through the API and scanned into a searchable index | D-39 |
 | [0020](0020-configuration-as-code.md) | Configuration as code: a YAML document, applied through the API or as a file | D-40 |
+| [0021](0021-the-reader-reads-links-from-the-index-and-renders-notes-as-untrusted-text.md) | The reader reads links from the index and renders notes as untrusted text | D-41 |

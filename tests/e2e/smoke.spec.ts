@@ -101,6 +101,7 @@ test.describe('smoke @smoke', () => {
     const menu = page.getByRole('navigation', { name: 'Main menu' });
     await expect(menu.getByRole('link', { name: 'Overview' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'System' })).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Notes' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Sources' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Agents' })).toHaveCount(0);
     await expect(menu).toContainText('Agents');
@@ -292,17 +293,56 @@ test.describe('smoke @smoke', () => {
     await expect(row).toBeVisible();
 
     await row.getByRole('button', { name: `Index now for ${name}` }).click();
-    await expect(row.getByRole('status')).toContainText('1 added');
+    // The timer of the service may have scanned the new source first: either way the pass is done and the note is there.
+    await expect(row.getByRole('status')).toContainText(' added, ');
 
+    // The notes are searched in the reader, by anybody who may read them.
+    await page.goto('/notes');
     const search = page.getByRole('region', { name: 'Search' });
     await search.getByLabel('Search the notes').fill('layers');
     await search.getByRole('button', { name: 'Search' }).click();
     await expect(search.getByText(`${name} · docker.md · Docker > Images`)).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-    await row.getByRole('button', { name: 'Delete' }).click();
-    await row.getByRole('button', { name: `Confirm: delete ${name}` }).click();
+    await page.goto('/sources');
+    const declared = page.getByRole('row', { name: new RegExp(name) });
+    await declared.getByRole('button', { name: 'Delete' }).click();
+    await declared.getByRole('button', { name: `Confirm: delete ${name}` }).click();
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  test('a person reads the notes: the tree, a rendered note, a wikilink to another source, and the backlinks', async ({
+    page,
+  }) => {
+    // The sources of the stack come from its configuration file and are scanned on a timer: index them now, as an operator would.
+    await signIn(page, '/sources');
+    for (const name of ['seeded', 'memory']) {
+      const row = page.getByRole('row', { name: new RegExp(name) });
+      await row.getByRole('button', { name: `Index now for ${name}` }).click();
+      await expect(row.getByRole('status')).toBeVisible();
+    }
+    await page.goto('/notes');
+
+    const tree = page.getByRole('navigation', { name: 'Notes' });
+    await expect(tree.getByText('seeded')).toBeVisible();
+    // The folder of this note is also declared by another journey, in parallel: this one reads the source the stack's file describes.
+    await tree.getByRole('region', { name: 'seeded' }).getByRole('link', { name: 'Docker' }).click();
+    await expect(page.getByRole('heading', { name: 'Docker' })).toBeVisible();
+    await expect(page.getByText('An image is made of read-only layers')).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Tags' }).getByRole('link', { name: '#infra' })).toBeVisible();
+    await expect(
+      page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'A decision' }),
+    ).toBeVisible();
+    // A Mermaid diagram is drawn in the real browser, under the real Content-Security-Policy, as an image.
+    const diagram = page.getByRole('img', { name: 'Diagram' });
+    await expect(diagram).toBeVisible();
+    expect(await diagram.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+    expect(await diagram.getAttribute('src')).toMatch(/^data:image\/svg\+xml/);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    await page.getByRole('article').getByRole('link', { name: 'decision', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'A decision' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Docker' })).toBeVisible();
   });
 
   test('the configuration file given at start is applied: its sources are managed and cannot be changed by hand', async ({
