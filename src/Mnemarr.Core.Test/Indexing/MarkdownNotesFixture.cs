@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Mnemarr.Core.Indexing;
 
 namespace Mnemarr.Core.Test.Indexing;
@@ -48,30 +47,49 @@ public sealed class MarkdownNotesFixture
         MarkdownNotes.Body("# No front matter\n---\nnot front matter").Should().Be("# No front matter\n---\nnot front matter");
     }
 
-    /// <summary>The cases of <c>tests/shared/link-targets.json</c>, which the interface's own reading of a link is tested against too: the two must agree.</summary>
-    public static TheoryData<string, string?> SharedTargets()
-    {
-        var folder = new DirectoryInfo(AppContext.BaseDirectory);
-        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "tests", "shared", "link-targets.json")))
-        {
-            folder = folder.Parent;
-        }
-
-        var cases = JsonSerializer.Deserialize<List<Dictionary<string, string?>>>(File.ReadAllText(Path.Combine((folder ?? throw new InvalidOperationException($"tests/shared/link-targets.json was not found above {AppContext.BaseDirectory}")).FullName, "tests", "shared", "link-targets.json")))!;
-        var data = new TheoryData<string, string?>();
-        foreach (var c in cases)
-        {
-            data.Add(c["written"]!, c["target"]);
-        }
-
-        return data;
-    }
-
     [Theory]
-    [MemberData(nameof(SharedTargets))]
-    public void should_normalise_the_target_of_a_link_as_the_interface_does(string written, string? expected)
+    [InlineData("Docker", "docker")]
+    [InlineData("  Devops\\Docker.MD#Images ", "devops/docker")]
+    [InlineData("/devops/docker/", "devops/docker")]
+    [InlineData("notes.markdown", "notes")]
+    [InlineData("./Sibling", "./sibling")]
+    [InlineData("../Up/Note.md#Heading", "../up/note")]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("#only-a-heading", null)]
+    public void should_normalise_the_target_of_a_link(string written, string? expected)
     {
         MarkdownNotes.NormalizeTarget(written).Should().Be(expected);
+    }
+
+    [Fact]
+    public void should_rewrite_links_and_embeds_outside_code_with_the_same_reading_as_the_index()
+    {
+        var body = "a [[one]] b ![[img.png|300]]\n`[[code]]` [[two|text]]\n```\n[[fenced]]\n```\n[[never closed";
+
+        var rewritten = MarkdownNotes.Rewrite(body, token => $"<{(token.Embedded ? "embed" : "link")}:{token.Inner}>");
+
+        rewritten.Should().Be("a <link:one> b <embed:img.png|300>\n`[[code]]` <link:two|text>\n```\n[[fenced]]\n```\n[[never closed");
+    }
+
+    [Fact]
+    public void should_leave_a_link_as_written_when_the_replacement_says_nothing_and_keep_line_breaks_and_a_missing_last_one()
+    {
+        MarkdownNotes.Rewrite("[[a]]\r\n[[b]]", token => token.Inner == "a" ? null : "B").Should().Be("[[a]]\n" + "B");
+        MarkdownNotes.Rewrite("", _ => "x").Should().BeEmpty();
+        MarkdownNotes.Rewrite("no links\n", _ => "x").Should().Be("no links\n");
+    }
+
+    [Fact]
+    public async Task should_rewrite_a_hostile_line_of_brackets_in_one_pass()
+    {
+        var hostile = new string('[', 1_000_000) + "\n[[a]]";
+
+        var rewriting = Task.Run(() => MarkdownNotes.Rewrite(hostile, _ => "x"), TestContext.Current.CancellationToken);
+        var finished = await Task.WhenAny(rewriting, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        finished.Should().BeSameAs(rewriting, "a note must be rewritten in one pass, whatever it holds");
+        (await rewriting).Should().EndWith("\nx");
     }
 
     [Theory]

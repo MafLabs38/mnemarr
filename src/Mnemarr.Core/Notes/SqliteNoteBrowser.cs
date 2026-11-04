@@ -12,7 +12,6 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
     private const int MaxTags = 200;
     private const int MaxBacklinks = 200;
-    private const int MaxBacklinkCandidates = 1000;
     private const string SourceParameter = "$source";
     private const string ScopeFilter = "($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources)))";
     private readonly IDatabase _database;
@@ -53,6 +52,12 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         count.CommandText = $"SELECT COUNT(*) {FromClause}";
         BindListing(count, scope, sourceId, tag);
         return new NoteListing(entries, Convert.ToInt32(count.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    public NoteRef? Resolve(Guid fromSource, string target, SourceScope scope)
+    {
+        using var connection = _database.Open();
+        return Resolve(connection, target, fromSource, scope);
     }
 
     public bool HasImage(Guid sourceId, string path)
@@ -145,11 +150,13 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
         var (id, reference, name) = note.Value;
         var pathWithoutExtension = WithoutExtension(reference.Path).ToLowerInvariant();
+        var (backlinks, backlinksTotal) = Backlinks(connection, id, reference, name, pathWithoutExtension, scope);
         return new NoteDetail(
             reference,
             Column(connection, "SELECT DISTINCT tag FROM note_tags WHERE note_id = $note ORDER BY tag", id),
-            [.. Links(connection, id).Select(link => new ResolvedLink(link.Written, Resolve(connection, link.Target, sourceId, scope)))],
-            Backlinks(connection, id, reference, name, pathWithoutExtension, scope));
+            [.. Column(connection, "SELECT DISTINCT target FROM note_links WHERE note_id = $note ORDER BY target", id).Select(target => new ResolvedLink(target, Resolve(connection, target, sourceId, scope)))],
+            backlinks,
+            backlinksTotal);
     }
 
     private static (long Id, NoteRef Reference, string Name)? ReadNote(SqliteConnection connection, Guid sourceId, string path, SourceScope scope)
@@ -213,10 +220,10 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
     /// <summary>
     /// The notes whose links lead to this one. The index finds the notes that name it; each is kept only if its link, resolved the way
-    /// <see cref="Resolve"/> does for the note that holds it, really leads here: with two notes of the same name, a link leads to one, and
+    /// <see cref="Resolve(SqliteConnection, string, Guid, SourceScope)"/> does for the note that holds it, really leads here: with two notes of the same name, a link leads to one, and
     /// only that one has it as a backlink.
     /// </summary>
-    private static List<NoteRef> Backlinks(SqliteConnection connection, long noteId, NoteRef self, string name, string pathWithoutExtension, SourceScope scope)
+    private static (List<NoteRef> Notes, int Total) Backlinks(SqliteConnection connection, long noteId, NoteRef self, string name, string pathWithoutExtension, SourceScope scope)
     {
         using var command = connection.CreateCommand();
         // The targets that can lead here are the name of the note and each end of its path (`c`, `b/c`, `a/b/c`): looked up on the index of targets.
@@ -227,10 +234,8 @@ public sealed class SqliteNoteBrowser : INoteBrowser
               AND n.id <> $note
               AND l.target IN (SELECT value FROM json_each($targets))
             ORDER BY s.name, n.path
-            LIMIT $limit
             """;
         AddScope(command, scope);
-        command.Parameters.AddWithValue("$limit", MaxBacklinkCandidates);
         command.Parameters.AddWithValue("$note", noteId);
         command.Parameters.AddWithValue("$targets", JsonSerializer.Serialize(TargetsThatLeadTo(name, pathWithoutExtension)));
         var candidates = new List<(NoteRef Note, string Target)>();
@@ -244,24 +249,22 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
         // Many notes link with the same words: each distinct link is resolved once, from the source of the note that holds it.
         var resolved = new Dictionary<(string Target, Guid From), NoteRef?>();
-        return
-        [
-            .. candidates
-                .Where(candidate =>
+        var all = candidates
+            .Where(candidate =>
+            {
+                var key = (candidate.Target, candidate.Note.SourceId);
+                if (!resolved.TryGetValue(key, out var found))
                 {
-                    var key = (candidate.Target, candidate.Note.SourceId);
-                    if (!resolved.TryGetValue(key, out var found))
-                    {
-                        found = Resolve(connection, candidate.Target, candidate.Note.SourceId, scope);
-                        resolved[key] = found;
-                    }
+                    found = Resolve(connection, candidate.Target, candidate.Note.SourceId, scope);
+                    resolved[key] = found;
+                }
 
-                    return found is not null && found.SourceId == self.SourceId && found.Path == self.Path;
-                })
-                .Select(candidate => candidate.Note)
-                .DistinctBy(note => (note.SourceId, note.Path))
-                .Take(MaxBacklinks),
-        ];
+                return found is not null && found.SourceId == self.SourceId && found.Path == self.Path;
+            })
+            .Select(candidate => candidate.Note)
+            .DistinctBy(note => (note.SourceId, note.Path))
+            .ToList();
+        return ([.. all.Take(MaxBacklinks)], all.Count);
     }
 
     private static IEnumerable<string> TargetsThatLeadTo(string name, string pathWithoutExtension)
@@ -272,21 +275,6 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         {
             yield return string.Join('/', parts[from..]);
         }
-    }
-
-    private static List<(string Target, string Written)> Links(SqliteConnection connection, long noteId)
-    {
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT DISTINCT target, written FROM note_links WHERE note_id = $note ORDER BY written, target";
-        command.Parameters.AddWithValue("$note", noteId);
-        using var reader = command.ExecuteReader();
-        var links = new List<(string, string)>();
-        while (reader.Read())
-        {
-            links.Add((reader.GetString(0), reader.GetString(1)));
-        }
-
-        return links;
     }
 
     private static List<string> Column(SqliteConnection connection, string sql, long noteId)

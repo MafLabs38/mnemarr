@@ -28,10 +28,11 @@ function noteWith(markdown: string, extra: Partial<Note> = {}): Note {
     path: 'devops/docker.md',
     title: 'Docker',
     markdown,
+    rendered: markdown,
     tags: [],
     links: [],
     backlinks: [],
-    embeds: {},
+    backlinksTotal: 0,
     ...extra,
   };
 }
@@ -96,16 +97,11 @@ describe('Notes', () => {
     expect(await screen.findByText('Choose a note in the list.')).toBeInTheDocument();
   });
 
-  it('follows a wikilink to a note the person may read, and shows one that leads nowhere as plain text', async () => {
+  it('follows a link the server wrote to a note the person may read, and shows one that leads nowhere as plain text', async () => {
+    const target = `mnemarr-note:${S1}/devops%2Fkubernetes.md`;
     server(
       noteWith('See [[kubernetes]] and [[ghost|the ghost]].', {
-        links: [
-          {
-            target: 'kubernetes',
-            note: { sourceId: S1, sourceName: 'cours', path: 'devops/kubernetes.md', title: 'Kubernetes' },
-          },
-          { target: 'ghost', note: null },
-        ],
+        rendered: `See [kubernetes](${target}) and [the ghost](mnemarr-unresolved:).`,
       }),
     );
     renderWithProviders(<Notes />, open, readerSession);
@@ -137,6 +133,18 @@ describe('Notes', () => {
       'href',
       `/notes?source=${S2}&path=decisions%2Freseau.md`,
     );
+  });
+
+  it('says when the backlinks were cut, and by how much', async () => {
+    server(
+      noteWith('# Docker', {
+        backlinks: [{ sourceId: S2, sourceName: 'memoire', path: 'decisions/reseau.md', title: 'Choix du réseau' }],
+        backlinksTotal: 230,
+      }),
+    );
+    renderWithProviders(<Notes />, open, readerSession);
+
+    expect(await screen.findByText('Showing 1 of 230 backlinks.')).toBeInTheDocument();
   });
 
   it('says when no note links to this one', async () => {
@@ -205,12 +213,10 @@ describe('Notes', () => {
 
     it('fetches an image of the note from its own source only, and shows another address as text', async () => {
       server(
-        noteWith(
-          '![[plan.png]] ![relative](img/a.png) ![outside](../../x.png) ![remote](https://tracker.example/pixel.gif) ![[missing.png]]',
-          {
-            embeds: { 'plan.png': 'devops/plan.png' },
-          },
-        ),
+        noteWith('', {
+          rendered:
+            '![plan.png](mnemarr-file:devops%2Fplan.png) ![relative](img/a.png) ![outside](../../x.png) ![remote](https://tracker.example/pixel.gif) ![missing.png](mnemarr-unresolved:)',
+        }),
       );
       const { container } = renderWithProviders(<Notes />, open, readerSession);
 
@@ -225,18 +231,14 @@ describe('Notes', () => {
       expect(screen.getByText('Image not shown: missing.png')).toBeInTheDocument();
     });
 
-    it('does not take a name that every object has for an image of the note', async () => {
-      server(
-        noteWith('![a](mnemarr-file:constructor) ![b](mnemarr-file:__proto__) ![c](mnemarr-file:toString) then plain', {
-          embeds: {},
-        }),
-      );
+    it('does not show an address the server could not have written as an image or a link of the note', async () => {
+      server(noteWith('', { rendered: '![a](mnemarr-file:%E0%A4%A) [b](mnemarr-note:no-slash) then plain' }));
       const { container } = renderWithProviders(<Notes />, open, readerSession);
 
       await screen.findByText(/then plain/);
 
-      expect(container.querySelectorAll('main img')).toHaveLength(0);
-      expect(screen.getAllByText(/Image not shown/)).toHaveLength(3);
+      expect(screen.queryByRole('link', { name: 'b' })).not.toBeInTheDocument();
+      expect(container.querySelectorAll('main img')).toHaveLength(1);
     });
 
     it('follows a relative link to a Markdown file inside the source and refuses one that leaves it', async () => {
@@ -328,29 +330,6 @@ describe('Notes', () => {
       expect(screen.getByText('Before')).toBeInTheDocument();
       expect(screen.getByText('After')).toBeInTheDocument();
     });
-  });
-
-  it('follows a link written from the folder of its note: the server returns it as the note wrote it', async () => {
-    server(
-      noteWith('Back to [[../01 - Topic A/Index|the index]] and [[../../outside]].', {
-        links: [
-          {
-            target: '../01 - topic a/index',
-            note: { sourceId: S1, sourceName: 'cours', path: '01 - Topic A/Index.md', title: 'Index' },
-          },
-          { target: '../../outside', note: null },
-        ],
-      }),
-    );
-    renderWithProviders(<Notes />, open, readerSession);
-
-    const body = await screen.findByText(/Back to/);
-
-    expect(within(body).getByRole('link', { name: 'the index' })).toHaveAttribute(
-      'href',
-      `/notes?source=${S1}&path=01+-+Topic+A%2FIndex.md`,
-    );
-    expect(within(body).queryByRole('link', { name: '../../outside' })).not.toBeInTheDocument();
   });
 
   it('shows the title of a note that has no title of its own, and none twice for one that has', async () => {

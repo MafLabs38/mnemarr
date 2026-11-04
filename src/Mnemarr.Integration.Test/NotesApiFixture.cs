@@ -65,9 +65,11 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         note.GetProperty("backlinks").EnumerateArray().Select(b => b.GetProperty("path").GetString()).Should().Equal("art/index.md", "devops/kubernetes.md");
         var art = await reader.GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/art/index.md", Token);
         var up = art.GetProperty("links").EnumerateArray().Single();
-        up.GetProperty("target").GetString().Should().Be("../devops/docker", "the link as the note wrote it, which is what the interface finds in the text");
+        up.GetProperty("target").GetString().Should().Be("devops/docker", "a link is stored from the root of the source");
         up.GetProperty("note").GetProperty("path").GetString().Should().Be("devops/docker.md", "a link written from the folder of its note leads to the note");
-        note.GetProperty("embeds").GetProperty("plan.png").GetString().Should().Be("devops/plan.png");
+        note.GetProperty("rendered").GetString().Should().Contain("![plan.png](mnemarr-file:devops%2Fplan.png)").And.Contain($"[kubernetes](mnemarr-note:{id}/devops%2Fkubernetes.md)").And.Contain("[ghost](mnemarr-unresolved:)");
+        note.GetProperty("markdown").GetString().Should().Contain("[[kubernetes]]", "the Markdown as written stays available");
+        note.GetProperty("backlinksTotal").GetInt32().Should().Be(2);
         tagged.GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("path").GetString()).Should().Contain("devops/docker.md");
         tags.GetProperty("tags").EnumerateArray().Should().Contain(t => t.GetProperty("tag").GetString() == "infra");
     }

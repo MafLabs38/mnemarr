@@ -3,11 +3,10 @@ using System.Text;
 namespace Mnemarr.Core.Indexing;
 
 /// <summary>A <c>[[wikilink]]</c> of a note: the name or path it points at (lower case, no extension, no heading, written from the root of the source), and its text if it has one.</summary>
-public sealed record WikiLink(string Target, string? Alias, string? Written = null)
-{
-    /// <summary>The target as the note wrote it (normalised, not resolved from its folder): what the interface finds in the text of the note and looks up.</summary>
-    public string AsWritten => Written ?? Target;
-}
+public sealed record WikiLink(string Target, string? Alias);
+
+/// <summary>A <c>[[link]]</c> or <c>![[embed]]</c> found in the text of a note: what is between the brackets, and whether it was an embed.</summary>
+public sealed record WikiToken(string Inner, bool Embedded);
 
 /// <summary>What a note says about itself and about other notes: the notes it links to, the files it embeds, and its tags.</summary>
 public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<string> Embeds, IReadOnlyList<string> Tags)
@@ -25,7 +24,7 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
         {
             if (MarkdownNotes.FromFolder(notePath, link.Target) is { } target)
             {
-                resolved.Add(link with { Target = target, Written = link.AsWritten });
+                resolved.Add(link with { Target = target });
             }
         }
 
@@ -71,7 +70,7 @@ public static class MarkdownNotes
             }
             else if (!inFence)
             {
-                ReadLine(WithoutInlineCode(raw), links, embeds, tags);
+                ReadLine(raw, links, embeds, tags);
             }
         }
 
@@ -223,30 +222,71 @@ public static class MarkdownNotes
         return result.ToString();
     }
 
-    private static void ReadLine(string line, List<WikiLink> links, List<string> embeds, List<string> tags)
+    /// <summary>One line of a note: the links, embeds and tags that are in it, code left out.</summary>
+    private static void ReadLine(string raw, List<WikiLink> links, List<string> embeds, List<string> tags)
     {
+        var line = WithoutInlineCode(raw);
+        var tokens = FindTokens(line);
+        foreach (var token in tokens)
+        {
+            AddLink(InnerOf(raw, token), token.Embedded, links, embeds);
+        }
+
+        ReadTags(line, tokens, tags);
+    }
+
+    /// <summary>Where a <c>[[link]]</c> or <c>![[embed]]</c> is in a line: the start (at the <c>!</c> of an embed) and the end, past the closing brackets.</summary>
+    private readonly record struct Span(int Start, int End, bool Embedded);
+
+    private static string InnerOf(string line, Span token) => line[(token.Start + (token.Embedded ? 3 : 2))..(token.End - 2)];
+
+    /// <summary>
+    /// The links and embeds of a line, left to right, in one pass. The next <c>]]</c> is remembered, and a link must close within what a link can
+    /// hold: a line of brackets must not cost a search for each. A <c>[[</c> that never closes is text.
+    /// </summary>
+    private static List<Span> FindTokens(string line)
+    {
+        var tokens = new List<Span>();
         var index = 0;
-        var nextClose = -2; // where the next `]]` is, remembered: a line of brackets must not cost a search for each
+        var nextClose = -2;
+        while (index < line.Length - 1)
+        {
+            if (line[index] != '[' || line[index + 1] != '[')
+            {
+                index++;
+                continue;
+            }
+
+            var from = index + 2;
+            if (nextClose != -1 && nextClose < from)
+            {
+                nextClose = line.IndexOf("]]", from, StringComparison.Ordinal);
+            }
+
+            if (nextClose >= 0 && nextClose - from <= MaxInner)
+            {
+                var embedded = index > 0 && line[index - 1] == '!';
+                tokens.Add(new Span(embedded ? index - 1 : index, nextClose + 2, embedded));
+                index = nextClose + 2;
+            }
+            else
+            {
+                index += 2;
+            }
+        }
+
+        return tokens;
+    }
+
+    private static void ReadTags(string line, List<Span> tokens, List<string> tags)
+    {
+        var next = 0;
+        var index = 0;
         while (index < line.Length)
         {
-            if (line.AsSpan(index).StartsWith("[["))
+            if (next < tokens.Count && index == tokens[next].Start)
             {
-                var from = index + 2;
-                if (nextClose != -1 && nextClose < from)
-                {
-                    nextClose = line.IndexOf("]]", from, StringComparison.Ordinal);
-                }
-
-                if (nextClose >= 0 && nextClose - from <= MaxInner)
-                {
-                    AddLink(line[from..nextClose], embedded: index > 0 && line[index - 1] == '!', links, embeds);
-                    index = nextClose + 2;
-                }
-                else
-                {
-                    // Never closed, or not closed within what a link can hold: it is text, and what follows on the line (a tag) is still read.
-                    index += 2;
-                }
+                index = tokens[next++].End;
             }
             else if (StartsTag(line, index))
             {
@@ -257,6 +297,54 @@ public static class MarkdownNotes
                 index++;
             }
         }
+    }
+
+    /// <summary>
+    /// Rewrites the links and embeds of a note, outside code, with what <paramref name="replace"/> says (null leaves one as it was written):
+    /// the same reading as the index's, so that what is shown and what is stored cannot disagree.
+    /// </summary>
+    public static string Rewrite(string body, Func<WikiToken, string?> replace)
+    {
+        var result = new StringBuilder(body.Length);
+        var inFence = false;
+        var first = true;
+        foreach (var raw in body.ReplaceLineEndings("\n").Split('\n'))
+        {
+            if (!first)
+            {
+                result.Append('\n');
+            }
+
+            first = false;
+            if (raw.StartsWith("```", StringComparison.Ordinal) || raw.StartsWith("~~~", StringComparison.Ordinal))
+            {
+                inFence = !inFence;
+                result.Append(raw);
+            }
+            else if (inFence)
+            {
+                result.Append(raw);
+            }
+            else
+            {
+                RewriteLine(raw, replace, result);
+            }
+        }
+
+        return result.ToString();
+    }
+
+    private static void RewriteLine(string raw, Func<WikiToken, string?> replace, StringBuilder result)
+    {
+        var position = 0;
+        foreach (var token in FindTokens(WithoutInlineCode(raw)))
+        {
+            result.Append(raw, position, token.Start - position);
+            result.Append(replace(new WikiToken(InnerOf(raw, token), token.Embedded)) ?? raw[token.Start..token.End]);
+            position = token.End;
+        }
+
+        result.Append(raw, position, raw.Length - position);
     }
 
     /// <summary>A <c>#</c> that opens a tag: at the start of the line, after a space or after <c>[</c> (so not <c>C#</c>, not the anchor of a link such as <c>(#setup)</c>).</summary>
@@ -281,11 +369,16 @@ public static class MarkdownNotes
         return end;
     }
 
-    private static void AddLink(string inner, bool embedded, List<WikiLink> links, List<string> embeds)
+    /// <summary>The target and the text of what is between the brackets: <c>target|text</c>.</summary>
+    public static (string Target, string? Alias) Split(string inner)
     {
         var bar = inner.IndexOf('|', StringComparison.Ordinal);
-        var target = (bar >= 0 ? inner[..bar] : inner).Trim();
-        var alias = bar >= 0 ? inner[(bar + 1)..].Trim() : null;
+        return ((bar >= 0 ? inner[..bar] : inner).Trim(), bar >= 0 ? inner[(bar + 1)..].Trim() : null);
+    }
+
+    private static void AddLink(string inner, bool embedded, List<WikiLink> links, List<string> embeds)
+    {
+        var (target, alias) = Split(inner);
         if (embedded && ImageFormats.Is(FileOf(target)))
         {
             var file = FileOf(target);
@@ -305,7 +398,7 @@ public static class MarkdownNotes
     }
 
     /// <summary>The file a link or an embed names: no heading, trimmed, with <c>/</c>.</summary>
-    private static string FileOf(string target)
+    internal static string FileOf(string target)
     {
         var hash = target.IndexOf('#', StringComparison.Ordinal);
         return (hash >= 0 ? target[..hash] : target).Trim().Replace('\\', '/');

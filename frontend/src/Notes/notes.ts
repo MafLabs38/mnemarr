@@ -16,7 +16,7 @@ export interface NoteRef {
 }
 
 export interface NoteLink {
-  /** The link as the note wrote it (lower case, no extension, no heading): what is found in the text. */
+  /** What the link names, as stored: lower case, no extension, from the root of the source. */
   target: string;
   /** The note it leads to, or null when no note the person may read has that name. */
   note: NoteRef | null;
@@ -27,12 +27,15 @@ export interface Note {
   sourceName: string;
   path: string;
   title: string;
+  /** The note as written (without its front matter). */
   markdown: string;
+  /** The same, with its wikilinks and embeds rewritten by the server into links and images (see `addresses.ts`): what is shown. */
+  rendered: string;
   tags: string[];
   links: NoteLink[];
+  /** The first backlinks, and `backlinksTotal` of them in all. */
   backlinks: NoteRef[];
-  /** Where the files an embed names (`![[plan.png]]`) are in the source, by the name written in the note. */
-  embeds: Record<string, string>;
+  backlinksTotal: number;
 }
 
 export interface Tag {

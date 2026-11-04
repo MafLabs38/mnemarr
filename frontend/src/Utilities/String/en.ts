@@ -110,6 +110,7 @@ const en = {
   DrawingDiagram: 'Drawing the diagram…',
   AllNotes: 'All notes',
   Backlinks: 'Backlinks',
+  BacklinksCut: 'Showing {shown} of {total} backlinks.',
   FilterNotes: 'Filter the notes',
   ImageNotShown: 'Image not shown: {name}',
   NoBacklinks: 'No note links to this one.',

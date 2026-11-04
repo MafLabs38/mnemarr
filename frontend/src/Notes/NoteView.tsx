@@ -64,6 +64,11 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
             ))}
           </ul>
         )}
+        {note.backlinksTotal > note.backlinks.length && (
+          <p className={styles.hint}>
+            {translate('BacklinksCut', { shown: note.backlinks.length, total: note.backlinksTotal })}
+          </p>
+        )}
       </section>
     </article>
   );

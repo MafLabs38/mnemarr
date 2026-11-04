@@ -19,7 +19,8 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         content.Markdown.Should().StartWith("# Docker").And.NotContain("tags:");
         content.Detail.Tags.Should().Equal("infra");
         content.Detail.Links.Single().Note!.Path.Should().Be("devops/kubernetes.md");
-        content.Embeds.Should().BeEquivalentTo(new Dictionary<string, string> { ["plan.png"] = "devops/plan.png" }, "an image that is not there, or not inside the source, leads nowhere");
+        content.Rendered.Should().Contain("![plan.png](mnemarr-file:devops%2Fplan.png)");
+        content.Rendered.Should().Contain("![missing.png](mnemarr-unresolved:)").And.Contain("![../outside.png](mnemarr-unresolved:)", "an image that is not there, or not inside the source, leads nowhere");
     }
 
     [Fact]
@@ -34,14 +35,44 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         TestWorkspace.Write(folder, "x/img/sub/two.png", "suffix");
         await ReindexAsync(source);
 
-        var embeds = Reader.Read(source.Id, "a.md", SourceScope.All).Embeds;
+        var rendered = Reader.Read(source.Id, "a.md", SourceScope.All).Rendered;
 
-        embeds.Should().BeEquivalentTo(new Dictionary<string, string>
-        {
-            ["plan.png"] = "attachments/plan.png",
-            ["Assets/schema.PNG"] = "all/Assets/schema.png",
-            ["img/sub/two.png"] = "x/img/sub/two.png",
-        });
+        rendered.Should().Contain("![plan.png](mnemarr-file:attachments%2Fplan.png)");
+        rendered.Should().Contain("![Assets/schema.PNG](mnemarr-file:all%2FAssets%2Fschema.png)");
+        rendered.Should().Contain("![img/sub/two.png](mnemarr-file:x%2Fimg%2Fsub%2Ftwo.png)");
+        rendered.Should().Contain("![hidden.png](mnemarr-unresolved:)").And.Contain("![nowhere.png](mnemarr-unresolved:)");
+    }
+
+    [Fact]
+    public async Task should_rewrite_the_links_of_a_note_to_where_they_lead_and_leave_code_and_what_names_nothing_as_it_is()
+    {
+        var source = await SourceWithAsync(
+            "courses",
+            ("devops/docker.md", "# Docker\nSee [[kubernetes]], [[../index|the [index]], [[ghost|a ghost]], [[../../outside]], [[#heading]] and ![[Other note]].\n`[[kubernetes]]` and\n```\n[[kubernetes]]\n```\n[[Kubernetes#Pods|pods]]"),
+            ("devops/kubernetes.md", "# K8s"),
+            ("index.md", "# Index"),
+            ("Other note.md", "# Other"));
+
+        var rendered = Reader.Read(source.Id, "devops/docker.md", SourceScope.All).Rendered;
+
+        rendered.Should().Contain($"[kubernetes](mnemarr-note:{source.Id}/devops%2Fkubernetes.md)");
+        rendered.Should().Contain($"[the \\[index](mnemarr-note:{source.Id}/index.md)", "a link written from the folder of its note, with a bracket in its text that cannot end it early");
+        rendered.Should().Contain("[a ghost](mnemarr-unresolved:)").And.Contain("[../../outside](mnemarr-unresolved:)");
+        rendered.Should().Contain("[[#heading]]", "a link that names nothing is left as it was written");
+        rendered.Should().Contain($"[Other note](mnemarr-note:{source.Id}/Other%20note.md)", "a note shown in place is a link");
+        rendered.Should().Contain("`[[kubernetes]]`").And.Contain("```\n[[kubernetes]]\n```", "code is left as it is");
+        rendered.Should().Contain($"[pods](mnemarr-note:{source.Id}/devops%2Fkubernetes.md)");
+    }
+
+    [Fact]
+    public async Task should_rewrite_a_link_to_a_note_the_caller_may_not_read_as_a_link_that_leads_nowhere()
+    {
+        var mine = await SourceWithAsync("mine", ("a.md", "[[secret]]"));
+        await SourceWithAsync("hidden", ("secret.md", "# Secret"));
+
+        var rendered = Reader.Read(mine.Id, "a.md", new SourceScope([mine.Id])).Rendered;
+
+        rendered.Should().Be("[secret](mnemarr-unresolved:)", "the note exists, but not for this caller");
     }
 
     [Theory]

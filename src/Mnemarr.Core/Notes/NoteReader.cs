@@ -5,8 +5,11 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Notes;
 
-/// <summary>A note ready to be shown: the index's knowledge of it, its Markdown (without the front matter), and where the files it embeds are.</summary>
-public sealed record NoteContent(NoteDetail Detail, string Markdown, IReadOnlyDictionary<string, string> Embeds);
+/// <summary>
+/// A note ready to be shown: the index's knowledge of it, its Markdown as written (without the front matter), and the same Markdown with its
+/// wikilinks and embeds rewritten into links and images that lead where the caller may go (<see cref="WikiLinkRenderer"/>).
+/// </summary>
+public sealed record NoteContent(NoteDetail Detail, string Markdown, string Rendered);
 
 /// <summary>An image of a source, opened for reading, with the type to answer with.</summary>
 public sealed record NoteFile(Stream Content, string ContentType);
@@ -44,7 +47,8 @@ public sealed class NoteReader
         var source = _sources.Get(sourceId) ?? throw NoSuchNote();
         var file = Resolve(source, path);
         var text = ReadText(file);
-        return new NoteContent(detail, MarkdownNotes.Body(text), FindImages(sourceId, path, MarkdownNotes.Parse(text).Embeds));
+        var body = MarkdownNotes.Body(text);
+        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body));
     }
 
     public NoteFile OpenImage(Guid sourceId, string path, SourceScope scope)
@@ -77,21 +81,6 @@ public sealed class NoteReader
         {
             stream?.Dispose();
         }
-    }
-
-    /// <summary>The images that a note embeds (<c>![[plan.png]]</c>), by the name written in the note, found in the index of the source. An embed with no image is left out.</summary>
-    private Dictionary<string, string> FindImages(Guid sourceId, string notePath, IEnumerable<string> embeds)
-    {
-        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var embed in embeds.Where(ImageFormats.Is))
-        {
-            if (_browser.FindImage(sourceId, notePath, embed) is { } image)
-            {
-                found[embed] = image;
-            }
-        }
-
-        return found;
     }
 
     /// <summary>The full path of a file of a source, or a refusal: relative, inside the folder of the source, not hidden, not behind a link.</summary>

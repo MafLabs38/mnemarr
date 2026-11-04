@@ -89,21 +89,8 @@ public sealed class SqliteNoteIndex : INoteIndex
         transaction.Commit();
     }
 
-    private static void InsertLinks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IEnumerable<WikiLink> links)
-    {
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "INSERT INTO note_links (note_id, target, written) VALUES ($note, $target, $written)";
-        command.Parameters.AddWithValue(NoteParameter, noteId);
-        var target = command.Parameters.AddWithValue("$target", string.Empty);
-        var written = command.Parameters.AddWithValue("$written", string.Empty);
-        foreach (var link in links.DistinctBy(link => (link.Target, link.AsWritten)))
-        {
-            target.Value = link.Target;
-            written.Value = link.AsWritten;
-            command.ExecuteNonQuery();
-        }
-    }
+    private static void InsertLinks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IEnumerable<WikiLink> links) =>
+        InsertEach(connection, transaction, "INSERT INTO note_links (note_id, target) VALUES ($note, $value)", noteId, links.Select(link => link.Target).Distinct(StringComparer.Ordinal));
 
     private static void InsertTags(SqliteConnection connection, SqliteTransaction transaction, long noteId, IEnumerable<string> tags) =>
         InsertEach(connection, transaction, "INSERT INTO note_tags (note_id, tag) VALUES ($note, $value)", noteId, tags);

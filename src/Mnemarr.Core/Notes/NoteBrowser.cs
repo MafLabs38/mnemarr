@@ -11,14 +11,11 @@ public sealed record NoteListing(IReadOnlyList<NoteEntry> Notes, int Total);
 /// <summary>Where a note is: enough to link to it.</summary>
 public sealed record NoteRef(Guid SourceId, string SourceName, string Path, string Title);
 
-/// <summary>
-/// A link of a note and the note it leads to, or null when no note of the sources the caller may read has that name. <paramref name="Target"/>
-/// is the link as the note wrote it (normalised): what the interface finds in the text.
-/// </summary>
+/// <summary>A link of a note (as it is stored: lower case, from the root of the source) and the note it leads to, or null when no note of the sources the caller may read has that name.</summary>
 public sealed record ResolvedLink(string Target, NoteRef? Note);
 
-/// <summary>What the index knows of a note besides its text: its tags, where its links lead, and which notes link to it.</summary>
-public sealed record NoteDetail(NoteRef Note, IReadOnlyList<string> Tags, IReadOnlyList<ResolvedLink> Links, IReadOnlyList<NoteRef> Backlinks);
+/// <summary>What the index knows of a note besides its text: its tags, where its links lead, and which notes link to it (the first of them, and how many there are in all).</summary>
+public sealed record NoteDetail(NoteRef Note, IReadOnlyList<string> Tags, IReadOnlyList<ResolvedLink> Links, IReadOnlyList<NoteRef> Backlinks, int BacklinksTotal);
 
 /// <summary>A tag and how many notes carry it.</summary>
 public sealed record TagCount(string Tag, int Count);
@@ -39,6 +36,9 @@ public interface INoteBrowser
     NoteDetail? Find(Guid sourceId, string path, SourceScope scope);
 
     TagListing Tags(SourceScope scope);
+
+    /// <summary>The note a link (as <see cref="ResolvedLink"/> stores it) leads to for a note of <paramref name="fromSource"/>, among the sources the caller may read; null when there is none.</summary>
+    NoteRef? Resolve(Guid fromSource, string target, SourceScope scope);
 
     /// <summary>Whether the image file is one the last pass found in the source: only those are served.</summary>
     bool HasImage(Guid sourceId, string path);

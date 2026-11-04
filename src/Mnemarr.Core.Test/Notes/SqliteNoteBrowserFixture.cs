@@ -182,6 +182,18 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_say_how_many_backlinks_there_are_when_the_list_is_cut()
+    {
+        var files = Enumerable.Range(0, 230).Select(i => ($"n/{i:000}.md", "[[hub]]")).Append(("hub.md", "# Hub")).ToArray();
+        var source = await SourceWithAsync("s", files);
+
+        var hub = Browser.Find(source.Id, "hub.md", SourceScope.All)!;
+
+        hub.Backlinks.Should().HaveCount(200);
+        hub.BacklinksTotal.Should().Be(230, "the list is cut, and the total says by how much");
+    }
+
+    [Fact]
     public async Task should_list_a_note_that_embeds_another_as_a_backlink_of_it()
     {
         var source = await SourceWithAsync("s", ("Other note.md", "# Other"), ("host.md", "Shown in place: ![[Other note]]"));
@@ -201,7 +213,7 @@ public sealed class SqliteNoteBrowserFixture : NotesFixtureBase
         var detail = Browser.Find(source.Id, "Folder/a.md", SourceScope.All)!;
         var x = Browser.Find(source.Id, "Folder/x.md", SourceScope.All)!;
 
-        detail.Links.Select(l => (l.Target, l.Note?.Path)).Should().BeEquivalentTo([("./x", "Folder/x.md"), ("../top", "Top.md")], "the link is returned as written, and resolved from the folder of its note");
+        detail.Links.Select(l => (l.Target, l.Note?.Path)).Should().BeEquivalentTo([("folder/x", "Folder/x.md"), ("top", "Top.md")], "a link is stored from the root of the source, and leads to the note it names from the folder of its note");
         x.Backlinks.Should().ContainSingle().Which.Path.Should().Be("Folder/a.md");
     }
 }

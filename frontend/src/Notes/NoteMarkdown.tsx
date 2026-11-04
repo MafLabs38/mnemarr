@@ -1,4 +1,4 @@
-import { Children, createContext, type ReactNode, useContext, useMemo } from 'react';
+import { Children, createContext, type ReactNode, useContext } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import { Link } from 'react-router-dom';
 import remarkGfm from 'remark-gfm';
@@ -6,15 +6,15 @@ import remarkGfm from 'remark-gfm';
 import { apiUrl } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
+import { FILE_SCHEME, NOTE_SCHEME, parseNoteAddress, resolveRelative, UNRESOLVED_SCHEME } from './addresses';
 import MermaidDiagram from './MermaidDiagram';
 import { filePath, type Note, noteAddress } from './notes';
 import styles from './Notes.module.css';
 import remarkCallouts from './remarkCallouts';
 import remarkLineBreaks from './remarkLineBreaks';
-import { FILE_SCHEME, linkWikilinks, NOTE_SCHEME, resolveRelative } from './wikilinks';
 
 const MERMAID_CLASS = 'language-mermaid';
-const ALLOWED = new Set(['http:', 'https:', 'mailto:', NOTE_SCHEME, FILE_SCHEME]);
+const ALLOWED = new Set(['http:', 'https:', 'mailto:', NOTE_SCHEME, FILE_SCHEME, UNRESOLVED_SCHEME]);
 
 /** The note being rendered: its links and embeds say where an address leads, and its path is where a relative address starts. */
 const NoteContext = createContext<Note | null>(null);
@@ -66,10 +66,11 @@ function NotePre({ children }: Readonly<{ children?: ReactNode }>) {
 function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: ReactNode }>) {
   const note = useNoteBeingRendered();
   if (href?.startsWith(NOTE_SCHEME)) {
-    const target = note.links.find((link) => link.target === decode(href.slice(NOTE_SCHEME.length)))?.note;
-    return target ? (
-      <Link to={noteAddress(target)}>{children}</Link>
-    ) : (
+    const target = parseNoteAddress(href);
+    return target ? <Link to={noteAddress(target)}>{children}</Link> : <span>{children}</span>;
+  }
+  if (href?.startsWith(UNRESOLVED_SCHEME)) {
+    return (
       <span className={styles.unresolved} title={translate('UnresolvedLink')}>
         {children}
       </span>
@@ -87,12 +88,17 @@ function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: Rea
   return path ? <Link to={noteAddress({ sourceId: note.sourceId, path })}>{children}</Link> : <span>{children}</span>;
 }
 
+/** The path, in the source of the note, of the image an address leads to: one the server wrote, or a relative one; null when it leads elsewhere. */
+function imagePath(note: Note, src: string | undefined): string | null {
+  if (src?.startsWith(FILE_SCHEME)) {
+    return decode(src.slice(FILE_SCHEME.length));
+  }
+  return src && isRelative(src) ? resolveRelative(note.path, src) : null;
+}
+
 function NoteImage({ src, alt }: Readonly<{ src?: string; alt?: string }>) {
   const note = useNoteBeingRendered();
-  // The key comes from the note, and `embeds` is a plain object: a name such as `constructor` must not find what every object inherits.
-  const name = src?.startsWith(FILE_SCHEME) ? decode(src.slice(FILE_SCHEME.length)) : undefined;
-  const embedded = name !== undefined && Object.hasOwn(note.embeds, name) ? note.embeds[name] : undefined;
-  const path = embedded ?? (src && isRelative(src) ? resolveRelative(note.path, src) : null);
+  const path = imagePath(note, src);
   return path ? (
     <img alt={alt ?? ''} loading="lazy" src={apiUrl(filePath(note.sourceId, path))} />
   ) : (
@@ -106,13 +112,11 @@ const remarkPlugins = [remarkGfm, remarkCallouts, remarkLineBreaks];
 
 /** The Markdown of a note, rendered without raw HTML, with its wikilinks resolved, its images fetched from its own source, and its callouts. */
 export default function NoteMarkdown({ note }: Readonly<{ note: Note }>) {
-  const markdown = useMemo(() => linkWikilinks(note.markdown), [note.markdown]);
-
   return (
     <NoteContext.Provider value={note}>
       <div className={styles.markdown}>
         <Markdown components={components} remarkPlugins={remarkPlugins} urlTransform={transformUrl}>
-          {markdown}
+          {note.rendered}
         </Markdown>
       </div>
     </NoteContext.Provider>

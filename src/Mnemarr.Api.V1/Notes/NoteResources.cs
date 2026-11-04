@@ -20,24 +20,25 @@ public sealed record NoteRefResource(Guid SourceId, string SourceName, string Pa
     public static NoteRefResource From(NoteRef note) => new(note.SourceId, note.SourceName, note.Path, note.Title);
 }
 
-/// <summary>A <c>[[wikilink]]</c> of a note: what it names as the note wrote it (lower case, no extension, no heading) and the note it leads to, if the caller may read one.</summary>
+/// <summary>A <c>[[wikilink]]</c> of a note: what it names (lower case, no extension, from the root of the source) and the note it leads to, if the caller may read one.</summary>
 public sealed record NoteLinkResource(string Target, NoteRefResource? Note);
 
 /// <summary>
-/// A note to read: its Markdown without the front matter, its tags, where its links lead, the notes that link to it, and where the files it
-/// embeds (<c>![[plan.png]]</c>, by the name written in the note) are in its source, to be fetched from <c>/api/v1/sources/{id}/files/{path}</c>.
+/// A note to read: its Markdown as written (without the front matter), the same Markdown with its wikilinks and embeds rewritten into
+/// links and images that lead where the caller may go (<c>mnemarr-note:{source}/{path}</c>, <c>mnemarr-file:{path}</c> for an image of the
+/// source of the note, <c>mnemarr-unresolved:</c> for what leads nowhere the caller may read), its tags, where its links lead, and the notes
+/// that link to it. An image is fetched from <c>/api/v1/sources/{id}/files/{path}</c>.
 /// </summary>
 public sealed record NoteResource(
-    Guid SourceId, string SourceName, string Path, string Title, string Markdown, IReadOnlyList<string> Tags, IReadOnlyList<NoteLinkResource> Links,
-    IReadOnlyList<NoteRefResource> Backlinks, IReadOnlyDictionary<string, string> Embeds)
+    Guid SourceId, string SourceName, string Path, string Title, string Markdown, string Rendered, IReadOnlyList<string> Tags,
+    IReadOnlyList<NoteLinkResource> Links, IReadOnlyList<NoteRefResource> Backlinks, int BacklinksTotal)
 {
     public static NoteResource From(NoteContent content) =>
         new(
-            content.Detail.Note.SourceId, content.Detail.Note.SourceName, content.Detail.Note.Path, content.Detail.Note.Title, content.Markdown,
+            content.Detail.Note.SourceId, content.Detail.Note.SourceName, content.Detail.Note.Path, content.Detail.Note.Title, content.Markdown, content.Rendered,
             content.Detail.Tags,
             [.. content.Detail.Links.Select(link => new NoteLinkResource(link.Target, link.Note is null ? null : NoteRefResource.From(link.Note)))],
-            [.. content.Detail.Backlinks.Select(NoteRefResource.From)],
-            content.Embeds);
+            [.. content.Detail.Backlinks.Select(NoteRefResource.From)], content.Detail.BacklinksTotal);
 }
 
 public sealed record TagResource(string Tag, int Count);
