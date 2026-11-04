@@ -82,7 +82,7 @@ public sealed class NoteWriter
                 throw new RejectedException(Problem.Conflict, "The note changed since it was read: read it again before changing it.");
             }
 
-            var bytes = Encode(content);
+            var bytes = Encode(KeepLineEndings(Encoding.UTF8.GetString(current), content));
             WriteAtomic(full, bytes, overwrite: true);
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
             _audit.Append(actor.Name, "note.updated", Target(source, path));
@@ -118,14 +118,14 @@ public sealed class NoteWriter
                 throw new RejectedException(Problem.Conflict, "There is already a note at the new path.");
             }
 
-            var backlinks = _browser.Find(source.Id, from, SourceScope.All);
+            var backlinks = _browser.BacklinksOf(source.Id, from);
             var movedText = LinkRetargeter.Rebase(Encoding.UTF8.GetString(content), from, to).Text;
             Directory.CreateDirectory(Path.GetDirectoryName(newFull)!);
             WriteAtomic(newFull, Encode(movedText), overwrite: false);
             File.Delete(oldFull);
             PruneEmptyFolders(Path.GetDirectoryName(oldFull)!, folder);
             var touched = new List<string> { from, to };
-            var (links, notes) = RewriteBacklinks(source, folder, backlinks, from, to, touched);
+            var (links, notes) = RewriteBacklinks(folder, backlinks, from, to, touched);
             _indexer.RemoveNote(source, from);
             foreach (var path in touched.Skip(1))
             {
@@ -134,8 +134,7 @@ public sealed class NoteWriter
 
             _audit.Append(actor.Name, "note.renamed", Target(source, from), Target(source, to));
             var published = Publish(source, $"Rename {from} to {to}", actor, touched, cancellationToken);
-            var others = (backlinks?.BacklinksTotal ?? 0) - notes;
-            return new RenameResult(to, VersionOf(File.ReadAllBytes(newFull)), links, notes, Math.Max(others, 0), published);
+            return new RenameResult(to, VersionOf(File.ReadAllBytes(newFull)), links, notes, backlinks.InOtherSources, published);
         });
 
     /// <summary>Removes a note: from a Git repository by a commit (its history keeps it), from a plain folder into the hidden trash folder of the source.</summary>
@@ -152,7 +151,7 @@ public sealed class NoteWriter
             if (source.Repository is null)
             {
                 var trash = Path.Combine(folder, TrashFolder);
-                var kept = Path.GetFullPath(Path.Combine(trash, DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture), path));
+                var kept = Path.GetFullPath(Path.Combine(trash, DateTime.UtcNow.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N")[..8], path));
                 if (!kept.StartsWith(trash + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 {
                     throw new RejectedException(Problem.Invalid, "The path of a note stays inside its source, and never goes through a link.");
@@ -222,11 +221,11 @@ public sealed class NoteWriter
     private GitPublish? Publish(Source source, string message, NoteActor actor, IReadOnlyCollection<string> paths, CancellationToken cancellationToken) =>
         source.Repository is null ? null : _sync.Publish(source, message, actor.Name, paths, cancellationToken);
 
-    private static (int Links, int Notes) RewriteBacklinks(Source source, string folder, NoteDetail? detail, string from, string to, List<string> touched)
+    private static (int Links, int Notes) RewriteBacklinks(string folder, BacklinkSet backlinks, string from, string to, List<string> touched)
     {
         var links = 0;
         var notes = 0;
-        foreach (var path in (detail?.Backlinks ?? []).Where(backlink => backlink.SourceId == source.Id && backlink.Path != from).Select(backlink => backlink.Path))
+        foreach (var path in backlinks.InSource.Where(path => path != from))
         {
             var changed = RewriteLinksOf(folder, path, from, to);
             if (changed > 0)
@@ -277,6 +276,12 @@ public sealed class NoteWriter
     }
 
     private static string Target(Source source, string path) => $"{source.Name}/{path}";
+
+    /// <summary>A browser gives a text with <c>\n</c> only: a note written with <c>\r\n</c> (a vault made on Windows) keeps them, so that a Git diff shows what changed and not every line.</summary>
+    private static string KeepLineEndings(string current, string content) =>
+        current.Contains("\r\n", StringComparison.Ordinal) && !current.Replace("\r\n", string.Empty, StringComparison.Ordinal).Contains('\n') && !content.Contains('\r')
+            ? content.Replace("\n", "\r\n", StringComparison.Ordinal)
+            : content;
 
     private static byte[] Encode(string content)
     {

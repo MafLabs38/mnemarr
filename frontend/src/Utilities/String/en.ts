@@ -222,6 +222,8 @@ const en = {
   NewPath: 'New path',
   RenameDone: '{links} links rewritten in {notes} notes.',
   RenameLeft: '{count} notes of other sources link to it and were left as they were.',
+  LinksLeftElsewhere:
+    '{count} note(s) in other sources still link to the old path: their sources are not changed from here.',
   NotePushFailed: 'Saved and committed, but not pushed yet: {reason}. A later sync pushes it.',
   NoteRemoved: 'The note was removed.',
   'push-rejected': 'the host refused the push (the branch may be protected, or the credential may not write)',

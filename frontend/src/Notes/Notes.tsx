@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 import Alert from 'Components/Alert/Alert';
 import TextField from 'Components/Form/TextField';
@@ -12,7 +12,8 @@ import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
 import NewNote from './NewNote';
-import { useNoteTree, useTags } from './notes';
+import { PushNotice } from './NoteActions';
+import { outcomeOf, useNoteTree, useTags } from './notes';
 import styles from './Notes.module.css';
 import NoteTree from './NoteTree';
 import NoteView from './NoteView';
@@ -28,6 +29,7 @@ export default function Notes() {
   const source = params.get('source');
   const path = params.get('path');
   const tag = params.get('tag');
+  const outcome = outcomeOf(useLocation().state);
   const [filter, setFilter] = useState('');
   const tree = useNoteTree(tag);
   const tags = useTags();
@@ -96,6 +98,10 @@ export default function Notes() {
             )}
           </div>
           <div className={styles.main}>
+            <PushNotice git={outcome?.git} />
+            {outcome?.notesNotRewritten ? (
+              <p className={styles.hint}>{translate('LinksLeftElsewhere', { count: outcome.notesNotRewritten })}</p>
+            ) : null}
             {source && path ? (
               <NoteView key={`${source}/${path}`} path={path} sourceId={source} />
             ) : (

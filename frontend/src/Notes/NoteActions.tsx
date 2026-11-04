@@ -31,7 +31,9 @@ function RenameForm({ note, onDone }: Readonly<{ note: Note; onDone: () => void 
       {
         onSuccess: (result) => {
           onDone();
-          navigate(noteAddress({ sourceId: note.sourceId, path: result.path }), { state: { renamed: result } });
+          navigate(noteAddress({ sourceId: note.sourceId, path: result.path }), {
+            state: { outcome: { git: result.git, notesNotRewritten: result.notesNotRewritten } },
+          });
         },
       },
     );
@@ -92,7 +94,11 @@ export default function NoteActions({ note }: Readonly<{ note: Note }>) {
           disabled={!allowed || remove.isPending}
           title={why}
           onClick={() =>
-            confirming ? remove.mutate(note.version, { onSuccess: () => navigate('/notes') }) : setConfirming(true)
+            confirming
+              ? remove.mutate(note.version, {
+                  onSuccess: (result) => navigate('/notes', { state: { outcome: { git: result.git } } }),
+                })
+              : setConfirming(true)
           }
           variant="danger"
         >

@@ -188,6 +188,17 @@ export interface WriteResult {
   git: GitPublish | null;
 }
 
+/** What a change leaves to say on the page it goes back to (carried in the navigation state): a push that did not leave, links left behind. */
+export interface WriteOutcome {
+  git?: GitPublish | null;
+  notesNotRewritten?: number;
+}
+
+export function outcomeOf(state: unknown): WriteOutcome | null {
+  const outcome = (state as { outcome?: WriteOutcome } | null)?.outcome;
+  return outcome ?? null;
+}
+
 export interface RenameResult extends WriteResult {
   linksRewritten: number;
   notesRewritten: number;

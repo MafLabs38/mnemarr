@@ -103,6 +103,12 @@ public sealed class LibGit2Engine : IGitEngine
     public string? Commit(string folder, IReadOnlyCollection<string> paths, string message, GitAuthor author)
     {
         using var repository = new Repository(folder);
+        // The commit holds what this change touched and nothing else: what was already staged in the checkout (by hand) is put back, not committed.
+        if (repository.Head.Tip is not null)
+        {
+            repository.Reset(ResetMode.Mixed, repository.Head.Tip);
+        }
+
         foreach (var path in paths)
         {
             Commands.Stage(repository, path);

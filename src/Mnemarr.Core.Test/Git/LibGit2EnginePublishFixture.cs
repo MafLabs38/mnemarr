@@ -147,4 +147,22 @@ public sealed class LibGit2EnginePublishFixture : IDisposable
         failure.Code.Should().Be(GitFailure.Diverged);
         File.Exists(Path.Combine(first, "Mine.md")).Should().BeTrue();
     }
+
+    [Fact]
+    public void should_not_commit_what_was_already_staged_by_hand()
+    {
+        var folder = Clone("checkout");
+        File.WriteAllText(Path.Combine(folder, "Staged.md"), "# staged by an operator");
+        File.WriteAllText(Path.Combine(folder, "New.md"), "# new");
+        using (var repository = new Repository(folder))
+        {
+            Commands.Stage(repository, "Staged.md");
+        }
+
+        var commit = _engine.Commit(folder, ["New.md"], "Add New.md", Alice);
+
+        using var checkout = new Repository(folder);
+        checkout.Lookup<Commit>(commit).Tree.Select(entry => entry.Path).Should().BeEquivalentTo(["README.md", "New.md"]);
+        File.ReadAllText(Path.Combine(folder, "Staged.md")).Should().Be("# staged by an operator");
+    }
 }

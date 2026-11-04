@@ -124,13 +124,13 @@ public sealed class SourceSync
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(_policy.SyncTimeout);
         GitSyncResult? synced = null;
+        var folder = FolderOf(source);
         try
         {
             var url = GitPolicy.Address(repository.Url);
             _policy.CheckHost(new Uri(url).Host);
             var secret = SecretFor(repository, url);
             var branch = GitPolicy.Branch(repository.Branch);
-            var folder = FolderOf(source);
             synced = await Task.Run(() => _engine.Sync(url, branch, folder, secret, timeout.Token), CancellationToken.None);
         }
         catch (GitSyncException ex) when (ex.Code == GitFailure.Diverged)
@@ -142,6 +142,11 @@ public sealed class SourceSync
         {
             // The host is down, the token is refused, the address is not allowed any more: the write goes on, and its push says why it did not leave.
             synced = null;
+            if (!Directory.Exists(Path.Combine(folder, ".git")) && !File.Exists(Path.Combine(folder, ".git")))
+            {
+                // Nothing was cloned yet (the host was down at the first sync): a note written into the empty folder would stop the clone for good.
+                throw new RejectedException(Problem.Conflict, "This source has not been cloned yet: wait for its first sync.");
+            }
         }
 
         if (synced is { Action: not GitSyncAction.UpToDate })

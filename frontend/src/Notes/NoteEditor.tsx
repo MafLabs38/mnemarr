@@ -18,13 +18,15 @@ interface NoteEditorProps {
  * changed since is refused, and what was typed stays on the screen, so that nothing is lost.
  */
 export default function NoteEditor({ note, onDone }: Readonly<NoteEditorProps>) {
-  const [text, setText] = useState(note.raw);
+  // What the text was typed from: the version that goes back is the one of this text, even if the note is read again while it is open.
+  const [base] = useState({ raw: note.raw, version: note.version });
+  const [text, setText] = useState(base.raw);
   const update = useUpdateNote(note.sourceId, note.path);
   const preview = usePreviewNote(note.sourceId);
   const failure = update.error ?? preview.error;
 
   function save() {
-    update.mutate({ content: text, version: note.version }, { onSuccess: onDone });
+    update.mutate({ content: text, version: base.version }, { onSuccess: onDone });
   }
 
   return (

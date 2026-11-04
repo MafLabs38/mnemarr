@@ -391,6 +391,7 @@ public sealed class NoteWriterFixture : IDisposable
     public async Task should_write_and_commit_locally_when_the_host_cannot_be_reached()
     {
         var source = Declare("repo", git: true);
+        Directory.CreateDirectory(Path.Combine(source.Path, ".git"));
         _engine.Result = () => throw new GitSyncException(GitFailure.Unreachable, "no route to host");
 
         var result = await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
@@ -398,5 +399,67 @@ public sealed class NoteWriterFixture : IDisposable
         File.Exists(Path.Combine(source.Path, "a.md")).Should().BeTrue();
         _engine.Commits.Should().ContainSingle();
         result.Git.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task should_refuse_to_write_in_a_git_source_that_was_never_cloned()
+    {
+        var source = Declare("repo", git: true);
+        _engine.Result = () => throw new GitSyncException(GitFailure.Unreachable, "no route to host");
+
+        var write = () => _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        (await write.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        File.Exists(Path.Combine(source.Path, "a.md")).Should().BeFalse("a note in the empty folder would stop the first clone for good");
+    }
+
+    [Fact]
+    public async Task should_read_what_a_pull_before_the_write_brought_in()
+    {
+        var source = Declare("repo", git: true);
+        _engine.Result = () =>
+        {
+            TestWorkspace.Write(source.Path, "from-remote.md", "# From remote\nuniqueremoteword\n");
+            return new GitSyncResult(GitSyncAction.Updated, "def456");
+        };
+
+        await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        Hits("uniqueremoteword").Should().Equal("from-remote.md");
+    }
+
+    [Fact]
+    public async Task should_say_in_fixed_words_when_the_push_fails_in_a_way_that_has_no_code()
+    {
+        var source = Declare("repo", git: true);
+        _engine.OnPush = () => throw new InvalidOperationException("/srv/secret/path exploded");
+
+        var result = await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        result.Git.Should().Be(new GitPublish(false, GitFailure.Failed));
+        File.Exists(Path.Combine(source.Path, "a.md")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task should_keep_the_line_endings_of_a_note_written_with_crlf_when_the_editor_sends_lf()
+    {
+        var source = await DeclareIndexedAsync("vault", notes: ("a.md", "# A\r\nold\r\n"));
+        var version = NoteWriter.VersionOf(File.ReadAllBytes(Path.Combine(source.Path, "a.md")));
+
+        await _writer.UpdateAsync(Alice, source.Id, "a.md", "# A\nnew\n", version, Token);
+
+        File.ReadAllText(Path.Combine(source.Path, "a.md")).Should().Be("# A\r\nnew\r\n");
+    }
+
+    [Fact]
+    public async Task should_rewrite_every_link_of_a_rename_even_past_the_two_hundred_a_note_shows()
+    {
+        var notes = Enumerable.Range(0, 230).Select(i => ($"n{i:000}.md", "# N\n[[hub]]")).Append(("hub.md", "# Hub")).ToArray();
+        var source = await DeclareIndexedAsync("vault", notes: notes);
+
+        var result = await _writer.RenameAsync(Alice, source.Id, "hub.md", "centre.md", Token);
+
+        result.NotesRewritten.Should().Be(230);
+        Read(source, "n229.md").Should().Be("# N\n[[centre]]");
     }
 }

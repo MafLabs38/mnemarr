@@ -9,7 +9,6 @@ import { permissions } from 'Session/session';
 import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
-import { PushNotice } from './NoteActions';
 import { noteAddress, type NoteSource, useCreateNote } from './notes';
 import styles from './Notes.module.css';
 
@@ -34,7 +33,7 @@ function Form({ sources, onCreated }: Readonly<{ sources: ReadonlyArray<NoteSour
         onSuccess: (result) => {
           setPath('');
           onCreated();
-          navigate(noteAddress({ sourceId, path: result.path }));
+          navigate(noteAddress({ sourceId, path: result.path }), { state: { outcome: { git: result.git } } });
         },
       },
     );
@@ -43,7 +42,6 @@ function Form({ sources, onCreated }: Readonly<{ sources: ReadonlyArray<NoteSour
   return (
     <form aria-label={translate('NewNote')} className={styles.form} onSubmit={submit}>
       {create.error && <Alert>{create.error.message}</Alert>}
-      <PushNotice git={create.data?.git} />
       <SelectField
         label={translate('NewNoteSource')}
         onChange={(event) => setSourceId(event.target.value)}

@@ -40,8 +40,17 @@ public sealed record TagListing(IReadOnlyList<TagCount> Tags, int Total);
 /// The notes of the sources as a reader needs them (D-37): the tree, a note with its tags, links and backlinks, and the tags. Every question
 /// takes the scope of the caller, so a note of a source that a caller may not read is neither listed, nor linked, nor counted.
 /// </summary>
+/// <summary>The notes whose links lead to a note: the paths of those of its own source (all of them, with no cap) and how many are in other sources.</summary>
+public sealed record BacklinkSet(IReadOnlyList<string> InSource, int InOtherSources);
+
 public interface INoteBrowser
 {
+    /// <summary>
+    /// Every note of the same source that links to the note, however many, for a rename that must rewrite them all (a note shown to a person is
+    /// capped; this is not), and the count of those in other sources. An unknown note has none.
+    /// </summary>
+    BacklinkSet BacklinksOf(Guid sourceId, string path);
+
     /// <summary>The notes the caller may read, by source and path, optionally of one source or carrying one tag.</summary>
     NoteListing List(SourceScope scope, Guid? sourceId, string? tag);
 

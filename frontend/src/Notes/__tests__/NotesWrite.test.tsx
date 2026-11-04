@@ -257,8 +257,8 @@ describe('writing notes', () => {
               version: 'v2',
               linksRewritten: 3,
               notesRewritten: 2,
-              notesNotRewritten: 0,
-              git: null,
+              notesNotRewritten: 2,
+              git: { pushed: false, error: 'push-rejected' },
             },
           }
         : undefined,
@@ -276,10 +276,14 @@ describe('writing notes', () => {
       from: 'devops/docker.md',
       to: 'ops/engine.md',
     });
+    expect(await screen.findByText(/Saved and committed, but not pushed yet/u)).toBeInTheDocument();
+    expect(screen.getByText(/2 note\(s\) in other sources still link to the old path/u)).toBeInTheDocument();
   });
 
   it('removes a note only after a second press that names it, and sends the version it read', async () => {
-    const fetchMock = server((method) => (method === 'DELETE' ? { body: { git: null } } : undefined));
+    const fetchMock = server((method) =>
+      method === 'DELETE' ? { body: { git: { pushed: false, error: 'push-rejected' } } } : undefined,
+    );
     renderWithProviders(<Notes />, open);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
@@ -287,12 +291,16 @@ describe('writing notes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirm: remove Docker' }));
 
     await waitFor(() => expect(callOf(fetchMock, 'DELETE', `/notes/${S1}/devops/docker.md?version=v1`)).toBeDefined());
+    expect(await screen.findByText(/Saved and committed, but not pushed yet/u)).toBeInTheDocument();
   });
 
   it('lets the person who manages sources start a note in a source that is open for writing', async () => {
     const fetchMock = server((method, path) =>
       method === 'POST' && path === `/notes/${S1}/Topic/My%20note.md`
-        ? { status: 201, body: { path: 'Topic/My note.md', version: 'v1', git: null } }
+        ? {
+            status: 201,
+            body: { path: 'Topic/My note.md', version: 'v1', git: { pushed: false, error: 'push-rejected' } },
+          }
         : undefined,
     );
     renderWithProviders(<Notes />, '/notes');
@@ -305,6 +313,7 @@ describe('writing notes', () => {
     expect(sentBody(callOf(fetchMock, 'POST', `/notes/${S1}/Topic/My%20note.md`))).toEqual({
       content: '# My note\n\n',
     });
+    expect(await screen.findByText(/Saved and committed, but not pushed yet/u)).toBeInTheDocument();
   });
 
   it('offers no new note to someone who may not write, and says what to do when no source is open for writing', async () => {

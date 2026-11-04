@@ -173,13 +173,12 @@ public sealed class McpApiFixture : IClassFixture<MnemarrFactory>, IClassFixture
     public async Task should_answer_a_refusal_as_a_tool_error_the_assistant_can_read_and_never_as_a_failure_of_the_protocol()
     {
         using var client = await KeyAsync(_writable, "Assistant");
-        var id = await SourceAsync(_writable, Callers.Unique("vault"), "ReadWrite");
+        await SourceAsync(_writable, Callers.Unique("vault"), "ReadWrite");
 
         var missingArgument = await CallAsync(client, "search", new { });
         var unknownSource = await CallAsync(client, "read_note", new { source = "nope", path = "a.md" });
         var unknownTool = await RpcAsync(client, "tools/call", new { name = "drop_database", arguments = new { } });
         var noName = await RpcAsync(client, "tools/call", new { });
-        _ = id;
 
         missingArgument.IsError.Should().BeTrue();
         missingArgument.Content.GetValue<string>().Should().Contain("query");
@@ -199,6 +198,23 @@ public sealed class McpApiFixture : IClassFixture<MnemarrFactory>, IClassFixture
 
         attempt.IsError.Should().BeTrue();
         File.Exists(Path.Combine(_readOnly.DataFolder, "sources", name, "a.md")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task should_not_write_outside_the_scope_of_a_key_nor_with_a_role_that_cannot_write()
+    {
+        var mine = await SourceAsync(_writable, Callers.Unique("mine"), "ReadWrite");
+        var otherName = Callers.Unique("other");
+        var other = await SourceAsync(_writable, otherName, "ReadWrite");
+        using var scoped = await KeyAsync(_writable, "Assistant", mine);
+        using var reader = await KeyAsync(_writable, "Reader");
+
+        var outside = await CallAsync(scoped, "create_note", new { source = other.ToString(), path = "a.md", content = "# A" });
+        var byReader = await CallAsync(reader, "create_note", new { source = other.ToString(), path = "b.md", content = "# B" });
+
+        outside.IsError.Should().BeTrue("a source out of the scope of the key is absent");
+        byReader.IsError.Should().BeTrue("a tool a role may not use cannot be called, listed or not");
+        Directory.EnumerateFiles(Path.Combine(_writable.DataFolder, "sources", otherName)).Should().BeEmpty();
     }
 
     [Fact]
