@@ -86,6 +86,26 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_not_let_a_note_write_the_addresses_of_the_server_itself()
+    {
+        var source = await SourceWithAsync("courses", ("a.md", "![x](mnemarr-file:..%2F..%2Faccounts) [y](MNEMARR-NOTE:abc/x.md) [z](mnemarr-unresolved:) ok"));
+
+        var rendered = Reader.Read(source.Id, "a.md", SourceScope.All).Rendered;
+
+        rendered.Should().Be("![x](mnemarr-unresolved:) [y](mnemarr-unresolved:) [z](mnemarr-unresolved:) ok");
+    }
+
+    [Fact]
+    public async Task should_read_a_note_in_which_a_link_is_inside_the_destination_of_another()
+    {
+        var source = await SourceWithAsync("courses", ("a.md", "[t](a[[b]]c) and [[b]]"), ("b.md", "# B"));
+
+        var rendered = Reader.Read(source.Id, "a.md", SourceScope.All).Rendered;
+
+        rendered.Should().EndWith($"and [b](mnemarr-note:{source.Id}/b.md)");
+    }
+
+    [Fact]
     public async Task should_look_up_only_as_many_links_of_a_note_as_the_index_keeps_and_leave_the_rest_as_written()
     {
         var many = string.Concat(Enumerable.Range(0, 1_000).Select(i => $"[[n{i}]] "));

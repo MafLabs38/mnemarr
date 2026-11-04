@@ -267,6 +267,12 @@ public static class MarkdownNotes
         var position = 0;
         foreach (var (start, end, text) in edits)
         {
+            if (start < position)
+            {
+                // Inside what was just written (a link inside the destination of another): left as it is.
+                continue;
+            }
+
             result.Append(raw, position, start - position);
             result.Append(text ?? raw[start..end]);
             position = end;

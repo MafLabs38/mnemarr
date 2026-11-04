@@ -13,9 +13,9 @@
 
 ## 2. What is specific to Mnemarr
 
-### 2.1 The interface only configures and watches the brain
+### 2.1 The interface configures and watches the brain, and reads its notes
 
-Decision D-18: Mnemarr's interface is minimal. It does not browse or edit memory (that is done in Obsidian). Its menu is:
+Decision D-18: Mnemarr's interface is minimal: it configures and watches the brain. Decision D-37 amends it with a read-only notes reader (a person reads the notes they may read, in the interface or in Obsidian); the interface never edits memory. Its menu is:
 
 | Entry | Content | State |
 |---|---|---|

@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { apiUrl } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
-import { FILE_SCHEME, NOTE_SCHEME, parseNoteAddress, UNRESOLVED_SCHEME } from './addresses';
+import { FILE_SCHEME, NOTE_SCHEME, parseFileAddress, parseNoteAddress, UNRESOLVED_SCHEME } from './addresses';
 import MermaidDiagram from './MermaidDiagram';
 import { filePath, type Note, noteAddress } from './notes';
 import styles from './Notes.module.css';
@@ -26,14 +26,6 @@ const NoteContext = createContext<Note | null>(null);
 function transformUrl(url: string): string {
   const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*:)/.exec(url)?.[1]?.toLowerCase();
   return scheme === undefined || ALLOWED.has(scheme) ? url : '';
-}
-
-function decode(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 }
 
 function useNoteBeingRendered(): Note {
@@ -84,7 +76,7 @@ function NoteAnchor({ href, children }: Readonly<{ href?: string; children?: Rea
 
 function NoteImage({ src, alt }: Readonly<{ src?: string; alt?: string }>) {
   const note = useNoteBeingRendered();
-  const path = src?.startsWith(FILE_SCHEME) ? decode(src.slice(FILE_SCHEME.length)) : null;
+  const path = src?.startsWith(FILE_SCHEME) ? parseFileAddress(note.sourceId, src) : null;
   return path ? (
     <img alt={alt ?? ''} loading="lazy" src={apiUrl(filePath(note.sourceId, path))} />
   ) : (

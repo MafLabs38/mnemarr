@@ -88,12 +88,23 @@ internal sealed class WikiLinkRenderer
         }
     }
 
+    /// <summary>Whether a destination is written in the schemes that only the server writes.</summary>
+    private static bool IsOurs(string destination) =>
+        destination.StartsWith(NoteScheme, StringComparison.OrdinalIgnoreCase) || destination.StartsWith(FileScheme, StringComparison.OrdinalIgnoreCase)
+        || destination.StartsWith(UnresolvedScheme, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// The destination of an ordinary Markdown link or image, rewritten when it is relative and leads to a note or an image of the source:
     /// the same addresses as for a wikilink. A web address, or a file that is neither, is left as it is.
     /// </summary>
     private string? RenderDestination(string destination)
     {
+        if (IsOurs(destination))
+        {
+            // A note that writes the addresses of the server by itself is not the server: they lead nowhere.
+            return UnresolvedScheme;
+        }
+
         if (NotePaths.RelativePath(_notePath, destination) is not { } path)
         {
             return null;

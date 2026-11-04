@@ -228,14 +228,22 @@ describe('Notes', () => {
       expect(screen.getByText('Image not shown: missing.png')).toBeInTheDocument();
     });
 
-    it('does not show an address the server could not have written as an image or a link of the note', async () => {
-      server(noteWith('', { rendered: '![a](mnemarr-file:%E0%A4%A) [b](mnemarr-note:no-slash) then plain' }));
+    it('does not follow an address of the server that the note wrote itself, and nothing that leaves the source', async () => {
+      server(
+        noteWith('', {
+          rendered:
+            '![a](mnemarr-file:..%2F..%2Faccounts) [b](mnemarr-note:no-slash) [c](mnemarr-note:' +
+            S1 +
+            '/..%2F..%2Faccounts) then plain',
+        }),
+      );
       const { container } = renderWithProviders(<Notes />, open, readerSession);
 
       await screen.findByText(/then plain/);
 
       expect(screen.queryByRole('link', { name: 'b' })).not.toBeInTheDocument();
-      expect(container.querySelectorAll('main img')).toHaveLength(1);
+      expect(container.querySelectorAll('main img')).toHaveLength(0);
+      expect(screen.getByText('Image not shown: a')).toBeInTheDocument();
     });
 
     it('shows as text a relative link the server left as it was (it leaves the source, or is not a note)', async () => {
