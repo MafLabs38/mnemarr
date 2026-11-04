@@ -3,6 +3,9 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Git;
 
+/// <summary>What happened to a change once it was committed: pushed, or the fixed code of why it was not (the commit is kept, and is pushed by a later sync).</summary>
+public sealed record GitPublish(bool Pushed, string? Error);
+
 /// <summary>What a sync of a source did: how its checkout changed, where it is now, and what the pass over it that followed found.</summary>
 public sealed record SourceSyncReport(GitSyncAction Action, string Head, IndexReport? Index);
 
@@ -76,7 +79,15 @@ public sealed class SourceSync
             // The operator's list of hosts is read again at each sync: narrowing it stops the sources that were declared for a host that is out.
             _policy.CheckHost(new Uri(url).Host);
             var secret = SecretFor(repository, url);
-            return _engine.Sync(url, GitPolicy.Branch(repository.Branch), folder, secret, timedOut);
+            var branch = GitPolicy.Branch(repository.Branch);
+            var synced = _engine.Sync(url, branch, folder, secret, timedOut);
+            if (source.Mode == SourceMode.ReadWrite)
+            {
+                // A commit that could not be pushed when it was made (the host was down) is pushed now.
+                _engine.Push(url, branch, folder, secret, timedOut);
+            }
+
+            return synced;
         }
         catch (OperationCanceledException) when (!stopped.IsCancellationRequested)
         {
@@ -99,6 +110,42 @@ public sealed class SourceSync
             // Anything else (the disk refused, the library failed in a way that has no code): said by a code, with nothing of the path or the message.
             Failed(source, GitFailure.Failed);
             throw new RejectedException(Problem.Conflict, MessageOf(GitFailure.Failed));
+        }
+    }
+
+    /// <summary>
+    /// Commits what a change of notes did to the checkout of a source, as the account that made it, and pushes it. The caller holds the lock of the
+    /// source. A push that fails is not an error of the change: the note is written and committed, the failure is recorded as a code (on the
+    /// source and in readiness), and the next sync pushes it.
+    /// </summary>
+    public GitPublish Publish(Source source, string message, string actor, IReadOnlyCollection<string> paths, CancellationToken cancellationToken)
+    {
+        var repository = source.Repository ?? throw new RejectedException(Problem.Invalid, "This source is a folder, not a Git repository.");
+        try
+        {
+            var folder = FolderOf(source);
+            var url = GitPolicy.Address(repository.Url);
+            _policy.CheckHost(new Uri(url).Host);
+            var secret = SecretFor(repository, url);
+            var author = new GitAuthor(string.IsNullOrWhiteSpace(actor) ? "mnemarr" : actor, _policy.CommitEmail);
+            _engine.Commit(folder, paths, message, author);
+            _engine.Push(url, GitPolicy.Branch(repository.Branch), folder, secret, cancellationToken);
+            return new GitPublish(true, null);
+        }
+        catch (GitSyncException ex)
+        {
+            Failed(source, ex.Code);
+            return new GitPublish(false, ex.Code);
+        }
+        catch (RejectedException ex) when (ex.Problem != Problem.Busy)
+        {
+            Failed(source, GitFailure.HostNotAllowed);
+            return new GitPublish(false, GitFailure.HostNotAllowed);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Failed(source, GitFailure.Failed);
+            return new GitPublish(false, GitFailure.Failed);
         }
     }
 
@@ -144,6 +191,7 @@ public sealed class SourceSync
         GitFailure.FolderNotEmpty => "The folder of the source is not empty and is not a checkout: Mnemarr does not clone over what is there.",
         GitFailure.DifferentRepository => "The folder of the source is the checkout of another repository.",
         GitFailure.CredentialMissing => "The credential of the source is not there, or its token cannot be read.",
+        GitFailure.PushRejected => "The host refused the push: the branch may be protected, or the credential may not be allowed to write.",
         GitFailure.OutsideRoots => "The folder of the source is not inside the folders the operator allows for sources any more.",
         GitFailure.HostNotAllowed => "The address of the source is not what the operator allows for Git sources any more.",
         _ => "The repository could not be synchronised.",

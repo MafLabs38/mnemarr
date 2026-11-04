@@ -30,6 +30,7 @@ public static class GitFailure
     public const string CredentialMissing = "credential-missing";
     public const string OutsideRoots = "outside-roots";
     public const string HostNotAllowed = "host-not-allowed";
+    public const string PushRejected = "push-rejected";
     public const string Failed = "sync-failed";
 }
 
@@ -49,8 +50,21 @@ public sealed class GitSyncException : Exception
 /// Brings the checkout of a Git repository up to date: clones it into an empty folder, or fast-forwards it. Never forces: a checkout that has
 /// diverged, or has changes, is reported and left as it is (D-35). The credential is sent to the host of the repository only.
 /// </summary>
+/// <summary>Who a commit is by: the account that wrote the note, with an address that is not a person's.</summary>
+public sealed record GitAuthor(string Name, string Email);
+
 public interface IGitEngine
 {
+    /// <summary>
+    /// Commits the given paths (a changed, added or removed file) and nothing else of what the folder holds: whatever else is there is not
+    /// this commit's business. Returns the commit, or null when there was nothing to commit.
+    /// </summary>
+    string? Commit(string folder, IReadOnlyCollection<string> paths, string message, GitAuthor author);
+
+    /// <summary>Pushes the branch to the remote when it is ahead of it (a fast-forward on the remote: never forced); nothing when it is not.</summary>
+    /// <exception cref="GitSyncException">The push could not be done: see <see cref="GitFailure"/>.</exception>
+    void Push(string url, string? branch, string folder, GitSecret? secret, CancellationToken cancellationToken);
+
     /// <exception cref="GitSyncException">The sync could not be done: see <see cref="GitFailure"/>.</exception>
     GitSyncResult Sync(string url, string? branch, string folder, GitSecret? secret, CancellationToken cancellationToken);
 }

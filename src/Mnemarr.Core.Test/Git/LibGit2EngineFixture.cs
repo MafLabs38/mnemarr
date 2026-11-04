@@ -253,6 +253,8 @@ public sealed class LibGit2EngineCodesFixture
     [InlineData("failed to connect to host: Connection refused", GitFailure.Unreachable)]
     [InlineData("the operation timed out", GitFailure.Unreachable)]
     [InlineData("SSL error: certificate verify failed", GitFailure.Unreachable)]
+    [InlineData("cannot push because a reference that you are trying to update on the remote contains commits that are not present locally", GitFailure.PushRejected)]
+    [InlineData("rejected non-fast-forward", GitFailure.PushRejected)]
     [InlineData("something else that went wrong", GitFailure.Failed)]
     public void should_give_a_stable_code_from_what_libgit2_says(string message, string code)
     {

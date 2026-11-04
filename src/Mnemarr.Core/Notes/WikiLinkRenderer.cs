@@ -81,7 +81,7 @@ internal sealed class WikiLinkRenderer
                 }
 
                 return target is not null && _answers.Targets.GetValueOrDefault(target) is { } found
-                    ? $"[{Escape(note.Text)}]({NoteScheme}{found.SourceId}/{Uri.EscapeDataString(found.Path)})"
+                    ? $"[{Escape(note.Text)}]({NoteScheme}{found.SourceId}/{Uri.EscapeDataString(found.Path)}{Fragment(note.Heading)})"
                     : $"[{Escape(note.Text)}]({UnresolvedScheme})";
             default:
                 return null;
@@ -124,11 +124,27 @@ internal sealed class WikiLinkRenderer
 
         if (isNote)
         {
-            return _answers.NotePaths.GetValueOrDefault(path) is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}" : UnresolvedScheme;
+            return _answers.NotePaths.GetValueOrDefault(path) is { } note ? $"{NoteScheme}{note.SourceId}/{Uri.EscapeDataString(note.Path)}{Fragment(FragmentOf(destination))}" : UnresolvedScheme;
         }
 
         return _answers.ImagePaths.Contains(path) ? FileScheme + Uri.EscapeDataString(path) : UnresolvedScheme;
     }
+
+    /// <summary>The heading an ordinary link names (<c>note.md#some-heading</c>), as written.</summary>
+    private static string? FragmentOf(string destination)
+    {
+        var hash = destination.IndexOf('#', StringComparison.Ordinal);
+        if (hash < 0)
+        {
+            return null;
+        }
+
+        var end = destination.IndexOfAny(['?', ' '], hash);
+        return Uri.UnescapeDataString(end >= 0 ? destination[(hash + 1)..end] : destination[(hash + 1)..]);
+    }
+
+    /// <summary>The fragment that makes the reader scroll to a heading: the heading's slug (<see cref="Headings.Slug"/>), the same rule as the ids of the headings it draws.</summary>
+    private static string Fragment(string? heading) => heading is not null && Headings.Slug(heading) is { Length: > 0 } slug ? "#" + Uri.EscapeDataString(slug) : string.Empty;
 
     /// <summary>The text of a link in Markdown: a bracket or a backslash in it cannot end the link early.</summary>
     private static string Escape(string text) => text.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("[", "\\[", StringComparison.Ordinal).Replace("]", "\\]", StringComparison.Ordinal);

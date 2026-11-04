@@ -13,15 +13,23 @@ public abstract record WikiKind
 {
     public sealed record Image(string File) : WikiKind;
 
-    public sealed record Note(string Target, string Text) : WikiKind;
+    public sealed record Note(string Target, string Text, string? Heading = null) : WikiKind;
 
     public sealed record Nothing : WikiKind;
 }
 
 /// <summary>What a note says about itself and about other notes: the notes it links to, the files it embeds, and its tags.</summary>
-public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<string> Embeds, IReadOnlyList<string> Tags)
+public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<string> Embeds, IReadOnlyList<string> Tags, IReadOnlyList<string>? RelativeLinks = null)
 {
     public static NoteMeta Empty { get; } = new([], [], []);
+
+    /// <summary>The form a link target is stored in: lower case, without the extension of a note.</summary>
+    private static string NoteTarget(string path)
+    {
+        var lower = path.ToLowerInvariant();
+        var extension = MarkdownNotes.MarkdownExtensions.FirstOrDefault(known => lower.EndsWith(known, StringComparison.Ordinal));
+        return extension is null ? lower : lower[..^extension.Length];
+    }
 
     /// <summary>
     /// The links as paths from the root of the source. <c>[[../01 - Topic A/Index]]</c>, written in the note <c>04 - Topic B/Basics.md</c>, points at
@@ -38,7 +46,16 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
             }
         }
 
-        return this with { Links = resolved };
+        // An ordinary Markdown link to a note (`[text](../Topic/Note.md)`) is a link like a wikilink, from the root of the source: it gives backlinks too.
+        foreach (var target in (RelativeLinks ?? []).Select(address => NotePaths.RelativePath(notePath, address)).OfType<string>().Select(NoteTarget))
+        {
+            if (resolved.Count < MarkdownNotes.MaxLinks && !resolved.Any(link => link.Target == target))
+            {
+                resolved.Add(new WikiLink(target, null));
+            }
+        }
+
+        return this with { Links = resolved, RelativeLinks = null };
     }
 }
 
@@ -51,16 +68,17 @@ public static class MarkdownNotes
 {
     /// <summary>
     /// The version of the reading of links and tags, stored with each note. A note read by another version has its links and tags read again at the
-    /// next pass, without being cut again: raise it with a change to how a link or a tag is read (1: the first reading).
+    /// next pass, without being cut again: raise it with a change to how a link or a tag is read (1: the first reading; 2: ordinary Markdown links to notes are links too).
     /// </summary>
-    public const int Version = 1;
+    public const int Version = 2;
 
     private const int MaxItems = 200;
+    internal const int MaxLinks = 200;
     internal const int MaxLength = 200;
 
     /// <summary>The most characters between <c>[[</c> and <c>]]</c>: a target, a bar and an alias, each bounded.</summary>
     private const int MaxInner = (2 * MaxLength) + 10;
-    private static readonly string[] MarkdownExtensions = [".md", ".markdown"];
+    internal static readonly string[] MarkdownExtensions = [".md", ".markdown"];
 
     public static NoteMeta Parse(string markdown)
     {
@@ -78,7 +96,22 @@ public static class MarkdownNotes
             }
         }
 
-        return new NoteMeta(Distinct(links, link => link.Target + "|" + link.Alias), [.. embeds.Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxItems)], [.. tags.Distinct(StringComparer.Ordinal).Take(MaxItems)]);
+        var relative = new List<string>();
+        Rewrite(body, _ => null, destination => CollectNoteAddress(destination, relative));
+        return new NoteMeta(Distinct(links, link => link.Target + "|" + link.Alias), [.. embeds.Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxItems)], [.. tags.Distinct(StringComparer.Ordinal).Take(MaxItems)], [.. relative.Distinct(StringComparer.Ordinal).Take(MaxItems)]);
+    }
+
+    /// <summary>Notes the address of an ordinary link when it names a note (a relative address that ends in <c>.md</c> or <c>.markdown</c>); never rewrites it.</summary>
+    private static string? CollectNoteAddress(string destination, List<string> found)
+    {
+        var end = destination.IndexOfAny(['#', '?', ' ']);
+        var address = end >= 0 ? destination[..end] : destination;
+        if (MarkdownExtensions.Any(extension => address.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) && address.Length <= (2 * MaxLength))
+        {
+            found.Add(address);
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -416,7 +449,7 @@ public static class MarkdownNotes
         }
 
         var text = string.IsNullOrEmpty(alias) ? target : alias;
-        return new WikiKind.Note(normalized, text);
+        return new WikiKind.Note(normalized, text, HeadingOf(target));
     }
 
     private static void AddLink(string inner, bool embedded, List<WikiLink> links, List<string> embeds)
@@ -433,6 +466,14 @@ public static class MarkdownNotes
             default:
                 break;
         }
+    }
+
+    /// <summary>The heading a link names (<c>[[note#Heading]]</c>), or null.</summary>
+    internal static string? HeadingOf(string target)
+    {
+        var hash = target.IndexOf('#', StringComparison.Ordinal);
+        var heading = hash >= 0 ? target[(hash + 1)..].Trim() : string.Empty;
+        return heading.Length is > 0 and <= MaxLength ? heading : null;
     }
 
     /// <summary>The file a link or an embed names: no heading, trimmed, with <c>/</c>.</summary>

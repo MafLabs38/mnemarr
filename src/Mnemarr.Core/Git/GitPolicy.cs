@@ -70,6 +70,9 @@ public sealed class GitPolicy
     /// <summary>The credentials the operator offers: the policy is where a source's credential is checked, and where its secret is read at a sync.</summary>
     internal GitCredentials Credentials => _credentials;
 
+    /// <summary>The address on the commits Mnemarr makes.</summary>
+    internal string CommitEmail => _options.Value.CommitEmail;
+
     /// <summary>How long one sync may take.</summary>
     internal TimeSpan SyncTimeout => TimeSpan.FromSeconds(_options.Value.SyncTimeoutSeconds);
 

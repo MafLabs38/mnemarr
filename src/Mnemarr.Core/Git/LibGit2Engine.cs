@@ -100,6 +100,63 @@ public sealed class LibGit2Engine : IGitEngine
         return new GitSyncResult(GitSyncAction.Updated, Tip(repository));
     }
 
+    public string? Commit(string folder, IReadOnlyCollection<string> paths, string message, GitAuthor author)
+    {
+        using var repository = new Repository(folder);
+        foreach (var path in paths)
+        {
+            Commands.Stage(repository, path);
+        }
+
+        const FileStatus staged = FileStatus.NewInIndex | FileStatus.ModifiedInIndex | FileStatus.DeletedFromIndex | FileStatus.RenamedInIndex | FileStatus.TypeChangeInIndex;
+        if (!repository.RetrieveStatus(new StatusOptions()).Any(entry => (entry.State & staged) != 0))
+        {
+            return null;
+        }
+
+        var signature = new Signature(author.Name, author.Email, DateTimeOffset.UtcNow);
+        return repository.Commit(message, signature, signature).Sha;
+    }
+
+    public void Push(string url, string? branch, string folder, GitSecret? secret, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            using var repository = new Repository(folder);
+            var name = branch ?? repository.Head.FriendlyName;
+            var local = repository.Branches[name]?.Tip ?? throw new GitSyncException(GitFailure.BranchNotFound, "The branch is not in the checkout.");
+            var remote = repository.Branches[$"{Remote}/{name}"]?.Tip;
+            if (remote is not null && (local.Id == remote.Id || repository.ObjectDatabase.FindMergeBase(local, remote)?.Id != remote.Id))
+            {
+                // Nothing ahead, or the remote has moved on (diverged): a fast-forward is the only push, and that one is not.
+                if (local.Id != remote.Id)
+                {
+                    throw new GitSyncException(GitFailure.Diverged, "The checkout and the remote branch have diverged: nothing was pushed.");
+                }
+
+                return;
+            }
+
+            string? refused = null;
+            var options = new PushOptions { OnPushStatusError = error => refused = error.Message };
+            if (secret is not null)
+            {
+                options.CredentialsProvider = OfferOnce(url, secret);
+            }
+
+            repository.Network.Push(repository.Network.Remotes[Remote], $"refs/heads/{name}:refs/heads/{name}", options);
+            if (refused is not null)
+            {
+                throw new GitSyncException(GitFailure.PushRejected, "The host refused the push.");
+            }
+        }
+        catch (LibGit2SharpException ex)
+        {
+            throw new GitSyncException(CodeOf(ex), "The push could not be done.", ex);
+        }
+    }
+
     private static void SwitchTo(Repository repository, string name, Commit remote)
     {
         if (repository.RetrieveStatus(new StatusOptions()).IsDirty)
@@ -171,6 +228,11 @@ public sealed class LibGit2Engine : IGitEngine
         if (message.Contains("authentication", StringComparison.Ordinal) || message.Contains("credential", StringComparison.Ordinal) || message.Contains("401", StringComparison.Ordinal) || message.Contains("403", StringComparison.Ordinal) || message.Contains("unauthorized", StringComparison.Ordinal))
         {
             return GitFailure.AuthFailed;
+        }
+
+        if (message.Contains("cannot push", StringComparison.Ordinal) || message.Contains("non-fast-forward", StringComparison.Ordinal) || message.Contains("not present locally", StringComparison.Ordinal))
+        {
+            return GitFailure.PushRejected;
         }
 
         if (message.Contains("remote branch", StringComparison.Ordinal) || (message.Contains("reference", StringComparison.Ordinal) && message.Contains("not found", StringComparison.Ordinal)))
