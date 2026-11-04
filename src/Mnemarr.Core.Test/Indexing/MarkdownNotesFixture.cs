@@ -99,7 +99,7 @@ public sealed class MarkdownNotesFixture
     [InlineData("a.md", "dir/with:colon.md", "dir/with:colon.md")]
     public void should_read_a_relative_address_from_the_folder_of_its_note(string note, string address, string? expected)
     {
-        MarkdownNotes.RelativePath(note, address).Should().Be(expected);
+        NotePaths.RelativePath(note, address).Should().Be(expected);
     }
 
     [Fact]

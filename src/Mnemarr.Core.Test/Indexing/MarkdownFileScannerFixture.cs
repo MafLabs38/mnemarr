@@ -78,6 +78,27 @@ public sealed class MarkdownFileScannerFixture : IDisposable
         MarkdownFileScanner.Scan(_root).Select(file => file.RelativePath).Should().Equal("kept.md");
     }
 
+    [Fact]
+    public void should_know_the_images_only_when_the_walk_reached_its_end_and_give_them_in_path_order()
+    {
+        TestWorkspace.Write(_root, "b/two.png", "x");
+        TestWorkspace.Write(_root, "a/one.JPG", "x");
+        TestWorkspace.Write(_root, "a/note.md", "x");
+        TestWorkspace.Write(_root, "a/drawing.svg", "x");
+        TestWorkspace.Write(_root, ".hidden/three.png", "x");
+        var walk = MarkdownFileScanner.WalkOf(_root);
+
+        var images = () => walk.Images;
+
+        images.Should().Throw<InvalidOperationException>("nothing was walked yet");
+        var first = walk.Notes.First();
+        images.Should().Throw<InvalidOperationException>("a walk cut short knows only some of the images");
+        first.RelativePath.Should().Be("a/note.md");
+        _ = walk.Notes.ToList();
+        walk.Completed.Should().BeTrue();
+        walk.Images.Should().Equal("a/one.JPG", "b/two.png");
+    }
+
     private sealed class TempFolder : IDisposable
     {
         public string Path { get; } = Directory.CreateTempSubdirectory("mnemarr-outside-").FullName;

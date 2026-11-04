@@ -22,7 +22,7 @@ public sealed record NoteMeta(IReadOnlyList<WikiLink> Links, IReadOnlyList<strin
         var resolved = new List<WikiLink>();
         foreach (var link in Links)
         {
-            if (MarkdownNotes.FromFolder(notePath, link.Target) is { } target)
+            if (NotePaths.FromFolderTarget(notePath, link.Target) is { } target)
             {
                 resolved.Add(link with { Target = target });
             }
@@ -46,42 +46,54 @@ public static class MarkdownNotes
     public const int Version = 1;
 
     private const int MaxItems = 200;
-    private const int MaxLength = 200;
+    internal const int MaxLength = 200;
 
     /// <summary>The most characters between <c>[[</c> and <c>]]</c>: a target, a bar and an alias, each bounded.</summary>
     private const int MaxInner = (2 * MaxLength) + 10;
-    private const int MaxFrontMatterLines = 100;
     private static readonly string[] MarkdownExtensions = [".md", ".markdown"];
 
     public static NoteMeta Parse(string markdown)
     {
         var text = markdown.TrimStart('\uFEFF');
-        var (length, frontTags) = SplitFrontMatter(text);
+        var (length, frontTags) = FrontMatter.Split(text);
         var body = text[length..];
         var links = new List<WikiLink>();
         var embeds = new List<string>();
         var tags = new List<string>(frontTags);
-        var inFence = false;
-        foreach (var raw in body.ReplaceLineEndings("\n").Split('\n'))
+        foreach (var (line, fenced) in Lines(body))
         {
-            if (raw.StartsWith("```", StringComparison.Ordinal) || raw.StartsWith("~~~", StringComparison.Ordinal))
+            if (!fenced)
             {
-                inFence = !inFence;
-            }
-            else if (!inFence)
-            {
-                ReadLine(raw, links, embeds, tags);
+                ReadLine(line, links, embeds, tags);
             }
         }
 
         return new NoteMeta(Distinct(links, link => link.Target + "|" + link.Alias), [.. embeds.Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxItems)], [.. tags.Distinct(StringComparer.Ordinal).Take(MaxItems)]);
     }
 
+    /// <summary>The lines of the body of a note, each with whether it is in a fenced code block (the lines of the fences included): what a fence holds is code, and says nothing.</summary>
+    private static IEnumerable<(string Line, bool Fenced)> Lines(string body)
+    {
+        var inFence = false;
+        foreach (var raw in body.ReplaceLineEndings("\n").Split('\n'))
+        {
+            if (raw.StartsWith("```", StringComparison.Ordinal) || raw.StartsWith("~~~", StringComparison.Ordinal))
+            {
+                inFence = !inFence;
+                yield return (raw, true);
+            }
+            else
+            {
+                yield return (raw, inFence);
+            }
+        }
+    }
+
     /// <summary>The note without its front matter: what is rendered. A BOM is dropped as well.</summary>
     public static string Body(string markdown)
     {
         var text = markdown.TrimStart('\uFEFF');
-        return text[SplitFrontMatter(text).Length..];
+        return text[FrontMatter.Split(text).Length..];
     }
 
     /// <summary>The target of a link as it is stored and compared: no heading, no extension, trimmed, lower case. Null when there is nothing to point at.</summary>
@@ -97,106 +109,8 @@ public static class MarkdownNotes
         return name.Length is 0 or > MaxLength ? null : name.ToLowerInvariant();
     }
 
-    /// <summary>The target of a link written from the folder of a note: unchanged when it is a name or a path from the root, resolved when it starts with <c>./</c> or <c>../</c>, null when it leaves the source.</summary>
-    internal static string? FromFolder(string notePath, string target)
-    {
-        if (!target.StartsWith("./", StringComparison.Ordinal) && !target.StartsWith("../", StringComparison.Ordinal))
-        {
-            return target;
-        }
-
-        var parts = notePath.Split('/').SkipLast(1).ToList();
-        foreach (var part in target.Split('/'))
-        {
-            if (part == "..")
-            {
-                if (parts.Count == 0)
-                {
-                    return null;
-                }
-
-                parts.RemoveAt(parts.Count - 1);
-            }
-            else if (part is not ("." or ""))
-            {
-                parts.Add(part);
-            }
-        }
-
-        return parts.Count == 0 ? null : string.Join('/', parts).ToLowerInvariant();
-    }
-
     private static List<WikiLink> Distinct(List<WikiLink> links, Func<WikiLink, string> key) =>
         [.. links.DistinctBy(key, StringComparer.Ordinal).Take(MaxItems)];
-
-    /// <summary>The length of the front matter block (including its fences and the line break after) and the tags it declares.</summary>
-    private static (int Length, List<string> Tags) SplitFrontMatter(string text)
-    {
-        if (!text.StartsWith("---", StringComparison.Ordinal) || !(text.Length > 3 && text[3] is '\n' or '\r'))
-        {
-            return (0, []);
-        }
-
-        var tags = new List<string>();
-        var position = text.IndexOf('\n', StringComparison.Ordinal) + 1;
-        var inTags = false;
-        for (var lines = 0; lines < MaxFrontMatterLines && position < text.Length; lines++)
-        {
-            var end = text.IndexOf('\n', position);
-            end = end < 0 ? text.Length : end;
-            var line = text[position..end].TrimEnd('\r');
-            position = Math.Min(end + 1, text.Length);
-            if (line is "---" or "...")
-            {
-                return (position, tags);
-            }
-
-            inTags = ReadFrontMatterLine(line, inTags, tags);
-        }
-
-        // Never closed: it is not front matter, it is a line of dashes.
-        return (0, []);
-    }
-
-    /// <summary>One line of front matter; true when the following lines are the items of the <c>tags</c> list.</summary>
-    private static bool ReadFrontMatterLine(string line, bool inTags, List<string> tags)
-    {
-        var trimmed = line.Trim();
-        if (inTags && trimmed.StartsWith('-'))
-        {
-            AddTag(tags, trimmed[1..]);
-            return true;
-        }
-
-        var colon = line.IndexOf(':', StringComparison.Ordinal);
-        if (colon <= 0 || line[0] is ' ' or '\t')
-        {
-            return inTags && trimmed.Length == 0;
-        }
-
-        var key = line[..colon].Trim();
-        if (key is not ("tags" or "tag"))
-        {
-            return false;
-        }
-
-        var value = line[(colon + 1)..].Trim().Trim('[', ']');
-        foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-        {
-            AddTag(tags, part);
-        }
-
-        return value.Length == 0;
-    }
-
-    private static void AddTag(List<string> tags, string text)
-    {
-        var tag = text.Trim().Trim('"', '\'').TrimStart('#').ToLowerInvariant();
-        if (tag.Length is > 0 and <= MaxLength && tag.All(IsTagChar))
-        {
-            tags.Add(tag);
-        }
-    }
 
     private static string WithoutInlineCode(string line)
     {
@@ -307,9 +221,8 @@ public static class MarkdownNotes
     public static string Rewrite(string body, Func<WikiToken, string?> replace, Func<string, string?>? replaceDestination = null)
     {
         var result = new StringBuilder(body.Length);
-        var inFence = false;
         var first = true;
-        foreach (var raw in body.ReplaceLineEndings("\n").Split('\n'))
+        foreach (var (line, fenced) in Lines(body))
         {
             if (!first)
             {
@@ -317,18 +230,13 @@ public static class MarkdownNotes
             }
 
             first = false;
-            if (raw.StartsWith("```", StringComparison.Ordinal) || raw.StartsWith("~~~", StringComparison.Ordinal))
+            if (fenced)
             {
-                inFence = !inFence;
-                result.Append(raw);
-            }
-            else if (inFence)
-            {
-                result.Append(raw);
+                result.Append(line);
             }
             else
             {
-                RewriteLine(raw, replace, replaceDestination, result);
+                RewriteLine(line, replace, replaceDestination, result);
             }
         }
 
@@ -409,42 +317,6 @@ public static class MarkdownNotes
         return closed && end - from <= MaxLength && line[from] != '<' ? end : -1;
     }
 
-    /// <summary>
-    /// The path, from the root of the source, of what a relative address leads to from the note at <paramref name="notePath"/> (no heading or
-    /// query, URL-decoded), or null when it leaves the source or is not a relative address (a scheme, a leading <c>/</c>, <c>#</c> or <c>?</c>).
-    /// </summary>
-    public static string? RelativePath(string notePath, string address)
-    {
-        var colon = address.IndexOf(':', StringComparison.Ordinal);
-        var slash = address.IndexOf('/', StringComparison.Ordinal);
-        if (address.Length == 0 || address[0] is '/' or '#' or '?' || (colon > 0 && (slash < 0 || colon < slash)))
-        {
-            return null;
-        }
-
-        var end = address.IndexOfAny(['#', '?']);
-        var reference = Uri.UnescapeDataString(end >= 0 ? address[..end] : address).Replace('\\', '/');
-        var parts = notePath.Split('/').SkipLast(1).ToList();
-        foreach (var part in reference.Split('/'))
-        {
-            if (part == "..")
-            {
-                if (parts.Count == 0)
-                {
-                    return null;
-                }
-
-                parts.RemoveAt(parts.Count - 1);
-            }
-            else if (part is not ("." or ""))
-            {
-                parts.Add(part);
-            }
-        }
-
-        return parts.Count == 0 ? null : string.Join('/', parts);
-    }
-
     /// <summary>A <c>#</c> that opens a tag: at the start of the line, after a space or after <c>[</c> (so not <c>C#</c>, not the anchor of a link such as <c>(#setup)</c>).</summary>
     private static bool StartsTag(string line, int index) =>
         line[index] == '#' && (index == 0 || char.IsWhiteSpace(line[index - 1]) || line[index - 1] is '[');
@@ -502,5 +374,5 @@ public static class MarkdownNotes
         return (hash >= 0 ? target[..hash] : target).Trim().Replace('\\', '/');
     }
 
-    private static bool IsTagChar(char c) => char.IsLetterOrDigit(c) || c is '_' or '-' or '/';
+    internal static bool IsTagChar(char c) => char.IsLetterOrDigit(c) || c is '_' or '-' or '/';
 }

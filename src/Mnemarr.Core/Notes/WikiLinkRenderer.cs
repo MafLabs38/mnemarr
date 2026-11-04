@@ -74,7 +74,7 @@ internal sealed class WikiLinkRenderer
     /// </summary>
     private string? RenderDestination(string destination)
     {
-        if (MarkdownNotes.RelativePath(_notePath, destination) is not { } path)
+        if (NotePaths.RelativePath(_notePath, destination) is not { } path)
         {
             return null;
         }
@@ -97,7 +97,7 @@ internal sealed class WikiLinkRenderer
     {
         if (!_resolved.TryGetValue(normalized, out var note))
         {
-            note = MarkdownNotes.FromFolder(_notePath, normalized) is { } target ? _browser.Resolve(_sourceId, target, _scope) : null;
+            note = NotePaths.FromFolderTarget(_notePath, normalized) is { } target ? _browser.Resolve(_sourceId, target, _scope) : null;
             _resolved[normalized] = note;
         }
 

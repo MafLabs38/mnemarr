@@ -28,7 +28,7 @@ public sealed class NotesController : ControllerBase
     public NoteListResource List([FromQuery] Guid? source = null, [FromQuery] string? tag = null) =>
         NoteListResource.From(_reader.List(User.Scope(), source, tag));
 
-    /// <summary>A note: its Markdown (never rendered here, and never trusted by whoever renders it), its tags, links and backlinks.</summary>
+    /// <summary>A note: its Markdown as written, the same with its links rewritten to where they lead for the caller (never trusted by whoever draws it), its tags, links and backlinks.</summary>
     [HttpGet("{sourceId:guid}/{**path}")]
     [ProducesResponseType<NoteResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
