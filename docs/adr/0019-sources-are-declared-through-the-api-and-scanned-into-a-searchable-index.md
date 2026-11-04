@@ -27,7 +27,8 @@ The first feature vertical has to turn a folder of Markdown notes into something
 - The interface is organised by kind, not by a generic list: a required kind is a slot (filled or to fill), an optional kind is a list with its own add form, and there is no "kind" to choose.
 
 - An operator mounts a vault read-only, names its folder in `Sources:Roots`, and declares the source in the interface: nothing else to configure.
-- A scan of a large vault costs a read of every file; the hash makes the writes proportional to the changes. Watching files would be cheaper, and less reliable across network shares and Git pulls: it can be added as an optimisation without changing the model.
+- **A Git source (F-SRC-01, Q-32) fits this shape without breaking it**: the Git engine checks a repository out into a folder under the roots, and that folder is the source's `path`; the repository, the branch and the reference to a credential come later as optional fields of the same resource and of the document (adding a field breaks no file), next to the mode that already says whether Mnemarr may push.
+- A scan of a large vault costs a read of the notes that changed (their size and time are compared first); the hash makes the writes proportional to the changes. Watching files would be cheaper, and less reliable across network shares and Git pulls: it can be added as an optimisation without changing the model.
 - Q-29 is partly answered: bootstrap settings (paths, roots, the first administrator, cookies) stay in the environment; sources, and later the rest of what the interface configures, are runtime data. The settings API stays to be decided.
 - The folder of a source is shown to whoever may manage sources: a path of the operator's setup, to someone the operator trusts with sources.
 
