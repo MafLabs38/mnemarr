@@ -172,6 +172,11 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
         say("warning: the address of Mnemarr is plain http://: the key is sent without encryption");
     }
     let mut state = State::load(&config.state);
+    if state.adopt(&format!("{}|{}", config.server, config.machine)) {
+        say(
+            "starting from the beginning for this machine and this server: what was sent before was sent to another",
+        );
+    }
     say(&format!(
         "{VERSION}: {} -> {} as {}",
         config.projects.display(),
