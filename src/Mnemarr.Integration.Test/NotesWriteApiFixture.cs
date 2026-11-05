@@ -223,4 +223,35 @@ public sealed class NotesWriteApiFixture : IClassFixture<MnemarrFactory>, IAsync
         body.GetProperty("git").GetProperty("pushed").GetBoolean().Should().BeTrue();
         _factory.Git.Commits.Skip(before).Should().ContainSingle().Which.Should().Match<(string Folder, string[] Paths, string Message, Mnemarr.Core.Git.GitAuthor Author)>(c => c.Message == "Add a.md" && c.Author.Email == "mnemarr@localhost");
     }
+
+    [Fact]
+    public async Task should_append_to_a_note_over_rest_as_the_mcp_tool_does()
+    {
+        var (id, folder) = await SourceAsync(Callers.Unique("vault"));
+        var client = _callers["Operator"];
+        await client.PostAsJsonAsync(Note(id, "Log.md"), new { content = "# Log\n" }, Token);
+
+        var appended = await client.PostAsJsonAsync($"/api/v1/notes/{id}/append", new { path = "Log.md", text = "one more line" }, Token);
+        var missing = await client.PostAsJsonAsync($"/api/v1/notes/{id}/append", new { path = "Nope.md", text = "x" }, Token);
+        var reader = await _callers["Reader"].PostAsJsonAsync($"/api/v1/notes/{id}/append", new { path = "Log.md", text = "x" }, Token);
+
+        appended.StatusCode.Should().Be(HttpStatusCode.OK);
+        File.ReadAllText(Path.Combine(folder, "Log.md")).Should().Contain("one more line");
+        missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        reader.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task should_refuse_to_create_over_an_existing_note_and_to_remove_a_note_that_changed()
+    {
+        var (id, _) = await SourceAsync(Callers.Unique("vault"));
+        var client = _callers["Operator"];
+        await client.PostAsJsonAsync(Note(id, "a.md"), new { content = "# A" }, Token);
+
+        var again = await client.PostAsJsonAsync(Note(id, "a.md"), new { content = "# B" }, Token);
+        var stale = await client.DeleteAsync($"{Note(id, "a.md")}?version=0000", Token);
+
+        again.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        stale.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
 }

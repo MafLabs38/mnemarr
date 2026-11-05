@@ -165,4 +165,21 @@ public sealed class LibGit2EnginePublishFixture : IDisposable
         checkout.Lookup<Commit>(commit).Tree.Select(entry => entry.Path).Should().BeEquivalentTo(["README.md", "New.md"]);
         File.ReadAllText(Path.Combine(folder, "Staged.md")).Should().Be("# staged by an operator");
     }
+
+    [Fact]
+    public void should_not_push_to_a_checkout_that_belongs_to_another_repository()
+    {
+        var folder = Clone("checkout");
+        File.WriteAllText(Path.Combine(folder, "New.md"), "# new");
+        _engine.Commit(folder, ["New.md"], "Add New.md", Alice);
+        using (var repository = new Repository(folder))
+        {
+            repository.Network.Remotes.Remove("origin");
+            repository.Network.Remotes.Add("origin", Path.Combine(_workspace.SourcesFolder, "elsewhere.git"));
+        }
+
+        var push = () => _engine.Push(_remote, null, folder, null, CancellationToken.None);
+
+        push.Should().Throw<GitSyncException>().Which.Code.Should().Be(GitFailure.DifferentRepository);
+    }
 }

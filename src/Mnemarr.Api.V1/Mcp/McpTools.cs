@@ -90,7 +90,8 @@ public sealed class McpTools
             "update_note" => await _writer.UpdateAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Text(arguments, ContentKey), Text(arguments, VersionKey), cancellationToken),
             "append_to_note" => await _writer.AppendAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Text(arguments, "text"), cancellationToken),
             "rename_note" => await _writer.RenameAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, "from"), Text(arguments, "to"), cancellationToken),
-            _ => DeleteResult(await _writer.DeleteAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Optional(arguments, VersionKey), cancellationToken)),
+            "delete_note" => DeleteResult(await _writer.DeleteAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Optional(arguments, VersionKey), cancellationToken)),
+            _ => throw new RejectedException(Problem.NotFound, "There is no such tool."),
         };
         return JsonSerializer.SerializeToNode(result, Json) ?? new JsonObject();
     }

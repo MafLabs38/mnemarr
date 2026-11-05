@@ -75,6 +75,12 @@ public sealed class NotesController : ControllerBase
         RenameResultResource.From(await _writer.RenameAsync(Actor, sourceId, request.From, request.To, cancellationToken));
 
     /// <summary>A text as it would be drawn once saved as a note of this source, its links resolved for the caller. Nothing is written.</summary>
+    /// <summary>Adds text at the end of a note. The same service as the MCP tool <c>append_to_note</c>.</summary>
+    [HttpPost("{sourceId:guid}/append")]
+    [Authorize(Policy = Permissions.NotesWrite)]
+    public async Task<WriteResultResource> Append(Guid sourceId, AppendNoteRequest request, CancellationToken cancellationToken) =>
+        WriteResultResource.From(await _writer.AppendAsync(Actor, sourceId, request.Path, request.Text, cancellationToken));
+
     [HttpPost("{sourceId:guid}/preview")]
     public PreviewResource Preview(Guid sourceId, PreviewNoteRequest request) =>
         new(_reader.Preview(sourceId, request.Path, request.Content, User.Scope()));

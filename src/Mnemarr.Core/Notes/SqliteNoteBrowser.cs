@@ -150,7 +150,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         return new TagListing(tags, total);
     }
 
-    public BacklinkSet BacklinksOf(Guid sourceId, string path)
+    public BacklinkSet BacklinksOf(Guid sourceId, string path, SourceScope scope)
     {
         using var connection = _database.Open();
         var note = ReadNote(connection, sourceId, path, SourceScope.All);
@@ -162,7 +162,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         var (id, reference, name) = note.Value;
         var (all, _) = Backlinks(connection, id, reference, name, WithoutExtension(reference.Path).ToLowerInvariant(), SourceScope.All, int.MaxValue);
         var inSource = all.Where(backlink => backlink.SourceId == sourceId).Select(backlink => backlink.Path).ToList();
-        return new BacklinkSet(inSource, all.Count - inSource.Count);
+        return new BacklinkSet(inSource, all.Count(backlink => backlink.SourceId != sourceId && scope.CanAccess(backlink.SourceId)));
     }
 
     public NoteDetail? Find(Guid sourceId, string path, SourceScope scope)

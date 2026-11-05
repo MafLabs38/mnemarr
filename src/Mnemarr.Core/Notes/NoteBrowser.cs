@@ -47,9 +47,9 @@ public interface INoteBrowser
 {
     /// <summary>
     /// Every note of the same source that links to the note, however many, for a rename that must rewrite them all (a note shown to a person is
-    /// capped; this is not), and the count of those in other sources. An unknown note has none.
+    /// capped; this is not), and the count of those in other sources that the caller may read (a source out of their scope is as absent as one that does not exist). An unknown note has none.
     /// </summary>
-    BacklinkSet BacklinksOf(Guid sourceId, string path);
+    BacklinkSet BacklinksOf(Guid sourceId, string path, SourceScope scope);
 
     /// <summary>The notes the caller may read, by source and path, optionally of one source or carrying one tag.</summary>
     NoteListing List(SourceScope scope, Guid? sourceId, string? tag);

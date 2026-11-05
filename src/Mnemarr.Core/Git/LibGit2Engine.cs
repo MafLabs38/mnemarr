@@ -130,6 +130,12 @@ public sealed class LibGit2Engine : IGitEngine
         try
         {
             using var repository = new Repository(folder);
+            if (!SameRepository(repository.Network.Remotes[Remote]?.Url, url))
+            {
+                // The source was pointed at another repository since the checkout was made: what was written for this one does not go to that one.
+                throw new GitSyncException(GitFailure.DifferentRepository, "The checkout belongs to another repository: nothing was pushed.");
+            }
+
             var name = branch ?? repository.Head.FriendlyName;
             var local = repository.Branches[name]?.Tip ?? throw new GitSyncException(GitFailure.BranchNotFound, "The branch is not in the checkout.");
             var remote = repository.Branches[$"{Remote}/{name}"]?.Tip;

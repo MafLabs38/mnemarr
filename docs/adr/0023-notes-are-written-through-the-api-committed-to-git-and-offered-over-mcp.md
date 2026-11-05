@@ -23,6 +23,10 @@ Mnemarr could read: sources, an index, a reader, Git checkouts that are kept up 
 
 ## Consequences
 
+- **This supersedes parts of ADR 0015 §5 and D-35 for writing notes.** The author of a commit is the account that made the change (not "Mnemarr, for which assistant"); a push that is refused keeps the commit (the next sync pushes it) instead of resetting it, except that a diverged checkout refuses the write up front; the checkout is brought up to date before each write (as §5 asks); masking of secrets is not done yet (see below).
+- The trash of a plain folder (`.mnemarr-trash`) is kept for ever and has no retention setting: "Mnemarr never destroys a note" is the choice, and emptying it is the operator's decision, by hand, until a retention setting is asked for.
+- Every MCP tool has a REST endpoint (D-19), `append_to_note` included (`POST /api/v1/notes/{source}/append`).
+
 - A person, an assistant over MCP and a script write through the same checks; the audit log says who did what (`note.created`, `note.updated`, `note.renamed`, `note.removed`).
 - A write to a source that a sync or a scan is working on waits for it; a long clone can make a write answer 429, which the caller retries.
 - Links in other sources are not rewritten by a rename (the count says how many were left). A rename in a Git source commits every note it touched in one commit.

@@ -46,13 +46,13 @@ public sealed class GitSyncException : Exception
     public string Code { get; }
 }
 
+/// <summary>Who a commit is by: the account that wrote the note, with an address that is not a person's.</summary>
+public sealed record GitAuthor(string Name, string Email);
+
 /// <summary>
 /// Brings the checkout of a Git repository up to date: clones it into an empty folder, or fast-forwards it. Never forces: a checkout that has
 /// diverged, or has changes, is reported and left as it is (D-35). The credential is sent to the host of the repository only.
 /// </summary>
-/// <summary>Who a commit is by: the account that wrote the note, with an address that is not a person's.</summary>
-public sealed record GitAuthor(string Name, string Email);
-
 public interface IGitEngine
 {
     /// <summary>

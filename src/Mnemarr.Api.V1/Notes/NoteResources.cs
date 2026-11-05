@@ -73,6 +73,9 @@ public sealed record UpdateNoteRequest(string Content, string Version);
 
 public sealed record RenameNoteRequest(string From, string To);
 
+/// <summary>Text added at the end of a note, whatever its version (what an assistant jotting something down needs).</summary>
+public sealed record AppendNoteRequest(string Path, string Text);
+
 /// <summary>A text and where it would be saved, to see it drawn as a note of that source.</summary>
 public sealed record PreviewNoteRequest(string Path, string Content);
 

@@ -118,7 +118,7 @@ public sealed class NoteWriter
                 throw new RejectedException(Problem.Conflict, "There is already a note at the new path.");
             }
 
-            var backlinks = _browser.BacklinksOf(source.Id, from);
+            var backlinks = _browser.BacklinksOf(source.Id, from, actor.Scope);
             var movedText = LinkRetargeter.Rebase(Encoding.UTF8.GetString(content), from, to).Text;
             Directory.CreateDirectory(Path.GetDirectoryName(newFull)!);
             WriteAtomic(newFull, Encode(movedText), overwrite: false);

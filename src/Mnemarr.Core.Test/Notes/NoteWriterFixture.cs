@@ -356,7 +356,6 @@ public sealed class NoteWriterFixture : IDisposable
 
         _engine.Commits.Select(c => c.Message).Should().Equal("Rename a.md to b.md", "Remove b.md");
         _engine.Commits[0].Paths.Should().BeEquivalentTo(["a.md", "b.md", "index.md"]);
-        File.Exists(Path.Combine(source.Path, NoteWriter.TrashFolder)).Should().BeFalse("a Git source keeps what it removes in its history, not in a folder");
         Directory.Exists(Path.Combine(source.Path, NoteWriter.TrashFolder)).Should().BeFalse();
     }
 
@@ -461,5 +460,29 @@ public sealed class NoteWriterFixture : IDisposable
 
         result.NotesRewritten.Should().Be(230);
         Read(source, "n229.md").Should().Be("# N\n[[centre]]");
+    }
+
+    [Fact]
+    public async Task should_count_only_the_links_of_other_sources_that_the_caller_may_read()
+    {
+        var mine = await DeclareIndexedAsync("mine", notes: [("hub.md", "# Hub")]);
+        var theirs = await DeclareIndexedAsync("theirs", notes: [("x.md", "# X\n[[hub]]")]);
+        var narrow = new NoteActor(new SourceScope([mine.Id]), "alice");
+        _ = theirs;
+
+        var result = await _writer.RenameAsync(narrow, mine.Id, "hub.md", "centre.md", Token);
+
+        result.NotesNotRewritten.Should().Be(0, "a source out of the scope of the key is as absent as one that does not exist");
+    }
+
+    [Fact]
+    public async Task should_count_the_links_of_other_sources_that_the_caller_may_read()
+    {
+        var mine = await DeclareIndexedAsync("mine", notes: [("hub.md", "# Hub")]);
+        await DeclareIndexedAsync("theirs", notes: [("x.md", "# X\n[[hub]]")]);
+
+        var result = await _writer.RenameAsync(Alice, mine.Id, "hub.md", "centre.md", Token);
+
+        result.NotesNotRewritten.Should().Be(1);
     }
 }

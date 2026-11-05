@@ -74,6 +74,33 @@ public sealed class McpApiFixture : IClassFixture<MnemarrFactory>, IClassFixture
     }
 
     [Fact]
+    public async Task should_answer_an_initialize_whose_version_is_not_text_and_never_let_a_proxy_keep_an_answer()
+    {
+        using var client = await KeyAsync(_readOnly, "Reader");
+
+        var response = await client.PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = 5 } }, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.CacheControl!.NoStore.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task should_dispatch_every_tool_it_offers_and_none_to_a_deletion_by_default()
+    {
+        await SourceAsync(_writable, Callers.Unique("vault"), "ReadWrite");
+        using var client = await KeyAsync(_writable, "Assistant");
+        var listed = await RpcAsync(client, "tools/list", new { });
+
+        foreach (var name in ToolNames(listed))
+        {
+            var attempt = await CallAsync(client, name, new { });
+            attempt.Content.ToJsonString().Should().NotContain("no such tool", $"{name} has a case of its own");
+        }
+
+        (await CallAsync(client, "drop_database", new { })).IsError.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task should_not_take_a_cross_site_request_that_rides_on_a_session_cookie()
     {
         using var browser = await _writable.SignedInClientAsync();

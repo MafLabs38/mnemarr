@@ -92,7 +92,7 @@ public sealed class McpController : ControllerBase
 
     private static JsonObject Initialize(JsonElement arguments)
     {
-        var asked = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("protocolVersion", out var version) ? version.GetString() : null;
+        var asked = arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("protocolVersion", out var version) && version.ValueKind == JsonValueKind.String ? version.GetString() : null;
         return new JsonObject
         {
             ["protocolVersion"] = asked is not null && Protocols.Contains(asked) ? asked : LatestProtocol,
