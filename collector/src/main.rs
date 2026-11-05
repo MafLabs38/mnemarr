@@ -1,5 +1,7 @@
 use std::io::{self, ErrorKind, Write};
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::OnceLock;
 use std::thread;
 
 use mnemarr_collector::collect::Collector;
@@ -29,9 +31,20 @@ fn write_stdout(text: &str) -> ExitCode {
     }
 }
 
+/// The file that what is said is also written to, for a collector started in the background.
+static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+
 /// Says something on standard error: what a service logs. If even that is closed there is nobody left to tell.
 fn say(text: &str) {
     let _ = writeln!(io::stderr(), "mnemarr-collector: {text}");
+    if let Some(path) = LOG_FILE.get()
+        && let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+    {
+        let _ = writeln!(file, "mnemarr-collector: {text}");
+    }
 }
 
 fn configuration(options: &Options) -> Result<Config, ExitCode> {
@@ -111,6 +124,9 @@ fn pass(collector: &Collector<HttpUploader>, config: &Config, state: &mut State)
 }
 
 fn collect(options: &Options, forever: bool) -> ExitCode {
+    if let Some(path) = &options.log_file {
+        let _ = LOG_FILE.set(PathBuf::from(path));
+    }
     let config = match configuration(options) {
         Ok(config) => config,
         Err(code) => return code,

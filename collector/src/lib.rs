@@ -26,6 +26,8 @@ pub struct Options {
     pub interval_seconds: Option<u64>,
     /// The folder of the collector (the key, the address of Mnemarr), when the usual place is not the right one.
     pub config_dir: Option<String>,
+    /// Also write what it says to this file (a collector started in the background has no terminal).
+    pub log_file: Option<String>,
     /// Accept an address of Mnemarr that is plain `http://`: the key is then sent without encryption. For a network the person trusts (a sandbox at home).
     pub allow_insecure_http: bool,
 }
@@ -97,6 +99,7 @@ OPTIONS:\n    --server URL        the address of Mnemarr (or MNEMARR_SERVER)\n  
 --state FILE        where to remember how far each file was sent\n    \
 --interval SECONDS  the wait between two passes (default: 30)\n    \
 --config-dir DIR    where the key and the address of Mnemarr are kept (default: the configuration folder of the user)\n    \
+--log-file PATH     also write what it says to this file\n    \
 --allow-insecure-http  accept an http:// address (the key then travels without encryption: only for a network you trust)\n"
     )
 }
@@ -185,6 +188,7 @@ where
             "--machine" => options.machine = Some(value),
             "--projects" => options.projects = Some(value),
             "--state" => options.state = Some(value),
+            "--log-file" => options.log_file = Some(value),
             "--config-dir" => options.config_dir = Some(value),
             "--interval" => {
                 options.interval_seconds = Some(value.parse().map_err(|_| {
@@ -243,6 +247,7 @@ mod tests {
             state: None,
             interval_seconds: Some(10),
             config_dir: None,
+            log_file: None,
             allow_insecure_http: false,
         };
         let arguments = [

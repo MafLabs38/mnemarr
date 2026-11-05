@@ -89,23 +89,17 @@ pub fn start(dir: &Path, exe: &Path, custom_dir: Option<&str>) -> io::Result<Sta
     if fs::metadata(&log_path).is_ok_and(|meta| meta.len() > MAX_LOG_BYTES) {
         fs::remove_file(&log_path)?;
     }
-    let log = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)?;
-    let mut command = Command::new(exe);
-    command.arg("run");
+    let mut args = vec!["run".to_string()];
     if let Some(custom) = custom_dir {
-        command.args(["--config-dir", custom]);
+        args.extend(["--config-dir".to_string(), custom.to_string()]);
     }
-    command
-        .stdin(Stdio::null())
-        .stdout(log.try_clone()?)
-        .stderr(log);
-    detach(&mut command);
-    command.spawn()?;
+    args.extend([
+        "--log-file".to_string(),
+        log_path.to_string_lossy().into_owned(),
+    ]);
+    spawn_detached(exe, &args)?;
     // It takes the lock as it starts: it is running when the lock is taken.
-    for _ in 0..30 {
+    for _ in 0..80 {
         thread::sleep(Duration::from_millis(100));
         if is_running(dir) {
             return Ok(Started::Started);
@@ -114,19 +108,62 @@ pub fn start(dir: &Path, exe: &Path, custom_dir: Option<&str>) -> io::Result<Sta
     Ok(Started::Failed)
 }
 
-/// No console window, and not tied to the window that started it: closing the terminal does not stop it.
+/// Runs a program in the background, tied to nothing of this process: no console window, and not to the window that started it (closing the terminal
+/// does not stop it). On Windows a program started by this one inherits the handles of it, a pipe that something reads our output through included,
+/// and whoever reads it would wait for the program to end: the shell is asked to start it instead, which passes nothing on.
 #[cfg(windows)]
-fn detach(command: &mut Command) {
+fn spawn_detached(exe: &Path, args: &[String]) -> io::Result<()> {
     use std::os::windows::process::CommandExt;
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    command.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
+    let quoted = |text: &str| format!("'{}'", text.replace('\'', "''"));
+    let argument_list = args
+        .iter()
+        .map(|arg| {
+            if arg.contains(' ') {
+                format!("\"{arg}\"")
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let script = format!(
+        "Start-Process -FilePath {} -ArgumentList {} -WindowStyle Hidden",
+        quoted(&exe.to_string_lossy()),
+        quoted(&argument_list)
+    );
+    let status = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other("the shell could not start the program"))
+    }
 }
 
 #[cfg(unix)]
-fn detach(command: &mut Command) {
+fn spawn_detached(exe: &Path, args: &[String]) -> io::Result<()> {
     use std::os::unix::process::CommandExt;
-    command.process_group(0);
+    Command::new(exe)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map(|_| ())
 }
 
 /// Stops the collector that runs for this folder. False when none ran.

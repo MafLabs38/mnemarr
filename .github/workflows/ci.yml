@@ -132,6 +132,8 @@ jobs:
   collector:
     name: collector (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # A test that starts the collector in the background must end: if one hangs, the job is stopped here, not after six hours.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

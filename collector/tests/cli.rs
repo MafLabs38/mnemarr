@@ -127,6 +127,17 @@ fn should_start_in_the_background_and_hand_the_terminal_back_say_it_runs_and_sto
     assert!(status.contains("running: yes"), "{status}");
     assert!(status.contains("machine: cli-test"), "{status}");
     assert!(said(&joined.run(&["start"])).contains("already running"));
+    // What a collector in the background says is in its log: it has no terminal.
+    let log = joined.dir.join("collector.log");
+    let mut text = String::new();
+    for _ in 0..50 {
+        text = std::fs::read_to_string(&log).unwrap_or_default();
+        if text.contains("as cli-test") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(text.contains("as cli-test"), "{text}");
 
     let stopped = joined.run(&["stop"]);
 
