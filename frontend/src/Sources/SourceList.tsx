@@ -80,7 +80,11 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
     <tr>
       <th scope="row">
         {source.name}
-        {source.managed && <span className={styles.managed}>{translate('ManagedByConfig')}</span>}
+        {source.managed && (
+          <span className={styles.managed}>
+            {translate(source.kind === 'Conversations' ? 'CreatedByMnemarr' : 'ManagedByConfig')}
+          </span>
+        )}
         {origin && <span className={styles.managed}>{origin}</span>}
       </th>
       <td>{translate(source.mode)}</td>

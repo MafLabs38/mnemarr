@@ -42,10 +42,10 @@ public sealed record SyncReportResource(string Action, string Head, IndexReportR
 }
 
 /// <summary>A kind of source, the rule behind it and how many are declared: the base the interface shows, with what is missing.</summary>
-public sealed record SourceKindResource(string Kind, bool Required, bool Unique, int Count, bool Satisfied, string DefaultMode)
+public sealed record SourceKindResource(string Kind, bool Required, bool Unique, int Count, bool Satisfied, string DefaultMode, bool Declarable)
 {
     public static SourceKindResource From(KindStatus status) =>
-        new(status.Rule.Kind.ToString(), status.Rule.Required, status.Rule.Unique, status.Count, status.Satisfied, status.Rule.DefaultMode.ToString());
+        new(status.Rule.Kind.ToString(), status.Rule.Required, status.Rule.Unique, status.Count, status.Satisfied, status.Rule.DefaultMode.ToString(), status.Rule.Declarable);
 }
 
 /// <summary>What one pass over a source did.</summary>

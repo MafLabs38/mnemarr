@@ -71,7 +71,7 @@ public sealed class ApiKeyServiceFixture : IDisposable
         var principal = Subject.Authenticate(Subject.Create(account.Id, "k", [allowed, allowed], null, "root").Secret)!;
 
         principal.Sources.Should().Equal(allowed);
-        principal.CanAccess(Guid.NewGuid()).Should().BeFalse();
+        principal.Scope.CanAccess(Guid.NewGuid()).Should().BeFalse();
     }
 
     [Fact]

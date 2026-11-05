@@ -180,7 +180,7 @@ public sealed class NoteWriter
         string folder;
         try
         {
-            folder = _paths.Allowed(source.Path);
+            folder = _paths.AllowedFor(source);
         }
         catch (RejectedException)
         {

@@ -15,3 +15,8 @@ all = { level = "deny", priority = -1 }
 # CLAUDE.md, rule 5 of the Rust conventions: no unwrap or expect on input or I/O. Tests may (clippy.toml).
 unwrap_used = "deny"
 expect_used = "deny"
+
+[dependencies]
+regex = "1"
+serde_json = "1"
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }

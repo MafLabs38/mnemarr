@@ -1,6 +1,6 @@
 # 0005 — A collector agent on every machine where an assistant runs
 
-- **Status**: accepted
+- **Status**: accepted; installation, configuration, silence and readers are refined by [0025](0025-the-collector-is-a-service-per-machine-enrolled-by-a-code-and-configured-from-the-server.md)
 - **Date**: 2026-11-01
 - **Spec**: D-08, D-09, D-10
 

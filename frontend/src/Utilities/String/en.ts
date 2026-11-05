@@ -155,6 +155,11 @@ const en = {
   RequiredMissing: '{kind}: required, and there can be only one.',
   ApplicationDocsPurpose: 'The documentation of an application, read from its repository. One per application.',
   ApplicationDocsTitle: 'Application documentation',
+  ConversationsPurpose:
+    'What was said to the assistants, sent by the collectors on your machines. Mnemarr creates this source and writes it; nobody declares it.',
+  ConversationsTitle: 'Assistant conversations',
+  CreatedByMnemarr: 'Created by Mnemarr',
+  ConversationsEmpty: 'Nothing yet: it appears when a collector sends its first conversation.',
   KnowledgePurpose: 'Hand-written notes: courses, notes taken for work. As many as there are vaults to show.',
   KnowledgeTitle: 'Knowledge vaults',
   MemoryPurpose: 'The consolidated memory. Mnemarr is its only author: there is exactly one, and it is required.',
@@ -171,21 +176,23 @@ const en = {
     'Notes written by hand: courses, notes taken for work. Edited where they are kept (Obsidian, a repository).',
   ApplicationDocsNotesPurpose:
     'The documentation of an application, read from its repository. Edited there, never here.',
+  ConversationsNotesPurpose:
+    'What was said to your assistants, kept as it was said. Sent by the collectors on your machines, never edited by hand.',
   ChipEditable: 'Editable',
   ChipReadOnly: 'Read-only',
   RightsShort_writable: 'You may edit the notes of this source.',
   'RightsShort_source-read-only': 'This source is declared read-only.',
-  'RightsShort_kind-not-writable': 'This kind of notes is edited in its repository, not here.',
+  'RightsShort_kind-not-writable': 'This kind of notes is not edited by hand here.',
   'RightsShort_no-permission': 'Your role may not write notes.',
   BannerTitle_writable: 'You can edit this note',
   'BannerTitle_source-read-only': 'This note is read-only',
-  'BannerTitle_kind-not-writable': 'This note is edited in its repository',
+  'BannerTitle_kind-not-writable': 'This note is not edited here',
   'BannerTitle_no-permission': 'Your role cannot write notes',
   BannerText_writable: 'You are {role}, and the source {source} is open for writing.',
   'BannerText_source-read-only':
     'The source {source} is declared read-only: nothing is written there until someone turns writing on.',
   'BannerText_kind-not-writable':
-    'The documentation of an application is read from its repository: it is edited there, then read again here.',
+    'The documentation of an application is edited in its repository, and conversations come from the collectors: neither is written by hand here.',
   'BannerText_no-permission':
     'You are {role}. Writing notes takes the notes.write permission, which Operator, Assistant and Admin have.',
   NoteRights: 'What you may do with this note',
@@ -195,7 +202,7 @@ const en = {
   'BannerWhy_source-read-only':
     'The mode of a source is its write switch, and it is off by default so that Mnemarr never changes a vault by surprise. Whoever manages sources can turn it on, source by source.',
   'BannerWhy_kind-not-writable':
-    'The repository of an application is not Mnemarr’s: it reads the documentation and never writes it, so that two places never claim to hold the truth.',
+    'The repository of an application is not Mnemarr’s, and a conversation is what was said: Mnemarr reads both and never rewrites them, so that two places never claim to hold the truth.',
   'BannerWhy_no-permission':
     'Reading and writing are separate permissions, given by role. An administrator can change your role, or give a service account to an assistant that is meant to write.',
   MemoryWriteNote:

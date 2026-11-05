@@ -58,9 +58,11 @@ public static class MnemarrClaims
             return SourceScope.None;
         }
 
+        // What people said to their assistants is more private than any note: it is seen by the roles that hold conversations.read, and absent for the rest.
+        var hidden = !user.HasClaim(Permission, Permissions.ConversationsRead);
         return user.HasClaim(Scoped, bool.TrueString)
-            ? new SourceScope([.. user.FindAll(Source).Select(claim => Guid.Parse(claim.Value))])
-            : SourceScope.All;
+            ? new SourceScope([.. user.FindAll(Source).Select(claim => Guid.Parse(claim.Value))], hidden)
+            : new SourceScope((IReadOnlyList<Guid>?)null, hidden);
     }
 
     /// <summary>The name the audit log records for whoever is acting.</summary>

@@ -91,6 +91,11 @@
   font-family: var(--monoSpaceFontFamily);
 }
 
+/* A conversation is long lines of prose in a code block: they wrap, and nothing is hidden at the right edge. Other notes keep their code as it is. */
+.kindConversations .markdown pre {
+  white-space: pre-wrap;
+}
+
 .markdown table {
   border-collapse: collapse;
 }
@@ -218,6 +223,10 @@
 
 .kindApplicationDocs {
   --kind: var(--secondary);
+}
+
+.kindConversations {
+  --kind: var(--warningColor);
 }
 
 .kindSection {

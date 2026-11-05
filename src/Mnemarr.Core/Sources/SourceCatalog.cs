@@ -11,6 +11,9 @@ namespace Mnemarr.Core.Sources;
 /// </summary>
 public sealed class SourceCatalog
 {
+    /// <summary>The name of the source that holds the conversations the collectors send.</summary>
+    public const string ConversationsName = "conversations";
+
     private const int MaxNameLength = 100;
 
     /// <summary>One change to the sources at a time: the rules count, and a count is only true if nobody else changes it meanwhile.</summary>
@@ -20,6 +23,7 @@ public sealed class SourceCatalog
     private readonly IAuditLog _audit;
     private readonly SourcePaths _paths;
     private readonly TimeProvider _clock;
+    private Guid? _conversationsId;
     private readonly GitPolicy? _git;
 
     public SourceCatalog(ISourceStore store, IAuditLog audit, SourcePaths paths, TimeProvider clock, GitPolicy? git = null)
@@ -35,11 +39,11 @@ public sealed class SourceCatalog
     public IReadOnlyList<string> Roots() => _paths.Roots();
 
     /// <summary>The sources a caller may touch, by name.</summary>
-    public IReadOnlyList<Source> List(SourceScope scope) => [.. _store.List().Where(source => scope.CanAccess(source.Id))];
+    public IReadOnlyList<Source> List(SourceScope scope) => [.. _store.List().Where(scope.CanSee)];
 
     /// <summary>A source the caller may touch. One that exists but is out of the caller's scope is as absent as one that does not exist.</summary>
     public Source Get(Guid id, SourceScope scope) =>
-        _store.Get(id) is { } source && scope.CanAccess(id) ? source : throw new RejectedException(Problem.NotFound, "There is no such source.");
+        _store.Get(id) is { } source && scope.CanSee(source) ? source : throw new RejectedException(Problem.NotFound, "There is no such source.");
 
     /// <summary>
     /// Each kind with its rule and how many sources of it the caller can see: what the interface shows as the base and what is missing.
@@ -48,7 +52,8 @@ public sealed class SourceCatalog
     public IReadOnlyList<KindStatus> Kinds(SourceScope scope)
     {
         var sources = List(scope);
-        return [.. SourceKinds.All.Select(rule => new KindStatus(rule, sources.Count(source => source.Kind == rule.Kind)))];
+        // The conversations are not a kind a caller who may not read them is told about.
+        return [.. SourceKinds.All.Where(rule => rule.Kind != SourceKind.Conversations || !scope.ConversationsHidden).Select(rule => new KindStatus(rule, sources.Count(source => source.Kind == rule.Kind)))];
     }
 
     /// <summary>The kinds and their counts over every source: what readiness is about, not a caller.</summary>
@@ -61,6 +66,11 @@ public sealed class SourceCatalog
     public Source Add(string name, SourceKind kind, SourceMode mode, string path, SourceScope scope, string actor, GitRepository? repository = null)
     {
         RefuseIfScoped(scope, "declare a source");
+        if (!SourceKinds.Of(kind).Declarable)
+        {
+            throw new RejectedException(Problem.Invalid, "A source of this kind is created by Mnemarr, not declared.");
+        }
+
         name = CheckedName(name);
         lock (Gate)
         {
@@ -68,6 +78,37 @@ public sealed class SourceCatalog
             var source = new Source(Guid.NewGuid(), name, kind, mode, checkedRepository is null ? CheckedPath(path) : CheckedCheckoutFolder(path, null), _clock.GetUtcNow(), Repository: checkedRepository);
             Insert(source, actor);
             return source;
+        }
+    }
+
+    /// <summary>
+    /// The source that holds the conversations the collectors send (ADR 0024): created by Mnemarr the first time it is needed, in its own folder,
+    /// and owned by Mnemarr (nobody edits or forgets it by hand). The one that exists is returned.
+    /// </summary>
+    public Source EnsureConversations()
+    {
+        lock (Gate)
+        {
+            if (_conversationsId is { } known && _store.Get(known) is { } cached)
+            {
+                return cached;
+            }
+
+            var sources = _store.List();
+            if (sources.FirstOrDefault(source => source.Kind == SourceKind.Conversations) is { } existing)
+            {
+                _conversationsId = existing.Id;
+                return existing;
+            }
+
+            var folder = _paths.ConversationsFolder;
+            Directory.CreateDirectory(folder);
+            // A source that an operator named like this before the name was reserved is not touched: this one takes another.
+            var name = sources.Any(source => string.Equals(source.Name, ConversationsName, StringComparison.OrdinalIgnoreCase)) ? ConversationsName + "-collected" : ConversationsName;
+            var created = new Source(Guid.NewGuid(), name, SourceKind.Conversations, SourceMode.ReadOnly, folder, _clock.GetUtcNow(), Managed: true);
+            Insert(created, "mnemarr");
+            _conversationsId = created.Id;
+            return created;
         }
     }
 
@@ -102,7 +143,7 @@ public sealed class SourceCatalog
         if (rule.Max is { } max && _store.List().Count(other => other.Kind == source.Kind) >= max)
         {
             // The name of the one that exists is not given: a caller limited to some sources may not see it.
-            throw new RejectedException(Problem.Conflict, $"There is already a source of the kind {source.Kind}: there can be only {max}. Change its folder instead.");
+            throw new RejectedException(Problem.Conflict, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"There is already a source of this kind: there can be only {max}. Change its folder instead."));
         }
 
         _store.Add(source);
@@ -185,8 +226,14 @@ public sealed class SourceCatalog
     internal static string CheckedName(string name)
     {
         name = name.Trim();
-        return name.Length is 0 or > MaxNameLength || name.Any(char.IsControl)
-            ? throw new RejectedException(Problem.Invalid, $"The name of a source is 1 to {MaxNameLength} characters, with no control character: it is written in logs and in the audit trail.")
+        if (name.Length is 0 or > MaxNameLength || name.Any(char.IsControl))
+        {
+            throw new RejectedException(Problem.Invalid, $"The name of a source is 1 to {MaxNameLength} characters, with no control character: it is written in logs and in the audit trail.");
+        }
+
+        // The name Mnemarr gives to what it collects: a source declared under it would clash with it at the first conversation, and keep it from being taken.
+        return string.Equals(name, ConversationsName, StringComparison.OrdinalIgnoreCase)
+            ? throw new RejectedException(Problem.Invalid, $"The name '{ConversationsName}' is reserved.")
             : name;
     }
 

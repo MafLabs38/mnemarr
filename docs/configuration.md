@@ -8,6 +8,8 @@ Mnemarr reads its settings from `appsettings.json`, then environment variables (
 |---|---|
 | `MNEMARR__DATAFOLDER` | The folder that holds the database and the key ring. It must exist (a volume that was not mounted must not be replaced by an empty folder: `/health/ready` fails). |
 
+The data folder also holds what the collectors send (there is no setting for it): `raw/<machine>/<session>/` for the raw lines, masked and compressed, one file per batch, and `conversations/` for the notes made of them (the source of the kind `Conversations`, created by Mnemarr). Both are part of the backup; the raw lines are what a better reader will read again (a command to write the notes again from them is not built yet). The name `conversations` is reserved for that source, and no source can be declared in these folders. See [the collector](collector.md).
+
 ## Access (`Auth`)
 
 | Setting | Default | Meaning |

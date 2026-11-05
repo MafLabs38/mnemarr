@@ -55,13 +55,13 @@ public sealed class NoteReader
     /// <summary>What a text would look like as a note of a source (the editor's preview): its links resolved as they will be once it is saved. The text is not kept.</summary>
     public string Preview(Guid sourceId, string path, string text, SourceScope scope)
     {
-        _ = scope.CanAccess(sourceId) && _sources.Get(sourceId) is not null ? true : throw NoSuchNote();
+        _ = _sources.Get(sourceId) is { } known && scope.CanSee(known) ? true : throw NoSuchNote();
         return new WikiLinkRenderer(_browser, sourceId, path, scope).Render(MarkdownNotes.Body(text.Length > MarkdownFileScanner.MaxFileBytes ? text[..(int)MarkdownFileScanner.MaxFileBytes] : text));
     }
 
     public NoteFile OpenImage(Guid sourceId, string path, SourceScope scope)
     {
-        var source = _sources.Get(sourceId) is { } found && scope.CanAccess(sourceId) ? found : throw NoSuchFile();
+        var source = _sources.Get(sourceId) is { } found && scope.CanSee(found) ? found : throw NoSuchFile();
         if (ImageFormats.ContentType(path) is not { } contentType || !_browser.HasImage(sourceId, path))
         {
             throw NoSuchFile();
@@ -104,7 +104,7 @@ public sealed class NoteReader
         string folder;
         try
         {
-            folder = _paths.Allowed(source.Path);
+            folder = _paths.AllowedFor(source);
         }
         catch (RejectedException)
         {

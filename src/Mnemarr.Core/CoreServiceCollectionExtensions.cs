@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Conversations;
 using Mnemarr.Core.Declarative;
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
@@ -72,6 +73,9 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SourceIndexer>();
         services.AddSingleton<SourceSync>();
         services.AddSingleton<NoteWriter>();
+        services.AddSingleton<IConversationStore, SqliteConversationStore>();
+        services.AddSingleton<RawConversations>();
+        services.AddSingleton<ConversationIngestor>();
         services.AddHostedService<SourceSyncService>();
         services.AddSingleton<SourceIndexingService>();
         services.AddHostedService(provider => provider.GetRequiredService<SourceIndexingService>());

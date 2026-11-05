@@ -15,6 +15,9 @@ public static class Permissions
     public const string AuditRead = "audit.read";
     public const string IngestWrite = "ingest.write";
 
+    /// <summary>Reading the conversations of the assistants: what people said to them, which is more private than any note.</summary>
+    public const string ConversationsRead = "conversations.read";
+
     public static IReadOnlyList<string> All { get; } =
-        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite];
+        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead];
 }
