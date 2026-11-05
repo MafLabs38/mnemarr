@@ -236,7 +236,7 @@ public sealed class SqliteNoteIndex : INoteIndex
             WHERE chunks_fts MATCH $match
               AND ($source IS NULL OR s.id = $source)
               AND ($topic IS NULL OR n.topic = $topic)
-              AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> 'Conversations')
+              AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
             ORDER BY bm25(chunks_fts)
             LIMIT $limit
             """;
@@ -247,6 +247,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
         // What was said to the assistants is seen only by those who hold conversations.read.
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
+        command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
         command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, MaxLimit));
         command.Parameters.AddWithValue("$snippetWords", SnippetWords);
 

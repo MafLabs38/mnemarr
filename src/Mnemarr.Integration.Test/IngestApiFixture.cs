@@ -92,6 +92,23 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
     }
 
     [Fact]
+    public async Task should_refuse_a_batch_with_too_many_lines_or_a_line_that_is_too_lineTooLongwith_a_400_and_write_nothing()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("big");
+        var tooMany = Enumerable.Repeat("{}", Mnemarr.Core.Conversations.ConversationIngestor.MaxLines + 1).ToArray();
+        var tooLong = new string('x', Mnemarr.Core.Conversations.ConversationIngestor.MaxLineChars + 1);
+
+        var many = await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, "s1", 0, tooMany), Token);
+        var lineTooLong = await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, "s2", 0, tooLong), Token);
+
+        many.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        lineTooLong.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var machines = await callers["Admin"].GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token);
+        machines.EnumerateArray().Select(item => item.GetProperty("machine").GetString()).Should().NotContain(machine, "a refused batch writes nothing");
+    }
+
+    [Fact]
     public async Task should_show_the_operator_which_machines_sent_something_and_when()
     {
         var callers = await Callers.ForAsync(_factory);

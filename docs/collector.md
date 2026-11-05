@@ -60,7 +60,7 @@ The first run sends the whole history of the machine: it can take a few minutes 
 
 ## See that it works
 
-- `GET /api/v1/collectors` shows which machines sent conversations and when.
+- `GET /api/v1/collectors` shows which machines sent conversations and when (the name of a machine, how many conversations and lines, the last time it sent). It is health data, open to whoever may read the state of the system (`system.read`, the `Monitor` role included), not conversation content.
 - The notes page has a section of the conversations, one folder per machine; only `Admin` and `Assistant` see it.
 - Over MCP, an assistant with the right to read conversations calls `search` (use `topic` to keep one machine) and `read_note`.
 

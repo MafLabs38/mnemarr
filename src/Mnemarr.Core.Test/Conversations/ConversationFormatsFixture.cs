@@ -60,6 +60,8 @@ public sealed class ConversationFormatsFixture
 
     private static Turn User(string text) => new("user", null, text);
 
+    // The samples of the titles are French on purpose: the people who write to the assistants do, and the heuristic (greetings, sentence ends) is
+    // meant to read them. They are data of the tests, not the language of the product, which is English.
     [Theory]
     [InlineData("Peux-tu corriger le calcul des fins de ligne ? Merci.", "Peux-tu corriger le calcul des fins de ligne ?")]
     [InlineData("ok", "ok")]
@@ -93,5 +95,53 @@ public sealed class ConversationFormatsFixture
         var turns = ConversationFormats.Turns(ConversationFormats.ClaudeCode, [line]);
 
         turns.Single().Text.Should().Be("here: [masked:github-token]");
+    }
+
+    [Fact]
+    public void should_make_the_same_path_and_the_same_headings_whatever_the_culture_of_the_host()
+    {
+        var thai = System.Globalization.CultureInfo.GetCultureInfo("th-TH");
+        Assert.SkipUnless(new DateTime(2026, 11, 4).ToString("yyyy", thai) != "2026", "this runtime has no culture data (invariant globalization): the Thai calendar cannot be tried");
+        var at = new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero);
+        var before = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = thai;
+
+            ConversationMarkdown.NotePath("wacken", "mnemarr", at, "s1").Should().Be("wacken/mnemarr/2026-11-04-s1.md");
+            ConversationMarkdown.Sections([new Turn("user", at, "hello")]).Should().StartWith("## User · 2026-11-04 14:03");
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = before;
+        }
+    }
+
+    [Fact]
+    public void should_fence_a_turn_that_holds_a_long_run_of_backticks_with_a_longer_fence()
+    {
+        var note = ConversationMarkdown.Sections([User("before `````\n[[not-a-link]] #not-a-tag\n````` after")]);
+
+        note.Should().Contain("``````text\n").And.EndWith("``````\n\n");
+        MarkdownNotes.Parse(note).Links.Should().BeEmpty();
+        MarkdownNotes.Parse(note).Tags.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void should_read_a_line_with_no_date_or_a_bad_one_and_join_the_blocks_of_text_of_a_turn()
+    {
+        var lines = new[]
+        {
+            Line("user", "no date here", at: string.Empty),
+            Line("user", "a bad date", at: "yesterday-ish"),
+            Line("assistant", new object[] { new { type = "text", text = "first block" }, new { type = "text", text = "second block" } }),
+            Line("user", string.Empty),
+        };
+
+        var turns = ConversationFormats.Turns(ConversationFormats.ClaudeCode, lines);
+
+        turns.Select(turn => turn.At).Should().OnlyContain(at => at == null || at.Value.Year == 2026);
+        turns.Take(2).Select(turn => turn.At).Should().OnlyContain(at => at == null);
+        turns.Select(turn => turn.Text).Should().Equal("no date here", "a bad date", "first block\n\nsecond block");
     }
 }

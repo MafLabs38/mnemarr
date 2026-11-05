@@ -86,7 +86,7 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         File.ReadAllText(NoteFile).Should().Contain("[masked:github-token]").And.NotContain(secret);
         Hits("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").Should().BeEmpty();
-        Directory.EnumerateFiles(Path.Combine(_workspace.DataFolder, "raw"), "*", SearchOption.AllDirectories).Select(file => RawText(file)).Should().OnlyContain(text => !text.Contains(secret));
+        Directory.EnumerateFiles(Path.Combine(_workspace.DataFolder, "raw"), "*.jsonl.gz", SearchOption.AllDirectories).Select(file => RawText(file)).Should().OnlyContain(text => !text.Contains(secret));
     }
 
     private static string RawText(string file)
@@ -101,7 +101,7 @@ public sealed class ConversationIngestorFixture : IDisposable
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), Token);
         await _ingestor.IngestAsync(Batch(1, Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
 
-        var raw = Directory.EnumerateFiles(Path.Combine(_workspace.DataFolder, "raw", "wacken", "abcdef12-3456")).Select(Path.GetFileName).Order().ToList();
+        var raw = Directory.EnumerateFiles(Path.Combine(_workspace.DataFolder, "raw", "wacken", "abcdef12-3456"), "*.jsonl.gz").Select(Path.GetFileName).Order().ToList();
 
         raw.Should().Equal("000000000000.jsonl.gz", "000000000001.jsonl.gz");
     }
@@ -234,7 +234,31 @@ public sealed class ConversationIngestorFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_refuse_a_batch_while_the_conversations_are_being_read()
+    public async Task should_wait_for_the_lock_of_the_conversations_and_then_take_the_batch()
+    {
+        var source = _catalog.EnsureConversations();
+        var gate = _locks.Of(source.Id);
+        await gate.WaitAsync(Token);
+        Task<IngestResult> waiting;
+        try
+        {
+            waiting = _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), Token);
+            await Task.Delay(200, Token);
+
+            waiting.IsCompleted.Should().BeFalse("the lock is held elsewhere");
+            File.Exists(NoteFile).Should().BeFalse("nothing is written while the lock is held elsewhere");
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        (await waiting).Should().Be(new IngestResult(1, 1));
+        File.Exists(NoteFile).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task should_stop_waiting_for_the_lock_when_the_request_is_cancelled()
     {
         var source = _catalog.EnsureConversations();
         var gate = _locks.Of(source.Id);
@@ -246,7 +270,7 @@ public sealed class ConversationIngestorFixture : IDisposable
             await cancel.CancelAsync();
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
-            File.Exists(NoteFile).Should().BeFalse("nothing was written while the lock was held elsewhere");
+            File.Exists(NoteFile).Should().BeFalse();
         }
         finally
         {
@@ -283,12 +307,41 @@ public sealed class ConversationIngestorFixture : IDisposable
     public async Task should_take_the_same_batch_sent_twice_at_once_only_one_time()
     {
         var batch = Batch(0, Line("user", "one thing", "2026-11-04T14:03:00Z"), Line("assistant", "two things", "2026-11-04T14:04:00Z"));
+        var gate = _locks.Of(_catalog.EnsureConversations().Id);
+        await gate.WaitAsync(Token);
 
-        var results = await Task.WhenAll(_ingestor.IngestAsync(batch, Token), _ingestor.IngestAsync(batch, Token));
+        // Both calls are queued on the lock before either can run: the protection is tried, not left to the order of two tasks.
+        var first = _ingestor.IngestAsync(batch, Token);
+        var second = _ingestor.IngestAsync(batch, Token);
+        gate.Release();
+        var results = await Task.WhenAll(first, second);
 
         results.Sum(result => result.Accepted).Should().Be(2);
         results.Select(result => result.Next).Should().OnlyContain(next => next == 2);
         File.ReadAllText(NoteFile).Split("\n## ").Should().HaveCount(3, "the header and two turns, none twice");
+    }
+
+    [Fact]
+    public async Task should_say_in_the_raw_folder_which_format_and_application_the_lines_are()
+    {
+        await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), Token);
+        await _ingestor.IngestAsync(Batch(1, Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
+
+        var info = new RawConversations(_workspace.Options).ReadInfo("wacken", "abcdef12-3456");
+
+        info.Should().Be(new RawInfo(ConversationFormats.ClaudeCode, "mnemarr-core", new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero)));
+    }
+
+    [Fact]
+    public async Task should_refuse_lines_of_another_format_for_a_conversation_it_already_holds()
+    {
+        // A conversation held under another format (a second assistant will make this real): its lines are not read by the wrong parser.
+        var at = new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero);
+        _store.Save(new ConversationRecord("wacken", "abcdef12-3456", "mnemarr-core", "another-format", 1, at, at, "wacken/mnemarr-core/2026-11-04-abcdef12-3456.md"));
+
+        var refused = await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(Batch(1, Line("user", "two", "2026-11-04T14:04:00Z")), Token));
+
+        refused.Problem.Should().Be(Problem.Conflict);
     }
 
     [Fact]

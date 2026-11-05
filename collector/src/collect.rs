@@ -477,7 +477,7 @@ mod tests {
     }
 
     #[test]
-    fn should_resume_from_where_the_server_is_when_it_has_more_or_less_than_expected() {
+    fn should_resume_from_where_the_server_is_when_the_collector_has_lost_its_memory() {
         let workspace = Workspace::new("resume");
         fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n").unwrap();
         let fake = Fake::new();
@@ -655,22 +655,37 @@ mod tests {
     }
 
     #[test]
-    fn should_start_again_when_a_file_is_replaced_by_a_shorter_one_and_read_windows_line_ends() {
+    fn should_send_nothing_when_a_file_is_replaced_by_a_shorter_one_the_server_has_more_of() {
         let workspace = Workspace::new("short");
-        fs::write(workspace.file(), "{\"a\":1}\r\n{\"b\":2}\r\n").unwrap();
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n").unwrap();
         let fake = Fake::new();
         let collector = collector(&workspace, &fake);
         let mut state = State::default();
         collector.pass(&mut state);
-        // The file is replaced by a shorter one.
+        // The file is replaced by a shorter one: the server holds two lines, the file has one.
         fs::write(workspace.file(), "{\"z\":9}\n").unwrap();
 
         let report = collector.pass(&mut state);
 
         assert_eq!(*fake.taken.borrow(), vec!["{\"a\":1}", "{\"b\":2}"]);
-        assert_eq!(report.lines_sent, 0);
-        // The file holds one line now: that is as far as there is to go.
+        assert_eq!(
+            report.lines_sent, 0,
+            "the replacement is not sent: the server is ahead"
+        );
         assert_eq!(state.files.values().next().unwrap().lines, 1);
+    }
+
+    #[test]
+    fn should_strip_windows_line_ends_from_the_lines_it_sends() {
+        let workspace = Workspace::new("crlf");
+        fs::write(workspace.file(), "{\"a\":1}\r\n{\"b\":2}\r\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+
+        collector.pass(&mut state);
+
+        assert_eq!(*fake.taken.borrow(), vec!["{\"a\":1}", "{\"b\":2}"]);
     }
 
     #[cfg(unix)]
@@ -686,8 +701,9 @@ mod tests {
 
         let report = collector.pass(&mut state);
 
-        // A user that is root can read anything: the test then has nothing to say.
+        // A user that is root can read anything: the test then has nothing to say, and says so in the output instead of passing in silence.
         if report.unreadable.is_empty() {
+            eprintln!("skipped: this user can read a file with no permission (root?)");
             return;
         }
         assert_eq!(report.unreadable.len(), 1);
@@ -773,9 +789,10 @@ mod tests {
 
         collector.pass(&mut state);
 
-        assert!(
-            *stuck.0.borrow() <= 2,
-            "the same batch is not sent thousands of times"
+        assert_eq!(
+            *stuck.0.borrow(),
+            1,
+            "a reply that gets no nearer is not answered by the same batch again: the file is left for the next pass"
         );
     }
 

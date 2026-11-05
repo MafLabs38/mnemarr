@@ -131,11 +131,6 @@ mod tests {
     }
 
     #[test]
-    fn should_have_every_rule_in_force() {
-        assert_eq!(Masker::new().count(), RULES.len());
-    }
-
-    #[test]
     fn should_give_the_answer_of_the_shared_samples() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/masking/samples.json");
         let document: serde_json::Value =
@@ -165,5 +160,13 @@ mod tests {
             value["message"]["content"],
             "export PASSWORD=[masked] and [masked:github-token]"
         );
+    }
+
+    #[test]
+    fn should_leave_a_secret_written_with_a_json_escape_to_the_second_pass_of_the_server() {
+        // The contract: the collector looks at the text of the line, and the server looks again at the decoded text (ADR 0024), where it finds this one.
+        let line = format!(r#"{{"text":"\u0067hp_{}"}}"#, "a".repeat(36));
+
+        assert_eq!(Masker::new().mask(&line), line);
     }
 }

@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Configuration;
 
@@ -18,6 +19,8 @@ public sealed class RawConversations
     {
         _options = options;
     }
+
+    private const string InfoFile = "info.json";
 
     private string FolderOf(string machine, string session) => Path.Combine(Path.GetFullPath(_options.Value.DataFolder), "raw", machine, session);
 
@@ -51,6 +54,44 @@ public sealed class RawConversations
             {
                 File.Delete(temporary);
             }
+        }
+    }
+
+    /// <summary>
+    /// Says what a folder of lines is: the format that reads them and the application they come from. Without it a lost database could not tell which
+    /// parser reads a folder, which a second format would make impossible (D-06). Written once, with the first batch; writing it again changes nothing.
+    /// </summary>
+    public void WriteInfo(string machine, string session, RawInfo info)
+    {
+        var folder = FolderOf(machine, session);
+        Directory.CreateDirectory(folder);
+        var target = Path.Combine(folder, InfoFile);
+        var temporary = Path.Combine(folder, $".{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(info), new UTF8Encoding(false));
+            File.Move(temporary, target, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
+    }
+
+    /// <summary>What <see cref="WriteInfo"/> kept, or null when the folder has none (or it cannot be read).</summary>
+    public RawInfo? ReadInfo(string machine, string session)
+    {
+        var target = Path.Combine(FolderOf(machine, session), InfoFile);
+        try
+        {
+            return File.Exists(target) ? JsonSerializer.Deserialize<RawInfo>(File.ReadAllText(target)) : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 
@@ -114,3 +155,6 @@ public sealed class RawConversations
         }
     }
 }
+
+/// <summary>What the raw lines of a conversation are: <see cref="Format"/> names the parser that reads them.</summary>
+public sealed record RawInfo(string Format, string Application, DateTimeOffset StartedAt);

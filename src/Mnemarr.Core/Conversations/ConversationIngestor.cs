@@ -82,6 +82,12 @@ public sealed partial class ConversationIngestor
     private async Task<IngestResult> TakeAsync(Source source, IngestBatch batch, IReadOnlyList<string> masked, CancellationToken cancellationToken)
     {
         var known = _store.Find(batch.Machine, batch.Session);
+        if (known is not null && !string.Equals(known.Format, batch.Format, StringComparison.Ordinal))
+        {
+            // Two assistants never share a session: lines of another format would be read by the wrong parser.
+            throw new RejectedException(Problem.Conflict, "This conversation was collected in another format.");
+        }
+
         var next = known?.Lines ?? 0;
         if (batch.From > next)
         {
@@ -104,6 +110,11 @@ public sealed partial class ConversationIngestor
         var application = known?.Application ?? Slug(batch.Application);
         var path = known?.NotePath ?? ConversationMarkdown.NotePath(batch.Machine, application, startedAt, batch.Session);
         var noteBytes = known?.NoteBytes ?? 0;
+        if (known is null)
+        {
+            _raw.WriteInfo(batch.Machine, batch.Session, new RawInfo(batch.Format, application, startedAt));
+        }
+
         if (freshTurns.Count > 0)
         {
             // The new turns go to the end of the note, after what was last written (what a failed attempt added is cut off): the cost of a pass does

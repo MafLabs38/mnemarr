@@ -126,14 +126,36 @@ mod tests {
 
     /// A server that answers one request with the given status and body, and gives back the request it got.
     fn serve_once(status: &str, body: &str) -> (String, std::thread::JoinHandle<String>) {
+        serve_once_waiting(status, "", body, std::time::Duration::from_secs(10))
+    }
+
+    /// Answers one request and returns what it received; when nobody connects before the deadline it returns an empty text, so that a
+    /// regression fails an assertion instead of hanging the build.
+    fn serve_once_waiting(
+        status: &str,
+        headers: &str,
+        body: &str,
+        wait: std::time::Duration,
+    ) -> (String, std::thread::JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
         let answer = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         let handle = std::thread::spawn(move || {
-            let (mut stream, _) = listener.accept().unwrap();
+            let deadline = std::time::Instant::now() + wait;
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(_) if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(_) => return String::new(),
+                }
+            };
+            stream.set_nonblocking(false).unwrap();
             let mut request = Vec::new();
             let mut chunk = [0u8; 4096];
             loop {
@@ -218,8 +240,15 @@ mod tests {
     }
 
     #[test]
-    fn should_not_follow_a_redirect_with_the_key_and_should_name_itself_and_its_version() {
-        let (address, handle) = serve_once("302 Found", "{}");
+    fn should_not_follow_a_redirect_and_so_never_send_the_key_to_where_it_points() {
+        let (elsewhere, watcher) =
+            serve_once_waiting("200 OK", "", "{}", std::time::Duration::from_millis(800));
+        let (address, handle) = serve_once_waiting(
+            "302 Found",
+            &format!("Location: {elsewhere}\r\n"),
+            "{}",
+            std::time::Duration::from_secs(10),
+        );
         let lines = vec!["{}".to_string()];
 
         let error = HttpUploader::new(&address, "the-key")
@@ -227,6 +256,23 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, UploadError::Refused(302, _)));
+        handle.join().unwrap();
+        let received = watcher.join().unwrap().to_ascii_lowercase();
+        assert!(
+            !received.contains("the-key"),
+            "the redirect target was sent the key: {received}"
+        );
+    }
+
+    #[test]
+    fn should_name_itself_and_its_version() {
+        let (address, handle) = serve_once("200 OK", "{\"next\":1,\"accepted\":1}");
+        let lines = vec!["{}".to_string()];
+
+        HttpUploader::new(&address, "k")
+            .send(&batch(&lines))
+            .unwrap();
+
         let request = handle.join().unwrap().to_ascii_lowercase();
         assert!(request.contains(&format!("user-agent: mnemarr-collector/{}", crate::VERSION)));
     }

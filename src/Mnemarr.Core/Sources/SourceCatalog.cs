@@ -11,6 +11,9 @@ namespace Mnemarr.Core.Sources;
 /// </summary>
 public sealed class SourceCatalog
 {
+    /// <summary>The name of the source that holds the conversations the collectors send.</summary>
+    public const string ConversationsName = "conversations";
+
     private const int MaxNameLength = 100;
 
     /// <summary>One change to the sources at a time: the rules count, and a count is only true if nobody else changes it meanwhile.</summary>
@@ -20,6 +23,7 @@ public sealed class SourceCatalog
     private readonly IAuditLog _audit;
     private readonly SourcePaths _paths;
     private readonly TimeProvider _clock;
+    private Guid? _conversationsId;
     private readonly GitPolicy? _git;
 
     public SourceCatalog(ISourceStore store, IAuditLog audit, SourcePaths paths, TimeProvider clock, GitPolicy? git = null)
@@ -49,7 +53,7 @@ public sealed class SourceCatalog
     {
         var sources = List(scope);
         // The conversations are not a kind a caller who may not read them is told about.
-        return [.. SourceKinds.All.Where(rule => !(scope.ConversationsHidden && rule.Kind == SourceKind.Conversations)).Select(rule => new KindStatus(rule, sources.Count(source => source.Kind == rule.Kind)))];
+        return [.. SourceKinds.All.Where(rule => rule.Kind != SourceKind.Conversations || !scope.ConversationsHidden).Select(rule => new KindStatus(rule, sources.Count(source => source.Kind == rule.Kind)))];
     }
 
     /// <summary>The kinds and their counts over every source: what readiness is about, not a caller.</summary>
@@ -218,11 +222,6 @@ public sealed class SourceCatalog
             throw new RejectedException(Problem.Conflict, $"The source '{source.Name}' is managed by configuration: change the configuration instead.");
         }
     }
-
-    /// <summary>The name of the source that holds the conversations the collectors send.</summary>
-    public const string ConversationsName = "conversations";
-
-    private Guid? _conversationsId;
 
     internal static string CheckedName(string name)
     {

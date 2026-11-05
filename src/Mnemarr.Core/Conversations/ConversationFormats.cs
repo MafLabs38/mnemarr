@@ -96,6 +96,10 @@ public static class ConversationMarkdown
 {
     private const int MaxTitle = 80;
 
+    private static readonly Regex Fence = new(@"```.*?```", RegexOptions.Singleline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex Address = new(@"https?://\S+", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex Sentence = new(@"[^.?!\n]+[.?!]?", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
     /// <summary>The whole note of a conversation: its header, then each turn.</summary>
     public static string Render(string format, string machine, string application, string session, DateTimeOffset startedAt, IReadOnlyList<Turn> turns) =>
         Header(format, machine, application, session, startedAt, turns) + Sections(turns);
@@ -119,7 +123,7 @@ public static class ConversationMarkdown
         foreach (var turn in turns)
         {
             var who = turn.Role == "user" ? "User" : "Assistant";
-            var when = turn.At is { } at ? $" · {at:yyyy-MM-dd HH:mm}" : string.Empty;
+            var when = turn.At is { } at ? string.Create(CultureInfo.InvariantCulture, $" · {at:yyyy-MM-dd HH:mm}") : string.Empty;
             text.Append("## ").Append(who).Append(when).Append("\n\n").Append(Fenced(turn.Text)).Append("\n\n");
         }
 
@@ -128,11 +132,7 @@ public static class ConversationMarkdown
 
     /// <summary>The name of the file of a conversation: in the folder of the machine it was held on, then of the application, named from the day it began and its session (the whole of it: two sessions never share a file).</summary>
     public static string NotePath(string machine, string application, DateTimeOffset startedAt, string session) =>
-        $"{machine}/{application}/{startedAt.ToUniversalTime():yyyy-MM-dd}-{session}.md";
-
-    private static readonly Regex Fence = new(@"```.*?```", RegexOptions.Singleline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-    private static readonly Regex Address = new(@"https?://\S+", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-    private static readonly Regex Sentence = new(@"[^.?!\n]+[.?!]?", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        string.Create(CultureInfo.InvariantCulture, $"{machine}/{application}/{startedAt.ToUniversalTime():yyyy-MM-dd}-{session}.md");
 
     /// <summary>
     /// A title drawn from what was asked, when no model was asked to summarise the conversation: the first thing a person said that says

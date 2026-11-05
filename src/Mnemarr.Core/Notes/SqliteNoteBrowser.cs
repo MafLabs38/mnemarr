@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Notes;
@@ -13,7 +14,8 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     private const int MaxTags = 200;
     private const int MaxBacklinks = 200;
     private const string SourceParameter = "$source";
-    private const string ScopeFilter = "(($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> 'Conversations'))";
+    /// <summary>What a caller may see, as SQL: the sources of the scope, and no conversation unless it can read them. The kind is a parameter, so that renaming it cannot silently stop hiding them.</summary>
+    internal const string ScopeFilter = "(($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind))";
     private readonly IDatabase _database;
 
     public SqliteNoteBrowser(IDatabase database)
@@ -351,5 +353,6 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
         // What was said to the assistants is seen only by those who hold conversations.read.
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
+        command.Parameters.AddWithValue("$conversationsKind", nameof(SourceKind.Conversations));
     }
 }
