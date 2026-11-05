@@ -67,6 +67,8 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
         var script = await response.Content.ReadAsStringAsync(Token);
         script.Should().Contain(DownloadsFactory.Sha256Of("the windows program")).And.Contain($"--machine '{machine}'").And.Contain(added.GetProperty("code").GetString()!)
             .And.Contain("/api/v1/ingest/download/windows-x86_64").And.Contain("--allow-insecure-http").And.Contain("Get-FileHash").And.Contain("$env:LOCALAPPDATA");
+        script.Should().Contain("& $exe install").And.Contain("you can close this window");
+        script.Should().NotContain("& $exe run", "an installer installs and hands the window back: it is not the collector");
         script.Should().NotContain("{{", "every placeholder was filled");
         script.Should().NotContain(DownloadsFactory.Sha256Of("the linux program"));
     }
@@ -82,6 +84,7 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
         script.Should().StartWith("#!/bin/sh").And.Contain($"Linux-x86_64) platform=linux-x86_64; expected={DownloadsFactory.Sha256Of("the linux program")}")
             .And.Contain("This Mnemarr has no collector for");
         script.Should().NotContain("Darwin-arm64", "there is no program for macOS here").And.NotContain("{{");
+        script.Should().Contain("\"$exe\" install").And.NotContain("exec \"$exe\" run", "an installer installs and hands the terminal back");
     }
 
     [Fact]

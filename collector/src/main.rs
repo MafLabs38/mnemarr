@@ -8,6 +8,7 @@ use mnemarr_collector::config::{
     Config, check_server, config_dir, default_machine, is_machine_name, resolve,
 };
 use mnemarr_collector::enrol;
+use mnemarr_collector::service::{self, Installed, Started};
 use mnemarr_collector::state::State;
 use mnemarr_collector::upload::{Heartbeat, HttpUploader, UploadError, Uploader};
 use mnemarr_collector::{Command, EnrollOptions, Options, VERSION, parse, usage};
@@ -114,6 +115,28 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
         Ok(config) => config,
         Err(code) => return code,
     };
+    // One collector at a time for a machine: a second one, started by the session while one runs by hand, leaves it be.
+    let _instance = if forever {
+        let get = |name: &str| std::env::var(name).ok();
+        match config_dir(options.config_dir.as_deref(), &get).map(|dir| service::acquire(&dir)) {
+            Some(Ok(None)) => {
+                say(
+                    "another collector is already running for this machine: nothing to do (mnemarr-collector status)",
+                );
+                return ExitCode::SUCCESS;
+            }
+            Some(Ok(Some(instance))) => Some(instance),
+            Some(Err(error)) => {
+                say(&format!(
+                    "cannot take the lock of the folder of the collector: {error}"
+                ));
+                None
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
     let collector = Collector::new(
         config.machine.clone(),
         config.projects.clone(),
@@ -214,6 +237,140 @@ fn enroll(options: &EnrollOptions) -> ExitCode {
     }
 }
 
+/// The folder of the collector and the program to run, for the commands that run it in the background. The machine has to be joined first.
+fn background(options: &Options) -> Result<(std::path::PathBuf, std::path::PathBuf), ExitCode> {
+    configuration(options)?;
+    let get = |name: &str| std::env::var(name).ok();
+    let (Some(dir), Ok(exe)) = (
+        config_dir(options.config_dir.as_deref(), &get),
+        std::env::current_exe(),
+    ) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return Err(ExitCode::from(2));
+    };
+    Ok((dir, exe))
+}
+
+fn start(options: &Options) -> ExitCode {
+    let (dir, exe) = match background(options) {
+        Ok(found) => found,
+        Err(code) => return code,
+    };
+    match service::start(&dir, &exe, options.config_dir.as_deref()) {
+        Ok(Started::Started) => {
+            say(&format!(
+                "running in the background (log: {})",
+                dir.join(service::LOG_FILE).display()
+            ));
+            ExitCode::SUCCESS
+        }
+        Ok(Started::AlreadyRunning) => {
+            say("it is already running");
+            ExitCode::SUCCESS
+        }
+        Ok(Started::Failed) => {
+            say(&format!(
+                "it did not start: see {}",
+                dir.join(service::LOG_FILE).display()
+            ));
+            ExitCode::from(1)
+        }
+        Err(error) => {
+            say(&format!("it could not be started: {error}"));
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn install(options: &Options) -> ExitCode {
+    let (dir, exe) = match background(options) {
+        Ok(found) => found,
+        Err(code) => return code,
+    };
+    match service::install(&dir, &exe, options.config_dir.as_deref()) {
+        Ok(Installed::WithSession) => {
+            say(
+                "installed: it runs in the background now and starts with your session. See: mnemarr-collector status. To stop it: mnemarr-collector stop. To remove it: mnemarr-collector uninstall",
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(Installed::RunningOnly(reason)) => {
+            say(&format!(
+                "it runs in the background now, but it will not start with your session: {reason}"
+            ));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&format!("it could not be installed: {error}"));
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn stop(options: &Options) -> ExitCode {
+    let (dir, _) = match background(options) {
+        Ok(found) => found,
+        Err(code) => return code,
+    };
+    say(if service::stop(&dir) {
+        "stopped. It starts again with your next session if it is installed"
+    } else {
+        "it was not running"
+    });
+    ExitCode::SUCCESS
+}
+
+fn uninstall(options: &Options) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    match service::uninstall(&dir) {
+        Ok(()) => {
+            say(
+                "stopped, and it no longer starts with your session. The machine stays joined: to remove it for good, revoke it in Mnemarr and delete the folder of the collector",
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&format!("it could not be removed: {error}"));
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn status(options: &Options) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let read = |path: &str| std::fs::read_to_string(path).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    let joined = resolve(options, &get, &read).ok();
+    let state = service::status(&dir);
+    let _ = writeln!(
+        io::stdout(),
+        "machine: {}\nserver: {}\nrunning: {}\nstarts with your session: {}\nlog: {}",
+        joined
+            .as_ref()
+            .map_or("not joined (run: mnemarr-collector enroll)", |config| {
+                config.machine.as_str()
+            }),
+        joined.as_ref().map_or("-", |config| config.server.as_str()),
+        state
+            .running
+            .map_or("no".to_string(), |pid| format!("yes (process {pid})")),
+        if state.starts_with_session {
+            "yes"
+        } else {
+            "no"
+        },
+        state.log.display()
+    );
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     // Arguments that are not valid UTF-8 are kept readable and end up as a usage error, never as a panic.
     let args = std::env::args_os()
@@ -225,6 +382,11 @@ fn main() -> ExitCode {
         Ok(Command::Run(options)) => collect(&options, true),
         Ok(Command::Once(options)) => collect(&options, false),
         Ok(Command::Enroll(options)) => enroll(&options),
+        Ok(Command::Install(options)) => install(&options),
+        Ok(Command::Uninstall(options)) => uninstall(&options),
+        Ok(Command::Start(options)) => start(&options),
+        Ok(Command::Stop(options)) => stop(&options),
+        Ok(Command::Status(options)) => status(&options),
         Err(error) => {
             // If even standard error is closed there is nobody left to tell.
             let _ = writeln!(io::stderr(), "{error}\n\n{}", usage());

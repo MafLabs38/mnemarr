@@ -53,6 +53,8 @@ public static partial class InstallScripts
         $dir = Join-Path $env:LOCALAPPDATA 'mnemarr-collector'
         $exe = Join-Path $dir 'mnemarr-collector.exe'
         New-Item -ItemType Directory -Force $dir | Out-Null
+        # An older copy that runs would keep its file: it is stopped first (nothing happens when there is none).
+        if (Test-Path $exe) { & $exe stop 2>$null | Out-Null }
         Write-Host 'Downloading the collector...'
         Invoke-WebRequest -UseBasicParsing "$server/api/v1/ingest/download/windows-x86_64" -OutFile $exe
         if ((Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() -ne '{{SHA256}}') {
@@ -62,8 +64,11 @@ public static partial class InstallScripts
         Write-Host 'Joining this machine as {{MACHINE}}...'
         & $exe enroll --server $server --code '{{CODE}}' --machine '{{MACHINE}}'{{INSECURE}}
         if ($LASTEXITCODE -ne 0) { throw 'This machine could not join. Ask for a new code in Mnemarr.' }
-        Write-Host 'Collecting. Close this window to stop (the machine stays joined: run the program again to resume).'
-        & $exe run
+        & $exe install
+        if ($LASTEXITCODE -ne 0) { throw 'The collector joined but could not be installed.' }
+        Write-Host ''
+        Write-Host 'Done. The collector runs in the background and starts with your session; you can close this window.'
+        Write-Host "To see it: & '$exe' status    To stop it: & '$exe' stop    To remove it: & '$exe' uninstall"
         """;
 
     private const string UnixTemplate = """
@@ -79,6 +84,8 @@ public static partial class InstallScripts
         dir="${XDG_DATA_HOME:-$HOME/.local/share}/mnemarr-collector"
         exe="$dir/mnemarr-collector"
         mkdir -p "$dir"
+        # An older copy that runs would keep its file: it is stopped first (nothing happens when there is none).
+        [ -x "$exe" ] && "$exe" stop >/dev/null 2>&1 || true
         echo 'Downloading the collector...'
         curl -fsSL "$server/api/v1/ingest/download/$platform" -o "$exe"
         if command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$exe" | cut -d' ' -f1); else actual=$(shasum -a 256 "$exe" | cut -d' ' -f1); fi
@@ -90,7 +97,9 @@ public static partial class InstallScripts
         chmod 700 "$exe"
         echo 'Joining this machine as {{MACHINE}}...'
         "$exe" enroll --server "$server" --code '{{CODE}}' --machine '{{MACHINE}}'{{INSECURE}}
-        echo 'Collecting. Press Ctrl-C to stop (the machine stays joined: run the program again to resume).'
-        exec "$exe" run
+        "$exe" install
+        echo
+        echo "Done. The collector runs in the background and starts with your session."
+        echo "To see it: $exe status    To stop it: $exe stop    To remove it: $exe uninstall"
         """;
 }

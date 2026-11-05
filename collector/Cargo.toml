@@ -2,7 +2,7 @@
 name = "mnemarr-collector"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 license = "GPL-3.0-or-later"
 description = "Collector agent: reads the conversations of an AI assistant on this machine and sends them to Mnemarr"
 publish = false

@@ -8,6 +8,7 @@ pub mod collect;
 pub mod config;
 pub mod enrol;
 pub mod mask;
+pub mod service;
 pub mod state;
 pub mod upload;
 
@@ -50,6 +51,16 @@ pub enum Command {
     Once(Options),
     /// Join this machine to Mnemarr with a one-time code, and keep the key.
     Enroll(EnrollOptions),
+    /// Have the collector start with the session of the user, and start it now: nothing stays open.
+    Install(Options),
+    /// Stop it, and take away what starts it with the session. The machine stays joined.
+    Uninstall(Options),
+    /// Start it in the background now.
+    Start(Options),
+    /// Stop it now. It starts again with the next session if it is installed.
+    Stop(Options),
+    /// Say whether it runs, and whether it starts with the session.
+    Status(Options),
 }
 
 /// The flag that accepts a plain `http://` address. It has no value: it is there or it is not.
@@ -72,6 +83,10 @@ pub fn usage() -> String {
     format!(
         "mnemarr-collector {VERSION}\n\n\
 USAGE:\n    mnemarr-collector enroll --server URL --code CODE [--machine NAME]\n                                        join this machine with the code a person approved in Mnemarr\n    \
+mnemarr-collector install           start with your session, and start now (in the background)\n    \
+mnemarr-collector start | stop      start it in the background, or stop it, now\n    \
+mnemarr-collector status            whether it runs, and whether it starts with your session\n    \
+mnemarr-collector uninstall         stop it and stop it starting with your session (the machine stays joined)\n    \
 mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
 mnemarr-collector once [OPTIONS]    one pass, then stop\n    \
 mnemarr-collector [--version | --help]\n\n\
@@ -106,6 +121,11 @@ where
         "run" => return Ok(Command::Run(options(args)?)),
         "once" => return Ok(Command::Once(options(args)?)),
         "enroll" => return Ok(Command::Enroll(enroll_options(args)?)),
+        "install" => return Ok(Command::Install(options(args)?)),
+        "uninstall" => return Ok(Command::Uninstall(options(args)?)),
+        "start" => return Ok(Command::Start(options(args)?)),
+        "stop" => return Ok(Command::Stop(options(args)?)),
+        "status" => return Ok(Command::Status(options(args)?)),
         other => return Err(unexpected(other)),
     };
     match args.next() {
@@ -316,5 +336,20 @@ mod tests {
         };
         assert!(options.allow_insecure_http);
         assert!(!matches!(parse(["run"]), Ok(Command::Run(o)) if o.allow_insecure_http));
+    }
+
+    #[test]
+    fn should_read_the_commands_that_run_it_in_the_background() {
+        assert_eq!(parse(["install"]), Ok(Command::Install(Options::default())));
+        assert_eq!(
+            parse(["uninstall"]),
+            Ok(Command::Uninstall(Options::default()))
+        );
+        assert_eq!(parse(["start"]), Ok(Command::Start(Options::default())));
+        assert_eq!(parse(["stop"]), Ok(Command::Stop(Options::default())));
+        let Ok(Command::Status(options)) = parse(["status", "--config-dir", "/c"]) else {
+            panic!("status was expected");
+        };
+        assert_eq!(options.config_dir.as_deref(), Some("/c"));
     }
 }
