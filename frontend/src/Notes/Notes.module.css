@@ -80,8 +80,6 @@
 }
 
 .markdown pre {
-  /* A conversation is long lines of prose in a code block: they wrap, and nothing is hidden at the right edge. */
-  white-space: pre-wrap;
   overflow-x: auto;
   padding: 12px;
   border: 1px solid var(--hairline);
@@ -91,6 +89,11 @@
 
 .markdown code {
   font-family: var(--monoSpaceFontFamily);
+}
+
+/* A conversation is long lines of prose in a code block: they wrap, and nothing is hidden at the right edge. Other notes keep their code as it is. */
+.kindConversations .markdown pre {
+  white-space: pre-wrap;
 }
 
 .markdown table {
