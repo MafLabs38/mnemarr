@@ -89,7 +89,7 @@ public sealed partial class ConversationIngestor
             return new IngestResult(next, 0);
         }
 
-        var fresh = masked.Skip((int)(next - batch.From)).ToList();
+        var fresh = masked.Skip((int)Math.Min(next - batch.From, masked.Count)).ToList();
         if (fresh.Count == 0)
         {
             return new IngestResult(next, 0);

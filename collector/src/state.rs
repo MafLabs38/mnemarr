@@ -19,6 +19,8 @@ pub struct FileState {
     pub lines: u64,
     /// The application of the conversation, once a line has said where it was held.
     pub application: Option<String>,
+    /// A fingerprint of the first line of the file when it was first read: a file that was replaced by another of the same size or longer is not the same file.
+    pub head: u64,
 }
 
 /// The position reached in every file, by path.
@@ -48,6 +50,7 @@ impl State {
                             .get("application")
                             .and_then(Value::as_str)
                             .map(str::to_string),
+                        head: entry.get("head").and_then(Value::as_u64).unwrap_or(0),
                     },
                 );
             }
@@ -63,7 +66,7 @@ impl State {
             .map(|(name, file)| {
                 (
                     name.clone(),
-                    json!({ "offset": file.offset, "lines": file.lines, "application": file.application }),
+                    json!({ "offset": file.offset, "lines": file.lines, "application": file.application, "head": file.head }),
                 )
             })
             .collect();
@@ -94,6 +97,7 @@ mod tests {
                 offset: 120,
                 lines: 3,
                 application: Some("mnemarr".to_string()),
+                head: 42,
             },
         );
 

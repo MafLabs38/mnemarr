@@ -18,9 +18,6 @@ public sealed record IngestConversationRequest(string Format, string Machine, st
 /// <summary>What the server took: how many lines, and the position of the next line it wants. A collector that is told a position other than the one it expected resumes from it.</summary>
 public sealed record IngestResultResource(long Next, int Accepted);
 
-/// <summary>A machine that sent conversations, and when it last did: an agent that is silent is not an agent that has nothing to say.</summary>
-public sealed record MachineResource(string Machine, int Conversations, long Lines, DateTimeOffset LastSeen);
-
 /// <summary>
 /// Where the collectors send what the assistants said. It takes a key of the <c>Collector</c> role (ingest only: such a key reads nothing),
 /// and what comes in is kept, masked once more, and written as notes that can be searched at once.
@@ -33,12 +30,10 @@ public sealed class IngestController : ControllerBase
     public const int MaxRequestBytes = 8 * 1024 * 1024;
 
     private readonly ConversationIngestor _ingestor;
-    private readonly IConversationStore _store;
 
-    public IngestController(ConversationIngestor ingestor, IConversationStore store)
+    public IngestController(ConversationIngestor ingestor)
     {
         _ingestor = ingestor;
-        _store = store;
     }
 
     [HttpPost("conversations")]
@@ -49,8 +44,4 @@ public sealed class IngestController : ControllerBase
         var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines), cancellationToken);
         return new IngestResultResource(result.Next, result.Accepted);
     }
-
-    [HttpGet("machines")]
-    [Authorize(Policy = Permissions.SystemRead)]
-    public IReadOnlyList<MachineResource> Machines() => [.. _store.Machines().Select(machine => new MachineResource(machine.Machine, machine.Conversations, machine.Lines, machine.LastSeen))];
 }

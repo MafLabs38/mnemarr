@@ -83,4 +83,15 @@ public sealed class ConversationFormatsFixture
 
         title.Should().HaveLength(81).And.EndWith("…");
     }
+
+    [Fact]
+    public void should_mask_what_a_line_says_once_its_escapes_are_decoded()
+    {
+        // The secret is written with a JSON escape for its first letter: the line, as it is, shows no token.
+        var line = "{\"type\":\"user\",\"message\":{\"content\":\"here: \\u0067hp_" + new string('a', 36) + "\"}}";
+
+        var turns = ConversationFormats.Turns(ConversationFormats.ClaudeCode, [line]);
+
+        turns.Single().Text.Should().Be("here: [masked:github-token]");
+    }
 }

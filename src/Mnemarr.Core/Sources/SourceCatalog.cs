@@ -85,16 +85,26 @@ public sealed class SourceCatalog
     {
         lock (Gate)
         {
-            if (_store.List().FirstOrDefault(source => source.Kind == SourceKind.Conversations) is { } existing)
+            if (_conversationsId is { } known && _store.Get(known) is { } cached)
             {
+                return cached;
+            }
+
+            var sources = _store.List();
+            if (sources.FirstOrDefault(source => source.Kind == SourceKind.Conversations) is { } existing)
+            {
+                _conversationsId = existing.Id;
                 return existing;
             }
 
             var folder = _paths.ConversationsFolder;
             Directory.CreateDirectory(folder);
-            var source = new Source(Guid.NewGuid(), ConversationsName, SourceKind.Conversations, SourceMode.ReadOnly, folder, _clock.GetUtcNow(), Managed: true);
-            Insert(source, "mnemarr");
-            return source;
+            // A source that an operator named like this before the name was reserved is not touched: this one takes another.
+            var name = sources.Any(source => string.Equals(source.Name, ConversationsName, StringComparison.OrdinalIgnoreCase)) ? ConversationsName + "-collected" : ConversationsName;
+            var created = new Source(Guid.NewGuid(), name, SourceKind.Conversations, SourceMode.ReadOnly, folder, _clock.GetUtcNow(), Managed: true);
+            Insert(created, "mnemarr");
+            _conversationsId = created.Id;
+            return created;
         }
     }
 
@@ -129,7 +139,7 @@ public sealed class SourceCatalog
         if (rule.Max is { } max && _store.List().Count(other => other.Kind == source.Kind) >= max)
         {
             // The name of the one that exists is not given: a caller limited to some sources may not see it.
-            throw new RejectedException(Problem.Conflict, "There is already a source of this kind: there can be only {max}. Change its folder instead.".Replace("{max}", max.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
+            throw new RejectedException(Problem.Conflict, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"There is already a source of this kind: there can be only {max}. Change its folder instead."));
         }
 
         _store.Add(source);
@@ -211,6 +221,8 @@ public sealed class SourceCatalog
 
     /// <summary>The name of the source that holds the conversations the collectors send.</summary>
     public const string ConversationsName = "conversations";
+
+    private Guid? _conversationsId;
 
     internal static string CheckedName(string name)
     {

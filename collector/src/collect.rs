@@ -5,7 +5,7 @@
 //! resumes from it. A line that is cut (the file is being written) waits for the next pass.
 
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
+use std::io::{self, BufRead, BufReader, Read as _, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -66,7 +66,16 @@ impl<U: Uploader> Collector<U> {
     /// One pass over every conversation: what is new in each is sent, and `state` says how far each has been sent.
     pub fn pass(&self, state: &mut State) -> Report {
         let mut report = Report::default();
-        for path in conversation_files(&self.projects) {
+        let files = conversation_files(&self.projects);
+        if !files.is_empty() {
+            // What was said of files that are gone is not kept for ever.
+            let present: std::collections::HashSet<String> = files
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect();
+            state.files.retain(|name, _| present.contains(name));
+        }
+        for path in files {
             report.files += 1;
             if let Err(stop) = self.send_file(&path, state, &mut report) {
                 report.stopped = Some(stop.to_string());
@@ -89,9 +98,15 @@ impl<U: Uploader> Collector<U> {
             .unwrap_or_default();
         let fallback = project_name(path);
         let file = state.files.entry(key).or_default();
-        // A file that is shorter than what was sent has been replaced: start again, the server skips what it has.
-        if fs::metadata(path).is_ok_and(|meta| meta.len() < file.offset) {
+        // A file that is shorter than what was sent, or that does not begin as it did, has been replaced: start again, the server skips what it has.
+        let head = fingerprint(path).unwrap_or(0);
+        let replaced = fs::metadata(path).is_ok_and(|meta| meta.len() < file.offset)
+            || (file.offset > 0 && file.head != 0 && head != 0 && head != file.head);
+        if replaced {
             *file = FileState::default();
+        }
+        if file.head == 0 {
+            file.head = head;
         }
         // Each pass over a file is bounded, so that a server that keeps telling another position cannot keep the collector here.
         for _ in 0..MAX_BATCHES_PER_FILE {
@@ -135,8 +150,13 @@ impl<U: Uploader> Collector<U> {
                 Ok(reply) => {
                     // The server is somewhere else than the collector thought: go to where it is, and send from there.
                     let (offset, lines_before) = offset_after(path, reply.next);
+                    let moved = lines_before != file.lines;
                     file.offset = offset;
                     file.lines = lines_before;
+                    if !moved {
+                        // No nearer than before: the same batch would be sent again for ever. The next pass tries again.
+                        return Ok(());
+                    }
                 }
                 Err(UploadError::Refused(status, reason)) if status != 401 && status != 403 => {
                     report
@@ -157,6 +177,55 @@ struct Read {
     bytes: u64,
 }
 
+/// What one line of a file is.
+enum Line {
+    /// A line with its end: the text, and the bytes it takes.
+    Complete(String, u64),
+    /// A line that is too long to be a message: it was not kept (the rest of it was skipped without being held), and takes this many bytes.
+    TooLong(u64),
+}
+
+/// The next line of a file, or `None` when what is left has no end yet (it is being written). A line longer than the limit is never held whole.
+fn next_line(reader: &mut BufReader<File>) -> io::Result<Option<Line>> {
+    let mut buffer = Vec::new();
+    let read = reader
+        .by_ref()
+        .take(MAX_LINE_BYTES as u64 + 1)
+        .read_until(b'\n', &mut buffer)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if buffer.last() == Some(&b'\n') {
+        let text = String::from_utf8_lossy(&buffer);
+        return Ok(Some(Line::Complete(
+            text.trim_end_matches(['\n', '\r']).to_string(),
+            read as u64,
+        )));
+    }
+    if buffer.len() <= MAX_LINE_BYTES {
+        // The end of the file, and no end of line: it is being written.
+        return Ok(None);
+    }
+    let mut skipped = read as u64;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok(None);
+        }
+        match available.iter().position(|byte| *byte == b'\n') {
+            Some(position) => {
+                reader.consume(position + 1);
+                return Ok(Some(Line::TooLong(skipped + position as u64 + 1)));
+            }
+            None => {
+                let length = available.len();
+                reader.consume(length);
+                skipped += length as u64;
+            }
+        }
+    }
+}
+
 /// The complete lines of a file from a position, a batch at most. A line without its end (it is being written) is left.
 fn read_batch(path: &Path, offset: u64) -> io::Result<Read> {
     let mut file = File::open(path)?;
@@ -165,19 +234,37 @@ fn read_batch(path: &Path, offset: u64) -> io::Result<Read> {
     let mut lines = Vec::new();
     let mut bytes = 0u64;
     let mut size = 0usize;
-    let mut buffer = Vec::new();
     while lines.len() < MAX_BATCH_LINES && size < MAX_BATCH_BYTES {
-        buffer.clear();
-        let read = reader.read_until(b'\n', &mut buffer)?;
-        if read == 0 || buffer.last() != Some(&b'\n') {
-            break;
+        match next_line(&mut reader)? {
+            Some(Line::Complete(text, taken)) => {
+                size += text.len();
+                bytes += taken;
+                lines.push(text);
+            }
+            Some(Line::TooLong(taken)) => {
+                size += DROPPED_LINE.len();
+                bytes += taken;
+                lines.push(DROPPED_LINE.to_string());
+            }
+            None => break,
         }
-        bytes += read as u64;
-        size += read;
-        let text = String::from_utf8_lossy(&buffer);
-        lines.push(text.trim_end_matches(['\n', '\r']).to_string());
     }
     Ok(Read { lines, bytes })
+}
+
+/// A fingerprint of the first line of a file (FNV-1a over its first 256 bytes): what says that a file is still the one that was sent.
+fn fingerprint(path: &Path) -> Option<u64> {
+    let mut start = Vec::new();
+    BufReader::new(File::open(path).ok()?)
+        .take(256)
+        .read_until(b'\n', &mut start)
+        .ok()?;
+    if start.is_empty() {
+        return None;
+    }
+    Some(start.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+    }))
 }
 
 /// Where the line after the first `count` lines of a file begins, and how many lines there really were before it (fewer than `count` when
@@ -534,6 +621,7 @@ mod tests {
                 offset,
                 lines,
                 application: None,
+                head: 0,
             },
         );
 
@@ -604,5 +692,107 @@ mod tests {
         }
         assert_eq!(report.unreadable.len(), 1);
         assert!(report.stopped.is_none());
+    }
+
+    #[test]
+    fn should_not_hold_a_line_that_is_too_long_and_keep_the_positions_of_the_lines_after_it() {
+        let workspace = Workspace::new("huge");
+        let huge = "x".repeat(MAX_LINE_BYTES * 3);
+        fs::write(
+            workspace.file(),
+            format!("{{\"a\":1}}\n{huge}\n{{\"c\":3}}\n"),
+        )
+        .unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+
+        let report = collector.pass(&mut state);
+
+        assert_eq!(
+            *fake.taken.borrow(),
+            vec!["{\"a\":1}", DROPPED_LINE, "{\"c\":3}"]
+        );
+        assert_eq!(report.lines_sent, 3);
+        let size = fs::metadata(workspace.file()).unwrap().len();
+        assert_eq!(state.files.values().next().unwrap().offset, size);
+    }
+
+    #[test]
+    fn should_leave_a_too_long_line_that_has_no_end_yet_for_the_next_pass() {
+        let workspace = Workspace::new("hugecut");
+        fs::write(
+            workspace.file(),
+            format!("{{\"a\":1}}\n{}", "x".repeat(MAX_LINE_BYTES * 2)),
+        )
+        .unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+
+        collector.pass(&mut state);
+
+        assert_eq!(*fake.taken.borrow(), vec!["{\"a\":1}"]);
+    }
+
+    #[test]
+    fn should_start_again_when_a_file_is_replaced_by_another_of_the_same_size() {
+        let workspace = Workspace::new("same-size");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+        // Another conversation, with the same size.
+        fs::write(workspace.file(), "{\"x\":9}\n{\"y\":8}\n").unwrap();
+        fake.taken.borrow_mut().clear();
+
+        let report = collector.pass(&mut state);
+
+        assert_eq!(report.lines_sent, 2);
+        assert_eq!(*fake.taken.borrow(), vec!["{\"x\":9}", "{\"y\":8}"]);
+    }
+
+    #[test]
+    fn should_stop_with_a_file_when_the_server_keeps_giving_a_position_that_gets_no_nearer() {
+        struct Stuck(RefCell<u32>);
+        impl Uploader for &Stuck {
+            fn send(&self, _batch: &Batch<'_>) -> Result<Reply, UploadError> {
+                *self.0.borrow_mut() += 1;
+                Ok(Reply {
+                    next: 0,
+                    accepted: 0,
+                })
+            }
+        }
+        let workspace = Workspace::new("stuck");
+        fs::write(workspace.file(), "{\"a\":1}\n").unwrap();
+        let stuck = Stuck(RefCell::new(0));
+        let collector = Collector::new("pc".to_string(), workspace.0.clone(), &stuck);
+        let mut state = State::default();
+
+        collector.pass(&mut state);
+
+        assert!(
+            *stuck.0.borrow() <= 2,
+            "the same batch is not sent thousands of times"
+        );
+    }
+
+    #[test]
+    fn should_forget_the_files_that_are_gone() {
+        let workspace = Workspace::new("prune");
+        fs::write(workspace.file(), "{\"a\":1}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        state
+            .files
+            .insert("/gone/old.jsonl".to_string(), FileState::default());
+
+        collector.pass(&mut state);
+
+        assert_eq!(state.files.len(), 1);
+        assert!(!state.files.contains_key("/gone/old.jsonl"));
     }
 }

@@ -376,8 +376,6 @@ test.describe('smoke @smoke', () => {
       },
     });
     expect(sent.status()).toBe(200);
-    // The collector reads nothing: its key is for sending.
-    expect((await collector.get('/api/v1/notes')).status()).toBe(403);
 
     await signIn(page, '/notes');
     await page.getByLabel('Filter the notes').fill(word);

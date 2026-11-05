@@ -71,7 +71,7 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         }
 
         (await callers.Anonymous.PostAsJsonAsync("/api/v1/ingest/conversations", body, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        foreach (var url in new[] { "/api/v1/notes", "/api/v1/search?q=x", "/api/v1/ingest/machines", "/api/v1/sources" })
+        foreach (var url in new[] { "/api/v1/notes", "/api/v1/search?q=x", "/api/v1/collectors", "/api/v1/sources" })
         {
             (await callers["Collector"].GetAsync(url, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, url);
         }
@@ -98,7 +98,7 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         var machine = Callers.Unique("pc");
         await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, Callers.Unique("s"), 0, Line("user", "x", "2026-11-04T14:03:00Z")), Token);
 
-        var machines = await callers["Monitor"].GetFromJsonAsync<JsonElement>("/api/v1/ingest/machines", Token);
+        var machines = await callers["Monitor"].GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token);
 
         machines.EnumerateArray().Should().Contain(item => item.GetProperty("machine").GetString() == machine && item.GetProperty("conversations").GetInt32() == 1);
     }
@@ -113,9 +113,9 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
 
         var source = tree.GetProperty("sources").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "Conversations");
         source.GetProperty("rights").GetProperty("canWrite").GetBoolean().Should().BeFalse();
-        source.GetProperty("rights").GetProperty("reason").GetString().Should().Be("kind-not-writable");
         var declared = await callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name = "mine", kind = "Conversations", mode = "ReadOnly", path = Path.Combine(_factory.DataFolder, "sources") }, Token);
         declared.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await declared.Content.ReadAsStringAsync(Token)).Should().Contain("created by Mnemarr", "it is the rule of the kind that refuses it, not the path");
     }
 
     [Fact]
@@ -142,6 +142,8 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         (await callers["Reader"].GetAsync($"/api/v1/notes/{sourceId}/{path}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await callers["Assistant"].GetAsync($"/api/v1/notes/{sourceId}/{path}", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         var mcp = await callers["Reader"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "search", arguments = new { query = word } } }, Token);
-        (await mcp.Content.ReadAsStringAsync(Token)).Should().NotContain(word, "a reader key finds nothing of the conversations over MCP either");
+        var reply = JsonDocument.Parse(await mcp.Content.ReadAsStringAsync(Token)).RootElement.GetProperty("result");
+        reply.GetProperty("isError").GetBoolean().Should().BeFalse();
+        reply.GetProperty("content")[0].GetProperty("text").GetString().Should().Be("[]", "a reader key finds nothing of the conversations over MCP either");
     }
 }

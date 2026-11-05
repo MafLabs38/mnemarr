@@ -241,9 +241,12 @@ public sealed class ConversationIngestorFixture : IDisposable
         await gate.WaitAsync(Token);
         try
         {
-            var busy = () => _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), CancellationTokenSource.CreateLinkedTokenSource(Token, new CancellationTokenSource(TimeSpan.FromMilliseconds(300)).Token).Token);
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+            var waiting = _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), cancel.Token);
+            await cancel.CancelAsync();
 
-            await busy.Should().ThrowAsync<OperationCanceledException>("the wait for the lock is cut by the token here, and is ten seconds in production");
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+            File.Exists(NoteFile).Should().BeFalse("nothing was written while the lock was held elsewhere");
         }
         finally
         {
@@ -274,5 +277,28 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         new SourceScope([Guid.NewGuid()]).ConversationsHidden.Should().BeTrue("a scope that does not say otherwise hides the conversations");
         SourceScope.All.ConversationsHidden.Should().BeFalse("Mnemarr itself sees everything");
+    }
+
+    [Fact]
+    public async Task should_take_the_same_batch_sent_twice_at_once_only_one_time()
+    {
+        var batch = Batch(0, Line("user", "one thing", "2026-11-04T14:03:00Z"), Line("assistant", "two things", "2026-11-04T14:04:00Z"));
+
+        var results = await Task.WhenAll(_ingestor.IngestAsync(batch, Token), _ingestor.IngestAsync(batch, Token));
+
+        results.Sum(result => result.Accepted).Should().Be(2);
+        results.Select(result => result.Next).Should().OnlyContain(next => next == 2);
+        File.ReadAllText(NoteFile).Split("\n## ").Should().HaveCount(3, "the header and two turns, none twice");
+    }
+
+    [Fact]
+    public async Task should_give_the_source_another_name_when_an_operator_already_used_the_one_it_keeps()
+    {
+        new SqliteSourceStore(_workspace.Database).Add(new Source(Guid.NewGuid(), "conversations", SourceKind.Knowledge, SourceMode.ReadOnly, _workspace.Folder("mine"), _clock.GetUtcNow()));
+
+        var result = await _ingestor.IngestAsync(Batch(0, Line("user", "one thing here", "2026-11-04T14:03:00Z")), Token);
+
+        result.Accepted.Should().Be(1);
+        _catalog.List(SourceScope.All).Should().Contain(source => source.Kind == SourceKind.Conversations && source.Name == "conversations-collected");
     }
 }

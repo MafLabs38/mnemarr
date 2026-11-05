@@ -27,6 +27,7 @@
 
 ## Consequences
 
+- **An upgrade widens what an existing `Assistant` key can read.** An unscoped key issued before conversations existed can read every conversation of every machine once it holds `conversations.read`. Whoever issued such keys is told in the release notes, and limits them to sources (a key limited to sources does not see the Conversations source unless it is listed).
 - A workstation is installed by a person in a few minutes, with no secret to copy; a server by a Compose file.
 - An intermittent machine can be off for days without alerting anyone; an always-on machine that goes quiet is noticed.
 - Adding an assistant is adding a reader and a parser, not a change of architecture.

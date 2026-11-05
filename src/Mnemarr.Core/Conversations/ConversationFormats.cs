@@ -47,7 +47,8 @@ public static partial class ConversationFormats
                 return null;
             }
 
-            var text = Clean(ContentText(content), role);
+            // The line was masked as it is written in JSON; what it says once decoded (an escape such as \u0067) is masked too, before it reaches the note, the title or the index.
+            var text = Clean(SecretMasker.Mask(ContentText(content)), role);
             return text.Length == 0 ? null : new Turn(role, At(root), Cut(text));
         }
         catch (Exception ex) when (ex is JsonException or RegexMatchTimeoutException)

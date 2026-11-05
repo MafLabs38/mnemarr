@@ -60,7 +60,7 @@ The first run sends the whole history of the machine: it can take a few minutes 
 
 ## See that it works
 
-- `GET /api/v1/ingest/machines` shows which machines sent conversations and when.
+- `GET /api/v1/collectors` shows which machines sent conversations and when.
 - The notes page has a section of the conversations, one folder per machine; only `Admin` and `Assistant` see it.
 - Over MCP, an assistant with the right to read conversations calls `search` (use `topic` to keep one machine) and `read_note`.
 

@@ -1,3 +1,5 @@
+using Mnemarr.Core.Sources;
+
 namespace Mnemarr.Core.Accounts;
 
 public enum AccountKind
@@ -45,7 +47,7 @@ public sealed record SourceScope(IReadOnlyList<Guid>? Sources, bool Conversation
     /// Whether the caller may see a source: it is among those the caller may touch, and it is not the conversations of the assistants when the
     /// caller does not hold <see cref="Permissions.ConversationsRead"/>. A source that may not be seen is as absent as one that does not exist.
     /// </summary>
-    public bool CanSee(Mnemarr.Core.Sources.Source source) => CanAccess(source.Id) && !(ConversationsHidden && source.Kind == Mnemarr.Core.Sources.SourceKind.Conversations);
+    public bool CanSee(Source source) => CanAccess(source.Id) && !(ConversationsHidden && source.Kind == SourceKind.Conversations);
 }
 
 /// <summary>Who is acting: an account, and when it came with a key, what that key is limited to.</summary>
@@ -55,5 +57,4 @@ public sealed record AccessPrincipal(Account Account, IReadOnlySet<string> Permi
 
     public bool Can(string permission) => Permissions.Contains(permission);
 
-    public bool CanAccess(Guid sourceId) => Scope.CanAccess(sourceId);
 }

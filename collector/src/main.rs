@@ -47,10 +47,13 @@ fn pass(collector: &Collector<HttpUploader>, config: &Config, state: &mut State)
             config.state.display()
         ));
     }
-    say(&format!(
-        "{} conversation(s), {} line(s) sent",
-        report.files, report.lines_sent
-    ));
+    // A service that has nothing to say says nothing: a pass that sent something, or that went wrong, is written down.
+    if report.lines_sent > 0 || report.stopped.is_some() || !report.refused.is_empty() {
+        say(&format!(
+            "{} conversation(s), {} line(s) sent",
+            report.files, report.lines_sent
+        ));
+    }
     for refused in &report.refused {
         say(&format!("refused: {refused}"));
     }

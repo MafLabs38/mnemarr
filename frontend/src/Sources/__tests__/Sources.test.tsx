@@ -154,6 +154,38 @@ describe('Sources', () => {
     expect(within(conversations).queryByLabelText('Name')).not.toBeInTheDocument();
   });
 
+  it('shows the conversations source as created by Mnemarr, with nothing to change, forget or declare', async () => {
+    server((method, path) =>
+      method === 'GET' && path === '/sources'
+        ? {
+            body: [
+              {
+                ...sources[0],
+                id: 'c1',
+                name: 'conversations',
+                kind: 'Conversations',
+                mode: 'ReadOnly',
+                managed: true,
+                path: '/config/conversations',
+              },
+            ],
+          }
+        : undefined,
+    );
+
+    renderWithProviders(<Sources />);
+
+    const conversations = await screen.findByRole('region', { name: 'Assistant conversations' });
+    const row = rowOf(await within(conversations).findByRole('rowheader', { name: /conversations/u }));
+    expect(within(row).getByText('Created by Mnemarr')).toBeInTheDocument();
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Index now']);
+    expect(within(conversations).queryByLabelText('Name')).not.toBeInTheDocument();
+  });
+
   it('shows the memory vault as a required slot that is filled: nothing to add, nothing to remove, a folder to change', async () => {
     server();
     renderWithProviders(<Sources />);

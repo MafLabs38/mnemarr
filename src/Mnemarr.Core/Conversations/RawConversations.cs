@@ -22,7 +22,9 @@ public sealed class RawConversations
     private string FolderOf(string machine, string session) => Path.Combine(Path.GetFullPath(_options.Value.DataFolder), "raw", machine, session);
 
     /// <summary>Keeps a batch that starts at the given position. Written beside and moved into place, so that a crash leaves no half file.</summary>
-    public void Write(string machine, string session, long from, IReadOnlyList<string> lines)
+    public void Write(string machine, string session, long from, IReadOnlyList<string> lines) => Write(machine, session, from, (IEnumerable<string>)lines);
+
+    private void Write(string machine, string session, long from, IEnumerable<string> lines)
     {
         var folder = FolderOf(machine, session);
         Directory.CreateDirectory(folder);
@@ -69,7 +71,8 @@ public sealed class RawConversations
             return;
         }
 
-        Write(machine, session, 0, [.. Read(machine, session, count)]);
+        // Written as it is read, one line at a time: a long conversation is never held whole in memory.
+        Write(machine, session, 0, Read(machine, session, count));
         var first = Path.Combine(folder, $"{0:D12}.jsonl.gz");
         foreach (var file in files.Where(file => !string.Equals(file, first, StringComparison.Ordinal)))
         {

@@ -37,9 +37,9 @@ public sealed class RolesFixture
         var limited = new AccessPrincipal(account, account.Permissions, [allowed], null);
         var unlimited = new AccessPrincipal(account, account.Permissions, null, null);
 
-        limited.CanAccess(allowed).Should().BeTrue();
-        limited.CanAccess(Guid.NewGuid()).Should().BeFalse();
-        unlimited.CanAccess(Guid.NewGuid()).Should().BeTrue();
+        limited.Scope.CanAccess(allowed).Should().BeTrue();
+        limited.Scope.CanAccess(Guid.NewGuid()).Should().BeFalse();
+        unlimited.Scope.CanAccess(Guid.NewGuid()).Should().BeTrue();
         limited.Can(Permissions.NotesRead).Should().BeTrue();
         limited.Can(Permissions.AccountsManage).Should().BeFalse();
     }
