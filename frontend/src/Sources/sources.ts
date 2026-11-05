@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGetText, apiSend, apiSendYaml } from 'Helpers/Api/apiGet';
 import { isApiPath, useApiQuery } from 'Helpers/Hooks/useApiQuery';
 
-export type SourceKind = 'Knowledge' | 'Memory' | 'ApplicationDocs';
+export type SourceKind = 'Knowledge' | 'Memory' | 'ApplicationDocs' | 'Conversations';
 export type SourceMode = 'ReadOnly' | 'ReadWrite';
 
 export interface SourceItem {
@@ -62,6 +62,8 @@ export interface SourceKindItem {
   count: number;
   satisfied: boolean;
   defaultMode: SourceMode;
+  /** False for a kind that Mnemarr creates itself (the conversations): there is nothing to declare. */
+  declarable: boolean;
 }
 
 export interface NewSource {

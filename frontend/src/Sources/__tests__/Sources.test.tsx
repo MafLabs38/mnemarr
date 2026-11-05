@@ -13,6 +13,7 @@ const kindsWith = (counts: { Memory: number; Knowledge: number; ApplicationDocs:
     count: counts.Memory,
     satisfied: counts.Memory >= 1,
     defaultMode: 'ReadOnly',
+    declarable: true,
   },
   {
     kind: 'Knowledge',
@@ -21,6 +22,7 @@ const kindsWith = (counts: { Memory: number; Knowledge: number; ApplicationDocs:
     count: counts.Knowledge,
     satisfied: true,
     defaultMode: 'ReadOnly',
+    declarable: true,
   },
   {
     kind: 'ApplicationDocs',
@@ -29,6 +31,16 @@ const kindsWith = (counts: { Memory: number; Knowledge: number; ApplicationDocs:
     count: counts.ApplicationDocs,
     satisfied: true,
     defaultMode: 'ReadOnly',
+    declarable: true,
+  },
+  {
+    kind: 'Conversations',
+    required: false,
+    unique: true,
+    count: 0,
+    satisfied: true,
+    defaultMode: 'ReadOnly',
+    declarable: false,
   },
 ];
 
@@ -127,6 +139,19 @@ describe('Sources', () => {
       within(rowOf(within(memory).getByRole('rowheader', { name: 'memoire' }))).getByText('Not yet'),
     ).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Application documentation' })).toBeInTheDocument();
+  });
+
+  it('shows the conversations as a section that Mnemarr fills: nothing to declare, and a word on when it appears', async () => {
+    server();
+
+    renderWithProviders(<Sources />);
+
+    const conversations = await screen.findByRole('region', { name: 'Conversations' });
+    expect(
+      within(conversations).getByText(/it appears when a collector sends its first conversation/u),
+    ).toBeInTheDocument();
+    expect(within(conversations).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(conversations).queryByRole('form')).not.toBeInTheDocument();
   });
 
   it('shows the memory vault as a required slot that is filled: nothing to add, nothing to remove, a folder to change', async () => {

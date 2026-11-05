@@ -28,7 +28,8 @@ export default function KindSection({
       {kind.required && <p>{translate(kind.satisfied ? 'Required' : 'RequiredMissing', { kind: title })}</p>}
       {!kind.satisfied && <Alert>{translate('SourceMissing', { kind: title })}</Alert>}
       {mine.length > 0 && <SourceList kind={kind} sources={mine} />}
-      {!full && <SourceForm kind={kind} suggestedName={suggestedNames[kind.kind]} />}
+      {!kind.declarable && mine.length === 0 && <p className={styles.hint}>{translate('ConversationsEmpty')}</p>}
+      {kind.declarable && !full && <SourceForm kind={kind} suggestedName={suggestedNames[kind.kind]} />}
     </Card>
   );
 }

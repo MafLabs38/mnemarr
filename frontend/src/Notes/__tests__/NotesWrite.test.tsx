@@ -114,8 +114,8 @@ describe('writing notes', () => {
     ],
     [
       'kind-not-writable',
-      'This note is edited in its repository',
-      'The documentation of an application is read from its repository: it is edited there, then read again here.',
+      'This note is not edited here',
+      'The documentation of an application is edited in its repository, and conversations come from the collectors: neither is written by hand here.',
     ],
     [
       'no-permission',

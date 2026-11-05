@@ -220,6 +220,10 @@
   --kind: var(--secondary);
 }
 
+.kindConversations {
+  --kind: var(--warningColor);
+}
+
 .kindSection {
   margin-top: 16px;
   padding: 10px 12px 12px;
