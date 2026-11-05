@@ -343,6 +343,51 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
   });
 
+  test('a conversation sent by a collector shows in the notes, cannot be edited, and is found by a search', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const word = unique('zebra').replaceAll('-', '');
+    const api = await signedInRequest(playwright, baseURL ?? '');
+    const account = await api.post('/api/v1/accounts', {
+      data: { name: unique('collector'), kind: 'Service', role: 'Collector' },
+    });
+    expect(account.status()).toBe(201);
+    const key = await api.post(`/api/v1/accounts/${(await account.json()).id}/keys`, { data: { name: 'e2e' } });
+    const collector = await playwright.request.newContext({
+      baseURL,
+      extraHTTPHeaders: { 'X-Api-Key': (await key.json()).secret },
+    });
+    const line = (type: string, text: string, at: string) =>
+      JSON.stringify({ type, timestamp: at, cwd: '/work/Mnemarr', message: { role: type, content: text } });
+
+    const sent = await collector.post('/api/v1/ingest/conversations', {
+      data: {
+        format: 'claude-code',
+        machine: unique('pc'),
+        application: 'Mnemarr',
+        session: unique('s'),
+        from: 0,
+        lines: [
+          line('user', `What did we decide about ${word}?`, '2026-11-04T14:03:00Z'),
+          line('assistant', 'We kept the cache in memory.', '2026-11-04T14:04:00Z'),
+        ],
+      },
+    });
+    expect(sent.status()).toBe(200);
+    // The collector reads nothing: its key is for sending.
+    expect((await collector.get('/api/v1/notes')).status()).toBe(403);
+
+    await signIn(page, '/notes');
+    await page.getByRole('link', { name: `What did we decide about ${word}?` }).click();
+    await expect(page.getByText('We kept the cache in memory.')).toBeVisible();
+    await expect(page.getByText('This note is not edited here')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled();
+    const found = await api.get(`/api/v1/search?q=${word}`);
+    expect((await found.json()).length).toBeGreaterThan(0);
+  });
+
   test('an operator writes notes: creates one, edits it, links to it, renames it and the link follows, removes it', async ({
     page,
     playwright,

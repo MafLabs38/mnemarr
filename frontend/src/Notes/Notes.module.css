@@ -80,6 +80,8 @@
 }
 
 .markdown pre {
+  /* A conversation is long lines of prose in a code block: they wrap, and nothing is hidden at the right edge. */
+  white-space: pre-wrap;
   overflow-x: auto;
   padding: 12px;
   border: 1px solid var(--hairline);
