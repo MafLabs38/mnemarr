@@ -13,6 +13,15 @@ public sealed class CollectorOptions
     /// <summary>An always-on machine not heard from for this many minutes is an alert.</summary>
     public int SilenceAfterMinutes { get; set; } = 30;
 
+    /// <summary>
+    /// A folder that holds the programs a machine installs (one file per system, named as in <see cref="CollectorDownloads"/>): Mnemarr serves them,
+    /// so that a machine gets the program of the version of its server from the server it trusts. The image carries them; a developer mounts a folder.
+    /// </summary>
+    public string? DownloadFolder { get; set; }
+
+    /// <summary>The address machines reach Mnemarr at, when the one a request came with is not it (behind a proxy that does not say so). Without it, the address of the request is used.</summary>
+    public string? PublicUrl { get; set; }
+
     public TimeSpan OnlineWithin => TimeSpan.FromMinutes(OnlineWithinMinutes);
 
     public TimeSpan SilenceAfter => TimeSpan.FromMinutes(SilenceAfterMinutes);
@@ -32,7 +41,9 @@ public sealed class CollectorOptionsValidator : IValidateOptions<CollectorOption
             return ValidateOptionsResult.Fail($"Collectors:SilenceAfterMinutes (MNEMARR__COLLECTORS__SILENCEAFTERMINUTES) must be at least OnlineWithinMinutes and at most {CollectorOptions.MaxMinutes}.");
         }
 
-        return ValidateOptionsResult.Success;
+        return string.IsNullOrWhiteSpace(options.PublicUrl) || (Uri.TryCreate(options.PublicUrl, UriKind.Absolute, out var url) && url.Scheme is "http" or "https" && string.IsNullOrEmpty(url.Query))
+            ? ValidateOptionsResult.Success
+            : ValidateOptionsResult.Fail("Collectors:PublicUrl (MNEMARR__COLLECTORS__PUBLICURL) must be an http or https address, such as https://mnemarr.homelab.example.");
     }
 }
 

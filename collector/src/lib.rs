@@ -25,6 +25,8 @@ pub struct Options {
     pub interval_seconds: Option<u64>,
     /// The folder of the collector (the key, the address of Mnemarr), when the usual place is not the right one.
     pub config_dir: Option<String>,
+    /// Accept an address of Mnemarr that is plain `http://`: the key is then sent without encryption. For a network the person trusts (a sandbox at home).
+    pub allow_insecure_http: bool,
 }
 
 /// What was given to `enroll`: where Mnemarr is, the code a person approved, and, if it is not the host name, what this machine is called.
@@ -34,6 +36,7 @@ pub struct EnrollOptions {
     pub code: Option<String>,
     pub machine: Option<String>,
     pub config_dir: Option<String>,
+    pub allow_insecure_http: bool,
 }
 
 /// What the command line asked for.
@@ -48,6 +51,9 @@ pub enum Command {
     /// Join this machine to Mnemarr with a one-time code, and keep the key.
     Enroll(EnrollOptions),
 }
+
+/// The flag that accepts a plain `http://` address. It has no value: it is there or it is not.
+const ALLOW_INSECURE_HTTP: &str = "--allow-insecure-http";
 
 /// A command line the collector does not understand.
 #[derive(Debug, PartialEq, Eq)]
@@ -75,7 +81,8 @@ OPTIONS:\n    --server URL        the address of Mnemarr (or MNEMARR_SERVER)\n  
 --projects DIR      the conversations of Claude Code (default: ~/.claude/projects)\n    \
 --state FILE        where to remember how far each file was sent\n    \
 --interval SECONDS  the wait between two passes (default: 30)\n    \
---config-dir DIR    where the key and the address of Mnemarr are kept (default: the configuration folder of the user)\n"
+--config-dir DIR    where the key and the address of Mnemarr are kept (default: the configuration folder of the user)\n    \
+--allow-insecure-http  accept an http:// address (the key then travels without encryption: only for a network you trust)\n"
     )
 }
 
@@ -116,6 +123,10 @@ where
     let mut options = EnrollOptions::default();
     while let Some(flag) = args.next() {
         let flag = flag.as_ref();
+        if flag == ALLOW_INSECURE_HTTP {
+            options.allow_insecure_http = true;
+            continue;
+        }
         let Some(value) = args.next() else {
             return Err(UsageError(format!("{flag} needs a value")));
         };
@@ -140,6 +151,10 @@ where
     let mut options = Options::default();
     while let Some(flag) = args.next() {
         let flag = flag.as_ref();
+        if flag == ALLOW_INSECURE_HTTP {
+            options.allow_insecure_http = true;
+            continue;
+        }
         let Some(value) = args.next() else {
             return Err(UsageError(format!("{flag} needs a value")));
         };
@@ -208,6 +223,7 @@ mod tests {
             state: None,
             interval_seconds: Some(10),
             config_dir: None,
+            allow_insecure_http: false,
         };
         let arguments = [
             "--server",
@@ -268,6 +284,7 @@ mod tests {
                 code: Some("ABCD-EFGH-JKLM".to_string()),
                 machine: Some("pc".to_string()),
                 config_dir: Some("/c".to_string()),
+                allow_insecure_http: false,
             }))
         );
         assert_eq!(
@@ -282,5 +299,22 @@ mod tests {
             parse(["enroll", "--interval", "5"]),
             Err(UsageError("unexpected argument: --interval".to_string()))
         );
+    }
+
+    #[test]
+    fn should_take_the_flag_that_allows_plain_http_without_a_value_wherever_it_is() {
+        let Ok(Command::Run(options)) = parse(["run", "--allow-insecure-http", "--machine", "pc"])
+        else {
+            panic!("run was expected");
+        };
+        assert!(options.allow_insecure_http);
+        assert_eq!(options.machine.as_deref(), Some("pc"));
+        let Ok(Command::Enroll(options)) =
+            parse(["enroll", "--code", "A", "--allow-insecure-http"])
+        else {
+            panic!("enroll was expected");
+        };
+        assert!(options.allow_insecure_http);
+        assert!(!matches!(parse(["run"]), Ok(Command::Run(o)) if o.allow_insecure_http));
     }
 }

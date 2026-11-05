@@ -43,10 +43,12 @@ public sealed class McpTools
     private readonly NoteWriter _writer;
     private readonly IOptions<McpOptions> _options;
     private readonly EnrolmentService _enrolments;
+    private readonly InstallCommands _installs;
 
-    public McpTools(SourceCatalog catalog, INoteIndex index, NoteReader reader, NoteWriter writer, IOptions<McpOptions> options, EnrolmentService enrolments)
+    public McpTools(SourceCatalog catalog, INoteIndex index, NoteReader reader, NoteWriter writer, IOptions<McpOptions> options, EnrolmentService enrolments, InstallCommands installs)
     {
         _enrolments = enrolments;
+        _installs = installs;
         _catalog = catalog;
         _index = index;
         _reader = reader;
@@ -115,6 +117,8 @@ public sealed class McpTools
         }
 
         var created = _enrolments.Request(machine, kind, approveNow: false, caller.Name);
+        var server = string.IsNullOrEmpty(caller.Server) ? "<the address of Mnemarr>" : caller.Server;
+        var install = _installs.For(server, created.Code, machine);
         return new
         {
             requestId = created.Enrolment.Id,
@@ -122,8 +126,10 @@ public sealed class McpTools
             kind = MachineKinds.Name(kind),
             state = "pending",
             code = created.Code,
-            command = EnrolCommand.For(string.IsNullOrEmpty(caller.Server) ? "<the address of Mnemarr>" : caller.Server, created.Code, machine),
-            next = "A person who manages the collectors must approve this request in Mnemarr (the Machines page). Then run the command on the machine; the code works for 15 minutes and once. Tell the person which machine and which code.",
+            install = install.Commands.Select(command => new { system = command.System, label = command.Label, command = command.Command }),
+            insecure = install.Insecure,
+            joinOnly = EnrolCommand.For(server, created.Code, machine, install.Insecure),
+            next = "A person who manages the collectors must approve this request in Mnemarr (the Machines page). Then run the install line for the system of the machine, in a terminal of that machine, as the user whose conversations it will read: it downloads the program from Mnemarr, checks it, and joins the machine. The code works for 15 minutes and once. Tell the person which machine and which code. If insecure is true, this Mnemarr is served without HTTPS: say so to the person.",
         };
     }
 

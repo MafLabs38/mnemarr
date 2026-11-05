@@ -27,14 +27,16 @@ Each machine has a kind, declared in Mnemarr:
 
 ## Join a machine (built, ADR 0027)
 
-1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows a one-time **code** and the command to run, once.
-2. On the machine, as the user whose conversations it reads:
+1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows **one line** to paste, for the system you are on, and a one-time **code** inside it, once.
+2. On the machine, as your usual user (no administrator rights), open PowerShell (Windows) or a terminal (Linux, macOS) and paste the line:
    ```text
-   mnemarr-collector enroll --server https://mnemarr.homelab.example --code ABCD-EFGH-JKLM --machine my-laptop
-   mnemarr-collector run
+   irm 'https://mnemarr.homelab.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=my-laptop' | iex
+   curl -fsSL 'https://mnemarr.homelab.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=my-laptop' | sh
    ```
-   `enroll` exchanges the code for the key of this machine, keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; the configuration folder of the system on Windows), and keeps the address and the name in `collector.json` beside it. `run` and `once` find them without any flag.
+   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; `%APPDATA%` on Windows) with the address and the name in `collector.json` beside it, and then `mnemarr-collector run`. Those two commands are also yours to run by hand when the program is already there.
 3. The machine appears on the page as **waiting** until its first pass, then **online**.
+
+If the address of Mnemarr is plain `http://` (a sandbox), the page says that the key will travel without encryption, and the line makes the collector accept it (`--allow-insecure-http`). Over HTTPS there is nothing of the kind. A Mnemarr that carries no collector program (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`) shows only the command that joins a machine that has the program.
 
 The code works once, for 15 minutes, for that machine name. A machine that enrols again replaces its key (the old one stops working). To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
 

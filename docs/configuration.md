@@ -76,6 +76,8 @@ A key of a collector belongs to one machine ([ADR 0027](adr/0027-machines-join-w
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__INGEST__REQUIREENROLMENT` | `true` | Whether a key may send only for the machine it was enrolled for. Turn it off only for a sandbox, or for the day before every machine is enrolled: a hand-made `Collector` account can then write under any machine name. |
+| `MNEMARR__COLLECTORS__DOWNLOADFOLDER` | none | A folder with the programs a machine installs, one file per system: `mnemarr-collector-windows-x86_64.exe`, `mnemarr-collector-linux-x86_64`, `mnemarr-collector-macos-aarch64`. Mnemarr serves them (and no other file), with their checksum, to the machines that join, and gives a line to install for each system it has. The image carries them; a developer mounts a folder. |
+| `MNEMARR__COLLECTORS__PUBLICURL` | the address of the request | The address the lines and installers tell machines to reach Mnemarr at, such as `https://mnemarr.homelab.example`. Set it behind a proxy that does not pass the original host. |
 | `MNEMARR__COLLECTORS__ONLINEWITHINMINUTES` | `5` | A machine heard from within this many minutes is online (1 to 10080). |
 | `MNEMARR__COLLECTORS__SILENCEAFTERMINUTES` | `30` | An `always-on` machine that has not been heard from for this long degrades `/health/ready` (reason `collector-silent`); one that reports an error does too (`collector-failing`). An `intermittent` machine never does. At least the previous setting. |
 

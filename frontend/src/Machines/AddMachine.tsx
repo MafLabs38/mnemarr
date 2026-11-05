@@ -6,17 +6,29 @@ import SelectField from 'Components/Form/SelectField';
 import TextField from 'Components/Form/TextField';
 import translate from 'Utilities/String/translate';
 
-import { type CreatedEnrolment, type MachineKindName, useAddMachine } from './machines';
+import { type CreatedEnrolment, type InstallLine, type MachineKindName, useAddMachine } from './machines';
 import styles from './Machines.module.css';
 
-/** The code of a machine that has just been added, and the command that uses it. Shown once: it is kept nowhere. */
+/** The system the person is probably on, so that the line to paste is the right one without asking. */
+function likelySystem(lines: ReadonlyArray<InstallLine>): InstallLine['system'] | undefined {
+  const onWindows = /win/i.test(navigator.userAgent);
+  return (lines.find((line) => (line.system === 'windows') === onWindows) ?? lines[0])?.system;
+}
+
+/**
+ * The line that installs the collector on the machine and joins it, shown once with its code: it is kept nowhere. When this Mnemarr has no
+ * program to give, the command that only joins a machine that has it already.
+ */
 function NewCode({ created, onDismiss }: Readonly<{ created: CreatedEnrolment; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [system, setSystem] = useState(() => likelySystem(created.installs));
+  const line = created.installs.find((candidate) => candidate.system === system);
+  const text = line?.command ?? created.command;
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(created.command);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
     } catch {
       // No clipboard on a page served over plain HTTP: the command is selected with one click, and the person is told so.
@@ -26,10 +38,18 @@ function NewCode({ created, onDismiss }: Readonly<{ created: CreatedEnrolment; o
 
   return (
     <section aria-label={translate('NewCode')} className={styles.newCode}>
-      <p>{translate('NewCodeWarning', { name: created.enrolment.machine })}</p>
-      <code className={styles.secret}>{created.code}</code>
-      <p>{translate('NewCodeCommand')}</p>
-      <code className={styles.secret}>{created.command}</code>
+      <p>{translate(line ? 'PasteThisLine' : 'NoProgram', { name: created.enrolment.machine })}</p>
+      {created.installs.length > 1 && (
+        <SelectField
+          label={translate('System')}
+          onChange={(event) => setSystem(event.target.value as InstallLine['system'])}
+          options={created.installs.map((candidate) => ({ value: candidate.system, label: candidate.label }))}
+          value={system}
+        />
+      )}
+      <code className={styles.secret}>{text}</code>
+      {created.insecure && <Alert>{translate('InsecureWarning')}</Alert>}
+      <p className={styles.hint}>{translate('NewCodeCode', { code: created.code })}</p>
       {copyFailed && <output>{translate('CopyUnavailable')}</output>}
       <div className={styles.inline}>
         <Button onClick={copy}>{translate(copied ? 'Copied' : 'CopyCommand')}</Button>

@@ -124,6 +124,12 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
             "a rule of the masking did not start: secrets are masked by the server alone until this is fixed",
         );
     }
+    if config.server.starts_with("http://")
+        && !config.server.contains("localhost")
+        && !config.server.contains("127.0.0.1")
+    {
+        say("warning: the address of Mnemarr is plain http://: the key is sent without encryption");
+    }
     let mut state = State::load(&config.state);
     say(&format!(
         "{VERSION}: {} -> {} as {}",
@@ -174,7 +180,7 @@ fn enroll(options: &EnrollOptions) -> ExitCode {
         ));
         return ExitCode::from(2);
     }
-    if let Err(error) = check_server(&server) {
+    if let Err(error) = check_server(&server, options.allow_insecure_http) {
         say(&error.to_string());
         return ExitCode::from(2);
     }
@@ -183,7 +189,7 @@ fn enroll(options: &EnrollOptions) -> ExitCode {
         return ExitCode::from(2);
     };
     match enrol::exchange(&server, &code, &machine) {
-        Ok(enrolled) => match enrol::save(&dir, &server, &enrolled) {
+        Ok(enrolled) => match enrol::save(&dir, &server, &enrolled, options.allow_insecure_http) {
             Ok((key, _)) => {
                 say(&format!(
                     "enrolled as {} ({}); the key is in {}. Start the collector with: mnemarr-collector run",

@@ -86,12 +86,15 @@ pub const KEY_FILE: &str = "key";
 pub const BOOTSTRAP_FILE: &str = "collector.json";
 
 /// Whether an address may be given the key or the code: HTTPS, or a plain address that is on this machine.
-pub fn check_server(server: &str) -> Result<(), UsageError> {
-    if server.starts_with("https://") || (server.starts_with("http://") && is_local(server)) {
+/// A plain `http://` address is accepted for this machine itself, or when the person said so (`--allow-insecure-http`, which `enroll` keeps).
+pub fn check_server(server: &str, allow_insecure_http: bool) -> Result<(), UsageError> {
+    if server.starts_with("https://")
+        || (server.starts_with("http://") && (allow_insecure_http || is_local(server)))
+    {
         Ok(())
     } else {
         Err(UsageError(
-            "the address of Mnemarr must be https:// (http:// only for this machine): the key is sent with every batch".to_string(),
+            "the address of Mnemarr must be https:// (http:// only for this machine, or with --allow-insecure-http): the key is sent with every batch".to_string(),
         ))
     }
 }
@@ -107,16 +110,16 @@ pub fn default_machine(
         .filter(|value| !value.is_empty())
 }
 
-/// What `enroll` left in the folder of the collector: where Mnemarr is, and the name of this machine.
+/// What `enroll` left in the folder of the collector: where Mnemarr is, the name of this machine, and whether a plain `http://` address was accepted.
 fn bootstrap(
     dir: Option<&PathBuf>,
     read: &dyn Fn(&str) -> Option<String>,
-) -> (Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, bool) {
     let Some(text) = dir.and_then(|dir| read(&dir.join(BOOTSTRAP_FILE).to_string_lossy())) else {
-        return (None, None);
+        return (None, None, false);
     };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return (None, None);
+        return (None, None, false);
     };
     let field = |name: &str| {
         value
@@ -125,7 +128,11 @@ fn bootstrap(
             .map(str::to_string)
             .filter(|text| !text.is_empty())
     };
-    (field("server"), field("machine"))
+    let insecure = value
+        .get("insecure")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    (field("server"), field("machine"), insecure)
 }
 
 /// Reads what is not given from the environment (`get`) and from the files the options name (`read`), so that a test needs neither.
@@ -136,7 +143,7 @@ pub fn resolve(
     read: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Config, UsageError> {
     let dir = config_dir(options.config_dir.as_deref(), get);
-    let (bootstrap_server, bootstrap_machine) = bootstrap(dir.as_ref(), read);
+    let (bootstrap_server, bootstrap_machine, bootstrap_insecure) = bootstrap(dir.as_ref(), read);
     let server = options
         .server
         .clone()
@@ -149,7 +156,7 @@ pub fn resolve(
             )
         })?;
     // The key is sent in a header: over HTTPS, or to this machine.
-    check_server(&server)?;
+    check_server(&server, options.allow_insecure_http || bootstrap_insecure)?;
     let key = match &options.key_file {
         Some(path) => read(path)
             .map(|text| text.trim().to_string())
@@ -533,5 +540,40 @@ mod tests {
             Some(PathBuf::from("C:/Users/me/.config/mnemarr-collector"))
         );
         assert_eq!(config_dir(None, &environment(&[])), None);
+    }
+
+    #[test]
+    fn should_accept_plain_http_for_another_machine_only_when_the_person_said_so() {
+        assert!(check_server("http://192.168.1.10:8384", false).is_err());
+        assert!(check_server("http://192.168.1.10:8384", true).is_ok());
+        assert!(check_server("http://localhost:8384", false).is_ok());
+        assert!(check_server("ftp://mnemarr.example", true).is_err());
+        assert!(check_server("https://mnemarr.example", false).is_ok());
+    }
+
+    #[test]
+    fn should_keep_the_permission_for_plain_http_that_enroll_was_given() {
+        let get = environment(&[
+            ("XDG_CONFIG_HOME", "/cfg"),
+            ("HOME", "/h"),
+            ("MNEMARR_MACHINE", "pc"),
+        ]);
+        let said = files(&[
+            (
+                "/cfg/mnemarr-collector/collector.json",
+                r#"{"server":"http://192.168.1.10:8384","machine":"pc","insecure":true}"#,
+            ),
+            ("/cfg/mnemarr-collector/key", "mnm_k"),
+        ]);
+        let not_said = files(&[
+            (
+                "/cfg/mnemarr-collector/collector.json",
+                r#"{"server":"http://192.168.1.10:8384","machine":"pc"}"#,
+            ),
+            ("/cfg/mnemarr-collector/key", "mnm_k"),
+        ]);
+
+        assert!(resolve(&Options::default(), &get, &said).is_ok());
+        assert!(resolve(&Options::default(), &get, &not_said).is_err());
     }
 }

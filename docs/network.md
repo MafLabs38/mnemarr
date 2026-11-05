@@ -17,7 +17,7 @@
 ## What a collector may reach, and how
 
 - **One address**: the one given to `enroll` (`--server`), over HTTPS. A plain `http://` address is accepted only for this machine itself (`localhost`), because the key is sent in a header at every call.
-- **Three paths**, all under `/api/v1/ingest/`: `enrol` (anonymous, guarded by the code), `conversations` and `heartbeat` (guarded by the key). A key that belongs to a machine can send for that machine and for no other ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)).
+- **Paths**, all under `/api/v1/ingest/`: `install.ps1`, `install.sh` and `download/<system>` (anonymous: the installer and the program, which hold no secret), `enrol` (anonymous, guarded by the code), `conversations` and `heartbeat` (guarded by the key). A key that belongs to a machine can send for that machine and for no other ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)).
 - **No redirect is followed**: a server that answers with a redirect cannot make the collector carry its key somewhere else.
 - **A proxy** is used when the usual environment variables are set (`HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`). A proxy that opens the TLS traffic and re-signs it breaks the verification of the certificate: allow Mnemarr's host through, or give the machine the certificate of the proxy.
 - **The clock** of the machine matters to TLS: a machine whose time is far off cannot verify a certificate.
@@ -28,7 +28,7 @@
 
 | Path | Publish outside the single sign-on? | Why |
 |---|---|---|
-| `/api/v1/ingest/*` | yes | a collector has no browser; the key (or the code, for `enrol`) is its proof |
+| `/api/v1/ingest/*` | yes | a collector has no browser; the key is its proof (the installer, the program and `enrol` need none: the code is what is secret, and it needs a person's approval) |
 | `/mcp` | yes | an assistant has no browser; the key is its proof |
 | everything else (`/`, `/api/v1/*`, `/health/*`) | **no**: behind the single sign-on | the interface and the administration |
 
@@ -36,15 +36,7 @@ Rules of the proxy for those two prefixes: allow-list them by prefix (nothing el
 
 ## Try it on a home network without TLS
 
-On a local network the sandbox of a developer is often plain HTTP, which the collector refuses on purpose. Do not turn that check off; make the server look local instead, with an SSH tunnel from the machine to try:
-
-```text
-ssh -N -L 8384:127.0.0.1:8384 user@mnemarr-host        # keep it open
-mnemarr-collector enroll --server http://localhost:8384 --code <code> --machine my-pc
-mnemarr-collector run
-```
-
-The key then travels inside the tunnel, never in clear on the network.
+A Mnemarr served over plain HTTP (a developer's sandbox, a first try at home) shows a warning when a machine is added, and the line it gives carries `--allow-insecure-http`: the collector then accepts the `http://` address, and the key travels without encryption on your network. That is a choice of the person, said in the page; leave it for a network you trust. For anything else serve Mnemarr over HTTPS, and the warning and the flag disappear. An SSH tunnel (`ssh -N -L 8384:127.0.0.1:8384 user@mnemarr-host`, then `--server http://localhost:8384`) keeps the key encrypted without TLS, for those who are at ease with it.
 
 ## Not decided here
 

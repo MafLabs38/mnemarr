@@ -46,7 +46,23 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
         body: {
           enrolment: request({ machine: 'server-1', kind: 'always-on', state: 'approved' }),
           code: 'ABCD-EFGH-JKLM',
-          command: 'mnemarr-collector enroll --server https://mnemarr.example --code ABCD-EFGH-JKLM --machine server-1',
+          command:
+            'mnemarr-collector enroll --server http://mnemarr.example --code ABCD-EFGH-JKLM --machine server-1 --allow-insecure-http',
+          installs: [
+            {
+              system: 'windows',
+              label: 'Windows (PowerShell)',
+              command:
+                "irm 'http://mnemarr.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=server-1' | iex",
+            },
+            {
+              system: 'unix',
+              label: 'Linux or macOS (terminal)',
+              command:
+                "curl -fsSL 'http://mnemarr.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=server-1' | sh",
+            },
+          ],
+          insecure: true,
         },
       };
     }
@@ -108,7 +124,7 @@ describe('Machines', () => {
     expect(await screen.findByText(/No machine has joined yet/)).toBeInTheDocument();
   });
 
-  it('adds a machine and shows its code and its command once, with the warning that they are shown only now', async () => {
+  it('adds a machine and shows one line that installs the collector and joins it, once, with the code and a warning when the address is not HTTPS', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const fetchMock = server([]);
@@ -120,16 +136,48 @@ describe('Machines', () => {
 
     const notice = await screen.findByRole('region', { name: 'Code of the new machine' });
     expect(notice).toHaveTextContent('shown only now');
-    expect(within(notice).getByText('ABCD-EFGH-JKLM')).toBeInTheDocument();
+    expect(notice).toHaveTextContent('Code: ABCD-EFGH-JKLM');
+    expect(within(notice).getByText(/install\.sh\?code=ABCD-EFGH-JKLM&machine=server-1/)).toBeInTheDocument();
+    expect(within(notice).getByRole('alert')).toHaveTextContent('plain HTTP');
     const call = findCall(
       fetchMock,
       ([url, init]) => url === '/api/v1/enrolments' && (init as RequestInit | undefined)?.method === 'POST',
     );
     expect(sentBody(call)).toEqual({ machine: 'server-1', kind: 'always-on' });
+    await userEvent.selectOptions(within(notice).getByLabelText('System'), 'windows');
+    expect(within(notice).getByText(/^irm 'http:\/\/mnemarr\.example/)).toBeInTheDocument();
     await userEvent.click(within(notice).getByRole('button', { name: 'Copy the command' }));
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('mnemarr-collector enroll'));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('install.ps1?code=ABCD-EFGH-JKLM'));
     await userEvent.click(within(notice).getByRole('button', { name: 'Done' }));
-    expect(screen.queryByText('ABCD-EFGH-JKLM')).not.toBeInTheDocument();
+    expect(screen.queryByText('Code: ABCD-EFGH-JKLM')).not.toBeInTheDocument();
+  });
+
+  it('says so, and shows the command that only joins, when this Mnemarr has no program to give', async () => {
+    stubApi((method) => {
+      if (method === 'GET') {
+        return { body: [] };
+      }
+      return {
+        status: 201,
+        body: {
+          enrolment: request({ machine: 'box', state: 'approved' }),
+          code: 'ABCD-EFGH-JKLM',
+          command: 'mnemarr-collector enroll --server https://m.example --code ABCD-EFGH-JKLM --machine box',
+          installs: [],
+          insecure: false,
+        },
+      };
+    });
+    renderWithProviders(<Machines />);
+
+    await userEvent.type(await screen.findByLabelText('Name of the machine'), 'box');
+    await userEvent.click(screen.getByRole('button', { name: 'Add the machine' }));
+
+    const notice = await screen.findByRole('region', { name: 'Code of the new machine' });
+    expect(notice).toHaveTextContent('no collector program to give');
+    expect(within(notice).getByText(/^mnemarr-collector enroll --server https/)).toBeInTheDocument();
+    expect(within(notice).queryByRole('alert')).not.toBeInTheDocument();
+    expect(within(notice).queryByLabelText('System')).not.toBeInTheDocument();
   });
 
   it('lets a person approve or reject a request that an assistant made, and cancel a code that is approved', async () => {

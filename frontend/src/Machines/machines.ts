@@ -34,11 +34,23 @@ export interface EnrolmentItem {
   expiresAt: string;
 }
 
-/** A machine that has just been added: the code is in this answer and nowhere else, ever. */
+/** One line a person pastes on the machine to install the collector and join it, for one system. */
+export interface InstallLine {
+  system: 'windows' | 'unix';
+  label: string;
+  command: string;
+}
+
+/**
+ * A machine that has just been added: the code is in this answer and nowhere else, ever. `installs` has a line for each system this Mnemarr has a
+ * program for (none: only `command`, which joins a machine that has the program already); `insecure` says the address is plain HTTP.
+ */
 export interface CreatedEnrolment {
   enrolment: EnrolmentItem;
   code: string;
   command: string;
+  installs: InstallLine[];
+  insecure: boolean;
 }
 
 /** How a state is worded, and how it looks: never by colour alone (the label carries an icon and the words). */

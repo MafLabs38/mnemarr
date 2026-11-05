@@ -27,6 +27,8 @@ services:
       MNEMARR__GIT__HOSTS__0: git.example
       # Configuration as code: the stack is described by a document, as a deployment would be.
       MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
+      # The programs a machine installs, as the image carries them: fake files here, so that what the page offers can be fetched.
+      MNEMARR__COLLECTORS__DOWNLOADFOLDER: /downloads
     configs:
       - source: admin_password
         target: /run/admin-password
@@ -40,7 +42,17 @@ services:
       - source: mnemarr_config
         target: /config-as-code/mnemarr.yaml
         mode: 0444
+      - source: collector_windows
+        target: /downloads/mnemarr-collector-windows-x86_64.exe
+        mode: 0444
+      - source: collector_linux
+        target: /downloads/mnemarr-collector-linux-x86_64
+        mode: 0444
 configs:
+  collector_windows:
+    content: the windows program of the end-to-end stack
+  collector_linux:
+    content: the linux program of the end-to-end stack
   admin_password:
     content: e2e-admin-password
   demo_note:

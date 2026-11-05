@@ -280,9 +280,13 @@ const en = {
   KindAlwaysOn: 'Always on (a server)',
   KindIntermittent: 'Intermittent (a workstation)',
   NewCode: 'Code of the new machine',
-  NewCodeWarning:
-    'Run the command below on {name}, as the user whose conversations it will read. The code works once, for 15 minutes, and is shown only now.',
-  NewCodeCommand: 'The command to run on the machine:',
+  PasteThisLine:
+    'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and starts collecting. The code in it works once, for 15 minutes, and is shown only now.',
+  NoProgram:
+    'This Mnemarr has no collector program to give. Install mnemarr-collector on {name} by other means, then run this command. The code works once, for 15 minutes, and is shown only now.',
+  InsecureWarning:
+    'This Mnemarr is served over plain HTTP: the key of the machine will travel without encryption on your network. Fine to try at home, not for real use.',
+  NewCodeCode: 'Code: {code}',
   CopyCommand: 'Copy the command',
   LastSeen: 'Last seen',
   NeverSeen: 'Never',

@@ -56,13 +56,18 @@ fn parse(body: &str) -> Result<Enrolled, UploadError> {
 }
 
 /// Writes the key, then the small file that says where Mnemarr is and what this machine is called. Returns the two paths.
-pub fn save(dir: &Path, server: &str, enrolled: &Enrolled) -> io::Result<(PathBuf, PathBuf)> {
+pub fn save(
+    dir: &Path,
+    server: &str,
+    enrolled: &Enrolled,
+    insecure: bool,
+) -> io::Result<(PathBuf, PathBuf)> {
     fs::create_dir_all(dir)?;
     let key = dir.join(KEY_FILE);
     write_private(&key, &enrolled.key)?;
     let bootstrap = dir.join(BOOTSTRAP_FILE);
     let text = serde_json::to_string_pretty(
-        &json!({ "server": server.trim_end_matches('/'), "machine": enrolled.machine }),
+        &json!({ "server": server.trim_end_matches('/'), "machine": enrolled.machine, "insecure": insecure }),
     )
     .map_err(io::Error::other)?;
     fs::write(&bootstrap, text)?;
@@ -213,7 +218,7 @@ mod tests {
             kind: "intermittent".to_string(),
         };
 
-        let (key, bootstrap) = save(&dir, "https://mnemarr.example/", &enrolled).unwrap();
+        let (key, bootstrap) = save(&dir, "https://mnemarr.example/", &enrolled, false).unwrap();
 
         assert_eq!(fs::read_to_string(&key).unwrap(), "mnm_the-key");
         let said: Value = serde_json::from_str(&fs::read_to_string(&bootstrap).unwrap()).unwrap();
@@ -235,6 +240,7 @@ mod tests {
                 key: "mnm_other".to_string(),
                 ..enrolled
             },
+            false,
         )
         .unwrap();
         assert_eq!(fs::read_to_string(&key).unwrap(), "mnm_other");

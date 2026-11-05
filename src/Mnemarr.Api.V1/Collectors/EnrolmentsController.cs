@@ -26,8 +26,11 @@ public sealed record EnrolmentResource(Guid Id, string Machine, string Kind, str
         enrolment.ExpiresAt);
 }
 
-/// <summary>A new request with its code and the command that uses it. The code is in this answer and nowhere else, ever.</summary>
-public sealed record CreatedEnrolmentResource(EnrolmentResource Enrolment, string Code, string Command);
+/// <summary>
+/// A new request with its code, the lines to run on the machine to install the collector and join it (one per system this Mnemarr has a program for),
+/// whether the address is served without TLS, and the command that only joins a machine that has the program already. The code is in this answer and nowhere else, ever.
+/// </summary>
+public sealed record CreatedEnrolmentResource(EnrolmentResource Enrolment, string Code, string Command, IReadOnlyList<InstallCommand> Installs, bool Insecure);
 
 /// <summary>The codes that join machines (ADR 0027): added by a person who manages the collectors, approved or rejected by one.</summary>
 [ApiController]
@@ -36,11 +39,13 @@ public sealed record CreatedEnrolmentResource(EnrolmentResource Enrolment, strin
 public sealed class EnrolmentsController : ControllerBase
 {
     private readonly EnrolmentService _enrolments;
+    private readonly InstallCommands _installs;
     private readonly TimeProvider _clock;
 
-    public EnrolmentsController(EnrolmentService enrolments, TimeProvider clock)
+    public EnrolmentsController(EnrolmentService enrolments, InstallCommands installs, TimeProvider clock)
     {
         _enrolments = enrolments;
+        _installs = installs;
         _clock = clock;
     }
 
@@ -61,8 +66,9 @@ public sealed class EnrolmentsController : ControllerBase
         }
 
         var created = _enrolments.Request(request.Machine, kind, approveNow: true, Actor);
-        var server = $"{Request.Scheme}://{Request.Host}";
-        return StatusCode(StatusCodes.Status201Created, new CreatedEnrolmentResource(EnrolmentResource.From(created.Enrolment, _clock.GetUtcNow()), created.Code, EnrolCommand.For(server, created.Code, request.Machine)));
+        var server = _installs.Server(Request);
+        var install = _installs.For(server, created.Code, request.Machine);
+        return StatusCode(StatusCodes.Status201Created, new CreatedEnrolmentResource(EnrolmentResource.From(created.Enrolment, _clock.GetUtcNow()), created.Code, EnrolCommand.For(server, created.Code, request.Machine, install.Insecure), install.Commands, install.Insecure));
     }
 
     [HttpPost("{id:guid}/approve")]

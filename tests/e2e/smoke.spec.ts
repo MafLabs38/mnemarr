@@ -358,12 +358,25 @@ test.describe('smoke @smoke', () => {
     await page.getByRole('button', { name: 'Add the machine' }).click();
     const notice = page.getByRole('region', { name: 'Code of the new machine' });
     await expect(notice).toContainText('shown only now');
-    const code = (await notice.locator('code').first().innerText()).trim();
-    await expect(notice.locator('code').nth(1)).toContainText(`--machine ${machine}`);
+    // One line installs the collector and joins the machine: the person has nothing to install first.
+    await expect(notice).toContainText('This Mnemarr is served over plain HTTP');
+    const line = (await notice.locator('code').first().innerText()).trim();
+    expect(line).toContain(`machine=${machine}`);
+    const code = /code=([A-Z0-9-]+)/.exec(line)?.[1] ?? '';
+    expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-    // The machine exchanges the code, without a session, for a key that belongs to it.
+    // The installer is written by the server for this code and machine, and the program it names is served with the checksum it checks.
     const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const installer = await anonymous.get(line.split("'")[1] ?? '');
+    expect(installer.status()).toBe(200);
+    const script = await installer.text();
+    expect(script).toContain(`--machine '${machine}'`);
+    expect(script).toContain('--allow-insecure-http');
+    const program = await anonymous.get('/api/v1/ingest/download/windows-x86_64');
+    expect(program.status()).toBe(200);
+
+    // The machine exchanges the code, without a session, for a key that belongs to it.
     const enrolled = await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine } });
     expect(enrolled.status()).toBe(200);
     const collector = await playwright.request.newContext({

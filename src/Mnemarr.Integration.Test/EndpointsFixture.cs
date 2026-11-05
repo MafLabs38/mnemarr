@@ -54,8 +54,11 @@ public sealed class EndpointsFixture
         "api/v1/enrolments/{id:guid}/approve",
         "api/v1/enrolments/{id:guid}/reject",
         "api/v1/ingest/conversations",
+        "api/v1/ingest/download/{platform}",
         "api/v1/ingest/enrol",
         "api/v1/ingest/heartbeat",
+        "api/v1/ingest/install.ps1",
+        "api/v1/ingest/install.sh",
         "api/v1/notes",
         "api/v1/notes/tags",
         "api/v1/notes/{sourceId:guid}/append",
@@ -85,14 +88,14 @@ public sealed class EndpointsFixture
 
     /// <summary>The short list of what anyone may call without signing in (section 6 of the specification).</summary>
     [Fact]
-    public void should_let_only_the_probes_the_shell_the_sign_in_and_the_enrolment_exchange_be_anonymous()
+    public void should_let_only_the_probes_the_shell_the_sign_in_and_what_a_machine_fetches_to_join_be_anonymous()
     {
         var anonymous = Endpoints()
             .Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
             .Select(endpoint => endpoint.RoutePattern.RawText)
             .Order(StringComparer.Ordinal);
 
-        anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/enrol", "{*path:nonfile}");
+        anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/download/{platform}", "api/v1/ingest/enrol", "api/v1/ingest/install.ps1", "api/v1/ingest/install.sh", "{*path:nonfile}");
     }
 
     [Fact]
