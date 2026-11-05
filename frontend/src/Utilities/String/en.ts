@@ -157,7 +157,7 @@ const en = {
   ApplicationDocsTitle: 'Application documentation',
   ConversationsPurpose:
     'What was said to the assistants, sent by the collectors on your machines. Mnemarr creates this source and writes it; nobody declares it.',
-  ConversationsTitle: 'Conversations',
+  ConversationsTitle: 'Assistant conversations',
   ConversationsEmpty: 'Nothing yet: it appears when a collector sends its first conversation.',
   KnowledgePurpose: 'Hand-written notes: courses, notes taken for work. As many as there are vaults to show.',
   KnowledgeTitle: 'Knowledge vaults',

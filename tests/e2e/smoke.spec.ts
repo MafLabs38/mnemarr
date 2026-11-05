@@ -380,6 +380,7 @@ test.describe('smoke @smoke', () => {
     expect((await collector.get('/api/v1/notes')).status()).toBe(403);
 
     await signIn(page, '/notes');
+    await page.getByLabel('Filter the notes').fill(word);
     await page.getByRole('link', { name: `What did we decide about ${word}?` }).click();
     await expect(page.getByText('We kept the cache in memory.')).toBeVisible();
     await expect(page.getByText('This note is not edited here')).toBeVisible();

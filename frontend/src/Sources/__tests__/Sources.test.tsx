@@ -146,7 +146,7 @@ describe('Sources', () => {
 
     renderWithProviders(<Sources />);
 
-    const conversations = await screen.findByRole('region', { name: 'Conversations' });
+    const conversations = await screen.findByRole('region', { name: 'Assistant conversations' });
     expect(
       within(conversations).getByText(/it appears when a collector sends its first conversation/u),
     ).toBeInTheDocument();
