@@ -20,6 +20,7 @@ Mnemarr stores what assistants and people learn, and finds it again by meaning (
 | [docs/TESTING.md](docs/TESTING.md) | Testing strategy and CI gates |
 | [deploy/](deploy/README.md) | Generic deployment examples (Docker, Kubernetes) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, conventions, development setup |
+| [docs/network.md](docs/network.md) | Ports, directions, what to publish outside the single sign-on, firewalls and proxies |
 | [SECURITY.md](SECURITY.md) | Reporting a vulnerability, security model |
 | [CLAUDE.md](CLAUDE.md) | Rules for AI assistants working in this repository |
 

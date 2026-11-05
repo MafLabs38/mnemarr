@@ -11,7 +11,7 @@ It is **not part of Mnemarr's container**: it is an external helper that talks t
 - It sends **only new lines**, by position. Stop it, start it, lose the network: nothing is lost and nothing is sent twice (the conversation file is its queue; `state.json` says how far each file was sent).
 - It masks secrets **before** a line leaves the machine (private keys, tokens, `sk-` keys, credentials in addresses, `PASSWORD=…` assignments). The server masks again.
 - It has an **ingest-only key**: it can add conversations and cannot read any memory.
-- It is **outbound only** (HTTPS to Mnemarr): no inbound port.
+- It is **outbound only** (HTTPS to Mnemarr): no inbound port, no firewall rule to open. Which paths and ports are allowed, proxies, and how to try it on a network without TLS: [network.md](network.md).
 - It runs **as the user whose files it reads**, never as root or `SYSTEM`.
 - It **never prevents the machine from sleeping**, never wakes it, and runs at a low priority. A machine that sleeps or is switched off collects nothing and nothing is wrong: at wake, it resumes where it stopped.
 - It leaves out what a sub-agent said, and Mnemarr keeps only what was said (not the calls of tools or their results).
