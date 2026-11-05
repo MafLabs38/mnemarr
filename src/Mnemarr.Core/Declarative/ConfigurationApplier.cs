@@ -26,7 +26,7 @@ public sealed class ConfigurationApplier
     }
 
     /// <summary>The sources a caller may touch, as a document.</summary>
-    public string Export(SourceScope scope) => ConfigurationYaml.Export(_store.List().Where(source => scope.CanAccess(source.Id)));
+    public string Export(SourceScope scope) => ConfigurationYaml.Export(_store.List().Where(scope.CanSee));
 
     /// <summary>What the document would do, without doing it.</summary>
     public ConfigPlan Plan(ConfigurationDocument document)
@@ -112,9 +112,9 @@ public sealed class ConfigurationApplier
     private void PlanOne(Wanted w, IReadOnlyList<Source> current, HashSet<Guid> freed, List<PlanItem> items, Steps steps, List<string> errors, string actor)
     {
         var existing = Find(current, w);
-        if (current.FirstOrDefault(source => source.Name == w.Name && source.Id != existing?.Id && !freed.Contains(source.Id)) is { } owner)
+        if (current.Any(source => source.Name == w.Name && source.Id != existing?.Id && !freed.Contains(source.Id)))
         {
-            errors.Add($"The name '{w.Name}' is already taken by a source of the kind {owner.Kind}.");
+            errors.Add($"The name '{w.Name}' is already taken by another source.");
             return;
         }
 

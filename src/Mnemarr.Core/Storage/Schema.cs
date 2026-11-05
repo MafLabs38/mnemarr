@@ -123,6 +123,25 @@ public static class Schema
         ALTER TABLE sources ADD COLUMN repository_branch TEXT;
         ALTER TABLE sources ADD COLUMN repository_credential TEXT;
         """,
+        // 5: the conversations a collector sent: one row per (machine, session), and how many lines of it were taken (the position the collector resumes from).
+        """
+        CREATE TABLE conversations (
+            machine TEXT NOT NULL,
+            session TEXT NOT NULL,
+            application TEXT NOT NULL,
+            format TEXT NOT NULL,
+            lines INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            note_path TEXT NOT NULL,
+            PRIMARY KEY (machine, session)
+        );
+        CREATE INDEX conversations_by_machine ON conversations (machine, updated_at);
+        """,
+        // 6: the size of the note of a conversation as it was last written, so that new turns are added to the end of it and a failed attempt is cut off, instead of writing the whole note again.
+        """
+        ALTER TABLE conversations ADD COLUMN note_bytes INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

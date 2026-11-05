@@ -221,7 +221,7 @@ public sealed class SourceSync
     {
         try
         {
-            return _paths.Allowed(source.Path);
+            return _paths.AllowedFor(source);
         }
         catch (RejectedException)
         {

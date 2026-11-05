@@ -11,6 +11,9 @@ public enum SourceKind
 
     /// <summary>The documentation of an application, read from its repository.</summary>
     ApplicationDocs,
+
+    /// <summary>The conversations of the assistants, sent by the collectors and written by Mnemarr as notes (ADR 0024).</summary>
+    Conversations,
 }
 
 /// <summary>Whether Mnemarr may change what the source holds (D-35). A setting of each source.</summary>
@@ -21,8 +24,8 @@ public enum SourceMode
 }
 
 /// <summary>
-/// A folder of Markdown notes that Mnemarr indexes, or the checkout of a Git repository (<paramref name="Repository"/>). <paramref name="Managed"/> says that a configuration document owns it (configuration as code):
-/// it is changed by changing the document, not by hand.
+/// A folder of Markdown notes that Mnemarr indexes, or the checkout of a Git repository (<paramref name="Repository"/>). <paramref name="Managed"/> says that something other than a
+/// person owns it, and it is not changed by hand: a configuration document (configuration as code: change the document), or Mnemarr itself (the conversations it collects).
 /// </summary>
 public sealed record Source(Guid Id, string Name, SourceKind Kind, SourceMode Mode, string Path, DateTimeOffset CreatedAt, bool Managed = false, GitRepository? Repository = null);
 

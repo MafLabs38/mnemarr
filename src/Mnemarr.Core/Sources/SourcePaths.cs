@@ -19,6 +19,31 @@ public sealed class SourcePaths
         _sources = sources;
     }
 
+    /// <summary>Where Mnemarr writes the conversations the collectors send: a source of its own, created by Mnemarr (see <see cref="AllowedFor"/>).</summary>
+    public string ConversationsFolder => Path.GetFullPath(Path.Combine(_options.Value.DataFolder, "conversations"));
+
+    /// <summary>The raw conversations, which belong to Mnemarr.</summary>
+    public string RawFolder => Path.GetFullPath(Path.Combine(_options.Value.DataFolder, "raw"));
+
+    /// <summary>
+    /// The folder of a source that exists already, checked again before it is read or written. The source of the conversations is Mnemarr's own: its
+    /// folder is the one Mnemarr made, and no other, and it needs no root. Any other source goes through <see cref="Allowed"/>.
+    /// </summary>
+    public string AllowedFor(Source source)
+    {
+        if (source.Kind != SourceKind.Conversations)
+        {
+            return Allowed(source.Path);
+        }
+
+        return string.Equals(Normalize(source.Path), Path.TrimEndingDirectorySeparator(ConversationsFolder), StringComparison.Ordinal)
+            ? ConversationsFolder
+            : throw new RejectedException(Problem.Invalid, "The conversations are kept in the folder Mnemarr made for them.");
+    }
+
+    private bool OverlapsOwnData(string full) =>
+        new[] { ConversationsFolder, RawFolder }.Select(Path.TrimEndingDirectorySeparator).Any(own => IsInside(own, full) || IsInside(full, own));
+
     /// <summary>The folders a source may be in.</summary>
     public IReadOnlyList<string> Roots() =>
         _sources.Value.Roots.Length > 0
@@ -33,6 +58,12 @@ public sealed class SourcePaths
     public string Allowed(string path)
     {
         var full = Normalize(path);
+        if (OverlapsOwnData(full))
+        {
+            // What Mnemarr keeps for itself is never a folder an operator can declare as a source: the conversations are seen by `conversations.read` only.
+            throw new RejectedException(Problem.Invalid, "The path of a source cannot be Mnemarr's own data, nor contain it.");
+        }
+
         var root = Roots().Select(Path.TrimEndingDirectorySeparator).FirstOrDefault(candidate => IsInside(candidate, full));
         if (root is null)
         {

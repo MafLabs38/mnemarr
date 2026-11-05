@@ -31,20 +31,27 @@ public sealed record AccountCredentials(Account Account, string? PasswordHash);
 /// lives; the queries of the verticals that serve sources, notes and the MCP server take one as a parameter, so that none can be written
 /// without the question being asked.
 /// </summary>
-public sealed record SourceScope(IReadOnlyList<Guid>? Sources)
+public sealed record SourceScope(IReadOnlyList<Guid>? Sources, bool ConversationsHidden = true)
 {
-    public static SourceScope All { get; } = new((IReadOnlyList<Guid>?)null);
+    /// <summary>Everything: what Mnemarr itself uses to do its own work. A caller gets a scope of its own (see <see cref="AccessPrincipal.Scope"/>).</summary>
+    public static SourceScope All { get; } = new((IReadOnlyList<Guid>?)null, ConversationsHidden: false);
 
-    /// <summary>What a caller that is not signed in may touch.</summary>
+    /// <summary>What a caller that is not signed in may touch. A scope hides the conversations unless it is said not to: forgetting is the safe mistake.</summary>
     public static SourceScope None { get; } = new([]);
 
     public bool CanAccess(Guid sourceId) => Sources is null || Sources.Contains(sourceId);
+
+    /// <summary>
+    /// Whether the caller may see a source: it is among those the caller may touch, and it is not the conversations of the assistants when the
+    /// caller does not hold <see cref="Permissions.ConversationsRead"/>. A source that may not be seen is as absent as one that does not exist.
+    /// </summary>
+    public bool CanSee(Mnemarr.Core.Sources.Source source) => CanAccess(source.Id) && !(ConversationsHidden && source.Kind == Mnemarr.Core.Sources.SourceKind.Conversations);
 }
 
 /// <summary>Who is acting: an account, and when it came with a key, what that key is limited to.</summary>
 public sealed record AccessPrincipal(Account Account, IReadOnlySet<string> Permissions, IReadOnlyList<Guid>? Sources, Guid? KeyId)
 {
-    public SourceScope Scope => new(Sources);
+    public SourceScope Scope => new(Sources, ConversationsHidden: !Permissions.Contains(Mnemarr.Core.Accounts.Permissions.ConversationsRead));
 
     public bool Can(string permission) => Permissions.Contains(permission);
 

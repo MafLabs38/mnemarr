@@ -223,7 +223,7 @@ public sealed class ConfigurationApplierFixture : IDisposable
 
         var plan = _subject.Apply(Document(knowledge: ["shared"]), "ci");
 
-        plan.Errors.Should().ContainSingle().Which.Should().Contain("already taken by a source of the kind ApplicationDocs");
+        plan.Errors.Should().ContainSingle().Which.Should().Contain("already taken by another source");
     }
 
     [Fact]

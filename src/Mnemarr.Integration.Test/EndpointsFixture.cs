@@ -47,6 +47,8 @@ public sealed class EndpointsFixture
         "api/v1/config",
         "api/v1/config",
         "api/v1/config/status",
+        "api/v1/ingest/conversations",
+        "api/v1/ingest/machines",
         "api/v1/notes",
         "api/v1/notes/tags",
         "api/v1/notes/{sourceId:guid}/append",

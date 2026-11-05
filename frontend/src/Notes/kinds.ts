@@ -10,7 +10,7 @@ interface KindLook {
   title: TranslationKey;
   purpose: TranslationKey;
   /** The class that sets the colour of the kind (`--kind`). */
-  className: 'kindMemory' | 'kindKnowledge' | 'kindApplicationDocs';
+  className: 'kindMemory' | 'kindKnowledge' | 'kindApplicationDocs' | 'kindConversations';
 }
 
 /** Adding a kind is a compile error until it has its look. */
@@ -22,6 +22,12 @@ export const kindLook: Record<SourceKind, KindLook> = {
     purpose: 'KnowledgeNotesPurpose',
     className: 'kindKnowledge',
   },
+  Conversations: {
+    icon: icons.KIND_CONVERSATIONS,
+    title: 'ConversationsTitle',
+    purpose: 'ConversationsNotesPurpose',
+    className: 'kindConversations',
+  },
   ApplicationDocs: {
     icon: icons.KIND_APPLICATION_DOCS,
     title: 'ApplicationDocsTitle',
@@ -30,5 +36,5 @@ export const kindLook: Record<SourceKind, KindLook> = {
   },
 };
 
-/** The order the kinds are shown in: the memory first, then what people wrote, then what applications bring. */
-export const kindOrder: ReadonlyArray<SourceKind> = ['Memory', 'Knowledge', 'ApplicationDocs'];
+/** The order the kinds are shown in: the memory first, then what was said to the assistants, then what people wrote, then what applications bring. */
+export const kindOrder: ReadonlyArray<SourceKind> = ['Memory', 'Conversations', 'Knowledge', 'ApplicationDocs'];

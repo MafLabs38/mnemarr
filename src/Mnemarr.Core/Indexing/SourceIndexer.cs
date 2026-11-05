@@ -111,7 +111,7 @@ public sealed class SourceIndexer
     {
         try
         {
-            _paths.Allowed(source.Path);
+            _paths.AllowedFor(source);
         }
         catch (RejectedException)
         {
