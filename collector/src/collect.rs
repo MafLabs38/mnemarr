@@ -38,6 +38,8 @@ pub struct Report {
     pub refused: Vec<String>,
     /// The files that could not be read (a permission, a file that went away): the others went on.
     pub unreadable: Vec<String>,
+    /// The lines of the batch that could not go because the server could not be reached or refused the key: what the collector still has to send, as far as it knows.
+    pub pending_lines: u64,
 }
 
 /// Reads the conversations of a machine and sends them.
@@ -164,7 +166,10 @@ impl<U: Uploader> Collector<U> {
                         .push(format!("{} ({status}): {reason}", path.display()));
                     return Ok(());
                 }
-                Err(other) => return Err(other),
+                Err(other) => {
+                    report.pending_lines += sent;
+                    return Err(other);
+                }
             }
         }
         Ok(())
@@ -472,6 +477,11 @@ mod tests {
 
         assert!(away.stopped.is_some());
         assert_eq!(away.lines_sent, 0);
+        assert_eq!(
+            away.pending_lines, 2,
+            "what could not go is what is left to send"
+        );
+        assert_eq!(back.pending_lines, 0);
         assert_eq!(back.lines_sent, 2);
         assert_eq!(fake.taken.borrow().len(), 2);
     }

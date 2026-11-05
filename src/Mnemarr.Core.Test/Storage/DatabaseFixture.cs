@@ -38,7 +38,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now');
                 DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
-                DROP TABLE conversations;
+                DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -65,7 +65,7 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at) VALUES ('s', 'a.md', '', 'A', 'h', 'now');
                 DROP INDEX notes_by_name; DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; ALTER TABLE notes DROP COLUMN name; ALTER TABLE notes DROP COLUMN meta_version;
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
-                DROP TABLE conversations;
+                DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 PRAGMA user_version = 2;
                 """;
             back.ExecuteNonQuery();
@@ -89,7 +89,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
-                DROP TABLE conversations;
+                DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 PRAGMA user_version = 3;
                 """;
             back.ExecuteNonQuery();
@@ -105,6 +105,29 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
+    public void should_add_the_machines_and_the_enrolments_to_a_database_that_has_conversations_without_touching_them()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path) VALUES ('pc', 's1', 'app', 'claude-code', 3, 'then', 'now', 'pc/app/x.md');
+                DROP TABLE machines; DROP TABLE enrolments;
+                PRAGMA user_version = 5;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var check = upgraded.CreateCommand();
+        check.CommandText = "SELECT (SELECT COUNT(*) FROM conversations), (SELECT COUNT(*) FROM sqlite_master WHERE name IN ('machines', 'enrolments'))";
+        using var reader = check.ExecuteReader();
+        reader.Read().Should().BeTrue();
+        (reader.GetInt32(0), reader.GetInt32(1)).Should().Be((1, 2));
+    }
+
+    [Fact]
     public void should_add_the_conversations_to_a_database_made_before_collectors_without_touching_its_sources()
     {
         using (var connection = _workspace.Database.Open())
@@ -112,7 +135,7 @@ public sealed class DatabaseFixture : IDisposable
             using var back = connection.CreateCommand();
             back.CommandText = """
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
-                DROP TABLE conversations;
+                DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 PRAGMA user_version = 4;
                 """;
             back.ExecuteNonQuery();

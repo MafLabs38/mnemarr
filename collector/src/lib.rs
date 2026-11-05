@@ -6,6 +6,7 @@
 
 pub mod collect;
 pub mod config;
+pub mod enrol;
 pub mod mask;
 pub mod state;
 pub mod upload;
@@ -22,6 +23,17 @@ pub struct Options {
     pub projects: Option<String>,
     pub state: Option<String>,
     pub interval_seconds: Option<u64>,
+    /// The folder of the collector (the key, the address of Mnemarr), when the usual place is not the right one.
+    pub config_dir: Option<String>,
+}
+
+/// What was given to `enroll`: where Mnemarr is, the code a person approved, and, if it is not the host name, what this machine is called.
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct EnrollOptions {
+    pub server: Option<String>,
+    pub code: Option<String>,
+    pub machine: Option<String>,
+    pub config_dir: Option<String>,
 }
 
 /// What the command line asked for.
@@ -33,6 +45,8 @@ pub enum Command {
     Run(Options),
     /// One pass, then stop.
     Once(Options),
+    /// Join this machine to Mnemarr with a one-time code, and keep the key.
+    Enroll(EnrollOptions),
 }
 
 /// A command line the collector does not understand.
@@ -51,7 +65,8 @@ impl std::error::Error for UsageError {}
 pub fn usage() -> String {
     format!(
         "mnemarr-collector {VERSION}\n\n\
-USAGE:\n    mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
+USAGE:\n    mnemarr-collector enroll --server URL --code CODE [--machine NAME]\n                                        join this machine with the code a person approved in Mnemarr\n    \
+mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
 mnemarr-collector once [OPTIONS]    one pass, then stop\n    \
 mnemarr-collector [--version | --help]\n\n\
 OPTIONS:\n    --server URL        the address of Mnemarr (or MNEMARR_SERVER)\n    \
@@ -59,7 +74,8 @@ OPTIONS:\n    --server URL        the address of Mnemarr (or MNEMARR_SERVER)\n  
 --machine NAME      the name of this machine (default: its host name; or MNEMARR_MACHINE)\n    \
 --projects DIR      the conversations of Claude Code (default: ~/.claude/projects)\n    \
 --state FILE        where to remember how far each file was sent\n    \
---interval SECONDS  the wait between two passes (default: 30)\n"
+--interval SECONDS  the wait between two passes (default: 30)\n    \
+--config-dir DIR    where the key and the address of Mnemarr are kept (default: the configuration folder of the user)\n"
     )
 }
 
@@ -82,12 +98,37 @@ where
         "--help" | "-h" => Command::Help,
         "run" => return Ok(Command::Run(options(args)?)),
         "once" => return Ok(Command::Once(options(args)?)),
+        "enroll" => return Ok(Command::Enroll(enroll_options(args)?)),
         other => return Err(unexpected(other)),
     };
     match args.next() {
         None => Ok(command),
         Some(extra) => Err(unexpected(extra.as_ref())),
     }
+}
+
+/// The options that follow `enroll`: a flag and its value, each in turn.
+fn enroll_options<I, S>(mut args: I) -> Result<EnrollOptions, UsageError>
+where
+    I: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut options = EnrollOptions::default();
+    while let Some(flag) = args.next() {
+        let flag = flag.as_ref();
+        let Some(value) = args.next() else {
+            return Err(UsageError(format!("{flag} needs a value")));
+        };
+        let value = value.as_ref().to_string();
+        match flag {
+            "--server" => options.server = Some(value),
+            "--code" => options.code = Some(value),
+            "--machine" => options.machine = Some(value),
+            "--config-dir" => options.config_dir = Some(value),
+            other => return Err(unexpected(other)),
+        }
+    }
+    Ok(options)
 }
 
 /// The options that follow `run` or `once`: a flag and its value, each in turn.
@@ -109,6 +150,7 @@ where
             "--machine" => options.machine = Some(value),
             "--projects" => options.projects = Some(value),
             "--state" => options.state = Some(value),
+            "--config-dir" => options.config_dir = Some(value),
             "--interval" => {
                 options.interval_seconds = Some(value.parse().map_err(|_| {
                     UsageError(format!("--interval needs a number of seconds, not {value}"))
@@ -165,6 +207,7 @@ mod tests {
             projects: None,
             state: None,
             interval_seconds: Some(10),
+            config_dir: None,
         };
         let arguments = [
             "--server",
@@ -203,6 +246,41 @@ mod tests {
             Err(UsageError(
                 "--interval needs a number of seconds, not soon".to_string()
             ))
+        );
+    }
+
+    #[test]
+    fn should_read_the_options_of_enroll() {
+        assert_eq!(
+            parse([
+                "enroll",
+                "--server",
+                "https://mnemarr.example",
+                "--code",
+                "ABCD-EFGH-JKLM",
+                "--machine",
+                "pc",
+                "--config-dir",
+                "/c"
+            ]),
+            Ok(Command::Enroll(EnrollOptions {
+                server: Some("https://mnemarr.example".to_string()),
+                code: Some("ABCD-EFGH-JKLM".to_string()),
+                machine: Some("pc".to_string()),
+                config_dir: Some("/c".to_string()),
+            }))
+        );
+        assert_eq!(
+            parse(["enroll"]),
+            Ok(Command::Enroll(EnrollOptions::default()))
+        );
+        assert_eq!(
+            parse(["enroll", "--code"]),
+            Err(UsageError("--code needs a value".to_string()))
+        );
+        assert_eq!(
+            parse(["enroll", "--interval", "5"]),
+            Err(UsageError("unexpected argument: --interval".to_string()))
         );
     }
 }

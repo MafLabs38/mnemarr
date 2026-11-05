@@ -41,6 +41,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     /// <summary>The password that a break-glass reset gives to <see cref="AdminName"/> at start, when a test restarts a host with one.</summary>
     protected virtual string? ResetPassword => null;
 
+    /// <summary>Whether a key may send only for the machine it was enrolled for. Off for the tests that make their own collector accounts; on for the tests of the enrolment itself.</summary>
+    protected virtual bool RequireEnrolment => false;
+
     /// <summary>Whether the host starts with a first administrator. A test of an empty Mnemarr turns it off.</summary>
     protected virtual bool HasAdministrator => true;
 
@@ -90,6 +93,7 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
                 options.File = ConfigurationText is null ? null : ConfigurationFile;
                 options.ReloadSeconds = 1;
             });
+            services.PostConfigure<Mnemarr.Core.Collectors.IngestOptions>(options => options.RequireEnrolment = RequireEnrolment);
             services.PostConfigure<AuthOptions>(options =>
             {
                 options.AdminUser = HasAdministrator ? AdminName : null;
@@ -157,6 +161,17 @@ public sealed class MnemarrFactory : MnemarrFactoryBase
         : base(createFolder: true)
     {
     }
+}
+
+/// <summary>An application that, like a real one, lets a key send only for the machine it was enrolled for.</summary>
+public sealed class EnrolledOnlyFactory : MnemarrFactoryBase
+{
+    public EnrolledOnlyFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override bool RequireEnrolment => true;
 }
 
 /// <summary>An application whose data folder does not exist, as with a volume that was never mounted.</summary>

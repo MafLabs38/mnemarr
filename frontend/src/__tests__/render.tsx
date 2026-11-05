@@ -15,6 +15,9 @@ export const adminSession: Session = {
   permissions: [
     'accounts.manage',
     'audit.read',
+    'collectors.manage',
+    'collectors.request',
+    'conversations.read',
     'ingest.write',
     'notes.read',
     'notes.write',

@@ -1,8 +1,10 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Collectors;
 using Mnemarr.Core.Conversations;
 
 namespace Mnemarr.Api.V1.Ingest;
@@ -31,10 +33,12 @@ public sealed class IngestController : ControllerBase
     public const int MaxRequestBytes = 8 * 1024 * 1024;
 
     private readonly ConversationIngestor _ingestor;
+    private readonly CollectorService _collectors;
 
-    public IngestController(ConversationIngestor ingestor)
+    public IngestController(ConversationIngestor ingestor, CollectorService collectors)
     {
         _ingestor = ingestor;
+        _collectors = collectors;
     }
 
     [HttpPost("conversations")]
@@ -42,6 +46,7 @@ public sealed class IngestController : ControllerBase
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<IngestResultResource> Conversations(IngestConversationRequest request, CancellationToken cancellationToken)
     {
+        _collectors.Authorize(User.AccountId(), request.Machine);
         var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines, User.ActorName()), cancellationToken);
         return new IngestResultResource(result.Next, result.Accepted);
     }

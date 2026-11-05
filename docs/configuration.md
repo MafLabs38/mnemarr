@@ -67,7 +67,19 @@ Assistants reach Mnemarr over the Model Context Protocol at `POST /mcp` ([ADR 00
 |---|---|---|
 | `MNEMARR__MCP__WRITETOOLS` | `false` | Whether the tools that write notes (`create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note`) are offered. Off by default, and an environment setting on purpose: neither the database nor the API can turn it on. A tool is only offered to a role that holds its permission, and a source that is read-only refuses writes whatever this says. |
 
-Tools that read: `list_sources`, `search`, `list_notes`, `read_note` (gives the `version` to send back with `update_note`), `list_tags`.
+Tools that read: `list_sources`, `search`, `list_notes`, `read_note` (gives the `version` to send back with `update_note`), `list_tags`. A tool that asks: `request_collector_enrolment` (role `Assistant` or `Admin`) opens a request to add a machine and returns a one-time code and the command to run; it is of no use until a person who manages the collectors approves it in the interface.
+
+## Machines and collectors (`Collectors`, `Ingest`)
+
+A key of a collector belongs to one machine ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)): it is made when the machine joins with a one-time code, and it can send for that machine only.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__INGEST__REQUIREENROLMENT` | `true` | Whether a key may send only for the machine it was enrolled for. Turn it off only for a sandbox, or for the day before every machine is enrolled: a hand-made `Collector` account can then write under any machine name. |
+| `MNEMARR__COLLECTORS__ONLINEWITHINMINUTES` | `5` | A machine heard from within this many minutes is online (1 to 10080). |
+| `MNEMARR__COLLECTORS__SILENCEAFTERMINUTES` | `30` | An `always-on` machine that has not been heard from for this long degrades `/health/ready` (reason `collector-silent`); one that reports an error does too (`collector-failing`). An `intermittent` machine never does. At least the previous setting. |
+
+An existing hand-made `Collector` account stops working at the upgrade unless the first setting is turned off: enrol the machine instead (`mnemarr-collector enroll`).
 
 ## Configuration as code (`Config`)
 

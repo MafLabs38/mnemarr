@@ -1,8 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
+using Mnemarr.Api.V1.Collectors;
 using Mnemarr.Core;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Collectors;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
@@ -11,8 +13,8 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Api.V1.Mcp;
 
-/// <summary>Who is calling a tool: what they may reach, the name their changes are written under, and the permissions they hold.</summary>
-public sealed record McpCaller(SourceScope Scope, string Name, Func<string, bool> Has);
+/// <summary>Who is calling a tool: what they may reach, the name their changes are written under, the permissions they hold, and the address they reached Mnemarr at.</summary>
+public sealed record McpCaller(SourceScope Scope, string Name, Func<string, bool> Has, string Server = "");
 
 /// <summary>A tool offered to assistants: its name, what it is for, the shape of its arguments, the permission it needs, and whether it writes.</summary>
 public sealed record McpTool(string Name, string Description, JsonObject Schema, string Permission, bool Writes);
@@ -40,9 +42,11 @@ public sealed class McpTools
     private readonly NoteReader _reader;
     private readonly NoteWriter _writer;
     private readonly IOptions<McpOptions> _options;
+    private readonly EnrolmentService _enrolments;
 
-    public McpTools(SourceCatalog catalog, INoteIndex index, NoteReader reader, NoteWriter writer, IOptions<McpOptions> options)
+    public McpTools(SourceCatalog catalog, INoteIndex index, NoteReader reader, NoteWriter writer, IOptions<McpOptions> options, EnrolmentService enrolments)
     {
+        _enrolments = enrolments;
         _catalog = catalog;
         _index = index;
         _reader = reader;
@@ -70,6 +74,9 @@ public sealed class McpTools
             Schema(SourceArg, ("from", Str, "The current path.", true), ("to", Str, "The new path.", true)), Permissions.NotesWrite, true),
         new("delete_note", "Removes a note (a Git source keeps it in its history; a plain folder keeps it in a hidden trash folder). Give the version you read to be sure it is the note you mean.",
             Schema(SourceArg, PathArg, (VersionKey, Str, "The version you read.", false)), Permissions.NotesWrite, true),
+        new("request_collector_enrolment", "Asks for a machine to join Mnemarr, so that its conversations are collected. It returns a one-time code and the command to run on that machine; the code works only after a person who manages the collectors has approved the request in Mnemarr (the Machines page), and then for 15 minutes. Nothing is run on the machine by Mnemarr.",
+            Schema(("machine", Str, "The name of the machine: letters, digits, dots, hyphens, underscores; the key it is given is bound to it.", true), ("kind", Str, "always-on for a server that runs all the time, intermittent for a workstation that sleeps (default).", false)),
+            Permissions.CollectorsRequest, false),
     ];
 
     /// <summary>The tools this caller is offered: what their permissions allow, the writing ones only if the operator turned them on.</summary>
@@ -91,10 +98,33 @@ public sealed class McpTools
             "update_note" => await _writer.UpdateAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Text(arguments, ContentKey), Text(arguments, VersionKey), cancellationToken),
             "append_to_note" => await _writer.AppendAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Text(arguments, "text"), cancellationToken),
             "rename_note" => await _writer.RenameAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, "from"), Text(arguments, "to"), cancellationToken),
+            "request_collector_enrolment" => RequestEnrolment(arguments, caller),
             "delete_note" => DeleteResult(await _writer.DeleteAsync(actor, SourceId(arguments, caller.Scope), Text(arguments, PathKey), Optional(arguments, VersionKey), cancellationToken)),
             _ => throw new RejectedException(Problem.NotFound, "There is no such tool."),
         };
         return JsonSerializer.SerializeToNode(result, Json) ?? new JsonObject();
+    }
+
+    private object RequestEnrolment(JsonElement arguments, McpCaller caller)
+    {
+        var machine = Text(arguments, "machine");
+        var kind = MachineKind.Intermittent;
+        if (Optional(arguments, "kind") is { } named && !MachineKinds.TryParse(named, out kind))
+        {
+            throw new RejectedException(Problem.Invalid, "The kind of a machine is always-on or intermittent.");
+        }
+
+        var created = _enrolments.Request(machine, kind, approveNow: false, caller.Name);
+        return new
+        {
+            requestId = created.Enrolment.Id,
+            machine,
+            kind = MachineKinds.Name(kind),
+            state = "pending",
+            code = created.Code,
+            command = EnrolCommand.For(string.IsNullOrEmpty(caller.Server) ? "<the address of Mnemarr>" : caller.Server, created.Code, machine),
+            next = "A person who manages the collectors must approve this request in Mnemarr (the Machines page). Then run the command on the machine; the code works for 15 minutes and once. Tell the person which machine and which code.",
+        };
     }
 
     private static object DeleteResult(GitPublish? published) => new { removed = true, git = published };

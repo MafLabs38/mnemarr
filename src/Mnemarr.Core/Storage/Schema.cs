@@ -140,6 +140,32 @@ public static class Schema
         );
         CREATE INDEX conversations_by_machine ON conversations (machine, updated_at);
         """,
+        // 6: the machines that joined (a kind, the account that sends for each, when it was last heard from and what it said) and the codes that join them (kept as hashes).
+        """
+        CREATE TABLE machines (
+            name TEXT NOT NULL PRIMARY KEY,
+            kind TEXT NOT NULL,
+            account_id TEXT NOT NULL UNIQUE,
+            enrolled_at TEXT NOT NULL,
+            last_seen_at TEXT,
+            version TEXT,
+            pending_lines INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            revoked_at TEXT
+        );
+        CREATE TABLE enrolments (
+            id TEXT NOT NULL PRIMARY KEY,
+            machine TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            state TEXT NOT NULL,
+            code_hash TEXT NOT NULL UNIQUE,
+            requested_at TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            approved_at TEXT,
+            approved_by TEXT,
+            expires_at TEXT NOT NULL
+        );
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

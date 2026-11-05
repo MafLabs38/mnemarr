@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AccountKeys from 'Accounts/AccountKeys';
 import Accounts from 'Accounts/Accounts';
 import MyAccount from 'Accounts/MyAccount';
+import Machines from 'Machines/Machines';
 import Notes from 'Notes/Notes';
 import Overview from 'Overview/Overview';
 import RequirePermission from 'Session/RequirePermission';
@@ -40,6 +41,14 @@ export default function AppRoutes() {
           </RequirePermission>
         }
         path="/sources"
+      />
+      <Route
+        element={
+          <RequirePermission permission={permissions.conversationsRead}>
+            <Machines />
+          </RequirePermission>
+        }
+        path="/machines"
       />
       <Route element={<MyAccount />} path="/account" />
       <Route

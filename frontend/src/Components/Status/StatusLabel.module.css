@@ -15,3 +15,11 @@
 .danger {
   color: var(--dangerColor);
 }
+
+.info {
+  color: var(--infoColor);
+}
+
+.warning {
+  color: var(--warningColor);
+}

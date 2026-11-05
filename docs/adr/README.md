@@ -30,3 +30,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0023](0023-notes-are-written-through-the-api-committed-to-git-and-offered-over-mcp.md) | Notes are written through the API, committed to Git, and offered to assistants over MCP | D-43 |
 | [0024](0024-conversations-are-collected-by-position-masked-twice-and-written-as-notes.md) | Conversations are collected by position, masked twice, and written as notes | D-44 |
 | [0025](0025-the-collector-is-a-service-per-machine-enrolled-by-a-code-and-configured-from-the-server.md) | The collector is a service on each machine, enrolled by a code, and configured from the server | D-45 |
+| [0027](0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md) | Machines join with a code, hold a key bound to their name, and say they are alive | D-47 |

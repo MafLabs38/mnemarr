@@ -18,6 +18,12 @@ public static class Permissions
     /// <summary>Reading the conversations of the assistants: what people said to them, which is more private than any note.</summary>
     public const string ConversationsRead = "conversations.read";
 
+    /// <summary>Adding, approving, rejecting and revoking the machines that send conversations (ADR 0027): who decides which machines may.</summary>
+    public const string CollectorsManage = "collectors.manage";
+
+    /// <summary>Asking for the enrolment of a machine: harmless alone, since a person with <see cref="CollectorsManage"/> still has to approve it.</summary>
+    public const string CollectorsRequest = "collectors.request";
+
     public static IReadOnlyList<string> All { get; } =
-        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead];
+        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, CollectorsManage, CollectorsRequest];
 }

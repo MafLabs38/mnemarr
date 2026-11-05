@@ -4,7 +4,7 @@ The collector is a small program (Rust) that runs as a **service on each machine
 
 It is **not part of Mnemarr's container**: it is an external helper that talks to Mnemarr only through its API, over outbound HTTPS.
 
-> **What is built, and what is designed.** Built: the loop, the reading of Claude Code files, masking, sending by position, the position file, the ingest API (this page, "What it does", "Run it by hand"). Designed in ADR 0025 and not built yet: enrolment, the installer and the service forms, configuration read from the server, the heartbeat, the other readers.
+> **What is built, and what is designed.** Built: the loop, the reading of Claude Code files, masking, sending by position, the position file, the ingest API, **enrolment with a one-time code, a key bound to the machine, the heartbeat and the page of the machines** ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)). Designed in ADR 0025 and not built yet: the installer and the service forms (`install`, `uninstall`, `status`), configuration read from the server, the other readers.
 
 ## What it does and does not do
 
@@ -24,6 +24,21 @@ Each machine has a kind, declared in Mnemarr:
 |---|---|---|
 | `always-on` | servers, virtual machines | after a threshold (30 minutes by default) Mnemarr says so: something is wrong |
 | `intermittent` | a workstation that sleeps or is switched off at night | never an alert: Mnemarr shows when it was last seen |
+
+## Join a machine (built, ADR 0027)
+
+1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows a one-time **code** and the command to run, once.
+2. On the machine, as the user whose conversations it reads:
+   ```text
+   mnemarr-collector enroll --server https://mnemarr.homelab.example --code ABCD-EFGH-JKLM --machine my-laptop
+   mnemarr-collector run
+   ```
+   `enroll` exchanges the code for the key of this machine, keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; the configuration folder of the system on Windows), and keeps the address and the name in `collector.json` beside it. `run` and `once` find them without any flag.
+3. The machine appears on the page as **waiting** until its first pass, then **online**.
+
+The code works once, for 15 minutes, for that machine name. A machine that enrols again replaces its key (the old one stops working). To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
+
+An assistant can ask for a machine over MCP (`request_collector_enrolment`): the request waits on the page until a person approves it.
 
 ## Install it (designed, ADR 0025)
 
@@ -54,13 +69,14 @@ mnemarr-collector run \
   --machine my-laptop
 ```
 
-`run` collects for ever (a pass every 30 seconds, `--interval` to change it); `once` makes one pass and stops. What is not given comes from the environment (`MNEMARR_SERVER`, `MNEMARR_COLLECTOR_KEY`, `MNEMARR_MACHINE`) or from the usual places (`~/.claude/projects` for the conversations, `~/.local/state/mnemarr-collector/state.json` for the position). To give a machine its key by hand, create a service account with the role `Collector` (`POST /api/v1/accounts`) and a key for it (`POST /api/v1/accounts/{id}/keys`); the key is shown once.
+`run` collects for ever (a pass every 30 seconds, `--interval` to change it); `once` makes one pass and stops. What is not given comes from the environment (`MNEMARR_SERVER`, `MNEMARR_COLLECTOR_KEY`, `MNEMARR_MACHINE`) or from the usual places (`~/.claude/projects` for the conversations, `~/.local/state/mnemarr-collector/state.json` for the position). A key made by hand for a `Collector` account belongs to no machine, and the server refuses it unless `MNEMARR__INGEST__REQUIREENROLMENT` is off (a sandbox).
 
 The first run sends the whole history of the machine: it can take a few minutes for a large one, and is safe to interrupt.
 
 ## See that it works
 
-- `GET /api/v1/collectors` shows which machines sent conversations and when (the name of a machine, how many conversations and lines, the last time it sent). It tells something about the conversations, so it needs the right to read them (`conversations.read`: `Admin` and `Assistant`). The health page of vertical 2 will show the silence of a machine as a health check, not through this resource.
+- The **Machines** page (and `GET /api/v1/collectors`) shows each machine: its kind, its state (**online**, **away** when an intermittent machine sleeps, **silent** when an always-on machine has not been heard from, **failing** when a pass reported an error, **refused** when it was revoked, **waiting** before its first pass), when it was last seen, the version of its collector and how many conversations it sent. It tells something about the conversations, so it needs the right to read them (`conversations.read`: `Admin` and `Assistant`).
+- `/health/ready` is degraded, with the reason `collector-silent` or `collector-failing`, when an **always-on** machine has been silent for 30 minutes or reports an error. A workstation that sleeps never raises it.
 - The notes page has a section of the conversations, one folder per machine; only `Admin` and `Assistant` see it.
 - Over MCP, an assistant with the right to read conversations calls `search` (use `topic` to keep one machine) and `read_note`.
 

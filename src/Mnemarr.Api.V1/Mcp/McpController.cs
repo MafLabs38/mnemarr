@@ -29,7 +29,7 @@ public sealed class McpController : ControllerBase
         _tools = tools;
     }
 
-    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission));
+    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission), $"{Request.Scheme}://{Request.Host}");
 
     [HttpPost]
     [Consumes("application/json")]
