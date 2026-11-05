@@ -50,6 +50,8 @@ const en = {
   ConfirmDelete: 'Confirm: delete {name}',
   Copied: 'Copied',
   CopyUnavailable: 'This page cannot reach the clipboard. Click the key to select it, then copy it yourself.',
+  CopyLineUnavailable:
+    'This browser will not copy from this page. Click the line to select it, then copy it yourself (Ctrl+C).',
   Copy: 'Copy',
   Create: 'Create',
   CreateAccount: 'Create an account',

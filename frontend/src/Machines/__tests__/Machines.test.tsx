@@ -81,6 +81,7 @@ const assistantWhoReads: Session = {
 describe('Machines', () => {
   afterEach(() => {
     Reflect.deleteProperty(navigator, 'clipboard');
+    Reflect.deleteProperty(document, 'execCommand');
   });
 
   it('tells each machine by its state in words and an icon, and never a state by colour alone', async () => {
@@ -150,6 +151,24 @@ describe('Machines', () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('install.ps1?code=ABCD-EFGH-JKLM'));
     await userEvent.click(within(notice).getByRole('button', { name: 'Done' }));
     expect(screen.queryByText('Code: ABCD-EFGH-JKLM')).not.toBeInTheDocument();
+  });
+
+  it('still copies the line when the page is served over plain HTTP and has no clipboard, and tells the person when nothing can copy', async () => {
+    document.execCommand = vi.fn(() => true);
+    server([]);
+    renderWithProviders(<Machines />);
+    await userEvent.type(await screen.findByLabelText('Name of the machine'), 'server-1');
+    await userEvent.click(screen.getByRole('button', { name: 'Add the machine' }));
+    const notice = await screen.findByRole('region', { name: 'Code of the new machine' });
+
+    await userEvent.click(within(notice).getByRole('button', { name: 'Copy the command' }));
+
+    expect(await within(notice).findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+
+    document.execCommand = vi.fn(() => false);
+    await userEvent.click(within(notice).getByRole('button', { name: 'Copied' }));
+    expect(await within(notice).findByText(/will not copy from this page/)).toBeInTheDocument();
   });
 
   it('says so, and shows the command that only joins, when this Mnemarr has no program to give', async () => {

@@ -4,6 +4,7 @@ import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import SelectField from 'Components/Form/SelectField';
 import TextField from 'Components/Form/TextField';
+import { copyText } from 'Utilities/Clipboard/copyText';
 import translate from 'Utilities/String/translate';
 
 import { type CreatedEnrolment, type InstallLine, type MachineKindName, useAddMachine } from './machines';
@@ -27,13 +28,10 @@ function NewCode({ created, onDismiss }: Readonly<{ created: CreatedEnrolment; o
   const text = line?.command ?? created.command;
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      // No clipboard on a page served over plain HTTP: the command is selected with one click, and the person is told so.
-      setCopyFailed(true);
-    }
+    // When the page cannot copy at all, the line is selected with one click, and the person is told to copy it.
+    const done = await copyText(text);
+    setCopied(done);
+    setCopyFailed(!done);
   }
 
   return (
@@ -50,7 +48,7 @@ function NewCode({ created, onDismiss }: Readonly<{ created: CreatedEnrolment; o
       <code className={styles.secret}>{text}</code>
       {created.insecure && <Alert>{translate('InsecureWarning')}</Alert>}
       <p className={styles.hint}>{translate('NewCodeCode', { code: created.code })}</p>
-      {copyFailed && <output>{translate('CopyUnavailable')}</output>}
+      {copyFailed && <output>{translate('CopyLineUnavailable')}</output>}
       <div className={styles.inline}>
         <Button onClick={copy}>{translate(copied ? 'Copied' : 'CopyCommand')}</Button>
         <Button onClick={onDismiss} variant="quiet">
