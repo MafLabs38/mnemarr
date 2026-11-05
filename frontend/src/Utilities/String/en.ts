@@ -283,7 +283,11 @@ const en = {
   KindIntermittent: 'Intermittent (a workstation)',
   NewCode: 'Code of the new machine',
   PasteThisLine:
-    'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and starts collecting. The code in it works once, for 15 minutes, and is shown only now.',
+    'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and installs it. The code in it works once, for 15 minutes, and is shown only now.',
+  DownloadFor: 'Download for {system}',
+  DownloadHelp:
+    'The file already knows this Mnemarr, the machine and the code: open it, and it joins the machine and installs the collector. Windows may say the publisher is unknown, because the program is not signed yet: choose "More info", then "Run anyway".',
+  OrPasteThisLine: 'Or, from a terminal, paste this line:',
   NoProgram:
     'This Mnemarr has no collector program to give. Install mnemarr-collector on {name} by other means, then run this command. The code works once, for 15 minutes, and is shown only now.',
   InsecureWarning:

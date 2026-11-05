@@ -45,6 +45,15 @@ function NewCode({ created, onDismiss }: Readonly<{ created: CreatedEnrolment; o
           value={system}
         />
       )}
+      {line?.downloadUrl && (
+        <div className={styles.download}>
+          <a className={styles.downloadButton} download href={line.downloadUrl}>
+            {translate('DownloadFor', { system: line.label })}
+          </a>
+          <p className={styles.hint}>{translate('DownloadHelp')}</p>
+          <p>{translate('OrPasteThisLine')}</p>
+        </div>
+      )}
       <code className={styles.secret}>{text}</code>
       {created.insecure && <Alert>{translate('InsecureWarning')}</Alert>}
       <p className={styles.hint}>{translate('NewCodeCode', { code: created.code })}</p>

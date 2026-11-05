@@ -60,3 +60,21 @@
   overflow-wrap: anywhere;
   user-select: all;
 }
+
+.download {
+  display: grid;
+  gap: 8px;
+}
+
+.downloadButton {
+  justify-self: start;
+  padding: 8px 20px;
+  border: var(--borderWidth) solid var(--accentDeep);
+  border-radius: var(--radiusPill);
+  background-color: var(--accent);
+  box-shadow: var(--shadowButton);
+  color: var(--inkOnAccent);
+  font-size: var(--fontSizeBody);
+  font-weight: 700;
+  text-decoration: none;
+}

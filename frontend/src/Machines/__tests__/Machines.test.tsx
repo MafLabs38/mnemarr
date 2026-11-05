@@ -51,15 +51,18 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
           installs: [
             {
               system: 'windows',
-              label: 'Windows (PowerShell)',
+              label: 'Windows',
               command:
                 "irm 'http://mnemarr.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=server-1' | iex",
+              downloadUrl:
+                'http://mnemarr.example/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=server-1',
             },
             {
               system: 'unix',
               label: 'Linux or macOS (terminal)',
               command:
                 "curl -fsSL 'http://mnemarr.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=server-1' | sh",
+              downloadUrl: null,
             },
           ],
           insecure: true,
@@ -139,6 +142,7 @@ describe('Machines', () => {
     expect(notice).toHaveTextContent('shown only now');
     expect(notice).toHaveTextContent('Code: ABCD-EFGH-JKLM');
     expect(within(notice).getByText(/install\.sh\?code=ABCD-EFGH-JKLM&machine=server-1/)).toBeInTheDocument();
+    expect(within(notice).queryByRole('link', { name: /Download for/ })).not.toBeInTheDocument();
     expect(within(notice).getByRole('alert')).toHaveTextContent('plain HTTP');
     const call = findCall(
       fetchMock,
@@ -146,6 +150,14 @@ describe('Machines', () => {
     );
     expect(sentBody(call)).toEqual({ machine: 'server-1', kind: 'always-on' });
     await userEvent.selectOptions(within(notice).getByLabelText('System'), 'windows');
+    const download = within(notice).getByRole('link', { name: 'Download for Windows' });
+    expect(download).toHaveAttribute(
+      'href',
+      expect.stringContaining('/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=server-1'),
+    );
+    expect(download).toHaveAttribute('download');
+    expect(notice).toHaveTextContent('Or, from a terminal, paste this line');
+    expect(notice).toHaveTextContent('publisher is unknown');
     expect(within(notice).getByText(/^irm 'http:\/\/mnemarr\.example/)).toBeInTheDocument();
     await userEvent.click(within(notice).getByRole('button', { name: 'Copy the command' }));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('install.ps1?code=ABCD-EFGH-JKLM'));

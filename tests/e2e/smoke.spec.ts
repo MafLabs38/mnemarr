@@ -360,15 +360,22 @@ test.describe('smoke @smoke', () => {
     await expect(notice).toContainText('shown only now');
     // One line installs the collector and joins the machine: the person has nothing to install first.
     await expect(notice).toContainText('This Mnemarr is served over plain HTTP');
-    const line = (await notice.locator('code').first().innerText()).trim();
-    expect(line).toContain(`machine=${machine}`);
-    const code = /code=([A-Z0-9-]+)/.exec(line)?.[1] ?? '';
+    // Two ways in: a file to download that already knows this Mnemarr, and one line for a terminal (the one for the system the page guesses).
+    const download = notice.getByRole('link', { name: /^Download for / });
+    const downloadHref = (await download.getAttribute('href')) ?? '';
+    const personal = await (await playwright.request.newContext({ baseURL })).get(downloadHref);
+    expect(personal.status()).toBe(200);
+    expect((await personal.body()).subarray(-8).toString()).toBe('MNMRCFG1');
+    expect(personal.headers()['content-disposition']).toContain(`mnemarr-collector-${machine}.exe`);
+    const installLine = (await notice.locator('code').first().innerText()).trim();
+    expect(installLine).toContain(`machine=${machine}`);
+    const code = /code=([A-Z0-9-]+)/.exec(installLine)?.[1] ?? '';
     expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
     // The installer is written by the server for this code and machine, and the program it names is served with the checksum it checks.
     const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
-    const installer = await anonymous.get(line.split("'")[1] ?? '');
+    const installer = await anonymous.get(installLine.split("'")[1] ?? '');
     expect(installer.status()).toBe(200);
     const script = await installer.text();
     expect(script).toContain(`--machine '${machine}'`);

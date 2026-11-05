@@ -17,7 +17,7 @@
 ## What a collector may reach, and how
 
 - **One address**: the one given to `enroll` (`--server`), over HTTPS. A plain `http://` address is accepted only for this machine itself (`localhost`), because the key is sent in a header at every call.
-- **Paths**, all under `/api/v1/ingest/`: `install.ps1`, `install.sh` and `download/<system>` (anonymous: the installer and the program, which hold no secret), `enrol` (anonymous, guarded by the code), `conversations` and `heartbeat` (guarded by the key). A key that belongs to a machine can send for that machine and for no other ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)).
+- **Paths**, all under `/api/v1/ingest/`: `install.ps1`, `install.sh` and `download/<system>` (anonymous: the installer and the program, which hold no secret; with a code and a machine the program carries them), `enrol` (anonymous, guarded by the code), `conversations` and `heartbeat` (guarded by the key). A key that belongs to a machine can send for that machine and for no other ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)).
 - **No redirect is followed**: a server that answers with a redirect cannot make the collector carry its key somewhere else.
 - **A proxy** is used when the usual environment variables are set (`HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`). A proxy that opens the TLS traffic and re-signs it breaks the verification of the certificate: allow Mnemarr's host through, or give the machine the certificate of the proxy.
 - **The clock** of the machine matters to TLS: a machine whose time is far off cannot verify a certificate.

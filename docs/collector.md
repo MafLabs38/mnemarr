@@ -27,8 +27,9 @@ Each machine has a kind, declared in Mnemarr:
 
 ## Join a machine (built, ADR 0027)
 
-1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows **one line** to paste, for the system you are on, and a one-time **code** inside it, once.
-2. On the machine, as your usual user (no administrator rights), open PowerShell (Windows) or a terminal (Linux, macOS) and paste the line:
+1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows, once, for the system you are on, a **Download** button (Windows) and **one line** to paste, each with a one-time code inside.
+2. **Windows, the simplest way**: click **Download**, open the file. It already knows this Mnemarr, the machine and the code: it joins the machine and installs the collector. (Windows may say that the publisher is unknown, because the program is not signed yet: choose *More info*, then *Run anyway*.)
+   **From a terminal** (any system, and what an assistant runs), as your usual user (no administrator rights), in PowerShell (Windows) or a terminal (Linux, macOS), paste the line:
    ```text
    irm 'https://mnemarr.homelab.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=my-laptop' | iex
    curl -fsSL 'https://mnemarr.homelab.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=my-laptop' | sh

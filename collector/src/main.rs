@@ -9,8 +9,10 @@ use mnemarr_collector::collect::Report;
 use mnemarr_collector::config::{
     Config, check_server, config_dir, default_machine, is_machine_name, resolve,
 };
+use mnemarr_collector::embedded::{self, Embedded};
 use mnemarr_collector::enrol;
 use mnemarr_collector::service::{self, Installed, Started};
+use mnemarr_collector::setup;
 use mnemarr_collector::state::State;
 use mnemarr_collector::upload::{Heartbeat, HttpUploader, UploadError, Uploader};
 use mnemarr_collector::{Command, EnrollOptions, Options, VERSION, parse, usage};
@@ -387,11 +389,84 @@ fn status(options: &Options) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// What a person is shown when the program they opened sets itself up: said on standard output, and the window waits for them to read it.
+fn tell(text: &str) {
+    let _ = writeln!(io::stdout(), "{text}");
+}
+
+/// A program downloaded from Mnemarr carries its address, the name of the machine and a code: opened with nothing to say, it sets itself up.
+fn setup_itself(setting: &Embedded, program: &[u8]) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let (Some(dir), Some(config)) = (setup::install_dir(&get), config_dir(None, &get)) else {
+        tell("The folder of the collector cannot be found on this machine.");
+        return ExitCode::from(1);
+    };
+    tell(&format!(
+        "Installing the Mnemarr collector for the machine '{}' (from {})...",
+        setting.machine, setting.server
+    ));
+    if let Err(error) = check_server(&setting.server, setting.insecure) {
+        tell(&error.to_string());
+        return ExitCode::from(1);
+    }
+    let result = setup::run(
+        setting,
+        program,
+        &dir,
+        &config,
+        &|| {
+            service::stop(&config);
+        },
+        &|target| {
+            std::process::Command::new(target)
+                .arg("install")
+                .status()
+                .map_err(|error| error.to_string())
+                .and_then(|status| {
+                    if status.success() {
+                        Ok(())
+                    } else {
+                        Err("the installation said it failed".to_string())
+                    }
+                })
+        },
+    );
+    let code = match result {
+        Ok(_) => {
+            tell(
+                "\nDone. The collector runs in the background and starts with your session. You can close this window.",
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            tell(&format!("\n{error}"));
+            ExitCode::from(1)
+        }
+    };
+    if std::io::IsTerminal::is_terminal(&io::stdin()) {
+        tell("Press Enter to close.");
+        let _ = io::stdin().read_line(&mut String::new());
+    }
+    code
+}
+
+/// The setting carried by this very program, and the program without it, when it was opened with nothing to say.
+fn carried() -> Option<(Embedded, Vec<u8>)> {
+    let (program, setting) = embedded::read(&std::env::current_exe().ok()?).ok()?;
+    setting.map(|setting| (setting, program))
+}
+
 fn main() -> ExitCode {
     // Arguments that are not valid UTF-8 are kept readable and end up as a usage error, never as a panic.
-    let args = std::env::args_os()
+    let args: Vec<String> = std::env::args_os()
         .skip(1)
-        .map(|argument| argument.to_string_lossy().into_owned());
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect();
+    if args.is_empty()
+        && let Some((setting, program)) = carried()
+    {
+        return setup_itself(&setting, &program);
+    }
     match parse(args) {
         Ok(Command::Version) => write_stdout(&format!("mnemarr-collector {VERSION}\n")),
         Ok(Command::Help) => write_stdout(&usage()),

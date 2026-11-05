@@ -39,6 +39,8 @@ export interface InstallLine {
   system: 'windows' | 'unix';
   label: string;
   command: string;
+  /** A program that already carries its setting, to open with a double click: where one is offered. */
+  downloadUrl: string | null;
 }
 
 /**

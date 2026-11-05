@@ -8,7 +8,7 @@ namespace Mnemarr.Api.V1.Collectors;
 /// <summary>
 /// What a machine fetches to join (ADR 0027 §12): the installer, and the program it installs. Anonymous on purpose, under the ingest prefix that a
 /// proxy may publish for the collectors alone: the program is the same for everybody, and holds no secret; what makes a machine join is the code,
-/// which is in the line a person runs, and is of no use unless a person approved it. Only the files that are named in the code are served.
+/// which is in the line a person runs (or in the program they download), and is of no use unless a person approved it. Only the files that are named in the code are served.
 /// </summary>
 [ApiController]
 [Route("api/v1/ingest")]
@@ -25,13 +25,24 @@ public sealed class InstallController : ControllerBase
         _commands = commands;
     }
 
-    /// <summary>The program for one system, as a file.</summary>
+    /// <summary>
+    /// The program for one system, as a file. With a code and a machine it is the program that carries them, named after the machine: opened, it
+    /// joins that machine and installs itself. Without, it is the program as it is (what the installers download and verify).
+    /// </summary>
     [HttpGet("download/{platform}")]
-    public IActionResult Download(string platform)
+    public IActionResult Download(string platform, [FromQuery] string? code, [FromQuery] string? machine)
     {
-        var found = _downloads.Open(platform) ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr has no collector program for that system.");
         Response.Headers.CacheControl = "no-store";
-        return PhysicalFile(found.Path, "application/octet-stream", found.Download.FileName);
+        if (code is null && machine is null)
+        {
+            var found = _downloads.Open(platform) ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr has no collector program for that system.");
+            return PhysicalFile(found.Path, "application/octet-stream", found.Download.FileName);
+        }
+
+        var (server, normalised, name) = Checked(code, machine);
+        var personalised = _downloads.Personalised(platform, new EmbeddedSetting(server, name, normalised, Insecure: server.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
+            ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr has no collector program for that system.");
+        return File(personalised.Bytes, "application/octet-stream", personalised.FileName);
     }
 
     [HttpGet("install.ps1")]

@@ -88,6 +88,51 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
     }
 
     [Fact]
+    public async Task should_offer_a_download_that_already_carries_the_machine_for_windows_and_only_for_it()
+    {
+        var machine = Callers.Unique("pc");
+
+        var added = await AddAsync(_factory, machine);
+
+        var windows = added.GetProperty("installs").EnumerateArray().Single(item => item.GetProperty("system").GetString() == "windows");
+        windows.GetProperty("downloadUrl").GetString().Should().Contain("/api/v1/ingest/download/windows-x86_64?").And.Contain($"machine={machine}").And.Contain($"code={added.GetProperty("code").GetString()}");
+        var unix = added.GetProperty("installs").EnumerateArray().Single(item => item.GetProperty("system").GetString() == "unix");
+        unix.TryGetProperty("downloadUrl", out var none).Should().BeTrue();
+        none.ValueKind.Should().Be(JsonValueKind.Null, "a downloaded file is not made executable by a browser: a terminal line is the way there");
+    }
+
+    [Fact]
+    public async Task should_serve_the_program_with_the_setting_of_the_machine_after_it_and_name_it_after_the_machine()
+    {
+        var machine = Callers.Unique("pc");
+        var added = await AddAsync(_factory, machine);
+        var code = added.GetProperty("code").GetString()!;
+        using var anonymous = _factory.CreateClient();
+
+        var response = await anonymous.GetAsync(added.GetProperty("installs").EnumerateArray().First().GetProperty("downloadUrl").GetString()!, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentDisposition!.FileName.Should().Be($"mnemarr-collector-{machine}.exe");
+        response.Headers.CacheControl!.NoStore.Should().BeTrue("a file that holds a code is not kept");
+        var bytes = await response.Content.ReadAsByteArrayAsync(Token);
+        var text = System.Text.Encoding.UTF8.GetString(bytes);
+        text.Should().StartWith("the windows program").And.EndWith("MNMRCFG1");
+        text.Should().Contain($"\"machine\":\"{machine}\"").And.Contain($"\"code\":\"{code}\"").And.Contain("\"insecure\":true").And.Contain("\"server\":\"http://");
+        BitConverter.ToUInt32(bytes, bytes.Length - 12).Should().BeLessThan(300u);
+    }
+
+    [Fact]
+    public async Task should_refuse_to_write_a_download_for_a_code_or_a_machine_that_is_not_one_or_a_system_that_has_no_program()
+    {
+        using var anonymous = _factory.CreateClient();
+
+        (await anonymous.GetAsync("/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await anonymous.GetAsync("/api/v1/ingest/download/windows-x86_64?machine=pc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await anonymous.GetAsync("/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=a%27%3Bcalc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await anonymous.GetAsync("/api/v1/ingest/download/macos-aarch64?code=ABCD-EFGH-JKLM&machine=pc", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task should_serve_the_program_of_a_system_as_a_file_and_nothing_else_of_the_folder()
     {
         using var anonymous = _factory.CreateClient();

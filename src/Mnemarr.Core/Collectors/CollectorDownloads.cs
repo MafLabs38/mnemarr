@@ -38,6 +38,21 @@ public sealed class CollectorDownloads
     /// <summary>The program for a system, or null when it is not one of the known systems or its file is not there.</summary>
     public CollectorDownload? Find(string platform) => Open(platform) is { } found ? found.Download : null;
 
+    /// <summary>
+    /// The program for a system with a setting added to it (the address, the machine, the code), and the name a person is offered it under; null
+    /// when there is no program for that system. The setting is written for one machine and one code, and the file is named after the machine.
+    /// </summary>
+    public (byte[] Bytes, string FileName)? Personalised(string platform, EmbeddedSetting setting)
+    {
+        if (Open(platform) is not { } found)
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(found.Download.FileName);
+        return (setting.AppendTo(File.ReadAllBytes(found.Path)), $"mnemarr-collector-{setting.Machine}{extension}");
+    }
+
     /// <summary>The program for a system, ready to be read, or null.</summary>
     public (CollectorDownload Download, string Path)? Open(string platform)
     {

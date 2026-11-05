@@ -180,3 +180,45 @@ fn should_let_a_second_collector_leave_the_first_alone() {
     );
     assert!(said(&joined.run(&["status"])).contains("running: yes"));
 }
+
+#[test]
+fn should_run_as_ever_when_it_carries_a_setting_and_is_given_something_to_do() {
+    use mnemarr_collector::embedded::{Embedded, append};
+    let dir = std::env::temp_dir().join(format!("mnemarr-cli-carry-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let program = std::fs::read(env!("CARGO_BIN_EXE_mnemarr-collector")).unwrap();
+    let carrying = dir.join(if cfg!(windows) {
+        "carrying.exe"
+    } else {
+        "carrying"
+    });
+    std::fs::write(
+        &carrying,
+        append(
+            &program,
+            &Embedded {
+                server: "https://mnemarr.example".to_string(),
+                machine: "pc".to_string(),
+                code: "ABCD-EFGH-JKLM".to_string(),
+                insecure: false,
+            },
+        ),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&carrying, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    let output = Command::new(&carrying).arg("--version").output().unwrap();
+
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .starts_with("mnemarr-collector ")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

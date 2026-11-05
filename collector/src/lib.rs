@@ -6,9 +6,11 @@
 
 pub mod collect;
 pub mod config;
+pub mod embedded;
 pub mod enrol;
 pub mod mask;
 pub mod service;
+pub mod setup;
 pub mod state;
 pub mod upload;
 
