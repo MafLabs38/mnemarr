@@ -4,7 +4,7 @@ The collector is a small program (Rust) that runs as a **service on each machine
 
 It is **not part of Mnemarr's container**: it is an external helper that talks to Mnemarr only through its API, over outbound HTTPS.
 
-> **What is built, and what is designed.** Built: the loop, the reading of Claude Code files, masking, sending by position, the position file, the ingest API, **enrolment with a one-time code, a key bound to the machine, the heartbeat and the page of the machines** ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)). Designed in ADR 0025 and not built yet: the installer and the service forms (`install`, `uninstall`, `status`), configuration read from the server, the other readers.
+> **What is built, and what is designed.** Built (besides what follows): `install`, `start`, `stop`, `status` and `uninstall` (Windows and Linux; macOS runs it in the background without starting it with the session). Designed and not built yet: the icon in the notification area and the pause. Built: the loop, the reading of Claude Code files, masking, sending by position, the position file, the ingest API, **enrolment with a one-time code, a key bound to the machine, the heartbeat and the page of the machines** ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)). Designed in ADR 0025 and not built yet: the container form for servers, configuration read from the server, the other readers.
 
 ## What it does and does not do
 
@@ -34,7 +34,18 @@ Each machine has a kind, declared in Mnemarr:
    curl -fsSL 'https://mnemarr.homelab.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=my-laptop' | sh
    ```
    It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; `%APPDATA%` on Windows) with the address and the name in `collector.json` beside it, and then `mnemarr-collector run`. Those two commands are also yours to run by hand when the program is already there.
-3. The machine appears on the page as **waiting** until its first pass, then **online**.
+3. The line **installs and hands the window back**: the collector runs in the background, with no window, and starts with your session. The machine appears on the page as **waiting** until its first pass, then **online**.
+
+To see or control it afterwards (the same program, in the folder it was installed in):
+
+| Command | What it does |
+|---|---|
+| `mnemarr-collector status` | says whether it runs, whether it starts with your session, and where its log is |
+| `mnemarr-collector stop` | stops it now (it starts again with your next session) |
+| `mnemarr-collector start` | starts it again in the background |
+| `mnemarr-collector uninstall` | stops it and stops it starting with your session; the machine stays joined |
+
+On Windows it is in your own list of programs that start with your session (Task Manager, *Startup apps*), where you can also switch it off; on Linux it is a unit of your own systemd (`systemctl --user status mnemarr-collector`). Its log is `collector.log` in its folder. No administrator rights are needed.
 
 If the address of Mnemarr is plain `http://` (a sandbox), the page says that the key will travel without encryption, and the line makes the collector accept it (`--allow-insecure-http`). Over HTTPS there is nothing of the kind. A Mnemarr that carries no collector program (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`) shows only the command that joins a machine that has the program.
 
