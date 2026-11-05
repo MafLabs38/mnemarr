@@ -9,6 +9,9 @@ services:
     # The image runs as a non-root user: give it a throw-away data folder it owns.
     tmpfs:
       - /config:uid=1654,gid=1654
+      # A folder of notes the application may write, for each browser of the tests (they run in parallel in one stack).
+      - /work/chromium:uid=1654,gid=1654
+      - /work/firefox:uid=1654,gid=1654
     # The first administrator, as a real deployment gives it: a name and the password in a mounted file (a test-only value).
     environment:
       MNEMARR__AUTH__ADMINUSER: admin
@@ -19,6 +22,7 @@ services:
       MNEMARR__SOURCES__ROOTS__0: /notes
       # A Git source is cloned into a folder the application can write: the data folder's own sources folder.
       MNEMARR__SOURCES__ROOTS__1: /config/sources
+      MNEMARR__SOURCES__ROOTS__2: /work
       # Where Mnemarr may clone from. The host never resolves (a reserved name), so that a sync fails the same way offline and in CI.
       MNEMARR__GIT__HOSTS__0: git.example
       # Configuration as code: the stack is described by a document, as a deployment would be.

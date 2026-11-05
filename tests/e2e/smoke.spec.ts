@@ -285,7 +285,7 @@ test.describe('smoke @smoke', () => {
       page.getByRole('region', { name: 'Memory vault' }).getByText(/required, and there can be only one/),
     ).toBeVisible();
     const form = page.getByRole('form', { name: 'Declare a source of Knowledge vaults' });
-    await expect(form.getByText('A source is a folder inside one of: /notes, /config/sources')).toBeVisible();
+    await expect(form.getByText('A source is a folder inside one of: /notes, /config/sources, /work')).toBeVisible();
     await form.getByLabel('Name').fill(name);
     await form.getByLabel('Folder', { exact: true }).fill('/notes/demo');
     await form.getByRole('button', { name: 'Create' }).click();
@@ -341,6 +341,73 @@ test.describe('smoke @smoke', () => {
     await row.getByRole('button', { name: 'Delete' }).click();
     await row.getByRole('button', { name: `Confirm: delete ${name}` }).click();
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  test('an operator writes notes: creates one, edits it, links to it, renames it and the link follows, removes it', async ({
+    page,
+    playwright,
+    baseURL,
+  }, testInfo) => {
+    const name = unique('write');
+    const api = await signedInRequest(playwright, baseURL ?? '');
+    const folder = `/work/${testInfo.project.name}`;
+    const created = await api.post('/api/v1/sources', {
+      data: { name, kind: 'Knowledge', mode: 'ReadWrite', path: folder },
+    });
+    expect(created.status()).toBe(201);
+    await signIn(page, '/notes');
+
+    // A new note, in a source that is open for writing.
+    await page.getByText('New note', { exact: true }).click();
+    const form = page.getByRole('form', { name: 'New note' });
+    await form.getByLabel('Source').selectOption({ label: name });
+    await form.getByLabel('Path').fill(`${name}/First.md`);
+    await form.getByRole('button', { name: 'Create note' }).click();
+    await expect(page.getByText(`${name} · ${name}/First.md`)).toBeVisible();
+
+    // Edit it: the whole text, with a preview before saving.
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'Note text' })
+      .fill('# First\n\nBodies of water.\n\n## Part One\n\nDeep words.\n');
+    await page.getByRole('button', { name: 'Preview' }).click();
+    await expect(page.getByRole('region', { name: 'Preview' }).getByText('Bodies of water.')).toBeVisible();
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('textbox', { name: 'Note text' })).toHaveCount(0);
+    await expect(page.getByText('Bodies of water.')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Part One' })).toHaveAttribute('id', 'part-one');
+
+    // A second note that links to the first one, by a heading.
+    await page.getByText('New note', { exact: true }).click();
+    const second = page.getByRole('form', { name: 'New note' });
+    await second.getByLabel('Source').selectOption({ label: name });
+    await second.getByLabel('Path').fill(`${name}/Second.md`);
+    await second.getByRole('button', { name: 'Create note' }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Note text' }).fill('# Second\n\nSee [[First#Part One]].\n');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('link', { name: 'First#Part One' })).toBeVisible();
+
+    // Rename the first note: the link in the second follows.
+    await page.getByRole('link', { name: 'First', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Rename', exact: true }).click();
+    await page.getByLabel('New path').fill(`${name}/Renamed.md`);
+    await page.getByRole('form', { name: 'Rename' }).getByRole('button', { name: 'Rename' }).click();
+    await expect(page.getByText(`${name} · ${name}/Renamed.md`)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Second' })).toBeVisible();
+    const id = (await created.json()).id as string;
+    const link = await api.get(`/api/v1/notes/${id}/${name}/Second.md`);
+    expect((await link.json()).raw).toContain('[[Renamed#Part One]]');
+
+    // Remove it: asked twice, then gone.
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.getByRole('button', { name: /Confirm: remove/ }).click();
+    await expect(page.getByText(`${name} · ${name}/Renamed.md`)).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    // Clean up what the test declared.
+    await api.delete(`/api/v1/sources/${id}`);
+    await api.dispose();
   });
 
   test('a person reads the notes: the tree, a rendered note, a wikilink to another source, and the backlinks', async ({

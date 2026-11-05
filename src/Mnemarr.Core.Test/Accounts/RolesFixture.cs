@@ -15,7 +15,7 @@ public sealed class RolesFixture
     [InlineData(Roles.Collector, new[] { Permissions.IngestWrite })]
     [InlineData(Roles.Monitor, new[] { Permissions.SystemRead })]
     [InlineData(Roles.Assistant, new[] { Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search })]
-    [InlineData(Roles.Operator, new[] { Permissions.NotesRead, Permissions.Search, Permissions.SourcesManage, Permissions.SystemRead })]
+    [InlineData(Roles.Operator, new[] { Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.SourcesManage, Permissions.SystemRead })]
     public void should_give_a_role_exactly_its_permissions_and_nothing_else(string role, string[] expected)
     {
         Roles.Find(role)!.Permissions.Should().BeEquivalentTo(expected);

@@ -172,3 +172,203 @@
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
+
+.editor {
+  width: 100%;
+  min-height: 320px;
+  padding: 10px 12px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusSmall);
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--monoSpaceFontFamily);
+  font-size: var(--fontSizeMeta);
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+  max-width: 640px;
+}
+
+.preview {
+  margin: 12px 0;
+  padding: 12px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusSmall);
+}
+
+/* The three kinds of notes have a colour each: the same on the section of the tree, the badge and the frame of a note. */
+.kindMemory {
+  --kind: var(--purple);
+}
+
+.kindKnowledge {
+  --kind: var(--infoColor);
+}
+
+.kindApplicationDocs {
+  --kind: var(--secondary);
+}
+
+.kindSection {
+  margin-top: 16px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--kind);
+  border-radius: var(--radiusSmall);
+  background-color: var(--paperWarm);
+}
+
+.kindTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: var(--fontSizeBody);
+}
+
+.kindTitle svg {
+  color: var(--kind);
+}
+
+.kindCount {
+  margin-left: auto;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+  font-weight: 400;
+}
+
+.treeSource {
+  margin-top: 8px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--kind);
+  border-radius: var(--radiusPill);
+  background-color: var(--paperSunken);
+  color: var(--ink);
+  font-size: var(--fontSizeMeta);
+  font-weight: 700;
+}
+
+.badge svg {
+  color: var(--kind);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--hairlineStrong);
+  border-radius: var(--radiusPill);
+  background-color: var(--paperSunken);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+}
+
+.chipWritable svg {
+  color: var(--successColor);
+}
+
+.chipLocked svg {
+  color: var(--warningColor);
+}
+
+.noteCard {
+  padding: 16px 18px 18px;
+  border: 1px solid var(--hairline);
+  border-top: 4px solid var(--kind);
+  border-radius: var(--radiusMedium);
+  background-color: var(--paperWarm);
+}
+
+.noteHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.noteHeader p {
+  margin: 0;
+}
+
+.rights {
+  display: flex;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--tone);
+  border-left-width: 5px;
+  border-radius: var(--radiusSmall);
+  background-color: var(--paperSunken);
+  color: var(--ink);
+}
+
+.rights p {
+  margin: 0 0 4px;
+}
+
+.rightsTitle {
+  font-weight: 700;
+}
+
+.rightsIcon {
+  flex: none;
+  color: var(--tone);
+}
+
+.rightsBody {
+  min-width: 0;
+}
+
+.toneAllowed {
+  --tone: var(--successColor);
+}
+
+.toneLocked {
+  --tone: var(--warningColor);
+}
+
+.toneInfo {
+  --tone: var(--infoColor);
+}
+
+.toneDenied {
+  --tone: var(--dangerColor);
+}
+
+.why summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+  cursor: pointer;
+}
+
+.why p {
+  margin-top: 6px;
+  color: var(--inkSoft);
+  font-size: var(--fontSizeMeta);
+}

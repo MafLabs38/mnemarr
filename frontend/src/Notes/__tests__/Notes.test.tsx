@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { type ApiAnswer, readerSession, renderWithProviders, stubApi } from '__tests__/render';
 import Notes from 'Notes/Notes';
-import type { Note, NoteEntry, SearchHit } from 'Notes/notes';
+import type { Note, NoteEntry, NoteSource, SearchHit } from 'Notes/notes';
 
 // The drawing is replaced by what the test says it does. It is a plain function, not a spy: a spy re-throws the rejection it records.
 const drawing = vi.hoisted(() => ({ run: (): Promise<string> => Promise.resolve('') }));
@@ -21,6 +21,23 @@ const entries: NoteEntry[] = [
   { sourceId: S2, sourceName: 'memoire', path: 'decisions/reseau.md', title: 'Choix du réseau', topic: 'decisions' },
 ];
 
+const noteSources: NoteSource[] = [
+  {
+    id: S1,
+    name: 'cours',
+    kind: 'Knowledge',
+    mode: 'ReadOnly',
+    rights: { canWrite: false, reason: 'source-read-only', role: 'Admin' },
+  },
+  {
+    id: S2,
+    name: 'memoire',
+    kind: 'Memory',
+    mode: 'ReadOnly',
+    rights: { canWrite: false, reason: 'source-read-only', role: 'Admin' },
+  },
+];
+
 function noteWith(markdown: string, extra: Partial<Note> = {}): Note {
   return {
     sourceId: S1,
@@ -33,6 +50,12 @@ function noteWith(markdown: string, extra: Partial<Note> = {}): Note {
     links: [],
     backlinks: [],
     backlinksTotal: 0,
+    raw: markdown,
+    version: 'v1',
+    writable: false,
+    sourceKind: 'Knowledge',
+    sourceMode: 'ReadOnly',
+    rights: { canWrite: false, reason: 'source-read-only', role: 'Admin' },
     ...extra,
   };
 }
@@ -44,7 +67,7 @@ function server(note: Note, extra: (path: string) => ApiAnswer | undefined = () 
       return special;
     }
     if (method === 'GET' && (path === '/notes' || path.startsWith('/notes?'))) {
-      return { body: { notes: entries, total: entries.length } };
+      return { body: { notes: entries, total: entries.length, sources: noteSources } };
     }
     if (method === 'GET' && path === '/notes/tags') {
       return { body: { tags: [{ tag: 'infra', count: 2 }], total: 1 } };
@@ -390,7 +413,7 @@ describe('Notes', () => {
   it('says when the list of notes or of tags was cut, and by how much', async () => {
     stubApi((_method, path) => {
       if (path === '/notes') {
-        return { body: { notes: entries, total: 10_500 } };
+        return { body: { notes: entries, total: 10_500, sources: noteSources } };
       }
       if (path === '/notes/tags') {
         return { body: { tags: [{ tag: 'infra', count: 2 }], total: 450 } };

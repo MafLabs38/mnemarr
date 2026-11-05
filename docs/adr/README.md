@@ -27,3 +27,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0020](0020-configuration-as-code.md) | Configuration as code: a YAML document, applied through the API or as a file | D-40 |
 | [0021](0021-the-reader-reads-links-from-the-index-and-renders-notes-as-untrusted-text.md) | The reader reads links from the index and renders notes as untrusted text | D-41 |
 | [0022](0022-git-sources-are-cloned-and-pulled-in-process-over-https.md) | Git sources are cloned and pulled in-process, over HTTPS with a named token | D-42 |
+| [0023](0023-notes-are-written-through-the-api-committed-to-git-and-offered-over-mcp.md) | Notes are written through the API, committed to Git, and offered to assistants over MCP | D-43 |

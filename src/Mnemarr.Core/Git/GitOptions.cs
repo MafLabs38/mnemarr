@@ -8,8 +8,14 @@ public sealed class GitOptions
     /// <summary>How often every Git source is brought up to date, in seconds.</summary>
     public int SyncIntervalSeconds { get; set; } = 300;
 
+    /// <summary>The address on the commits Mnemarr makes: the author is the account that wrote the note, and this is not a person's mailbox.</summary>
+    public string CommitEmail { get; set; } = "mnemarr@localhost";
+
     /// <summary>How long one sync of one source may take, in seconds, before it is given up (the next interval tries again).</summary>
     public int SyncTimeoutSeconds { get; set; } = 600;
+
+    /// <summary>How long the network steps of one change of a note (the pull before it, the push after it) may take, in seconds: a person or an assistant waits for them, and the source is locked meanwhile.</summary>
+    public int WriteTimeoutSeconds { get; set; } = 60;
 
     /// <summary>
     /// The hosts a source may be cloned from. <b>Empty means none</b>: declaring a source is how an API user asks Mnemarr to connect somewhere
@@ -44,6 +50,16 @@ public sealed class GitOptionsValidator : IValidateOptions<GitOptions>
         if (options.SyncIntervalSeconds is < 10 or > 86_400)
         {
             return ValidateOptionsResult.Fail("Git:SyncIntervalSeconds (MNEMARR__GIT__SYNCINTERVALSECONDS) must be between 10 and 86400.");
+        }
+
+        if (string.IsNullOrWhiteSpace(options.CommitEmail) || !options.CommitEmail.Contains('@', StringComparison.Ordinal) || options.CommitEmail.Any(char.IsWhiteSpace))
+        {
+            return ValidateOptionsResult.Fail("Git:CommitEmail (MNEMARR__GIT__COMMITEMAIL) must be an address, such as mnemarr@localhost.");
+        }
+
+        if (options.WriteTimeoutSeconds is < 5 or > 600)
+        {
+            return ValidateOptionsResult.Fail("Git:WriteTimeoutSeconds (MNEMARR__GIT__WRITETIMEOUTSECONDS) must be between 5 and 600.");
         }
 
         if (options.SyncTimeoutSeconds is < 10 or > 3600)

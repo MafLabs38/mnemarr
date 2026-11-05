@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Sources;
@@ -30,9 +31,9 @@ public sealed class SourceSyncFixture : IDisposable
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private Source Git(string folder, string url = "https://github.example/org/notes", string? branch = "main", string? credential = "github", string name = "notes")
+    private Source Git(string folder, string url = "https://github.example/org/notes", string? branch = "main", string? credential = "github", string name = "notes", SourceMode mode = SourceMode.ReadOnly)
     {
-        var source = new Source(Guid.NewGuid(), name, SourceKind.Knowledge, SourceMode.ReadOnly, folder, _clock.GetUtcNow(), Repository: new GitRepository(url, branch, credential));
+        var source = new Source(Guid.NewGuid(), name, SourceKind.Knowledge, mode, folder, _clock.GetUtcNow(), Repository: new GitRepository(url, branch, credential));
         new SqliteSourceStore(_workspace.Database).Add(source);
         return source;
     }
@@ -52,6 +53,31 @@ public sealed class SourceSyncFixture : IDisposable
         report.Index.Should().Be(new IndexReport(Added: 1, Updated: 0, Removed: 0, Unchanged: 0));
         _engine.Calls.Should().ContainSingle().Which.Should().Be(("https://github.example/org/notes", "main", folder, new GitSecret("x-access-token", "secret-token")));
         _outcomes.Of(source.Id).Should().Be(new SyncOutcome(_clock.GetUtcNow(), null, "def456"));
+    }
+
+    [Fact]
+    public async Task should_push_what_is_waiting_after_a_sync_of_a_source_that_is_open_for_writing_and_never_for_one_that_is_not()
+    {
+        var writable = Git(_workspace.Folder("rw"), name: "rw", mode: SourceMode.ReadWrite);
+        var readOnly = Git(_workspace.Folder("ro"), name: "ro");
+
+        await _subject.SyncAsync(readOnly, waitForTurn: false, Token);
+        _engine.Pushes.Should().Be(0);
+        await _subject.SyncAsync(writable, waitForTurn: false, Token);
+
+        _engine.Pushes.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task should_say_a_push_that_the_host_refused_as_a_failed_sync_with_its_own_code()
+    {
+        var source = Git(_workspace.Folder("rw"), name: "rw", mode: SourceMode.ReadWrite);
+        _engine.OnPush = () => throw new GitSyncException(GitFailure.PushRejected, "refused");
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
+
+        refusal.Message.Should().Be(SourceSync.MessageOf(GitFailure.PushRejected));
+        _outcomes.Of(source.Id)!.Error.Should().Be(GitFailure.PushRejected);
     }
 
     [Fact]
@@ -303,5 +329,21 @@ public sealed class SourceSyncFixture : IDisposable
         {
             SourceSync.MessageOf(code).Should().NotBe(unknown, code);
         }
+    }
+
+    [Fact]
+    public async Task should_keep_and_read_what_was_pulled_when_the_push_that_follows_is_refused()
+    {
+        var folder = _workspace.Folder("rw");
+        TestWorkspace.Write(folder, "a.md", "# Alpha\npulledword\n");
+        var source = Git(folder, name: "rw", mode: SourceMode.ReadWrite);
+        _engine.Result = () => new GitSyncResult(GitSyncAction.Updated, "def456");
+        _engine.OnPush = () => throw new GitSyncException(GitFailure.PushRejected, "refused");
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
+
+        refusal.Message.Should().Be(SourceSync.MessageOf(GitFailure.PushRejected));
+        _outcomes.Of(source.Id)!.Error.Should().Be(GitFailure.PushRejected);
+        _index.Search(new SearchRequest("pulledword"), SourceScope.All).Should().ContainSingle("the pull is not undone by a push that was refused");
     }
 }

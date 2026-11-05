@@ -61,7 +61,7 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         rendered.Should().Contain("[[#heading]]", "a link that names nothing is left as it was written");
         rendered.Should().Contain($"[Other note](mnemarr-note:{source.Id}/Other%20note.md)", "a note shown in place is a link");
         rendered.Should().Contain("`[[kubernetes]]`").And.Contain("```\n[[kubernetes]]\n```", "code is left as it is");
-        rendered.Should().Contain($"[pods](mnemarr-note:{source.Id}/devops%2Fkubernetes.md)");
+        rendered.Should().Contain($"[pods](mnemarr-note:{source.Id}/devops%2Fkubernetes.md#pods)", "a link to a heading leads to it");
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         var rendered = Reader.Read(source.Id, "devops/docker.md", SourceScope.All).Rendered;
 
         rendered.Should().Contain($"[next](mnemarr-note:{source.Id}/devops%2Fkubernetes.md)");
-        rendered.Should().Contain($"[up](mnemarr-note:{source.Id}/index.md)");
+        rendered.Should().Contain($"[up](mnemarr-note:{source.Id}/index.md#top)", "the heading of an ordinary link is kept");
         rendered.Should().Contain("[missing](mnemarr-unresolved:)").And.NotContain("](nope.md)");
         rendered.Should().Contain("[out](../../x.md)", "an address that leaves the source is left, and the interface shows it as text");
         rendered.Should().Contain("[web](https://example.com/a.md)").And.Contain("[file](paper.pdf)").And.Contain("![remote](https://example.com/p.png)");

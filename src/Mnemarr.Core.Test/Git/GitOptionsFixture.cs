@@ -26,6 +26,18 @@ public sealed class GitOptionsFixture
     }
 
     [Theory]
+    [InlineData("")]
+    [InlineData("no-at-sign")]
+    [InlineData("a b@localhost")]
+    public void should_refuse_a_commit_address_that_is_not_an_address_and_name_the_setting(string email)
+    {
+        var result = Validate(new GitOptions { CommitEmail = email });
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("MNEMARR__GIT__COMMITEMAIL");
+    }
+
+    [Theory]
     [InlineData(9)]
     [InlineData(3601)]
     public void should_refuse_a_timeout_out_of_range_and_name_the_setting(int seconds)
@@ -34,6 +46,17 @@ public sealed class GitOptionsFixture
 
         result.Failed.Should().BeTrue();
         result.FailureMessage.Should().Contain("MNEMARR__GIT__SYNCTIMEOUTSECONDS");
+    }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(601)]
+    public void should_refuse_a_write_timeout_out_of_range_and_name_the_setting(int seconds)
+    {
+        var result = Validate(new GitOptions { WriteTimeoutSeconds = seconds });
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("MNEMARR__GIT__WRITETIMEOUTSECONDS");
     }
 
     [Theory]

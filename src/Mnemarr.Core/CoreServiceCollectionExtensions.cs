@@ -49,6 +49,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<SourcesOptions>, SourcesOptionsValidator>();
         services.AddOptions<IndexingOptions>().Bind(configuration.GetSection("Indexing")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<IndexingOptions>, IndexingOptionsValidator>();
+        services.AddOptions<McpOptions>().Bind(configuration.GetSection("Mcp"));
         services.AddOptions<GitOptions>().Bind(configuration.GetSection("Git")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<GitOptions>, GitOptionsValidator>();
         services.AddSingleton<GitCredentials>();
@@ -70,6 +71,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<ScanOutcomes>();
         services.AddSingleton<SourceIndexer>();
         services.AddSingleton<SourceSync>();
+        services.AddSingleton<NoteWriter>();
         services.AddHostedService<SourceSyncService>();
         services.AddSingleton<SourceIndexingService>();
         services.AddHostedService(provider => provider.GetRequiredService<SourceIndexingService>());

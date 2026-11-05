@@ -165,6 +165,68 @@ const en = {
   'host-not-allowed': 'the host is not one the operator allows for Git sources any more',
   'index-failed': 'the index could not be updated',
   unreadable: 'the folder cannot be read',
+  MemoryNotesPurpose:
+    'What Mnemarr remembers: decisions, lessons, facts. Written by Mnemarr and its assistants; a person can correct it.',
+  KnowledgeNotesPurpose:
+    'Notes written by hand: courses, notes taken for work. Edited where they are kept (Obsidian, a repository).',
+  ApplicationDocsNotesPurpose:
+    'The documentation of an application, read from its repository. Edited there, never here.',
+  ChipEditable: 'Editable',
+  ChipReadOnly: 'Read-only',
+  RightsShort_writable: 'You may edit the notes of this source.',
+  'RightsShort_source-read-only': 'This source is declared read-only.',
+  'RightsShort_kind-not-writable': 'This kind of notes is edited in its repository, not here.',
+  'RightsShort_no-permission': 'Your role may not write notes.',
+  BannerTitle_writable: 'You can edit this note',
+  'BannerTitle_source-read-only': 'This note is read-only',
+  'BannerTitle_kind-not-writable': 'This note is edited in its repository',
+  'BannerTitle_no-permission': 'Your role cannot write notes',
+  BannerText_writable: 'You are {role}, and the source {source} is open for writing.',
+  'BannerText_source-read-only':
+    'The source {source} is declared read-only: nothing is written there until someone turns writing on.',
+  'BannerText_kind-not-writable':
+    'The documentation of an application is read from its repository: it is edited there, then read again here.',
+  'BannerText_no-permission':
+    'You are {role}. Writing notes takes the notes.write permission, which Operator, Assistant and Admin have.',
+  NoteRights: 'What you may do with this note',
+  WhyThisRule: 'Why?',
+  BannerWhy_writable:
+    'Every change is recorded in the audit log under your name. In a Git source it is also a commit pushed to the repository, so it can be undone.',
+  'BannerWhy_source-read-only':
+    'The mode of a source is its write switch, and it is off by default so that Mnemarr never changes a vault by surprise. Whoever manages sources can turn it on, source by source.',
+  'BannerWhy_kind-not-writable':
+    'The repository of an application is not Mnemarr’s: it reads the documentation and never writes it, so that two places never claim to hold the truth.',
+  'BannerWhy_no-permission':
+    'Reading and writing are separate permissions, given by role. An administrator can change your role, or give a service account to an assistant that is meant to write.',
+  MemoryWriteNote:
+    'This is Mnemarr’s memory: a correction is kept in the audit log, and in the history of the repository when it is a Git source.',
+  OpenSourcesToWrite: 'Open Sources to turn writing on',
+  AskWhoManagesSources: 'Ask whoever manages sources to turn writing on.',
+  NoWritableSource: 'No source is open for writing yet.',
+  EmptySource: 'No notes yet.',
+  NotesCount: '{count} notes',
+  NotEditableHere: 'Not editable here',
+  EditNote: 'Edit',
+  RenameNote: 'Rename',
+  RemoveNote: 'Remove',
+  ConfirmRemoveNote: 'Confirm: remove {title}',
+  NoteText: 'Note text',
+  SaveNote: 'Save',
+  PreviewNote: 'Preview',
+  HidePreview: 'Hide preview',
+  NewNote: 'New note',
+  NewNotePath: 'Path',
+  NewNotePathHint: 'Where the note goes in the source, such as Topic/My note.md. Folders are created.',
+  NewNoteSource: 'Source',
+  CreateNote: 'Create note',
+  NewPath: 'New path',
+  RenameDone: '{links} links rewritten in {notes} notes.',
+  RenameLeft: '{count} notes of other sources link to it and were left as they were.',
+  LinksLeftElsewhere:
+    '{count} note(s) in other sources still link to the old path: their sources are not changed from here.',
+  NotePushFailed: 'Saved and committed, but not pushed yet: {reason}. A later sync pushes it.',
+  NoteRemoved: 'The note was removed.',
+  'push-rejected': 'the host refused the push (the branch may be protected, or the credential may not write)',
   Origin: 'Origin',
   OriginFolder: 'A folder',
   OriginGit: 'A Git repository',

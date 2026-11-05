@@ -202,4 +202,30 @@ public sealed class MarkdownNotesFixture
         meta.Tags.Should().Equal("after");
         meta.Links.Should().BeEmpty();
     }
+
+    [Fact]
+    public void should_read_the_ordinary_links_to_notes_as_links_from_the_root_of_the_source_so_that_they_give_backlinks()
+    {
+        var text = "[a](kubernetes.md) [b](../index.md#top) [c](Sub%20Folder/Note.md \"title\") [d](https://example.com/x.md) [e](paper.pdf) [f](img.png) ![g](pic.md) `[h](code.md)`\n```\n[i](fenced.md)\n```";
+
+        var meta = MarkdownNotes.Parse(text).ResolvedFrom("devops/docker.md");
+
+        meta.Links.Select(link => link.Target).Should().BeEquivalentTo(["devops/kubernetes", "index", "devops/sub folder/note", "devops/pic"]);
+        meta.RelativeLinks.Should().BeNull("they are links now: nothing is kept apart");
+    }
+
+    [Fact]
+    public void should_not_count_a_link_twice_when_a_wikilink_and_an_ordinary_link_name_the_same_note()
+    {
+        var meta = MarkdownNotes.Parse("[[kubernetes]] and [again](kubernetes.md)").ResolvedFrom("devops/docker.md");
+
+        meta.Links.Select(link => link.Target).Should().BeEquivalentTo(["kubernetes", "devops/kubernetes"]);
+    }
+
+    [Fact]
+    public void should_keep_the_heading_a_link_names()
+    {
+        MarkdownNotes.Classify(new WikiToken("Note#Some Heading|text", false)).Should().Be(new WikiKind.Note("note", "text", "Some Heading"));
+        MarkdownNotes.Classify(new WikiToken("Note", false)).Should().Be(new WikiKind.Note("note", "Note", null));
+    }
 }

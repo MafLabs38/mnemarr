@@ -23,6 +23,8 @@ services:
       # MNEMARR__GIT__HOSTS__0: github.com
       # MNEMARR__GIT__CREDENTIALS__github__HOST: github.com
       # MNEMARR__GIT__CREDENTIALS__github__TOKENFILE: /run/secrets/mnemarr_git_token
+      # MCP: the tools that WRITE notes are off. An operator turns them on here, on purpose (an assistant cannot): MNEMARR__MCP__WRITETOOLS: "true".
+      # Assistants connect to /mcp with the API key of a service account (see docs/configuration.md).
       # Describe the sources as code (see mnemarr.config.example.yaml): mount the file and name it.
       # MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
     secrets:

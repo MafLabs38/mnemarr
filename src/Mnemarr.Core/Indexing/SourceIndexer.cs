@@ -43,6 +43,26 @@ public sealed class SourceIndexer
 
         try
         {
+            return await PassHeldAsync(source, rebuild, cancellationToken);
+        }
+        finally
+        {
+            onePass.Release();
+        }
+    }
+
+    public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, waitForTurn: true, cancellationToken);
+
+    public Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken) => IndexAsync(source, rebuild, waitForTurn: true, cancellationToken);
+
+    /// <summary>
+    /// A pass over a source whose lock the caller already holds (a write that has just brought a checkout up to date reads what came in, and cannot
+    /// wait for a lock it holds itself).
+    /// </summary>
+    public async Task<IndexReport> PassHeldAsync(Source source, bool rebuild, CancellationToken cancellationToken)
+    {
+        try
+        {
             // After the wait, not before: the roots or the folder can change while a pass ahead of this one runs.
             if (!CheckFolder(source))
             {
@@ -61,15 +81,23 @@ public sealed class SourceIndexer
             _outcomes.Failed(source.Id, _clock.GetUtcNow(), ex is IOException or UnauthorizedAccessException ? ScanOutcome.Unreadable : ScanOutcome.IndexFailed);
             throw;
         }
-        finally
-        {
-            onePass.Release();
-        }
     }
 
-    public Task<IndexReport> IndexAsync(Source source, CancellationToken cancellationToken) => IndexAsync(source, rebuild: false, waitForTurn: true, cancellationToken);
+    /// <summary>
+    /// Reads one note again, now: the note a change of notes has just written. The caller holds the lock of the source (it is changing the
+    /// folder), so a pass cannot be reading it at the same time, and the index does not wait for the next scan to know the note.
+    /// </summary>
+    public async Task IndexNoteAsync(Source source, string relativePath, CancellationToken cancellationToken)
+    {
+        var info = new FileInfo(Path.Combine(source.Path, relativePath));
+        var file = new ScannedFile(relativePath, info.FullName, info.Length, info.LastWriteTimeUtc.Ticks);
+        var known = _index.Notes(source.Id);
+        known.TryGetValue(relativePath, out var previous);
+        await IndexFileAsync(source, file, previous, rebuild: true, cancellationToken);
+    }
 
-    public Task<IndexReport> IndexAsync(Source source, bool rebuild, CancellationToken cancellationToken) => IndexAsync(source, rebuild, waitForTurn: true, cancellationToken);
+    /// <summary>Forgets a note of a source that a change of notes has just removed or moved. The caller holds the lock of the source.</summary>
+    public void RemoveNote(Source source, string relativePath) => _index.Remove(source.Id, relativePath);
 
     /// <summary>Forgets what is kept of the sources that are not declared any more: how their last pass ended, and their lock.</summary>
     public void Retain(IReadOnlyCollection<Guid> declared)

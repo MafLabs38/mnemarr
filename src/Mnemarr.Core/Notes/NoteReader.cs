@@ -9,7 +9,7 @@ namespace Mnemarr.Core.Notes;
 /// A note ready to be shown: the index's knowledge of it, its Markdown as written (without the front matter), and the same Markdown with its
 /// wikilinks and embeds rewritten into links and images that lead where the caller may go (<see cref="WikiLinkRenderer"/>).
 /// </summary>
-public sealed record NoteContent(NoteDetail Detail, string Markdown, string Rendered);
+public sealed record NoteContent(NoteDetail Detail, string Markdown, string Rendered, string Raw, string Version, SourceKind Kind, SourceMode Mode);
 
 /// <summary>An image of a source, opened for reading, with the type to answer with.</summary>
 public sealed record NoteFile(Stream Content, string ContentType);
@@ -46,9 +46,17 @@ public sealed class NoteReader
         var detail = _browser.Find(sourceId, path, scope) ?? throw NoSuchNote();
         var source = _sources.Get(sourceId) ?? throw NoSuchNote();
         var file = Resolve(source, path);
-        var text = ReadText(file);
+        var bytes = ReadBytes(file);
+        var text = Encoding.UTF8.GetString(bytes);
         var body = MarkdownNotes.Body(text);
-        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body));
+        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body), text, NoteWriter.VersionOf(bytes), source.Kind, source.Mode);
+    }
+
+    /// <summary>What a text would look like as a note of a source (the editor's preview): its links resolved as they will be once it is saved. The text is not kept.</summary>
+    public string Preview(Guid sourceId, string path, string text, SourceScope scope)
+    {
+        _ = scope.CanAccess(sourceId) && _sources.Get(sourceId) is not null ? true : throw NoSuchNote();
+        return new WikiLinkRenderer(_browser, sourceId, path, scope).Render(MarkdownNotes.Body(text.Length > MarkdownFileScanner.MaxFileBytes ? text[..(int)MarkdownFileScanner.MaxFileBytes] : text));
     }
 
     public NoteFile OpenImage(Guid sourceId, string path, SourceScope scope)
@@ -109,14 +117,14 @@ public sealed class NoteReader
             : throw NoSuchFile();
     }
 
-    private static string ReadText(string file)
+    private static byte[] ReadBytes(string file)
     {
         try
         {
             using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             var buffer = new byte[Math.Min(stream.Length, MarkdownFileScanner.MaxFileBytes + 1)];
             stream.ReadExactly(buffer);
-            return buffer.Length > MarkdownFileScanner.MaxFileBytes ? throw NoSuchNote() : Encoding.UTF8.GetString(buffer);
+            return buffer.Length > MarkdownFileScanner.MaxFileBytes ? throw NoSuchNote() : buffer;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
