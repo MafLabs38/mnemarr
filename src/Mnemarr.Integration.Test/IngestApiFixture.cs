@@ -1,0 +1,120 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace Mnemarr.Integration.Test;
+
+/// <summary>
+/// What a collector sends, over HTTP: taken with an ingest-only key, written as notes that an assistant finds at once through the same API and
+/// MCP as any note, and read by nobody who holds only that key.
+/// </summary>
+public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
+{
+    private readonly MnemarrFactory _factory;
+
+    public IngestApiFixture(MnemarrFactory factory)
+    {
+        _factory = factory;
+    }
+
+    private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+    private static string Line(string type, string text, string at) =>
+        JsonSerializer.Serialize(new { type, timestamp = at, message = new { role = type, content = text } });
+
+    private static object Body(string machine, string session, long from, params string[] lines) =>
+        new { format = "claude-code", machine, application = "Mnemarr", session, from, lines };
+
+    [Fact]
+    public async Task should_take_a_conversation_from_a_collector_and_let_an_assistant_find_it_through_search_and_mcp()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        var session = Callers.Unique("s");
+        var word = Callers.Unique("zebra").Replace("-", string.Empty, StringComparison.Ordinal);
+
+        var sent = await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, session, 0, Line("user", $"We decided on {word} for the cache.", "2026-11-04T14:03:00Z"), Line("assistant", "Noted.", "2026-11-04T14:04:00Z")), Token);
+
+        sent.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await sent.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("next").GetInt64().Should().Be(2);
+        var found = await callers["Reader"].GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token);
+        found.EnumerateArray().Select(hit => hit.GetProperty("path").GetString()).Distinct().Should().ContainSingle().Which.Should().StartWith("mnemarr/2026-11-04-");
+        var mcp = await callers["Assistant"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "search", arguments = new { query = word } } }, Token);
+        (await mcp.Content.ReadAsStringAsync(Token)).Should().Contain("mnemarr/2026-11-04-");
+    }
+
+    [Fact]
+    public async Task should_resume_a_collector_that_sends_again_or_skips_ahead_by_telling_it_the_position()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        var session = Callers.Unique("s");
+        var first = Line("user", "one", "2026-11-04T14:03:00Z");
+        await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, session, 0, first), Token);
+
+        var again = await (await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, session, 0, first), Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var ahead = await (await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, session, 9, first), Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+
+        (again.GetProperty("next").GetInt64(), again.GetProperty("accepted").GetInt32()).Should().Be((1L, 0));
+        (ahead.GetProperty("next").GetInt64(), ahead.GetProperty("accepted").GetInt32()).Should().Be((1L, 0), "a hole is not filled: the collector is told where to resume");
+    }
+
+    [Fact]
+    public async Task should_let_only_the_ingest_role_send_and_the_ingest_role_read_nothing()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var body = Body(Callers.Unique("pc"), Callers.Unique("s"), 0, Line("user", "x", "2026-11-04T14:03:00Z"));
+
+        foreach (var role in new[] { "Reader", "Assistant", "Monitor", "Operator" })
+        {
+            (await callers[role].PostAsJsonAsync("/api/v1/ingest/conversations", body, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+        }
+
+        (await callers.Anonymous.PostAsJsonAsync("/api/v1/ingest/conversations", body, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        foreach (var url in new[] { "/api/v1/notes", "/api/v1/search?q=x", "/api/v1/ingest/machines", "/api/v1/sources" })
+        {
+            (await callers["Collector"].GetAsync(url, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, url);
+        }
+    }
+
+    [Fact]
+    public async Task should_refuse_a_batch_that_is_not_one_with_a_400_and_write_nothing()
+    {
+        var callers = await Callers.ForAsync(_factory);
+
+        var badName = await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body("../x", "s1", 0, "{}"), Token);
+        var noLines = await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body("pc", "s1", 0), Token);
+        var noPosition = await callers["Collector"].PostAsync("/api/v1/ingest/conversations", new StringContent("{\"format\":\"claude-code\",\"machine\":\"pc\",\"application\":\"a\",\"session\":\"s1\",\"lines\":[\"{}\"]}", System.Text.Encoding.UTF8, "application/json"), Token);
+
+        badName.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        noLines.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        noPosition.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task should_show_the_operator_which_machines_sent_something_and_when()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, Callers.Unique("s"), 0, Line("user", "x", "2026-11-04T14:03:00Z")), Token);
+
+        var machines = await callers["Monitor"].GetFromJsonAsync<JsonElement>("/api/v1/ingest/machines", Token);
+
+        machines.EnumerateArray().Should().Contain(item => item.GetProperty("machine").GetString() == machine && item.GetProperty("conversations").GetInt32() == 1);
+    }
+
+    [Fact]
+    public async Task should_show_the_conversations_as_a_source_that_nobody_can_write_in_by_hand()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(Callers.Unique("pc"), Callers.Unique("s"), 0, Line("user", "hello there", "2026-11-04T14:03:00Z")), Token);
+
+        var tree = await callers["Operator"].GetFromJsonAsync<JsonElement>("/api/v1/notes", Token);
+
+        var source = tree.GetProperty("sources").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "Conversations");
+        source.GetProperty("rights").GetProperty("canWrite").GetBoolean().Should().BeFalse();
+        source.GetProperty("rights").GetProperty("reason").GetString().Should().Be("kind-not-writable");
+        var declared = await callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name = "mine", kind = "Conversations", mode = "ReadOnly", path = Path.Combine(_factory.DataFolder, "sources") }, Token);
+        declared.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+}

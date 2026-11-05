@@ -38,6 +38,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now');
                 DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
+                DROP TABLE conversations;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -64,6 +65,7 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO notes (source_id, path, topic, title, content_hash, indexed_at) VALUES ('s', 'a.md', '', 'A', 'h', 'now');
                 DROP INDEX notes_by_name; DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; ALTER TABLE notes DROP COLUMN name; ALTER TABLE notes DROP COLUMN meta_version;
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
+                DROP TABLE conversations;
                 PRAGMA user_version = 2;
                 """;
             back.ExecuteNonQuery();
@@ -87,6 +89,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
+                DROP TABLE conversations;
                 PRAGMA user_version = 3;
                 """;
             back.ExecuteNonQuery();
@@ -99,6 +102,29 @@ public sealed class DatabaseFixture : IDisposable
         using var reader = command.ExecuteReader();
         reader.Read().Should().BeTrue();
         (reader.GetString(0), reader.IsDBNull(1), reader.IsDBNull(2), reader.IsDBNull(3)).Should().Be(("courses", true, true, true));
+    }
+
+    [Fact]
+    public void should_add_the_conversations_to_a_database_made_before_collectors_without_touching_its_sources()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
+                DROP TABLE conversations;
+                PRAGMA user_version = 4;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var command = upgraded.CreateCommand();
+        command.CommandText = "SELECT (SELECT COUNT(*) FROM sources), (SELECT COUNT(*) FROM conversations)";
+        using var reader = command.ExecuteReader();
+        reader.Read().Should().BeTrue();
+        (reader.GetInt64(0), reader.GetInt64(1)).Should().Be((1L, 0L));
     }
 
     [Fact]

@@ -11,7 +11,7 @@ public static class NoteRightsReason
     /// <summary>The source is declared read-only (D-35): whoever manages sources turns writing on.</summary>
     public const string SourceReadOnly = "source-read-only";
 
-    /// <summary>The kind of the source is never written here (the documentation of an application is written in its repository).</summary>
+    /// <summary>The kind of the source is never written by hand here (the documentation of an application is written in its repository, conversations come from the collectors).</summary>
     public const string KindNotWritable = "kind-not-writable";
 
     /// <summary>The person's role (or key) does not hold <c>notes.write</c>.</summary>
@@ -44,7 +44,7 @@ public sealed record NoteRights(bool CanWrite, string Reason)
     public string Refusal => Reason switch
     {
         NoteRightsReason.SourceReadOnly => "This source is read-only: whoever manages sources turns writing on for it.",
-        NoteRightsReason.KindNotWritable => "The documentation of an application is written in its repository, not here.",
+        NoteRightsReason.KindNotWritable => "This kind of source is not written here: the documentation of an application changes in its repository, and conversations come from the collectors.",
         NoteRightsReason.NoPermission => "Your role may not write notes.",
         _ => string.Empty,
     };

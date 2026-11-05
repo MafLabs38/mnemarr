@@ -1,0 +1,19 @@
+{
+  "_about": "Samples that the masking of the server (.NET) and of the collector (Rust) must give the same answer to (Q-27). A marker stands for a run of characters so that no real-looking secret is written here (a secret scanner would take it for one): <A:36> is 36 times a, <U:16> is 16 times A, <D:5> is five hyphens.",
+  "samples": [
+    { "name": "github token", "input": "use ghp_<A:36> now", "expected": "use [masked:github-token] now" },
+    { "name": "github fine-grained token", "input": "github_pat_<A:50>", "expected": "[masked:github-token]" },
+    { "name": "api key", "input": "key sk-ant-<A:30> ok", "expected": "key [masked:api-key] ok" },
+    { "name": "aws access key", "input": "id AKIA<U:16> end", "expected": "id [masked:aws-key] end" },
+    { "name": "slack token", "input": "xoxb-<A:20>", "expected": "[masked:slack-token]" },
+    { "name": "jwt", "input": "t eyJ<A:12>.<A:12>.<A:12> t", "expected": "t [masked:jwt] t" },
+    { "name": "bearer header", "input": "Authorization: Bearer <A:30>", "expected": "Authorization: Bearer [masked:token]" },
+    { "name": "credentials in an address", "input": "git clone https://user:pa55word@example.com/org/repo", "expected": "git clone https://[masked:credentials]@example.com/org/repo" },
+    { "name": "assignment in a shell", "input": "export API_KEY=abcdefgh12345", "expected": "export API_KEY=[masked]" },
+    { "name": "assignment in JSON text", "input": "{\\\"password\\\": \\\"hunter2hunter2\\\"}", "expected": "{\\\"password=[masked]\\\"}" },
+    { "name": "private key with escaped line breaks", "input": "k <D:5>BEGIN RSA PRIVATE KEY<D:5>\\nMIIB\\nabc\\n<D:5>END RSA PRIVATE KEY<D:5> k", "expected": "k [masked:private-key] k" },
+    { "name": "plain text is left alone", "input": "The token is a word, and a password needs care.", "expected": "The token is a word, and a password needs care." },
+    { "name": "a short value is left alone", "input": "token: expired", "expected": "token: expired" },
+    { "name": "a plain address is left alone", "input": "see https://example.com/docs and ghp is not a token", "expected": "see https://example.com/docs and ghp is not a token" }
+  ]
+}

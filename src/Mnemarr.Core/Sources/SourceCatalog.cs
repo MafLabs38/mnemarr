@@ -61,12 +61,38 @@ public sealed class SourceCatalog
     public Source Add(string name, SourceKind kind, SourceMode mode, string path, SourceScope scope, string actor, GitRepository? repository = null)
     {
         RefuseIfScoped(scope, "declare a source");
+        if (!SourceKinds.Of(kind).Declarable)
+        {
+            throw new RejectedException(Problem.Invalid, $"A source of the kind {kind} is created by Mnemarr, not declared.");
+        }
+
         name = CheckedName(name);
         lock (Gate)
         {
             var checkedRepository = CheckedRepository(repository);
             var source = new Source(Guid.NewGuid(), name, kind, mode, checkedRepository is null ? CheckedPath(path) : CheckedCheckoutFolder(path, null), _clock.GetUtcNow(), Repository: checkedRepository);
             Insert(source, actor);
+            return source;
+        }
+    }
+
+    /// <summary>
+    /// The source that holds the conversations the collectors send (ADR 0024): created by Mnemarr the first time it is needed, in its own folder,
+    /// and owned by Mnemarr (nobody edits or forgets it by hand). The one that exists is returned.
+    /// </summary>
+    public Source EnsureConversations()
+    {
+        lock (Gate)
+        {
+            if (_store.List().FirstOrDefault(source => source.Kind == SourceKind.Conversations) is { } existing)
+            {
+                return existing;
+            }
+
+            var folder = _paths.ConversationsFolder;
+            Directory.CreateDirectory(folder);
+            var source = new Source(Guid.NewGuid(), "conversations", SourceKind.Conversations, SourceMode.ReadOnly, folder, _clock.GetUtcNow(), Managed: true);
+            Insert(source, "mnemarr");
             return source;
         }
     }

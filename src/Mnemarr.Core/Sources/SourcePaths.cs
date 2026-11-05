@@ -19,6 +19,9 @@ public sealed class SourcePaths
         _sources = sources;
     }
 
+    /// <summary>Where Mnemarr writes the conversations the collectors send: a source of its own, created by Mnemarr, so it needs no root.</summary>
+    public string ConversationsFolder => Path.GetFullPath(Path.Combine(_options.Value.DataFolder, "conversations"));
+
     /// <summary>The folders a source may be in.</summary>
     public IReadOnlyList<string> Roots() =>
         _sources.Value.Roots.Length > 0
@@ -33,6 +36,11 @@ public sealed class SourcePaths
     public string Allowed(string path)
     {
         var full = Normalize(path);
+        if (string.Equals(full, Path.TrimEndingDirectorySeparator(ConversationsFolder), StringComparison.Ordinal))
+        {
+            return full;
+        }
+
         var root = Roots().Select(Path.TrimEndingDirectorySeparator).FirstOrDefault(candidate => IsInside(candidate, full));
         if (root is null)
         {

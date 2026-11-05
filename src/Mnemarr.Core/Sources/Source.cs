@@ -11,6 +11,9 @@ public enum SourceKind
 
     /// <summary>The documentation of an application, read from its repository.</summary>
     ApplicationDocs,
+
+    /// <summary>The conversations of the assistants, sent by the collectors and written by Mnemarr as notes (ADR 0024).</summary>
+    Conversations,
 }
 
 /// <summary>Whether Mnemarr may change what the source holds (D-35). A setting of each source.</summary>
