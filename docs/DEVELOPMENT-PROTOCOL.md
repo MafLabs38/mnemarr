@@ -38,10 +38,18 @@ The failure this protocol exists to prevent: push a small change, wait for CI an
 ### 5. Push once, review once
 
 - Push, open the PR. The CI runs. Do not push "to see what the CI says": that is what step 3 is for.
-- **Round 1**: run the review agents once on the head commit. Triage **every finding in the code** before accepting or declining it.
+- **The reports of the pipeline's review agents (`ai-review.yml`, posted as comments on the PR) are the review. They are always read, in full, and every finding is answered.** They are paid for: skipping them wastes what they cost. A local review (agents run by hand before the push) is welcome, but it **does not replace** the pipeline's: its reports are on the head commit and they are the ones the maintainer sees. Read them, even when your own agents covered the same ground.
+- **Round 1**: the agents of the pipeline run on the head commit. Triage **every finding in the code** before accepting or declining it, and write the answer to each (fixed, declined with the reason, or discussed with the maintainer) in the *Review* section of the PR.
 - **Batch the corrections.** Collect *all* the findings, decide each one, fix them **together** in one change, run the local gates, push **once**. One finding per push is forbidden.
 - **Round 2 (only if round 1 had a blocker, critical or high finding)**: run the agents to confirm the fixes. Otherwise skip it.
 - **At most two rounds.** After that the PR goes to the maintainer with what is still open written in its *Review* section. A finding that appears in round 2 and is not a regression of the fix is a follow-up, not a blocker.
+
+### Never skip, never obey blindly: when it is too much, talk
+
+Critical reading is expected: a finding can be wrong, out of the threat model, or not worth its price, and then it is declined **with the reason written**. What is not allowed is to **ignore** a report. Two cases:
+
+- **The finding is cheap and right**: fix it, in the batch.
+- **There are too many findings, or fixing one means a large change that costs a lot of tokens** (a redesign, a new layer, a rewrite of what was just built): **stop and tell the maintainer** which findings, what each would cost, and what you recommend. Decide together whether to do it or to skip it. The decision is the maintainer's, and it is written in the *Review* section of the PR. Never decide silently, in either direction.
 
 ### 6. Merge
 
@@ -75,6 +83,7 @@ If a vertical is heading past this budget, **stop and cut scope** (move the rema
 
 ## Anti-patterns
 
+- Not reading the review comments of the pipeline (and running one's own agents instead).
 - Pushing to find out whether the CI is green.
 - One commit and one push per finding; labelling for a new review at every push.
 - Waiting on the CI for feedback on code that was never run.
