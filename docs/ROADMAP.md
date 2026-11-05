@@ -43,7 +43,8 @@
 
 *Demo: a Windows workstation and a Linux machine each run it as a service started by the person's own session, from a release binary that was checked.*
 
-- `install`, `uninstall`, `status`; a scheduled task at logon (Windows), a systemd user unit (Linux), launchd (macOS); a container for servers; release binaries with checksums and an install script that verifies them; the guided route over MCP; tried on a real Windows machine.
+- `install`, `uninstall`, `status`; a scheduled task at logon (Windows), a systemd user unit (Linux), launchd (macOS); a container for servers; release binaries with checksums built by the CI on real runners (Windows, Linux, macOS) and an install script that verifies them; the guided route over MCP, as **one command** that Mnemarr fills in (address, code, expected checksum) and that waits for a person to approve; tried on a real Windows machine.
+- **The person stays in control of a background process** (asked by the maintainer on 2026-11-05): on Windows and macOS an icon in the notification area says that it runs, shows its state, and offers *Pause* (for an hour, or until resumed), *Resume*, *Open Mnemarr* and *Quit*; on a server without a screen the same through `pause`, `resume` and `status`. A paused collector keeps sending its heartbeat, marked paused, so that Mnemarr shows **paused** and not "silent". The pause survives a restart. New dependencies for the icon are a decision of the pull request.
 - The collector never prevents sleep and costs the machine nothing it would notice.
 
 #### 2c. Configuration from the server

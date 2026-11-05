@@ -163,8 +163,7 @@ jobs:
         working-directory: collector/target/release
         shell: bash
         run: |
-          binary=mnemarr-collector
-          [ -f "$binary" ] || binary="$binary.exe"
+          binary=${{ runner.os == 'Windows' && 'mnemarr-collector.exe' || 'mnemarr-collector' }}
           sha256sum "$binary" > "$binary.sha256"
       - name: Keep the binary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
