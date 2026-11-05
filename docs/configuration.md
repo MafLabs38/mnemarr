@@ -49,6 +49,7 @@ A source can be the checkout of a Git repository ([ADR 0022](adr/0022-git-source
 | `MNEMARR__GIT__HOSTS__0`, `__1`… | none | The hosts a source may be cloned from, as host names (no scheme, port or path). **Empty means none: no Git source is accepted until you name the hosts.** The list is read again at every sync. |
 | `MNEMARR__GIT__COMMITEMAIL` | `mnemarr@localhost` | The address on the commits Mnemarr makes when notes are written in a Git source (the author is the account that wrote the note). It is not a mailbox. |
 | `MNEMARR__GIT__SYNCTIMEOUTSECONDS` | `600` | The longest one sync of one source may take (10 to 3600); it is then given up, and the next interval tries again. |
+| `MNEMARR__GIT__WRITETIMEOUTSECONDS` | `60` | The longest the pull before a change of a note, and the push after it, may take each (5 to 600). A person or an assistant waits for them while the source is locked; a push that does not leave in time is kept as a commit and the next sync pushes it. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__HOST` | none | The host the token is for. A credential is sent to this host and to no other. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__TOKENFILE` | none | A file that holds the access token (read at each sync, so a rotation needs no restart). Prefer it to `TOKEN`; mount it as a secret. |
 | `MNEMARR__GIT__CREDENTIALS__<name>__TOKEN` | none | The token itself, when a file is not possible. Exactly one of `TOKEN` and `TOKENFILE`. |

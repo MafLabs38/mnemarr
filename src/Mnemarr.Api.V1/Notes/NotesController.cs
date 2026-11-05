@@ -15,8 +15,12 @@ namespace Mnemarr.Api.V1.Notes;
 [ApiController]
 [Route("api/v1/notes")]
 [Authorize(Policy = Permissions.NotesRead)]
+[RequestSizeLimit(NotesController.MaxRequestBytes)]
 public sealed class NotesController : ControllerBase
 {
+    /// <summary>A note is at most 2 MB; the request that carries one (and its JSON) is not allowed to be much more, whatever the server would otherwise take.</summary>
+    public const int MaxRequestBytes = 4 * 1024 * 1024;
+
     private readonly NoteReader _reader;
     private readonly NoteWriter _writer;
     private readonly SourceCatalog _catalog;
@@ -74,13 +78,13 @@ public sealed class NotesController : ControllerBase
     public async Task<RenameResultResource> Rename(Guid sourceId, RenameNoteRequest request, CancellationToken cancellationToken) =>
         RenameResultResource.From(await _writer.RenameAsync(Actor, sourceId, request.From, request.To, cancellationToken));
 
-    /// <summary>A text as it would be drawn once saved as a note of this source, its links resolved for the caller. Nothing is written.</summary>
     /// <summary>Adds text at the end of a note. The same service as the MCP tool <c>append_to_note</c>.</summary>
     [HttpPost("{sourceId:guid}/append")]
     [Authorize(Policy = Permissions.NotesWrite)]
     public async Task<WriteResultResource> Append(Guid sourceId, AppendNoteRequest request, CancellationToken cancellationToken) =>
         WriteResultResource.From(await _writer.AppendAsync(Actor, sourceId, request.Path, request.Text, cancellationToken));
 
+    /// <summary>A text as it would be drawn once saved as a note of this source, its links resolved for the caller. Nothing is written.</summary>
     [HttpPost("{sourceId:guid}/preview")]
     public PreviewResource Preview(Guid sourceId, PreviewNoteRequest request) =>
         new(_reader.Preview(sourceId, request.Path, request.Content, User.Scope()));

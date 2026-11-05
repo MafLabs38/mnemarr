@@ -47,12 +47,13 @@ public sealed class SourceSync
         }
 
         GitSyncResult result;
+        string? pushFailure;
         try
         {
             // A host that answers slowly holds this source for this long and no longer: the next interval tries again.
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(_policy.SyncTimeout);
-            result = await Task.Run(() => Run(source, repository, cancellationToken, timeout.Token), CancellationToken.None);
+            (result, pushFailure) = await Task.Run(() => Run(source, repository, cancellationToken, timeout.Token), CancellationToken.None);
         }
         finally
         {
@@ -67,10 +68,17 @@ public sealed class SourceSync
             index = await _indexer.IndexAsync(source, cancellationToken);
         }
 
+        if (pushFailure is not null)
+        {
+            // What was pulled is kept and read; what is waiting to leave is reported.
+            Failed(source, pushFailure);
+            throw new RejectedException(Problem.Conflict, MessageOf(pushFailure));
+        }
+
         return new SourceSyncReport(result.Action, result.Head, index);
     }
 
-    private GitSyncResult Run(Source source, GitRepository repository, CancellationToken stopped, CancellationToken timedOut)
+    private (GitSyncResult Synced, string? PushFailure) Run(Source source, GitRepository repository, CancellationToken stopped, CancellationToken timedOut)
     {
         var folder = FolderOf(source);
         try
@@ -81,13 +89,23 @@ public sealed class SourceSync
             var secret = SecretFor(repository, url);
             var branch = GitPolicy.Branch(repository.Branch);
             var synced = _engine.Sync(url, branch, folder, secret, timedOut);
-            if (source.Mode == SourceMode.ReadWrite)
+            if (source.Mode != SourceMode.ReadWrite)
+            {
+                return (synced, null);
+            }
+
+            try
             {
                 // A commit that could not be pushed when it was made (the host was down) is pushed now.
                 _engine.Push(url, branch, folder, secret, timedOut);
             }
+            catch (GitSyncException ex)
+            {
+                // The pull has been done: it is not undone by a push that was refused.
+                return (synced, ex.Code);
+            }
 
-            return synced;
+            return (synced, null);
         }
         catch (OperationCanceledException) when (!stopped.IsCancellationRequested)
         {
@@ -122,15 +140,17 @@ public sealed class SourceSync
     {
         var repository = source.Repository ?? throw new RejectedException(Problem.Invalid, "This source is a folder, not a Git repository.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_policy.SyncTimeout);
+        timeout.CancelAfter(_policy.WriteTimeout);
         GitSyncResult? synced = null;
         var folder = FolderOf(source);
+        // What the operator configured is not forgiven: a host that was taken out of the list, a credential that is missing, stop the write here,
+        // instead of leaving a note on disk that Publish will not commit (and that every later sync would then refuse as a local change).
+        var url = GitPolicy.Address(repository.Url);
+        _policy.CheckHost(new Uri(url).Host);
+        var secret = SecretFor(repository, url);
+        var branch = GitPolicy.Branch(repository.Branch);
         try
         {
-            var url = GitPolicy.Address(repository.Url);
-            _policy.CheckHost(new Uri(url).Host);
-            var secret = SecretFor(repository, url);
-            var branch = GitPolicy.Branch(repository.Branch);
             synced = await Task.Run(() => _engine.Sync(url, branch, folder, secret, timeout.Token), CancellationToken.None);
         }
         catch (GitSyncException ex) when (ex.Code == GitFailure.Diverged)
@@ -170,11 +190,13 @@ public sealed class SourceSync
             _policy.CheckHost(new Uri(url).Host);
             var secret = SecretFor(repository, url);
             var author = new GitAuthor(string.IsNullOrWhiteSpace(actor) ? "mnemarr" : actor, _policy.CommitEmail);
-            _engine.Commit(folder, paths, message, author);
-            // A host that stalls holds the change (and the lock of the source) for the time of a sync at most; the commit is kept and the next sync pushes it.
+            var committed = _engine.Commit(folder, paths, message, author);
+            // A host that stalls holds the change (and the lock of the source) for the write timeout at most; the commit is kept and the next sync pushes it.
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(_policy.SyncTimeout);
+            timeout.CancelAfter(_policy.WriteTimeout);
             _engine.Push(url, GitPolicy.Branch(repository.Branch), folder, secret, timeout.Token);
+            // A push that leaves is a sync that worked: an earlier failure of this source is over.
+            _outcomes.Succeeded(source.Id, _clock.GetUtcNow(), committed ?? string.Empty);
             return new GitPublish(true, null);
         }
         catch (GitSyncException ex)

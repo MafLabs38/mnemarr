@@ -76,6 +76,9 @@ public sealed class GitPolicy
     /// <summary>How long one sync may take.</summary>
     internal TimeSpan SyncTimeout => TimeSpan.FromSeconds(_options.Value.SyncTimeoutSeconds);
 
+    /// <summary>How long the pull before a change of a note, and the push after it, may take each.</summary>
+    internal TimeSpan WriteTimeout => TimeSpan.FromSeconds(_options.Value.WriteTimeoutSeconds);
+
     /// <summary>An HTTPS address with a host and a path and nothing else: no user name or password (a secret does not go in an address), no query, no fragment.</summary>
     internal static string Address(string url)
     {

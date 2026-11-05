@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Sources;
@@ -328,5 +329,21 @@ public sealed class SourceSyncFixture : IDisposable
         {
             SourceSync.MessageOf(code).Should().NotBe(unknown, code);
         }
+    }
+
+    [Fact]
+    public async Task should_keep_and_read_what_was_pulled_when_the_push_that_follows_is_refused()
+    {
+        var folder = _workspace.Folder("rw");
+        TestWorkspace.Write(folder, "a.md", "# Alpha\npulledword\n");
+        var source = Git(folder, name: "rw", mode: SourceMode.ReadWrite);
+        _engine.Result = () => new GitSyncResult(GitSyncAction.Updated, "def456");
+        _engine.OnPush = () => throw new GitSyncException(GitFailure.PushRejected, "refused");
+
+        var refusal = await Assert.ThrowsAsync<RejectedException>(() => _subject.SyncAsync(source, waitForTurn: false, Token));
+
+        refusal.Message.Should().Be(SourceSync.MessageOf(GitFailure.PushRejected));
+        _outcomes.Of(source.Id)!.Error.Should().Be(GitFailure.PushRejected);
+        _index.Search(new SearchRequest("pulledword"), SourceScope.All).Should().ContainSingle("the pull is not undone by a push that was refused");
     }
 }

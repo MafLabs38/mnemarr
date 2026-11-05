@@ -27,7 +27,11 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
   // A link to a heading (`[[note#Heading]]`) leads to it, once the note is drawn.
   useEffect(() => {
     if (note && hash.length > 1) {
-      document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.();
+      try {
+        document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.();
+      } catch {
+        // A fragment that anyone can write, and that is not a valid address (`#%E0%A4%A`): there is nothing to scroll to.
+      }
     }
   }, [note, hash]);
 

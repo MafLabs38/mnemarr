@@ -36,13 +36,13 @@ public sealed record TagCount(string Tag, int Count);
 /// <summary>The tags of the notes the caller may read, most used first, and how many tags there are in all.</summary>
 public sealed record TagListing(IReadOnlyList<TagCount> Tags, int Total);
 
+/// <summary>The notes whose links lead to a note: the paths of those of its own source (all of them, with no cap) and how many are in other sources.</summary>
+public sealed record BacklinkSet(IReadOnlyList<string> InSource, int InOtherSources);
+
 /// <summary>
 /// The notes of the sources as a reader needs them (D-37): the tree, a note with its tags, links and backlinks, and the tags. Every question
 /// takes the scope of the caller, so a note of a source that a caller may not read is neither listed, nor linked, nor counted.
 /// </summary>
-/// <summary>The notes whose links lead to a note: the paths of those of its own source (all of them, with no cap) and how many are in other sources.</summary>
-public sealed record BacklinkSet(IReadOnlyList<string> InSource, int InOtherSources);
-
 public interface INoteBrowser
 {
     /// <summary>

@@ -25,7 +25,7 @@ export function parseNoteAddress(address: string): { sourceId: string; path: str
     const note = noteToRead(rest.slice(0, slash), decodeURIComponent(rest.slice(slash + 1)));
     const heading = hash < 0 ? null : decodeURIComponent(address.slice(hash + 1));
     // A heading is an id the interface draws (see `headingSlug`): anything else is not one the server wrote.
-    return note && (heading === null || /^[\p{L}\p{N}_-]+$/u.test(heading)) ? { ...note, heading } : null;
+    return note && (heading === null || /^[\p{L}\p{Nd}_-]+$/u.test(heading)) ? { ...note, heading } : null;
   } catch {
     return null;
   }

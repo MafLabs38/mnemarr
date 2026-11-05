@@ -392,12 +392,13 @@ public sealed class NoteWriterFixture : IDisposable
         var source = Declare("repo", git: true);
         Directory.CreateDirectory(Path.Combine(source.Path, ".git"));
         _engine.Result = () => throw new GitSyncException(GitFailure.Unreachable, "no route to host");
+        _engine.OnPush = () => throw new GitSyncException(GitFailure.Unreachable, "no route to host");
 
         var result = await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
 
         File.Exists(Path.Combine(source.Path, "a.md")).Should().BeTrue();
         _engine.Commits.Should().ContainSingle();
-        result.Git.Should().NotBeNull();
+        result.Git.Should().Be(new GitPublish(false, GitFailure.Unreachable));
     }
 
     [Fact]
@@ -484,5 +485,40 @@ public sealed class NoteWriterFixture : IDisposable
         var result = await _writer.RenameAsync(Alice, mine.Id, "hub.md", "centre.md", Token);
 
         result.NotesNotRewritten.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task should_refuse_a_write_to_a_source_whose_host_is_no_longer_allowed_instead_of_leaving_a_note_nobody_commits()
+    {
+        var folder = _workspace.Folder("elsewhere");
+        var source = new Source(Guid.NewGuid(), "elsewhere", SourceKind.Knowledge, SourceMode.ReadWrite, folder, _clock.GetUtcNow(), Repository: new GitRepository("https://not-allowed.example/org/notes", "main", "github"));
+        _store.Add(source);
+
+        var write = () => _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        await write.Should().ThrowAsync<RejectedException>();
+        File.Exists(Path.Combine(folder, "a.md")).Should().BeFalse();
+        _engine.Commits.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task should_clear_the_failure_of_a_source_once_a_push_of_a_write_leaves()
+    {
+        var source = Declare("repo", git: true);
+        _syncs.Failed(source.Id, _clock.GetUtcNow(), GitFailure.PushRejected);
+
+        await _writer.CreateAsync(Alice, source.Id, "a.md", "# A", Token);
+
+        _syncs.Of(source.Id)!.Error.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task should_refuse_an_append_that_would_make_the_note_larger_than_a_note_may_be()
+    {
+        var source = await DeclareIndexedAsync("vault", notes: ("a.md", "# A\n"));
+
+        var write = () => _writer.AppendAsync(Alice, source.Id, "a.md", new string('x', (int)MarkdownFileScanner.MaxFileBytes), Token);
+
+        (await write.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Invalid);
     }
 }

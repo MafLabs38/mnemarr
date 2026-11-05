@@ -107,7 +107,7 @@ export function noteAddress(
 export function headingSlug(heading: string): string {
   let slug = '';
   for (const character of heading.trim().toLowerCase()) {
-    if (/[\p{L}\p{N}_-]/u.test(character)) {
+    if (/[\p{L}\p{Nd}_-]/u.test(character)) {
       slug += character;
     } else if (/\s/u.test(character)) {
       slug += '-';

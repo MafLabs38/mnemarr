@@ -377,6 +377,15 @@ describe('links to a heading', () => {
   });
 });
 
+describe('a malformed fragment', () => {
+  it('does not take the reader down: there is nothing to scroll to', async () => {
+    server();
+    renderWithProviders(<Notes />, `${open}#%E0%A4%A`);
+
+    expect(await screen.findByRole('heading', { name: 'Docker' })).toBeInTheDocument();
+  });
+});
+
 describe('headingSlug', () => {
   it.each([
     ['Part One', 'part-one'],

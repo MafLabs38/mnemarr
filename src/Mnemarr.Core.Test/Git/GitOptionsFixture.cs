@@ -49,6 +49,17 @@ public sealed class GitOptionsFixture
     }
 
     [Theory]
+    [InlineData(4)]
+    [InlineData(601)]
+    public void should_refuse_a_write_timeout_out_of_range_and_name_the_setting(int seconds)
+    {
+        var result = Validate(new GitOptions { WriteTimeoutSeconds = seconds });
+
+        result.Failed.Should().BeTrue();
+        result.FailureMessage.Should().Contain("MNEMARR__GIT__WRITETIMEOUTSECONDS");
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("https://github.example")]
     [InlineData("github.example/org")]

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Mnemarr.Core;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Notes;
 using Mnemarr.Core.Sources;
@@ -96,7 +97,7 @@ public sealed class McpTools
         return JsonSerializer.SerializeToNode(result, Json) ?? new JsonObject();
     }
 
-    private static object DeleteResult(Mnemarr.Core.Git.GitPublish? published) => new { removed = true, git = published };
+    private static object DeleteResult(GitPublish? published) => new { removed = true, git = published };
 
     private object ListSources(McpCaller caller) =>
         _catalog.List(caller.Scope).Select(source => new { name = source.Name, kind = source.Kind.ToString(), writable = NoteRights.Evaluate(source.Kind, source.Mode, caller.Has(Permissions.NotesWrite)).CanWrite, notes = _index.Counts(source.Id).Notes }).ToList();
