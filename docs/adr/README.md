@@ -29,3 +29,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0022](0022-git-sources-are-cloned-and-pulled-in-process-over-https.md) | Git sources are cloned and pulled in-process, over HTTPS with a named token | D-42 |
 | [0023](0023-notes-are-written-through-the-api-committed-to-git-and-offered-over-mcp.md) | Notes are written through the API, committed to Git, and offered to assistants over MCP | D-43 |
 | [0024](0024-conversations-are-collected-by-position-masked-twice-and-written-as-notes.md) | Conversations are collected by position, masked twice, and written as notes | D-44 |
+| [0025](0025-the-collector-is-a-service-per-machine-enrolled-by-a-code-and-configured-from-the-server.md) | The collector is a service on each machine, enrolled by a code, and configured from the server | D-45 |

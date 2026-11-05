@@ -13,7 +13,8 @@ Mnemarr stores what assistants and people learn, and finds it again by meaning (
 | [docs/VISION.md](docs/VISION.md) | Why, what it must do, how it plugs into Portarr and assistants |
 | [docs/SPEC.md](docs/SPEC.md) | Decisions, architecture, data model, features, security, open questions |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | The verticals from here to a MVP in production |
-| [docs/collector.md](docs/collector.md) | The collector: gives each machine's conversations to Mnemarr |
+| [docs/collector.md](docs/collector.md) | The collector: a service that gives each machine's conversations to Mnemarr |
+| [docs/conversation-formats.md](docs/conversation-formats.md) | Where Claude Code, Codex, Copilot and Gemini keep their conversations |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records |
 | [docs/DESIGN.md](docs/DESIGN.md) | Interface guidelines (Portarr's, plus what is specific to Mnemarr) |
 | [docs/TESTING.md](docs/TESTING.md) | Testing strategy and CI gates |

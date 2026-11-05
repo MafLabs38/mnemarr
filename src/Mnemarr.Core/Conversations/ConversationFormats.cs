@@ -113,22 +113,68 @@ public static class ConversationMarkdown
         return text.ToString();
     }
 
-    /// <summary>The name of the file of a conversation, from the application, the day it began and the start of its session.</summary>
-    public static string NotePath(string application, DateTimeOffset startedAt, string session) =>
-        $"{application}/{startedAt.ToUniversalTime():yyyy-MM-dd}-{session[..Math.Min(8, session.Length)]}.md";
+    /// <summary>The name of the file of a conversation: in the folder of the machine it was held on, then of the application, named from the day it began and the start of its session.</summary>
+    public static string NotePath(string machine, string application, DateTimeOffset startedAt, string session) =>
+        $"{machine}/{application}/{startedAt.ToUniversalTime():yyyy-MM-dd}-{session[..Math.Min(8, session.Length)]}.md";
 
-    private static string Title(IReadOnlyList<Turn> turns, string session)
+    private static readonly Regex Acknowledgement = new(
+        @"^(ok|okay|oui|non|salut|bonjour|bonsoir|hello|hi|hey|merci|go|continue|vas-y|d'accord|ça marche|parfait|yes|no|thanks)\W*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
+
+    private static readonly Regex Fence = new(@"```.*?```", RegexOptions.Singleline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex Address = new(@"https?://\S+", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+    private static readonly Regex Sentence = new(@"[^.?!\n]+[.?!]?", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// A title drawn from what was asked, when no model was asked to summarise the conversation: the first thing a person said that says
+    /// something (not a greeting, not a code block, not an address), as its first sentence.
+    /// </summary>
+    public static string Title(IReadOnlyList<Turn> turns, string session)
     {
-        var first = turns.FirstOrDefault(turn => turn.Role == "user")?.Text ?? string.Empty;
-        var line = first.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty;
-        line = line.TrimStart('#', ' ', '\t');
-        if (line.Length == 0)
+        foreach (var turn in turns.Where(turn => turn.Role == "user").Take(6))
         {
-            return $"Conversation {session[..Math.Min(8, session.Length)]}";
+            var sentence = FirstSentence(turn.Text);
+            if (sentence.Length >= MinTitle)
+            {
+                return Cut(sentence);
+            }
         }
 
-        return line.Length <= MaxTitle ? line : line[..MaxTitle] + "…";
+        var first = turns.FirstOrDefault(turn => turn.Role == "user")?.Text ?? string.Empty;
+        var line = OneLine(first.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? string.Empty);
+        return line.Length == 0 ? $"Conversation {session[..Math.Min(8, session.Length)]}" : Cut(line);
     }
+
+    private const int MinTitle = 8;
+
+    private static string FirstSentence(string text)
+    {
+        try
+        {
+            var plain = Address.Replace(Fence.Replace(text, " "), " ");
+            foreach (Match match in Sentence.Matches(plain))
+            {
+                var sentence = OneLine(match.Value);
+                if (sentence.Length >= MinTitle && !Acknowledgement.IsMatch(sentence))
+                {
+                    return sentence;
+                }
+            }
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // A text that cannot be read quickly is not a good title: the next turn, or the plain first line, will do.
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>One line, with no run of spaces and nothing that Markdown would read as a link, a tag or a heading: a title is said by someone else.</summary>
+    private static string OneLine(string text) =>
+        string.Join(' ', text.Replace("[", string.Empty, StringComparison.Ordinal).Replace("]", string.Empty, StringComparison.Ordinal).Replace("#", string.Empty, StringComparison.Ordinal).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim(' ', '"', '\'', '`');
+
+    private static string Cut(string line) => line.Length <= MaxTitle ? line : line[..MaxTitle].TrimEnd() + "…";
 
     /// <summary>
     /// The text in a code fence longer than any run of backticks inside it: a conversation is said by someone else, and what it contains (headings,

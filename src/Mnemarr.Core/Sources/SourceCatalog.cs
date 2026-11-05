@@ -35,11 +35,11 @@ public sealed class SourceCatalog
     public IReadOnlyList<string> Roots() => _paths.Roots();
 
     /// <summary>The sources a caller may touch, by name.</summary>
-    public IReadOnlyList<Source> List(SourceScope scope) => [.. _store.List().Where(source => scope.CanAccess(source.Id))];
+    public IReadOnlyList<Source> List(SourceScope scope) => [.. _store.List().Where(scope.CanSee)];
 
     /// <summary>A source the caller may touch. One that exists but is out of the caller's scope is as absent as one that does not exist.</summary>
     public Source Get(Guid id, SourceScope scope) =>
-        _store.Get(id) is { } source && scope.CanAccess(id) ? source : throw new RejectedException(Problem.NotFound, "There is no such source.");
+        _store.Get(id) is { } source && scope.CanSee(source) ? source : throw new RejectedException(Problem.NotFound, "There is no such source.");
 
     /// <summary>
     /// Each kind with its rule and how many sources of it the caller can see: what the interface shows as the base and what is missing.
@@ -48,7 +48,8 @@ public sealed class SourceCatalog
     public IReadOnlyList<KindStatus> Kinds(SourceScope scope)
     {
         var sources = List(scope);
-        return [.. SourceKinds.All.Select(rule => new KindStatus(rule, sources.Count(source => source.Kind == rule.Kind)))];
+        // The conversations are not a kind a caller who may not read them is told about.
+        return [.. SourceKinds.All.Where(rule => !(scope.ConversationsHidden && rule.Kind == SourceKind.Conversations)).Select(rule => new KindStatus(rule, sources.Count(source => source.Kind == rule.Kind)))];
     }
 
     /// <summary>The kinds and their counts over every source: what readiness is about, not a caller.</summary>

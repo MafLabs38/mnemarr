@@ -13,7 +13,7 @@ public sealed class SqliteNoteBrowser : INoteBrowser
     private const int MaxTags = 200;
     private const int MaxBacklinks = 200;
     private const string SourceParameter = "$source";
-    private const string ScopeFilter = "($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources)))";
+    private const string ScopeFilter = "(($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> 'Conversations'))";
     private readonly IDatabase _database;
 
     public SqliteNoteBrowser(IDatabase database)
@@ -160,9 +160,12 @@ public sealed class SqliteNoteBrowser : INoteBrowser
         }
 
         var (id, reference, name) = note.Value;
-        var (all, _) = Backlinks(connection, id, reference, name, WithoutExtension(reference.Path).ToLowerInvariant(), SourceScope.All, int.MaxValue);
+        var pathWithoutExtension = WithoutExtension(reference.Path).ToLowerInvariant();
+        var (all, _) = Backlinks(connection, id, reference, name, pathWithoutExtension, SourceScope.All, int.MaxValue);
         var inSource = all.Where(backlink => backlink.SourceId == sourceId).Select(backlink => backlink.Path).ToList();
-        return new BacklinkSet(inSource, all.Count(backlink => backlink.SourceId != sourceId && scope.CanAccess(backlink.SourceId)));
+        // The links of other sources that the caller may see: counted with the caller's own scope, so that nothing is told about what it may not see.
+        var (seen, _) = Backlinks(connection, id, reference, name, pathWithoutExtension, scope, int.MaxValue);
+        return new BacklinkSet(inSource, seen.Count(backlink => backlink.SourceId != sourceId));
     }
 
     public NoteDetail? Find(Guid sourceId, string path, SourceScope scope)
@@ -342,7 +345,11 @@ public sealed class SqliteNoteBrowser : INoteBrowser
 
     private static string WithoutExtension(string path) => path[..^Path.GetExtension(path).Length];
 
-    private static void AddScope(SqliteCommand command, SourceScope scope) =>
+    private static void AddScope(SqliteCommand command, SourceScope scope)
+    {
         // A caller limited to some sources sees those, even when it is none: an empty list matches nothing, never everything.
         command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
+        // What was said to the assistants is seen only by those who hold conversations.read.
+        command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
+    }
 }

@@ -36,7 +36,7 @@ public sealed class ConversationIngestorFixture : IDisposable
 
     private static IngestBatch Batch(long from, params string[] lines) => new(ConversationFormats.ClaudeCode, "wacken", "Mnemarr Core", "abcdef12-3456", from, lines);
 
-    private string NoteFile => Path.Combine(_workspace.DataFolder, "conversations", "mnemarr-core", "2026-11-04-abcdef12.md");
+    private string NoteFile => Path.Combine(_workspace.DataFolder, "conversations", "wacken", "mnemarr-core", "2026-11-04-abcdef12.md");
 
     private List<string> Hits(string words) => [.. _index.Search(new SearchRequest(words), SourceScope.All).Select(hit => hit.Path)];
 
@@ -47,7 +47,7 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         result.Should().Be(new IngestResult(2, 2));
         File.ReadAllText(NoteFile).Should().Contain("# How do I rotate the tokens?").And.Contain("revoke the old key");
-        Hits("revoke").Should().Equal("mnemarr-core/2026-11-04-abcdef12.md");
+        Hits("revoke").Should().Equal("wacken/mnemarr-core/2026-11-04-abcdef12.md");
         var source = _catalog.List(SourceScope.All).Single();
         source.Should().Match<Source>(s => s.Kind == SourceKind.Conversations && s.Managed && s.Mode == SourceMode.ReadOnly);
     }

@@ -55,6 +55,32 @@ public sealed class ConversationFormatsFixture
         note.Should().Contain("[[not-a-link]] #not-a-tag").And.EndWith("````\n\n");
         MarkdownNotes.Parse(note).Links.Should().BeEmpty();
         MarkdownNotes.Parse(note).Tags.Should().BeEquivalentTo(["conversation", "mnemarr"]);
-        ConversationMarkdown.NotePath("mnemarr", turns[0].At!.Value, "abcdef12-0000").Should().Be("mnemarr/2026-11-04-abcdef12.md");
+        ConversationMarkdown.NotePath("wacken", "mnemarr", turns[0].At!.Value, "abcdef12-0000").Should().Be("wacken/mnemarr/2026-11-04-abcdef12.md");
+    }
+
+    private static Turn User(string text) => new("user", null, text);
+
+    [Theory]
+    [InlineData("Peux-tu corriger le calcul des fins de ligne ? Merci.", "Peux-tu corriger le calcul des fins de ligne ?")]
+    [InlineData("ok", "ok")]
+    [InlineData("[[lien]] et #étiquette : que faire ?", "lien et étiquette : que faire ?")]
+    [InlineData("# Plan de la migration\nOn migre la base.", "Plan de la migration")]
+    public void should_title_a_conversation_from_the_first_sentence_that_says_something(string first, string title) =>
+        ConversationMarkdown.Title([User(first)], "abcdef12-0000").Should().Be(title);
+
+    [Fact]
+    public void should_skip_a_greeting_a_code_block_and_an_address_to_find_what_the_conversation_is_about()
+    {
+        var turns = new[] { User("Salut !"), User("```\nerror: boom\n```\nhttps://example.com/log"), User("Pourquoi le build échoue-t-il sur la CI ?") };
+
+        ConversationMarkdown.Title(turns, "abcdef12-0000").Should().Be("Pourquoi le build échoue-t-il sur la CI ?");
+    }
+
+    [Fact]
+    public void should_cut_a_long_title()
+    {
+        var title = ConversationMarkdown.Title([User(new string('a', 200))], "abcdef12-0000");
+
+        title.Should().HaveLength(81).And.EndWith("…");
     }
 }

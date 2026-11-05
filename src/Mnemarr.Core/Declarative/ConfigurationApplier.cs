@@ -26,7 +26,7 @@ public sealed class ConfigurationApplier
     }
 
     /// <summary>The sources a caller may touch, as a document.</summary>
-    public string Export(SourceScope scope) => ConfigurationYaml.Export(_store.List().Where(source => scope.CanAccess(source.Id)));
+    public string Export(SourceScope scope) => ConfigurationYaml.Export(_store.List().Where(scope.CanSee));
 
     /// <summary>What the document would do, without doing it.</summary>
     public ConfigPlan Plan(ConfigurationDocument document)

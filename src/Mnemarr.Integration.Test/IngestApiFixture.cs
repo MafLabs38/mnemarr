@@ -37,10 +37,10 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
 
         sent.StatusCode.Should().Be(HttpStatusCode.OK);
         (await sent.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("next").GetInt64().Should().Be(2);
-        var found = await callers["Reader"].GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token);
-        found.EnumerateArray().Select(hit => hit.GetProperty("path").GetString()).Distinct().Should().ContainSingle().Which.Should().StartWith("mnemarr/2026-11-04-");
+        var found = await callers["Assistant"].GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token);
+        found.EnumerateArray().Select(hit => hit.GetProperty("path").GetString()).Distinct().Should().ContainSingle().Which.Should().StartWith($"{machine}/mnemarr/2026-11-04-");
         var mcp = await callers["Assistant"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "search", arguments = new { query = word } } }, Token);
-        (await mcp.Content.ReadAsStringAsync(Token)).Should().Contain("mnemarr/2026-11-04-");
+        (await mcp.Content.ReadAsStringAsync(Token)).Should().Contain($"{machine}/mnemarr/2026-11-04-");
     }
 
     [Fact]
@@ -109,12 +109,39 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         var callers = await Callers.ForAsync(_factory);
         await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(Callers.Unique("pc"), Callers.Unique("s"), 0, Line("user", "hello there", "2026-11-04T14:03:00Z")), Token);
 
-        var tree = await callers["Operator"].GetFromJsonAsync<JsonElement>("/api/v1/notes", Token);
+        var tree = await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/notes", Token);
 
         var source = tree.GetProperty("sources").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "Conversations");
         source.GetProperty("rights").GetProperty("canWrite").GetBoolean().Should().BeFalse();
         source.GetProperty("rights").GetProperty("reason").GetString().Should().Be("kind-not-writable");
         var declared = await callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name = "mine", kind = "Conversations", mode = "ReadOnly", path = Path.Combine(_factory.DataFolder, "sources") }, Token);
         declared.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task should_show_what_was_said_to_the_assistants_only_to_the_roles_that_hold_conversations_read()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var word = Callers.Unique("quokka").Replace("-", string.Empty, StringComparison.Ordinal);
+        var sent = await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(Callers.Unique("pc"), Callers.Unique("s"), 0, Line("user", $"A private thought about {word}.", "2026-11-04T14:03:00Z")), Token);
+        sent.EnsureSuccessStatusCode();
+        var sourceId = (await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/notes", Token)).GetProperty("sources").EnumerateArray().Single(item => item.GetProperty("kind").GetString() == "Conversations").GetProperty("id").GetGuid();
+
+        foreach (var role in new[] { "Reader", "Operator" })
+        {
+            var tree = await callers[role].GetFromJsonAsync<JsonElement>("/api/v1/notes", Token);
+            tree.GetProperty("sources").EnumerateArray().Should().NotContain(item => item.GetProperty("kind").GetString() == "Conversations", role);
+            tree.GetProperty("notes").EnumerateArray().Should().NotContain(item => item.GetProperty("sourceId").GetGuid() == sourceId, role);
+            (await callers[role].GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token)).GetArrayLength().Should().Be(0, role);
+        }
+
+        (await callers["Operator"].GetAsync($"/api/v1/sources/{sourceId}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await callers["Operator"].GetFromJsonAsync<JsonElement>("/api/v1/sources/kinds", Token)).EnumerateArray().Should().NotContain(item => item.GetProperty("kind").GetString() == "Conversations");
+        (await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/sources/kinds", Token)).EnumerateArray().Should().Contain(item => item.GetProperty("kind").GetString() == "Conversations");
+        var path = (await callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token)).EnumerateArray().First().GetProperty("path").GetString()!;
+        (await callers["Reader"].GetAsync($"/api/v1/notes/{sourceId}/{path}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await callers["Assistant"].GetAsync($"/api/v1/notes/{sourceId}/{path}", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var mcp = await callers["Reader"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "search", arguments = new { query = word } } }, Token);
+        (await mcp.Content.ReadAsStringAsync(Token)).Should().NotContain(word, "a reader key finds nothing of the conversations over MCP either");
     }
 }

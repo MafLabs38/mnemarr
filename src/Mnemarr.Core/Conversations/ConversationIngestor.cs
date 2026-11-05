@@ -99,7 +99,7 @@ public sealed partial class ConversationIngestor
         var now = _clock.GetUtcNow();
         var startedAt = known?.StartedAt ?? turns.FirstOrDefault(turn => turn.At is not null)?.At ?? now;
         var application = known?.Application ?? Slug(batch.Application);
-        var path = known?.NotePath ?? ConversationMarkdown.NotePath(application, startedAt, batch.Session);
+        var path = known?.NotePath ?? ConversationMarkdown.NotePath(batch.Machine, application, startedAt, batch.Session);
         if (turns.Count > 0)
         {
             Write(source, path, ConversationMarkdown.Render(batch.Format, batch.Machine, application, batch.Session, startedAt, turns));
