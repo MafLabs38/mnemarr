@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -74,10 +74,10 @@ impl State {
             fs::create_dir_all(parent)?;
         }
         let temporary = path.with_extension("tmp");
-        fs::write(
-            &temporary,
-            serde_json::to_vec_pretty(&json!({ "files": files }))?,
-        )?;
+        // Written and flushed to the disk before it takes the place of the old one: a crash leaves the old file or the whole new one.
+        let mut file = fs::File::create(&temporary)?;
+        file.write_all(&serde_json::to_vec_pretty(&json!({ "files": files }))?)?;
+        file.sync_all()?;
         fs::rename(&temporary, path)
     }
 }

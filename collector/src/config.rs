@@ -30,6 +30,16 @@ impl std::fmt::Debug for Config {
     }
 }
 
+/// The rule of the server for the name of a machine (and of a session): a hostname with a space or an accent would make every batch fail.
+fn is_machine_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    characters.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && name.len() <= 100
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
 /// Whether an address is on this machine: the only place a key may be sent without being encrypted.
 fn is_local(server: &str) -> bool {
     let host = server
@@ -100,6 +110,11 @@ pub fn resolve(
                 "the name of this machine is needed: --machine or MNEMARR_MACHINE".to_string(),
             )
         })?;
+    if !is_machine_name(&machine) {
+        return Err(UsageError(format!(
+            "'{machine}' is not a name of machine that the server accepts: letters, digits, dots, hyphens and underscores, up to 100 characters, starting with a letter or a digit. Give another with --machine or MNEMARR_MACHINE"
+        )));
+    }
     let projects = match &options.projects {
         Some(path) => PathBuf::from(path),
         None => home
@@ -329,5 +344,24 @@ mod tests {
         let config = resolve(&Options::default(), &get, &read).unwrap();
 
         assert_eq!(config.machine, "server-1");
+    }
+
+    #[test]
+    fn should_refuse_a_name_of_machine_that_the_server_would_refuse() {
+        for name in ["my pc", "pc\u{e9}", "-pc", "", &"a".repeat(101)] {
+            let get = environment(&[
+                ("MNEMARR_SERVER", "https://m.example"),
+                ("MNEMARR_COLLECTOR_KEY", "k"),
+                ("HOME", "/h"),
+            ]);
+            let options = Options {
+                machine: Some(name.to_string()),
+                ..Options::default()
+            };
+
+            let error = resolve(&options, &get, &|_| None).unwrap_err();
+
+            assert!(error.0.contains("--machine"), "{name:?}: {}", error.0);
+        }
     }
 }

@@ -226,7 +226,11 @@ mod tests {
 
     #[test]
     fn should_try_again_later_when_the_server_is_busy_or_failing() {
-        for status in ["429 Too Many Requests", "503 Service Unavailable"] {
+        for status in [
+            "408 Request Timeout",
+            "429 Too Many Requests",
+            "503 Service Unavailable",
+        ] {
             let (address, handle) = serve_once(status, "{}");
             let lines = vec!["{}".to_string()];
 
@@ -240,9 +244,25 @@ mod tests {
     }
 
     #[test]
+    fn should_not_panic_and_try_again_later_when_the_server_answers_with_something_that_is_not_a_reply()
+     {
+        for body in ["", "not json", "{\"next\":\"x\"}"] {
+            let (address, handle) = serve_once("200 OK", body);
+            let lines = vec!["{}".to_string()];
+
+            let error = HttpUploader::new(&address, "k")
+                .send(&batch(&lines))
+                .unwrap_err();
+
+            assert!(matches!(error, UploadError::Later(_)), "{body:?}");
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
     fn should_not_follow_a_redirect_and_so_never_send_the_key_to_where_it_points() {
         let (elsewhere, watcher) =
-            serve_once_waiting("200 OK", "", "{}", std::time::Duration::from_millis(800));
+            serve_once_waiting("200 OK", "", "{}", std::time::Duration::from_millis(250));
         let (address, handle) = serve_once_waiting(
             "302 Found",
             &format!("Location: {elsewhere}\r\n"),

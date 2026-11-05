@@ -5,8 +5,11 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Conversations;
 
-/// <summary>A batch of new lines of one conversation, as a collector sends it: where the first line is in the file, and the lines.</summary>
-public sealed record IngestBatch(string Format, string Machine, string Application, string Session, long From, IReadOnlyList<string> Lines);
+/// <summary>
+/// A batch of new lines of one conversation, as a collector sends it: where the first line is in the file, and the lines. The account is the one of the
+/// key that sent it: it is kept with the conversation, so that what a key wrote can be found when it is revoked.
+/// </summary>
+public sealed record IngestBatch(string Format, string Machine, string Application, string Session, long From, IReadOnlyList<string> Lines, string Account = "");
 
 /// <summary>What was taken of a batch: how many lines, and the position of the next line the server wants (what the collector resumes from).</summary>
 public sealed record IngestResult(long Next, int Accepted);
@@ -124,7 +127,7 @@ public sealed partial class ConversationIngestor
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
         }
 
-        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes));
+        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account));
         return new IngestResult(total, fresh.Count);
     }
 

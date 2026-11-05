@@ -9,7 +9,7 @@ namespace Mnemarr.Api.V1.Collectors;
 public sealed record MachineResource(string Machine, int Conversations, long Lines, DateTimeOffset LastSeen);
 
 /// <summary>
-/// What the operator sees of the collectors: the machines that sent conversations, and when. It is not under the ingest prefix, which is the
+/// What may be seen of the collectors: the machines that sent conversations, and when. It tells something about the conversations (who held some, how many lines), so it needs the right to read them, like the conversations themselves. It is not under the ingest prefix, which is the
 /// one a proxy may publish without a single sign-on for the collectors alone (Q-28).
 /// </summary>
 [ApiController]
@@ -24,6 +24,6 @@ public sealed class CollectorsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = Permissions.SystemRead)]
+    [Authorize(Policy = Permissions.ConversationsRead)]
     public IReadOnlyList<MachineResource> Machines() => [.. _store.Machines().Select(machine => new MachineResource(machine.Machine, machine.Conversations, machine.Lines, machine.LastSeen))];
 }

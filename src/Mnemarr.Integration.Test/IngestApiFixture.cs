@@ -92,7 +92,7 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
     }
 
     [Fact]
-    public async Task should_refuse_a_batch_with_too_many_lines_or_a_line_that_is_too_lineTooLongwith_a_400_and_write_nothing()
+    public async Task should_refuse_a_batch_with_too_many_lines_or_a_line_that_is_too_long_with_a_400_and_write_nothing()
     {
         var callers = await Callers.ForAsync(_factory);
         var machine = Callers.Unique("big");
@@ -115,9 +115,25 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         var machine = Callers.Unique("pc");
         await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", Body(machine, Callers.Unique("s"), 0, Line("user", "x", "2026-11-04T14:03:00Z")), Token);
 
-        var machines = await callers["Monitor"].GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token);
+        var machines = await callers["Admin"].GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token);
 
         machines.EnumerateArray().Should().Contain(item => item.GetProperty("machine").GetString() == machine && item.GetProperty("conversations").GetInt32() == 1);
+    }
+
+    [Fact]
+    public async Task should_show_the_machines_only_to_those_who_may_read_the_conversations()
+    {
+        var callers = await Callers.ForAsync(_factory);
+
+        foreach (var role in new[] { "Admin", "Assistant" })
+        {
+            (await callers[role].GetAsync("/api/v1/collectors", Token)).StatusCode.Should().Be(HttpStatusCode.OK, role);
+        }
+
+        foreach (var role in new[] { "Monitor", "Operator", "Reader", "Collector" })
+        {
+            (await callers[role].GetAsync("/api/v1/collectors", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+        }
     }
 
     [Fact]
@@ -155,7 +171,9 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         (await callers["Operator"].GetAsync($"/api/v1/sources/{sourceId}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await callers["Operator"].GetFromJsonAsync<JsonElement>("/api/v1/sources/kinds", Token)).EnumerateArray().Should().NotContain(item => item.GetProperty("kind").GetString() == "Conversations");
         (await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/sources/kinds", Token)).EnumerateArray().Should().Contain(item => item.GetProperty("kind").GetString() == "Conversations");
-        var path = (await callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token)).EnumerateArray().First().GetProperty("path").GetString()!;
+        var hits = (await callers.Admin.GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token)).EnumerateArray().ToList();
+        hits.Should().NotBeEmpty("the conversation was just taken and is searchable");
+        var path = hits[0].GetProperty("path").GetString()!;
         (await callers["Reader"].GetAsync($"/api/v1/notes/{sourceId}/{path}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await callers["Assistant"].GetAsync($"/api/v1/notes/{sourceId}/{path}", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         var mcp = await callers["Reader"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "search", arguments = new { query = word } } }, Token);

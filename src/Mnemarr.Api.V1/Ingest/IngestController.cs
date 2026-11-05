@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Conversations;
 
@@ -41,7 +42,7 @@ public sealed class IngestController : ControllerBase
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<IngestResultResource> Conversations(IngestConversationRequest request, CancellationToken cancellationToken)
     {
-        var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines), cancellationToken);
+        var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines, User.ActorName()), cancellationToken);
         return new IngestResultResource(result.Next, result.Accepted);
     }
 }

@@ -3,7 +3,7 @@ using Mnemarr.Core.Storage;
 namespace Mnemarr.Core.Conversations;
 
 /// <summary>A conversation that a collector sent: how many of its lines were taken, which is the position the collector resumes from.</summary>
-public sealed record ConversationRecord(string Machine, string Session, string Application, string Format, long Lines, DateTimeOffset StartedAt, DateTimeOffset UpdatedAt, string NotePath, long NoteBytes = 0);
+public sealed record ConversationRecord(string Machine, string Session, string Application, string Format, long Lines, DateTimeOffset StartedAt, DateTimeOffset UpdatedAt, string NotePath, long NoteBytes = 0, string Account = "");
 
 /// <summary>What is known of a machine that sent conversations: that it is not silent is what tells an agent that works from one that does not.</summary>
 public sealed record MachineActivity(string Machine, int Conversations, long Lines, DateTimeOffset LastSeen);
@@ -30,12 +30,12 @@ public sealed class SqliteConversationStore : IConversationStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes FROM conversations WHERE machine = $machine AND session = $session";
+        command.CommandText = "SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account FROM conversations WHERE machine = $machine AND session = $session";
         command.Parameters.AddWithValue("$machine", machine);
         command.Parameters.AddWithValue("$session", session);
         using var reader = command.ExecuteReader();
         return reader.Read()
-            ? new ConversationRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4), StorageText.Parse(reader.GetString(5)), StorageText.Parse(reader.GetString(6)), reader.GetString(7), reader.GetInt64(8))
+            ? new ConversationRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4), StorageText.Parse(reader.GetString(5)), StorageText.Parse(reader.GetString(6)), reader.GetString(7), reader.GetInt64(8), reader.GetString(9))
             : null;
     }
 
@@ -44,9 +44,9 @@ public sealed class SqliteConversationStore : IConversationStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes)
-            VALUES ($machine, $session, $application, $format, $lines, $started, $updated, $path, $bytes)
-            ON CONFLICT (machine, session) DO UPDATE SET lines = $lines, updated_at = $updated, started_at = $started, note_path = $path, note_bytes = $bytes
+            INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account)
+            VALUES ($machine, $session, $application, $format, $lines, $started, $updated, $path, $bytes, $account)
+            ON CONFLICT (machine, session) DO UPDATE SET lines = $lines, updated_at = $updated, started_at = $started, note_path = $path, note_bytes = $bytes, account = $account
             """;
         command.Parameters.AddWithValue("$machine", record.Machine);
         command.Parameters.AddWithValue("$session", record.Session);
@@ -57,6 +57,7 @@ public sealed class SqliteConversationStore : IConversationStore
         command.Parameters.AddWithValue("$updated", StorageText.Format(record.UpdatedAt));
         command.Parameters.AddWithValue("$path", record.NotePath);
         command.Parameters.AddWithValue("$bytes", record.NoteBytes);
+        command.Parameters.AddWithValue("$account", record.Account);
         command.ExecuteNonQuery();
     }
 

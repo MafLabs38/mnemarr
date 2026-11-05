@@ -123,7 +123,7 @@ public static class Schema
         ALTER TABLE sources ADD COLUMN repository_branch TEXT;
         ALTER TABLE sources ADD COLUMN repository_credential TEXT;
         """,
-        // 5: the conversations a collector sent: one row per (machine, session), how many lines of it were taken (the position the collector resumes from), and the size of its note as last written (new turns are added to the end of it, and a failed attempt is cut off, instead of writing the whole note again).
+        // 5: the conversations a collector sent: one row per (machine, session), how many lines of it were taken (the position the collector resumes from), and the size of its note as last written (new turns are added to the end of it, and a failed attempt is cut off, instead of writing the whole note again), and the account of the key that sent the last batch (so that what a revoked key wrote can be found).
         """
         CREATE TABLE conversations (
             machine TEXT NOT NULL,
@@ -135,6 +135,7 @@ public static class Schema
             updated_at TEXT NOT NULL,
             note_path TEXT NOT NULL,
             note_bytes INTEGER NOT NULL DEFAULT 0,
+            account TEXT NOT NULL DEFAULT '',
             PRIMARY KEY (machine, session)
         );
         CREATE INDEX conversations_by_machine ON conversations (machine, updated_at);

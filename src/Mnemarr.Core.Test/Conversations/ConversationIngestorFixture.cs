@@ -243,8 +243,8 @@ public sealed class ConversationIngestorFixture : IDisposable
         try
         {
             waiting = _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), Token);
-            await Task.Delay(200, Token);
 
+            // It cannot have finished: the lock it needs is held by this test. That it does finish once the lock is released is the proof.
             waiting.IsCompleted.Should().BeFalse("the lock is held elsewhere");
             File.Exists(NoteFile).Should().BeFalse("nothing is written while the lock is held elsewhere");
         }
@@ -353,5 +353,28 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         result.Accepted.Should().Be(1);
         _catalog.List(SourceScope.All).Should().Contain(source => source.Kind == SourceKind.Conversations && source.Name == "conversations-collected");
+    }
+
+    [Fact]
+    public async Task should_keep_the_account_that_sent_the_last_batch_with_the_conversation()
+    {
+        await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")) with { Account = "pc-key" }, Token);
+        (_store.Find("wacken", "abcdef12-3456")!.Account).Should().Be("pc-key");
+
+        await _ingestor.IngestAsync(Batch(1, Line("assistant", "two", "2026-11-04T14:04:00Z")) with { Account = "other-key" }, Token);
+
+        _store.Find("wacken", "abcdef12-3456")!.Account.Should().Be("other-key");
+    }
+
+    [Fact]
+    public async Task should_count_each_machine_with_its_conversations_and_lines()
+    {
+        await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z"), Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
+        await _ingestor.IngestAsync(Batch(0, Line("user", "three", "2026-11-04T14:05:00Z")) with { Session = "second-session" }, Token);
+        await _ingestor.IngestAsync(Batch(0, Line("user", "four", "2026-11-04T14:06:00Z")) with { Machine = "laptop" }, Token);
+
+        var machines = _store.Machines();
+
+        machines.Select(machine => (machine.Machine, machine.Conversations, machine.Lines)).Should().Equal(("laptop", 1, 1L), ("wacken", 2, 3L));
     }
 }

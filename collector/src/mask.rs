@@ -70,11 +70,6 @@ impl Masker {
         }
     }
 
-    /// How many rules are in force (all of them, unless one failed to compile).
-    pub fn count(&self) -> usize {
-        self.rules.len()
-    }
-
     /// Whether every rule is in force.
     pub fn is_complete(&self) -> bool {
         self.rules.len() == RULES.len() && self.escapes.is_some()
