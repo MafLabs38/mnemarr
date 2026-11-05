@@ -106,6 +106,40 @@ export function useRejectEnrolment() {
   });
 }
 
+/** A revoked machine is taken out of the list: its name is free again, and what it sent stays. */
+export function useForgetMachine() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (machine: string) => apiSend('POST', `/collectors/${encodeURIComponent(machine)}/forget`),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+/**
+ * The name a machine will be given for what a person typed: a name is letters, digits, dots, hyphens and underscores, so "Quimper Gaming"
+ * becomes `quimper-gaming` (lower case, accents dropped, spaces and other characters turned into hyphens). It is shown as it is typed, so that
+ * nobody is told off for an ordinary name.
+ */
+export function machineNameFor(typed: string): string {
+  const characters = [
+    ...typed
+      .normalize('NFD')
+      .replaceAll(/[\u0300-\u036F]/g, '')
+      .toLowerCase()
+      .replaceAll(/[^a-z0-9._-]+/g, '-'),
+  ];
+  const isLetterOrDigit = (character: string | undefined) => character !== undefined && /[a-z0-9]/.test(character);
+  const start = characters.findIndex(isLetterOrDigit);
+  if (start === -1) {
+    return '';
+  }
+  const kept = characters.slice(start, start + 50);
+  while (kept.length > 0 && !isLetterOrDigit(kept.at(-1))) {
+    kept.pop();
+  }
+  return kept.join('');
+}
+
 export function useRevokeMachine() {
   const client = useQueryClient();
   return useMutation({

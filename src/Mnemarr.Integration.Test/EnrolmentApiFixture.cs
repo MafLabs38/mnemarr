@@ -189,4 +189,36 @@ public sealed class EnrolmentApiFixture : EnrolmentFixtureBase, IClassFixture<En
             await callers.Admin.PostAsync($"/api/v1/enrolments/{item.GetProperty("id").GetGuid()}/reject", null, Token);
         }
     }
+
+    [Fact]
+    public async Task should_take_a_revoked_machine_out_of_the_list_so_that_its_name_is_free_again_and_never_one_that_is_not_revoked()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        using var key = await JoinAsync(callers.Admin, machine);
+        (await key.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(machine, "s1", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await callers.Admin.PostAsync($"/api/v1/collectors/{machine}/forget", null, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict, "it is not revoked");
+        (await callers.Admin.DeleteAsync($"/api/v1/collectors/{machine}", Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await callers.Admin.PostAsync($"/api/v1/collectors/{machine}/forget", null, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var left = await StatusOfAsync(callers.Admin, machine);
+        left.GetProperty("state").GetString().Should().Be("unenrolled", "what it sent is kept, and its name shows as no longer enrolled");
+        left.GetProperty("conversations").GetInt32().Should().Be(1);
+        (await callers.Admin.PostAsync($"/api/v1/collectors/{machine}/forget", null, Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        using var again = await JoinAsync(callers.Admin, machine);
+        (await again.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "1", pendingLines = 0 }, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await StatusOfAsync(callers.Admin, machine)).GetProperty("state").GetString().Should().Be("online", "the name was free: a new machine of that name joined");
+    }
+
+    [Fact]
+    public async Task should_let_only_those_who_manage_the_collectors_take_a_machine_out_of_the_list()
+    {
+        var callers = await Callers.ForAsync(_factory);
+
+        foreach (var role in new[] { "Assistant", "Operator", "Reader", "Monitor", "Collector" })
+        {
+            (await callers[role].PostAsync("/api/v1/collectors/anything/forget", null, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+        }
+    }
 }

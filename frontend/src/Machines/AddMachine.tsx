@@ -7,7 +7,13 @@ import TextField from 'Components/Form/TextField';
 import { copyText } from 'Utilities/Clipboard/copyText';
 import translate from 'Utilities/String/translate';
 
-import { type CreatedEnrolment, type InstallLine, type MachineKindName, useAddMachine } from './machines';
+import {
+  type CreatedEnrolment,
+  type InstallLine,
+  type MachineKindName,
+  machineNameFor,
+  useAddMachine,
+} from './machines';
 import styles from './Machines.module.css';
 
 /** The system the person is probably on, so that the line to paste is the right one without asking. */
@@ -74,11 +80,12 @@ export default function AddMachine() {
   const [kind, setKind] = useState<MachineKindName>('intermittent');
   const [created, setCreated] = useState<CreatedEnrolment | null>(null);
   const add = useAddMachine();
+  const name = machineNameFor(machine);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     add.mutate(
-      { machine, kind },
+      { machine: name, kind },
       {
         onSuccess: (result) => {
           setCreated(result);
@@ -107,6 +114,7 @@ export default function AddMachine() {
           required
           value={machine}
         />
+        {name !== '' && name !== machine && <p className={styles.hint}>{translate('MachineNameUsed', { name })}</p>}
         <SelectField
           label={translate('Kind')}
           onChange={(event) => setKind(event.target.value as MachineKindName)}
@@ -117,7 +125,7 @@ export default function AddMachine() {
           value={kind}
         />
         <p className={styles.hint}>{translate('AddMachineHelp')}</p>
-        <Button disabled={add.isPending} type="submit">
+        <Button disabled={add.isPending || name === ''} type="submit">
           {translate('AddMachine')}
         </Button>
       </form>

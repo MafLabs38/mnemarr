@@ -50,6 +50,15 @@ public sealed class MachineAccounts
         }
     }
 
+    /// <summary>The account of a machine that is taken out of the list goes with it, so that the name is free again.</summary>
+    public void Delete(Guid accountId, string actor)
+    {
+        if (_accounts.Get(accountId) is not null)
+        {
+            _accountService.Delete(accountId, actor);
+        }
+    }
+
     private Account New(string machine)
     {
         var name = AccountPrefix + machine;

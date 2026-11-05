@@ -7,13 +7,14 @@ import { usePermissions } from 'Session/SessionContext';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
-import { type MachineItem, stateLook, useMachines, useRevokeMachine } from './machines';
+import { type MachineItem, stateLook, useForgetMachine, useMachines, useRevokeMachine } from './machines';
 import styles from './Machines.module.css';
 
 const kindText = { 'always-on': 'KindAlwaysOn', intermittent: 'KindIntermittent' } as const;
 
 function MachineRow({ machine, canManage }: Readonly<{ machine: MachineItem; canManage: boolean }>) {
   const revoke = useRevokeMachine();
+  const forget = useForgetMachine();
   const look = stateLook[machine.state];
   const canRevoke = canManage && machine.kind !== null && machine.state !== 'refused';
   return (
@@ -36,6 +37,16 @@ function MachineRow({ machine, canManage }: Readonly<{ machine: MachineItem; can
             variant="danger"
           >
             {translate('Revoke')}
+          </Button>
+        )}
+        {canManage && machine.state === 'refused' && (
+          <Button
+            aria-label={translate('RemoveMachine', { name: machine.machine })}
+            disabled={forget.isPending}
+            onClick={() => forget.mutate(machine.machine)}
+            variant="quiet"
+          >
+            {translate('Remove')}
           </Button>
         )}
       </td>

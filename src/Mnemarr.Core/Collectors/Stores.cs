@@ -18,6 +18,9 @@ public interface IMachineStore
     void Seen(string name, DateTimeOffset at, Heartbeat? heartbeat);
 
     bool Revoke(string name, DateTimeOffset at);
+
+    /// <summary>Takes a revoked machine out of the list. False when there is none, or it is not revoked.</summary>
+    bool Remove(string name);
 }
 
 public interface IEnrolmentStore
@@ -43,6 +46,7 @@ public interface IEnrolmentStore
 
 public sealed class SqliteMachineStore : IMachineStore
 {
+    private const string NameParameter = "$name";
     private readonly IDatabase _database;
 
     public SqliteMachineStore(IDatabase database)
@@ -78,7 +82,7 @@ public sealed class SqliteMachineStore : IMachineStore
             VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL)
             ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL
             """;
-        command.Parameters.AddWithValue("$name", machine.Name);
+        command.Parameters.AddWithValue(NameParameter, machine.Name);
         command.Parameters.AddWithValue("$kind", MachineKinds.Name(machine.Kind));
         command.Parameters.AddWithValue("$account", machine.AccountId.ToString());
         command.Parameters.AddWithValue("$enrolled", StorageText.Format(machine.EnrolledAt));
@@ -92,7 +96,7 @@ public sealed class SqliteMachineStore : IMachineStore
         command.CommandText = heartbeat is null
             ? "UPDATE machines SET last_seen_at = $at WHERE name = $name"
             : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error WHERE name = $name";
-        command.Parameters.AddWithValue("$name", name);
+        command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
         if (heartbeat is not null)
         {
@@ -109,8 +113,17 @@ public sealed class SqliteMachineStore : IMachineStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "UPDATE machines SET revoked_at = $at WHERE name = $name AND revoked_at IS NULL";
-        command.Parameters.AddWithValue("$name", name);
+        command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public bool Remove(string name)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM machines WHERE name = $name AND revoked_at IS NOT NULL";
+        command.Parameters.AddWithValue(NameParameter, name);
         return command.ExecuteNonQuery() > 0;
     }
 

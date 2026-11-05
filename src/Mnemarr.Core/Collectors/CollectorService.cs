@@ -50,6 +50,26 @@ public sealed class CollectorService
     }
 
     /// <summary>
+    /// Takes a revoked machine out of the list, with its (disabled) account, so that its name is free again. What it sent stays: its conversations are
+    /// still notes, and the name shows as no longer enrolled while there are some.
+    /// </summary>
+    public void Forget(string machine, string actor)
+    {
+        lock (_accounts.Gate)
+        {
+            var found = _machines.Get(machine) ?? throw new RejectedException(Problem.NotFound, "There is no such machine.");
+            if (found.RevokedAt is null)
+            {
+                throw new RejectedException(Problem.Conflict, "Revoke the machine first: only a machine that was revoked is taken out of the list.");
+            }
+
+            _machines.Remove(machine);
+            _accounts.Delete(found.AccountId, actor);
+            _audit.Append(actor, "collector.forgotten", machine);
+        }
+    }
+
+    /// <summary>
     /// Whether a key may send for a machine: the one it was given to, and no other. A key of no machine is refused unless the setting says
     /// that hand-made collector accounts are still allowed. A batch is also a sign of life.
     /// </summary>

@@ -110,7 +110,7 @@ describe('Machines', () => {
     text('broken', 'Failing');
     text('gone', 'Refused (revoked)');
     text('fresh', 'Waiting for its first contact');
-    text('old-name', 'Not enrolled');
+    text('old-name', 'No longer enrolled (its conversations are kept)');
     expect(
       within(rowOf(screen.getByRole('rowheader', { name: 'broken' }))).getByText('2 files could not be read'),
     ).toBeInTheDocument();
@@ -252,6 +252,52 @@ describe('Machines', () => {
     ).toBeDefined();
     expect(screen.queryByRole('button', { name: 'Revoke the machine gone' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Revoke the machine old-name' })).not.toBeInTheDocument();
+  });
+
+  it('takes a revoked machine out of the list on request, and offers that for no other', async () => {
+    const fetchMock = server([
+      machine({ machine: 'laptop' }),
+      machine({ machine: 'gone', state: 'refused' }),
+      machine({ machine: 'old-name', kind: null, state: 'unenrolled' }),
+    ]);
+    renderWithProviders(<Machines />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove the machine gone from the list' }));
+
+    expect(
+      findCall(
+        fetchMock,
+        ([url, init]) =>
+          url === '/api/v1/collectors/gone/forget' && (init as RequestInit | undefined)?.method === 'POST',
+      ),
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Remove the machine laptop from the list' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove the machine old-name from the list' })).not.toBeInTheDocument();
+  });
+
+  it('turns a name typed as a person would into a valid one, says so, and sends it', async () => {
+    const fetchMock = server([]);
+    renderWithProviders(<Machines />);
+
+    await userEvent.type(await screen.findByLabelText('Name of the machine'), 'Quimper Gaming');
+
+    expect(screen.getByText('It will be named: quimper-gaming')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add the machine' }));
+    const call = findCall(
+      fetchMock,
+      ([url, init]) => url === '/api/v1/enrolments' && (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(sentBody(call)).toEqual({ machine: 'quimper-gaming', kind: 'intermittent' });
+  });
+
+  it('does not offer to add a machine until there is a name, and says nothing when the name is already valid', async () => {
+    server([]);
+    renderWithProviders(<Machines />);
+
+    expect(await screen.findByRole('button', { name: 'Add the machine' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Name of the machine'), 'server-1');
+    expect(screen.queryByText(/It will be named/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add the machine' })).toBeEnabled();
   });
 
   it('shows the machines to a reader of conversations and nothing to add, approve or revoke', async () => {

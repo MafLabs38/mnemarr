@@ -48,6 +48,16 @@ public sealed class CollectorsController : ControllerBase
     [Authorize(Policy = Permissions.ConversationsRead)]
     public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(MachineResource.From)];
 
+    /// <summary>Takes a machine that was revoked out of the list, so that its name is free again. Its conversations stay.</summary>
+    [HttpPost("{machine}/forget")]
+    [Authorize(Policy = Permissions.CollectorsManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult Forget(string machine)
+    {
+        _collectors.Forget(machine, User.ActorName());
+        return NoContent();
+    }
+
     /// <summary>Revokes a machine: its keys stop working and its account is disabled. It can join again with a new code.</summary>
     [HttpDelete("{machine}")]
     [Authorize(Policy = Permissions.CollectorsManage)]

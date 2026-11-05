@@ -46,6 +46,7 @@ public sealed class EndpointsFixture
             "api/v1/auth/session",
         "api/v1/collectors",
         "api/v1/collectors/{machine}",
+        "api/v1/collectors/{machine}/forget",
         "api/v1/config",
         "api/v1/config",
         "api/v1/config/status",
