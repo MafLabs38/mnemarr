@@ -24,7 +24,7 @@
 
 ## What to publish, and what not to
 
-[Decision D-27](adr/0010-external-exposure-and-delegated-backup.md): Mnemarr authenticates every call of the API and of MCP itself, so the endpoints that collectors and assistants use **may be published outside the proxy's single sign-on**, on a host name of their own, while the interface stays behind it.
+[Decision D-27](adr/0010-external-exposure-and-delegated-backups.md): Mnemarr authenticates every call of the API and of MCP itself, so the endpoints that collectors and assistants use **may be published outside the proxy's single sign-on**, on a host name of their own, while the interface stays behind it.
 
 | Path | Publish outside the single sign-on? | Why |
 |---|---|---|
