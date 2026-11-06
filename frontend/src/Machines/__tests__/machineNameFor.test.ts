@@ -2,8 +2,8 @@ import { machineNameFor } from 'Machines/machines';
 
 describe('machineNameFor', () => {
   it.each([
-    ['Quimper Gaming', 'quimper-gaming'],
-    ['quimper-gaming', 'quimper-gaming'],
+    ['Home Office', 'home-office'],
+    ['home-office', 'home-office'],
     ['  PC du salon  ', 'pc-du-salon'],
     ['Café été', 'cafe-ete'],
     ['WIN_PC.local', 'win_pc.local'],

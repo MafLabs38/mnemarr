@@ -281,15 +281,15 @@ describe('Machines', () => {
     const fetchMock = server([]);
     renderWithProviders(<Machines />);
 
-    await userEvent.type(await screen.findByLabelText('Name of the machine'), 'Quimper Gaming');
+    await userEvent.type(await screen.findByLabelText('Name of the machine'), 'Home Office');
 
-    expect(screen.getByText('It will be named: quimper-gaming')).toBeInTheDocument();
+    expect(screen.getByText('It will be named: home-office')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Add the machine' }));
     const call = findCall(
       fetchMock,
       ([url, init]) => url === '/api/v1/enrolments' && (init as RequestInit | undefined)?.method === 'POST',
     );
-    expect(sentBody(call)).toEqual({ machine: 'quimper-gaming', kind: 'intermittent' });
+    expect(sentBody(call)).toEqual({ machine: 'home-office', kind: 'intermittent' });
   });
 
   it('does not offer to add a machine until there is a name, and says nothing when the name is already valid', async () => {

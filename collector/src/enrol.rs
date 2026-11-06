@@ -97,15 +97,29 @@ fn write_private(path: &Path, text: &str) -> io::Result<()> {
 /// as well, as far as the system lets this user do it.
 #[cfg(not(unix))]
 fn write_private(path: &Path, text: &str) -> io::Result<()> {
-    fs::write(path, text)?;
-    if let Some(user) = std::env::var_os("USERNAME") {
-        let _ = std::process::Command::new("icacls")
-            .arg(path)
-            .args(["/inheritance:r", "/grant:r"])
-            .arg(format!("{}:F", user.to_string_lossy()))
-            .output();
+    // The file is made empty and closed down first, then the text is written: the key is never in a file that others can read.
+    fs::write(path, "")?;
+    match std::env::var_os("USERNAME") {
+        Some(user) => {
+            let restricted = std::process::Command::new("icacls")
+                .arg(path)
+                .args(["/inheritance:r", "/grant:r"])
+                .arg(format!("{}:F", user.to_string_lossy()))
+                .output()
+                .is_ok_and(|output| output.status.success());
+            if !restricted {
+                eprintln!(
+                    "warning: the access to {} could not be limited to this user: it is the access of the folder",
+                    path.display()
+                );
+            }
+        }
+        None => eprintln!(
+            "warning: the access to {} could not be limited to this user (USERNAME is not set)",
+            path.display()
+        ),
     }
-    Ok(())
+    fs::write(path, text)
 }
 
 #[cfg(test)]

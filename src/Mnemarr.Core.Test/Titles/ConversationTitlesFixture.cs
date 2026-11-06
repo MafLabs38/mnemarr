@@ -101,7 +101,6 @@ public sealed class ConversationTitlesFixture : IDisposable
 
         NoteOf("s1").Should().Contain("# A title that stays").And.Contain("And what about the audit log?");
         // The note is not what was recorded (somebody edited the file): it is written whole again, with the title the conversation has.
-        File.AppendAllText(Path.Combine(_workspace.DataFolder, "conversations", _store.Find("pc", "s1")!.NotePath), "\nsomething added by hand\n");
         File.WriteAllText(Path.Combine(_workspace.DataFolder, "conversations", _store.Find("pc", "s1")!.NotePath), "damaged");
         await IngestAsync("s1", 3, Line("assistant", "The audit log keeps every change.", "2026-11-04T14:06:00Z"));
 
@@ -246,6 +245,39 @@ public sealed class ConversationTitlesFixture : IDisposable
         (await Assert.ThrowsAsync<RejectedException>(() => _writing.RewriteAsync(path, Token))).Problem.Should().Be(Problem.Invalid);
         _options.Enabled = true;
         (await Assert.ThrowsAsync<RejectedException>(() => _writing.RewriteAsync("pc/none.md", Token))).Problem.Should().Be(Problem.NotFound);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task should_keep_a_persons_title_as_a_persons_when_the_model_fails_during_a_rewrite_that_was_asked(bool modelGivesNothing)
+    {
+        await TalkAsync();
+        await _titles.SetAsync("pc", "s1", "Mine", TitleSources.Person, null, Token);
+        var path = _store.Find("pc", "s1")!.NotePath;
+        _writer.Answer = _ => modelGivesNothing ? null : throw new TitleWriterException("down");
+
+        await Assert.ThrowsAsync<RejectedException>(() => _writing.RewriteAsync(path, Token));
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        await _writing.RunOnceAsync(Token);
+
+        var kept = _store.Find("pc", "s1")!;
+        (kept.Title, kept.TitleSource).Should().Be(("Mine", TitleSources.Person), "a background pass must not replace what a person typed because an asked rewrite failed");
+    }
+
+    [Fact]
+    public async Task should_say_when_the_model_could_not_be_asked_until_a_call_works_again()
+    {
+        await TalkAsync();
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        _writer.Answer = _ => throw new TitleWriterException("The model answered 401.");
+
+        await _writing.RunOnceAsync(Token);
+
+        _writing.LastFailure.Should().NotBeNull().And.Match<TitleFailure>(failure => failure.Message == "The model answered 401." && failure.At == _clock.GetUtcNow());
+        _writer.Answer = _ => new GeneratedTitle("Fine", "Fine.");
+        await _writing.RunOnceAsync(Token);
+        _writing.LastFailure.Should().BeNull();
     }
 
     [Fact]

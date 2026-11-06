@@ -13,7 +13,10 @@ public sealed record EmbeddedSetting(string Server, string Machine, string Code,
     /// The program with the setting written after it: <c>[program][json][length: uint32, little endian]["MNMRCFG1"]</c>. The program does not look at
     /// what follows it, so it runs as it was; opened with nothing to say, it reads the setting and sets itself up.
     /// </summary>
-    public byte[] AppendTo(byte[] program)
+    public byte[] AppendTo(byte[] program) => [.. program, .. Trailer()];
+
+    /// <summary>What follows the program: the setting, its length and the mark. Written after a program that is streamed, so that the program is never held whole in memory.</summary>
+    public byte[] Trailer()
     {
         var json = JsonSerializer.SerializeToUtf8Bytes(new { server = Server, machine = Machine, code = Code, insecure = Insecure });
         var length = BitConverter.GetBytes((uint)json.Length);
@@ -22,11 +25,6 @@ public sealed record EmbeddedSetting(string Server, string Machine, string Code,
             Array.Reverse(length);
         }
 
-        var bytes = new byte[program.Length + json.Length + length.Length + Magic.Length];
-        program.CopyTo(bytes, 0);
-        json.CopyTo(bytes, program.Length);
-        length.CopyTo(bytes, program.Length + json.Length);
-        Magic.CopyTo(bytes, program.Length + json.Length + length.Length);
-        return bytes;
+        return [.. json, .. length, .. Magic];
     }
 }

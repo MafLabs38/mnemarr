@@ -47,6 +47,12 @@ public sealed class EnrolmentService
         lock (_accounts.Gate)
         {
             var now = _clock.GetUtcNow();
+            if (!approveNow && _machines.Get(machine) is { RevokedAt: null })
+            {
+                // An assistant's request must not be able to take over a machine that is working: the code would give its name to whoever holds it.
+                throw new RejectedException(Problem.Conflict, "A machine with this name is enrolled already: a person who manages the collectors replaces it, or the request uses another name.");
+            }
+
             if (!approveNow && _enrolments.CountPending(now) >= MaxPending)
             {
                 throw new RejectedException(Problem.Busy, "Requests are waiting for a person to approve them: approve or reject some first.", TimeSpan.FromMinutes(5));
@@ -100,6 +106,26 @@ public sealed class EnrolmentService
         }
     }
 
+    /// <summary>
+    /// Whether a code is one that a person approved for this machine, without using it up: what stands before a program that carries the code is
+    /// written for an anonymous caller. A code that is not is counted like a wrong code of an exchange.
+    /// </summary>
+    public void RequireApproved(string? code, string machine)
+    {
+        lock (_accounts.Gate)
+        {
+            var now = _clock.GetUtcNow();
+            _throttle.Check(now);
+            var normalised = EnrolmentCodes.Normalise(code);
+            var enrolment = normalised is null ? null : _enrolments.FindByCodeHash(EnrolmentCodes.Hash(normalised));
+            if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal))
+            {
+                _throttle.Failed(now);
+                throw new RejectedException(Problem.Invalid, NotValid);
+            }
+        }
+    }
+
     /// <summary>The requests that are not over (waiting, or approved and not used), newest first.</summary>
     public IReadOnlyList<Enrolment> Open() => _enrolments.Open(OpenListed);
 
@@ -118,7 +144,7 @@ public sealed class EnrolmentService
             if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal) || !_enrolments.Use(enrolment.Id))
             {
                 _throttle.Failed(now);
-                _audit.Append(AuditActors.Unknown, "collector.enrol-refused", machine ?? string.Empty);
+                _audit.Append(AuditActors.Unknown, "collector.enrol-refused", MachineNames.IsValid(machine) ? machine! : "(not a valid name)");
                 throw new RejectedException(Problem.Invalid, NotValid);
             }
 

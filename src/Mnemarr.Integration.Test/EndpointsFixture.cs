@@ -57,6 +57,7 @@ public sealed class EndpointsFixture
         "api/v1/conversations/titles/rewrite",
         "api/v1/enrolments",
         "api/v1/enrolments",
+        "api/v1/enrolments/requests",
         "api/v1/enrolments/{id:guid}/approve",
         "api/v1/enrolments/{id:guid}/reject",
         "api/v1/ingest/conversations",

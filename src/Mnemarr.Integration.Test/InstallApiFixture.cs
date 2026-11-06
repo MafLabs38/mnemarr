@@ -133,6 +133,19 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
     }
 
     [Fact]
+    public async Task should_write_a_download_only_for_a_code_that_a_person_approved_for_that_machine()
+    {
+        var machine = Callers.Unique("pc");
+        var added = await AddAsync(_factory, machine);
+        var code = added.GetProperty("code").GetString();
+        using var anonymous = _factory.CreateClient();
+
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code=BCDF-GHJK-MNPQ&machine={machine}", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "a code that no one was given");
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code={code}&machine=another-pc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "a code for another machine");
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code={code}&machine={machine}", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task should_serve_the_program_of_a_system_as_a_file_and_nothing_else_of_the_folder()
     {
         using var anonymous = _factory.CreateClient();

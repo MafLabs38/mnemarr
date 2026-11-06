@@ -236,9 +236,7 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
             "a rule of the masking did not start: secrets are masked by the server alone until this is fixed",
         );
     }
-    if config.server.starts_with("http://")
-        && !config.server.contains("localhost")
-        && !config.server.contains("127.0.0.1")
+    if config.server.starts_with("http://") && !mnemarr_collector::config::is_local(&config.server)
     {
         say("warning: the address of Mnemarr is plain http://: the key is sent without encryption");
     }

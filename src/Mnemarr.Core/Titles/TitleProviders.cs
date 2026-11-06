@@ -67,7 +67,7 @@ public sealed class OpenAiTitleProvider : ITitleProvider
     {
         if (!Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme is not ("http" or "https"))
         {
-            return "Titles:Endpoint (MNEMARR__TITLES__ENDPOINT) is needed with the OpenAI provider: the address of the API, such as https://api.openai.com or http://localhost:11434 for a local model.";
+            return "Titles:Endpoint (MNEMARR__TITLES__ENDPOINT) is needed with the OpenAI provider: the base address of the API, with its version path, such as https://api.openai.com/v1 or http://localhost:11434/v1 for a local model.";
         }
 
         // A key is never sent in clear over the network; a local server without a key may use http.
