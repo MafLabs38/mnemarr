@@ -125,6 +125,7 @@ export default function AddMachine() {
           value={kind}
         />
         <p className={styles.hint}>{translate('AddMachineHelp')}</p>
+        <p className={styles.hint}>{translate('AlreadyHasACollector')}</p>
         <Button disabled={add.isPending || name === ''} type="submit">
           {translate('AddMachine')}
         </Button>

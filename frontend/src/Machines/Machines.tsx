@@ -8,6 +8,7 @@ import translate from 'Utilities/String/translate';
 
 import AddMachine from './AddMachine';
 import MachineList from './MachineList';
+import Pairings from './Pairings';
 import Requests from './Requests';
 import TitlesCard from './TitlesCard';
 
@@ -28,6 +29,9 @@ export default function Machines() {
         </Card>
         {canManage && (
           <>
+            <Card title={translate('AskingToBeLinked')}>
+              <Pairings />
+            </Card>
             <Card title={translate('Requests')}>
               <Requests />
             </Card>

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AccountKeys from 'Accounts/AccountKeys';
 import Accounts from 'Accounts/Accounts';
 import MyAccount from 'Accounts/MyAccount';
+import LinkMachine from 'Machines/LinkMachine';
 import Machines from 'Machines/Machines';
 import Notes from 'Notes/Notes';
 import Overview from 'Overview/Overview';
@@ -49,6 +50,14 @@ export default function AppRoutes() {
           </RequirePermission>
         }
         path="/machines"
+      />
+      <Route
+        element={
+          <RequirePermission permission={permissions.collectorsManage}>
+            <LinkMachine />
+          </RequirePermission>
+        }
+        path="/link"
       />
       <Route element={<MyAccount />} path="/account" />
       <Route

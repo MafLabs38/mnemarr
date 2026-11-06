@@ -279,6 +279,8 @@ const en = {
   AddMachine: 'Add the machine',
   AddMachineHelp:
     'The name must be the one the machine will give itself. An always-on machine (a server) raises an alert when it falls silent; an intermittent one (a workstation) never does.',
+  AlreadyHasACollector:
+    'This computer already has the collector? Run the line, or open the download, again: it keeps the Mnemarr it already sends to and adds this one. Or, on the computer, use the icon: Link to a Mnemarr.',
   KindAlwaysOn: 'Always on (a server)',
   KindIntermittent: 'Intermittent (a workstation)',
   NewCode: 'Code of the new machine',
@@ -308,6 +310,29 @@ const en = {
   StateSilent: 'Silent',
   StateFailing: 'Failing',
   StateRefused: 'Refused (revoked)',
+  AskingToBeLinked: 'Computers asking to be linked',
+  NoPairings:
+    'No computer is asking. On a computer that has the collector, use its icon: Link to a Mnemarr (or run: mnemarr-collector link).',
+  PairingAsksFor: '{name} asks to be linked',
+  PairingExpires: 'Waiting until {time}',
+  ReviewPairing: 'Review the request of {name}',
+  LinkAComputer: 'Link a computer',
+  LinkIntro:
+    'A computer that has the collector asked to be linked to this Mnemarr. Check that you started it just now, on your own computer, and that the name below is its name.',
+  LinkCodeLabel: 'Code shown on the computer',
+  LinkFind: 'Find the request',
+  LinkNotFound:
+    'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',
+  LinkHostname: 'The computer says it is called',
+  LinkName: 'Name in this Mnemarr',
+  LinkNameHelp:
+    'If a machine of this name is already linked, it is replaced: its old key stops working. Another Mnemarr you link this computer to has its own name for it.',
+  LinkApprove: 'Link this computer',
+  LinkReject: 'This is not my computer',
+  LinkDone:
+    'Linked as {name}. The computer takes its key in a few seconds and starts sending its conversations; you can close this page.',
+  LinkRejected: 'Refused. The computer is told so, and gets nothing.',
+  LinkSeeMachines: 'See the machines',
   Requests: 'Requests to add a machine',
   NoRequests:
     'Nothing is waiting: an assistant that asks for a machine to be added shows here until a person approves it.',
