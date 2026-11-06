@@ -18,7 +18,10 @@ internal static class TitleAddress
     // The separator of an address is a slash on every system, whatever the system's own separator is.
     private static readonly char Slash = Path.AltDirectorySeparatorChar;
 
-    public static Uri Join(string? baseAddress, string relative) => new(new Uri((baseAddress ?? string.Empty).TrimEnd(Slash) + Slash), relative);
+    public static Uri Join(string? baseAddress, string relative) =>
+        Uri.TryCreate((baseAddress ?? string.Empty).TrimEnd(Slash) + Slash, UriKind.Absolute, out var root)
+            ? new Uri(root, relative)
+            : throw new TitleWriterException("The address of the model is not valid.");
 }
 
 /// <summary>The model could not be asked, or refused: nothing is said of the answer, which could carry what was sent.</summary>
@@ -183,7 +186,7 @@ public sealed class OpenAiTitleWriter : ITitleWriter
     public async Task<GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken)
     {
         var options = _options.Value;
-        using var request = new HttpRequestMessage(HttpMethod.Post, TitleAddress.Join(options.Endpoint, "chat/completions"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, TitleAddress.Join(options.Endpoint, ChatPath(options.Endpoint)));
         if (!string.IsNullOrWhiteSpace(options.ApiKeyFile))
         {
             try
@@ -219,6 +222,10 @@ public sealed class OpenAiTitleWriter : ITitleWriter
             throw new TitleWriterException("The model could not be reached.", ex);
         }
     }
+
+    /// <summary>The address is the base with its version path (<c>https://host/api/v1</c>); one with no path at all (<c>http://localhost:11434</c>) is given the usual <c>v1</c>.</summary>
+    private static string ChatPath(string? endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var address) && address.AbsolutePath.Trim(Path.AltDirectorySeparatorChar).Length == 0 ? "v1/chat/completions" : "chat/completions";
 
     private static string? FirstMessage(JsonElement answer) =>
         answer.ValueKind == JsonValueKind.Object

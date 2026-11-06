@@ -20,6 +20,9 @@ export interface TitleCounts {
   firstSentence: number;
   summary: number;
   person: number;
+  /** Why the last call to the model failed, and when; null when none failed (a provider that is down must show). */
+  lastError: string | null;
+  lastErrorAt: string | null;
 }
 
 /** A change to a title makes the notes stale (their heading, the tree, the search) and the titles themselves. */

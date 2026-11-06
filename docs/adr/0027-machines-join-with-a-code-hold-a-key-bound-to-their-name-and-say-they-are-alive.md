@@ -42,3 +42,4 @@
 - An assistant's request may not name a machine that is enrolled and not revoked: the code would give that name, and its key, to whoever holds it. A person who manages the collectors replaces a machine by adding it again.
 - A program that carries a code (the **Download** button) is written only for a code a person approved for that machine, and is streamed from its file: the endpoint is anonymous and the program is several megabytes.
 - The programs are served from `Collectors:DownloadFolder`. Until the image carries them (a later vertical), an operator fills the folder from the release artifacts of the CI; without them the page offers no line and no button.
+- The check of a code before a download counts a wrong code like the exchange does, for the whole server: a crawler that fetches download links with wrong codes can keep a person from joining for a minute, the same accepted nuisance.

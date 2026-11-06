@@ -95,7 +95,7 @@ A conversation is titled by its first sentence, or by what a person types. A mod
 | `MNEMARR__TITLES__AGENTURL` | none | Provider `Agent`: the address of the companion, on the host or its network (`http://host:8490`). Needed then. |
 | `MNEMARR__TITLES__AGENTSECRETFILE` | none | Provider `Agent`: a file that holds the secret shared with the companion. Needed then. |
 | `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model, in the words of the provider (`gpt-5-mini`, `llama3`, or an alias such as `haiku` for an agent). |
-| `MNEMARR__TITLES__ENDPOINT` | Anthropic's | The address of the API (providers `Anthropic`, where it defaults to Anthropic's, and `OpenAI`, where it is needed and is the base with its version path: `https://api.openai.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` for a local model). A key is only sent over HTTPS, or to this host. |
+| `MNEMARR__TITLES__ENDPOINT` | Anthropic's | The address of the API (providers `Anthropic`, where it defaults to Anthropic's, and `OpenAI`, where it is needed and is the base with its version path: `https://api.openai.com/v1`, `https://openrouter.ai/api/v1`, `http://localhost:11434/v1` for a local model; an address with no path, such as `http://localhost:11434`, is given `/v1`). A key is only sent over HTTPS, or to this host. |
 | `MNEMARR__TITLES__IDLEMINUTES` | `10` | A conversation is titled once nothing has been added to it for this long. |
 | `MNEMARR__TITLES__PERPASS` | `5` | How many conversations a pass titles (a pass is every `PASSSECONDS`, 60): the cost is bounded. |
 | `MNEMARR__TITLES__MAXTRIES` | `3` | A conversation the model fails to title this many times keeps its first sentence. |

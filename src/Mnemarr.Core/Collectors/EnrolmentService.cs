@@ -86,6 +86,12 @@ public sealed class EnrolmentService
                 throw new RejectedException(Problem.Conflict, "This request is not waiting for approval any more.");
             }
 
+            if (_machines.Get(enrolment.Machine) is { RevokedAt: null })
+            {
+                // The machine joined since the request was made: approving would give its name, and a new key, to whoever holds the code.
+                throw new RejectedException(Problem.Conflict, "A machine with this name is enrolled already: reject this request, and add the machine again to replace it.");
+            }
+
             _enrolments.Approve(id, actor, now, now + CodeLife);
             _audit.Append(actor, "collector.enrolment-approved", enrolment.Machine);
             return _enrolments.Get(id)!;

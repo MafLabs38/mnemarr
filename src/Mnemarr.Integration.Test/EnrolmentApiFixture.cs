@@ -214,6 +214,22 @@ public sealed class EnrolmentApiFixture : EnrolmentFixtureBase, IClassFixture<En
     }
 
     [Fact]
+    public async Task should_not_approve_a_request_for_a_name_that_was_enrolled_since_it_was_made()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        var requested = await CallAsync(callers["Assistant"], "request_collector_enrolment", new { machine });
+        var code = requested["code"]!.GetValue<string>();
+        await JoinAsync(callers.Admin, machine);
+        var id = (await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/enrolments", Token)).EnumerateArray().Single(item => item.GetProperty("machine").GetString() == machine && item.GetProperty("state").GetString() == "pending").GetProperty("id").GetGuid();
+
+        var approved = await callers.Admin.PostAsync($"/api/v1/enrolments/{id}/approve", null, Token);
+
+        approved.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "the code of the request is of no use");
+    }
+
+    [Fact]
     public async Task should_not_let_an_assistant_ask_for_the_name_of_a_machine_that_is_enrolled_but_let_a_person_replace_it()
     {
         var callers = await Callers.ForAsync(_factory);

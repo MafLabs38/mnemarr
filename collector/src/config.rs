@@ -428,6 +428,10 @@ mod tests {
 
     #[test]
     fn should_refuse_a_name_of_machine_that_the_server_would_refuse() {
+        assert!(
+            is_machine_name(&"a".repeat(50)),
+            "the longest name there is"
+        );
         for name in ["my pc", "pc\u{e9}", "-pc", "", &"a".repeat(51)] {
             let get = environment(&[
                 ("MNEMARR_SERVER", "https://m.example"),

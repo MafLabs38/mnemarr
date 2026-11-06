@@ -101,12 +101,15 @@ fn write_private(path: &Path, text: &str) -> io::Result<()> {
     fs::write(path, "")?;
     match std::env::var_os("USERNAME") {
         Some(user) => {
-            let restricted = std::process::Command::new("icacls")
-                .arg(path)
-                .args(["/inheritance:r", "/grant:r"])
-                .arg(format!("{}:F", user.to_string_lossy()))
-                .output()
-                .is_ok_and(|output| output.status.success());
+            // The program of the system, by its full path: a file of that name in the folder this program was started from is not run.
+            let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+            let restricted =
+                std::process::Command::new(Path::new(&system).join("System32").join("icacls.exe"))
+                    .arg(path)
+                    .args(["/inheritance:r", "/grant:r"])
+                    .arg(format!("{}:F", user.to_string_lossy()))
+                    .output()
+                    .is_ok_and(|output| output.status.success());
             if !restricted {
                 eprintln!(
                     "warning: the access to {} could not be limited to this user: it is the access of the folder",

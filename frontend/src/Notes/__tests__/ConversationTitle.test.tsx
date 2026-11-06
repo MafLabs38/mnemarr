@@ -95,7 +95,31 @@ describe('ConversationTitle', () => {
 });
 
 describe('TitlesCard', () => {
-  const counts: TitleCounts = { modelEnabled: true, firstSentence: 30, summary: 5, person: 1 };
+  const counts: TitleCounts = {
+    modelEnabled: true,
+    firstSentence: 30,
+    summary: 5,
+    person: 1,
+    lastError: null,
+    lastErrorAt: null,
+  };
+
+  it('says when the model could not be asked, so that a provider that is down does not fail in silence', async () => {
+    server(info(), { ...counts, lastError: 'The model answered 401.', lastErrorAt: '2026-11-06T09:30:00Z' });
+    renderWithProviders(<TitlesCard />);
+
+    expect(
+      await screen.findByText(/could not be asked at 2026-11-06 09:30: The model answered 401\./),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing of an error when the last call worked', async () => {
+    server(info(), counts);
+    renderWithProviders(<TitlesCard />);
+
+    expect(await screen.findByText(/5 written by a model/)).toBeInTheDocument();
+    expect(screen.queryByText(/could not be asked/)).not.toBeInTheDocument();
+  });
 
   it('counts the titles by origin, and has the model write the first sentences again', async () => {
     const fetchMock = server(info(), counts);

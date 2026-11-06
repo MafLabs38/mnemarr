@@ -54,6 +54,7 @@ public sealed class TitleProvidersFixture : IDisposable
     [InlineData("https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1/chat/completions")]
     [InlineData("https://gateway.example/llm/v1/", "https://gateway.example/llm/v1/chat/completions")]
     [InlineData("http://localhost:11434/v1", "http://localhost:11434/v1/chat/completions")]
+    [InlineData("http://localhost:11434", "http://localhost:11434/v1/chat/completions")]
     public async Task should_join_the_call_to_the_path_of_the_address_and_not_put_it_at_the_root(string endpoint, string expected)
     {
         var handler = new Handler(_ => Reply("""{"title": "T", "summary": ""}"""));
@@ -61,6 +62,58 @@ public sealed class TitleProvidersFixture : IDisposable
         await Writer(handler, null, endpoint).WriteAsync("x", TestContext.Current.CancellationToken);
 
         handler.Calls.Single().Uri.Should().Be(new Uri(expected));
+    }
+
+    [Theory]
+    [InlineData("https://gateway.example/anthropic", "https://gateway.example/anthropic/v1/messages")]
+    [InlineData(null, "https://api.anthropic.com/v1/messages")]
+    public async Task should_join_the_call_of_the_anthropic_provider_to_the_path_of_its_address_too(string? endpoint, string expected)
+    {
+        var key = Path.Combine(Path.GetTempPath(), $"mnemarr-akey-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(key, "sk", TestContext.Current.CancellationToken);
+        Uri? asked = null;
+        var handler = new SpyHandler(request => asked = request.RequestUri);
+        try
+        {
+            // The spy answers 503: only where the call went is looked at.
+            await Assert.ThrowsAsync<TitleWriterException>(() => new AnthropicTitleWriter(Options.Create(new TitleOptions { Enabled = true, ApiKeyFile = key, Endpoint = endpoint, Model = "m" }), handler).WriteAsync("x", TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(key);
+        }
+
+        asked.Should().Be(new Uri(expected));
+    }
+
+    [Fact]
+    public async Task should_join_the_call_of_the_agent_to_the_path_of_its_address_and_say_when_an_address_is_not_one()
+    {
+        var secret = Path.Combine(Path.GetTempPath(), $"mnemarr-asecret-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(secret, "s", TestContext.Current.CancellationToken);
+        Uri? asked = null;
+        try
+        {
+            var options = new TitleOptions { Enabled = true, Provider = TitleProviders.Agent, AgentUrl = "http://agent.example:8490/titles/", AgentSecretFile = secret, Model = "m" };
+            await Assert.ThrowsAsync<TitleWriterException>(() => new AgentTitleWriter(Options.Create(options), new SpyHandler(request => asked = request.RequestUri)).WriteAsync("x", TestContext.Current.CancellationToken));
+            options.AgentUrl = "not an address";
+            await Assert.ThrowsAsync<TitleWriterException>(() => new AgentTitleWriter(Options.Create(options), new SpyHandler(_ => { })).WriteAsync("x", TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(secret);
+        }
+
+        asked.Should().Be(new Uri("http://agent.example:8490/titles/title"));
+    }
+
+    private sealed class SpyHandler(Action<HttpRequestMessage> seen) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            seen(request);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        }
     }
 
     [Fact]

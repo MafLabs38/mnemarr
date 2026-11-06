@@ -42,10 +42,10 @@ public sealed class InstallController : ControllerBase
         }
 
         var (server, normalised, name) = Checked(code, machine);
+        // Anonymous, and a program is several megabytes: only a code that a person approved for this machine learns anything or gets one, and it is streamed.
+        _enrolments.RequireApproved(normalised, name);
         var personalised = _downloads.Personalised(platform, new EmbeddedSetting(server, name, normalised, Insecure: server.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
             ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr has no collector program for that system.");
-        // Anonymous, and a program is several megabytes: only a code that a person approved for this machine gets one, and it is streamed.
-        _enrolments.RequireApproved(normalised, name);
         return new PersonalisedProgramResult(personalised.Path, personalised.Trailer, personalised.FileName);
     }
 
@@ -101,7 +101,7 @@ internal sealed class PersonalisedProgramResult(string path, byte[] trailer, str
     {
         var response = context.HttpContext.Response;
         var cancellationToken = context.HttpContext.RequestAborted;
-        await using var program = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        await using var program = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         response.ContentType = "application/octet-stream";
         response.ContentLength = program.Length + trailer.Length;
         response.Headers.ContentDisposition = new Microsoft.Net.Http.Headers.ContentDispositionHeaderValue("attachment") { FileName = fileName }.ToString();
