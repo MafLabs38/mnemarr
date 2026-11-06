@@ -57,10 +57,19 @@ describe('the menu of a person who may only read notes', () => {
     renderPage();
 
     const menu = screen.getByRole('navigation', { name: 'Main menu' });
-    expect(menu).toHaveTextContent(/Overview.*Agents.*Settings/s);
+    expect(menu).toHaveTextContent(/Overview.*Settings/s);
     expect(screen.queryByRole('link', { name: 'Sources' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'System' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Machines' })).not.toBeInTheDocument();
+  });
+
+  it('shows the machines to somebody who may read the conversations', () => {
+    stubApi(() => undefined);
+
+    renderPage({ ...readerSession, permissions: ['conversations.read'] });
+
+    expect(screen.getByRole('link', { name: 'Machines' })).toHaveAttribute('href', '/machines');
   });
 
   it('shows the sources to somebody who may manage them', () => {

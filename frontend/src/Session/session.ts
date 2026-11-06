@@ -22,6 +22,9 @@ export const permissions = {
   notesWrite: 'notes.write',
   sourcesManage: 'sources.manage',
   search: 'search',
+  conversationsRead: 'conversations.read',
+  conversationsWrite: 'conversations.write',
+  collectorsManage: 'collectors.manage',
 } as const;
 
 /** The session, or null when nobody is signed in (the API answers 401). Any other failure is an error. */

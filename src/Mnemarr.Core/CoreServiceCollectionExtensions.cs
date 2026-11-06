@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Collectors;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Conversations;
 using Mnemarr.Core.Declarative;
@@ -14,6 +15,7 @@ using Mnemarr.Core.Notes;
 using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
+using Mnemarr.Core.Titles;
 
 namespace Mnemarr.Core;
 
@@ -73,6 +75,27 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SourceIndexer>();
         services.AddSingleton<SourceSync>();
         services.AddSingleton<NoteWriter>();
+        services.AddOptions<CollectorOptions>().Bind(configuration.GetSection("Collectors")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<CollectorOptions>, CollectorOptionsValidator>();
+        services.AddOptions<IngestOptions>().Bind(configuration.GetSection("Ingest"));
+        services.AddSingleton<IMachineStore, SqliteMachineStore>();
+        services.AddSingleton<IEnrolmentStore, SqliteEnrolmentStore>();
+        services.AddSingleton<EnrolmentThrottle>();
+        services.AddSingleton<CollectorDownloads>();
+        services.AddSingleton<MachineAccounts>();
+        services.AddSingleton<EnrolmentService>();
+        services.AddSingleton<CollectorService>();
+        services.AddOptions<TitleOptions>().Bind(configuration.GetSection("Titles")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<TitleOptions>, TitleOptionsValidator>();
+        foreach (var provider in TitleProviders.BuiltIn)
+        {
+            services.AddSingleton(typeof(ITitleProvider), provider);
+        }
+
+        services.TryAddSingleton<ITitleWriter>(sp => TitleProviders.Select(sp.GetServices<ITitleProvider>(), sp.GetRequiredService<IOptions<TitleOptions>>()));
+        services.AddSingleton<ConversationTitles>();
+        services.AddSingleton<TitleWriting>();
+        services.AddHostedService<TitleService>();
         services.AddSingleton<IConversationStore, SqliteConversationStore>();
         services.AddSingleton<RawConversations>();
         services.AddSingleton<ConversationIngestor>();

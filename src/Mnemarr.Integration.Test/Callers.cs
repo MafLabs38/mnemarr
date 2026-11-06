@@ -10,13 +10,13 @@ namespace Mnemarr.Integration.Test;
 public sealed class Callers
 {
     public const string Password = "a long enough password";
-    private readonly MnemarrFactory _factory;
+    private readonly MnemarrFactoryBase _factory;
     private readonly Dictionary<string, HttpClient> _clients = [];
     private readonly Dictionary<string, Guid> _ids = [];
 
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MnemarrFactory, Lazy<Task<Callers>>> Shared = [];
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MnemarrFactoryBase, Lazy<Task<Callers>>> Shared = [];
 
-    private Callers(MnemarrFactory factory)
+    private Callers(MnemarrFactoryBase factory)
     {
         _factory = factory;
     }
@@ -25,7 +25,7 @@ public sealed class Callers
     /// The callers of a factory, built once for all the tests that use it: signing in costs a password hash, and a test class builds
     /// one instance per test.
     /// </summary>
-    public static Task<Callers> ForAsync(MnemarrFactory factory) =>
+    public static Task<Callers> ForAsync(MnemarrFactoryBase factory) =>
         Shared.GetValue(factory, f => new Lazy<Task<Callers>>(async () =>
         {
             var callers = new Callers(f);

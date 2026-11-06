@@ -103,8 +103,9 @@ test.describe('smoke @smoke', () => {
     await expect(menu.getByRole('link', { name: 'System' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Notes' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Sources' })).toBeVisible();
-    await expect(menu.getByRole('link', { name: 'Agents' })).toHaveCount(0);
-    await expect(menu).toContainText('Agents');
+    await expect(menu.getByRole('link', { name: 'Machines' })).toBeVisible();
+    await expect(menu.getByRole('link', { name: 'Settings' })).toHaveCount(0);
+    await expect(menu).toContainText('Settings');
     await expect(menu).toContainText('Soon');
   });
 
@@ -343,46 +344,142 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
   });
 
-  test('a conversation sent by a collector shows in the notes and cannot be edited', async ({
+  test('a machine joins with a code, sends a conversation under its own name, shows online, and the conversation shows in the notes and cannot be edited', async ({
     page,
     playwright,
     baseURL,
   }) => {
     const word = unique('zebra').replaceAll('-', '');
-    const api = await signedInRequest(playwright, baseURL ?? '');
-    const account = await api.post('/api/v1/accounts', {
-      data: { name: unique('collector'), kind: 'Service', role: 'Collector' },
-    });
-    expect(account.status()).toBe(201);
-    const key = await api.post(`/api/v1/accounts/${(await account.json()).id}/keys`, { data: { name: 'e2e' } });
+    const machine = unique('pc');
+
+    // A person adds the machine in the interface and is shown its code once.
+    await signIn(page, '/machines');
+    await page.getByLabel('Name of the machine').fill(machine);
+    await page.getByRole('button', { name: 'Add the machine' }).click();
+    const notice = page.getByRole('region', { name: 'Code of the new machine' });
+    await expect(notice).toContainText('shown only now');
+    // One line installs the collector and joins the machine: the person has nothing to install first.
+    await expect(notice).toContainText('This Mnemarr is served over plain HTTP');
+    // Two ways in: a file to download that already knows this Mnemarr, and one line for a terminal (the one for the system the page guesses).
+    const download = notice.getByRole('link', { name: /^Download for / });
+    const downloadHref = (await download.getAttribute('href')) ?? '';
+    const personal = await (await playwright.request.newContext({ baseURL })).get(downloadHref);
+    expect(personal.status()).toBe(200);
+    expect((await personal.body()).subarray(-8).toString()).toBe('MNMRCFG1');
+    expect(personal.headers()['content-disposition']).toContain(`mnemarr-collector-${machine}.exe`);
+    const installLine = (await notice.locator('code').first().innerText()).trim();
+    expect(installLine).toContain(`machine=${machine}`);
+    const code = /code=([A-Z0-9-]+)/.exec(installLine)?.[1] ?? '';
+    expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    // The installer is written by the server for this code and machine, and the program it names is served with the checksum it checks.
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const installer = await anonymous.get(installLine.split("'")[1] ?? '');
+    expect(installer.status()).toBe(200);
+    const script = await installer.text();
+    expect(script).toContain(`--machine '${machine}'`);
+    expect(script).toContain('--allow-insecure-http');
+    const program = await anonymous.get('/api/v1/ingest/download/windows-x86_64');
+    expect(program.status()).toBe(200);
+
+    // The machine exchanges the code, without a session, for a key that belongs to it.
+    const enrolled = await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine } });
+    expect(enrolled.status()).toBe(200);
     const collector = await playwright.request.newContext({
       baseURL,
-      extraHTTPHeaders: { 'X-Api-Key': (await key.json()).secret },
+      extraHTTPHeaders: { 'X-Api-Key': (await enrolled.json()).key },
     });
     const line = (type: string, text: string, at: string) =>
       JSON.stringify({ type, timestamp: at, cwd: '/work/Mnemarr', message: { role: type, content: text } });
+    const batch = (name: string, lines: string[]) => ({
+      format: 'claude-code',
+      machine: name,
+      application: 'Mnemarr',
+      session: unique('s'),
+      from: 0,
+      lines,
+    });
 
     const sent = await collector.post('/api/v1/ingest/conversations', {
-      data: {
-        format: 'claude-code',
-        machine: unique('pc'),
-        application: 'Mnemarr',
-        session: unique('s'),
-        from: 0,
-        lines: [
-          line('user', `What did we decide about ${word}?`, '2026-11-04T14:03:00Z'),
-          line('assistant', 'We kept the cache in memory.', '2026-11-04T14:04:00Z'),
-        ],
-      },
+      data: batch(machine, [
+        line('user', `What did we decide about ${word}?`, '2026-11-04T14:03:00Z'),
+        line('assistant', 'We kept the cache in memory.', '2026-11-04T14:04:00Z'),
+      ]),
     });
     expect(sent.status()).toBe(200);
+    // The key belongs to the machine it was given to, and to no other.
+    const other = await collector.post('/api/v1/ingest/conversations', {
+      data: batch(unique('other'), [line('user', 'Nothing to see here', '2026-11-04T14:03:00Z')]),
+    });
+    expect(other.status()).toBe(403);
+    const beat = await collector.post('/api/v1/ingest/heartbeat', { data: { version: '0.1.0', pendingLines: 0 } });
+    expect(beat.status()).toBe(204);
 
-    await signIn(page, '/notes');
+    // The page tells the machine as online, in words and not by colour alone.
+    await page.reload();
+    const row = page.getByRole('row', { name: new RegExp(machine) });
+    await expect(row).toContainText('Online');
+    await expect(row).toContainText('Intermittent (a workstation)');
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    await page.goto('/notes');
     await page.getByLabel('Filter the notes').fill(word);
     await page.getByRole('link', { name: `What did we decide about ${word}?` }).click();
     await expect(page.getByText('We kept the cache in memory.')).toBeVisible();
     await expect(page.getByText('This note is not edited here')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled();
+
+    // A person gives the conversation a title of their own, without collecting it again: the note, the tree and the search follow.
+    await expect(page.getByText('the first sentence of the conversation')).toBeVisible();
+    await page.getByRole('button', { name: 'Change the title' }).click();
+    await page.getByRole('textbox', { name: 'Title' }).fill(`Decision about the cache ${word}`);
+    await page.getByRole('button', { name: 'Save the title' }).click();
+    await expect(page.getByText('typed by a person')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: `Decision about the cache ${word}` })).toBeVisible();
+    await expect(page.getByRole('link', { name: `Decision about the cache ${word}` })).toBeVisible();
+  });
+
+  test('an assistant asks for a machine over MCP, a person approves the request, and the code then works', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const machine = unique('asked');
+    const api = await signedInRequest(playwright, baseURL ?? '');
+    const account = await api.post('/api/v1/accounts', {
+      data: { name: unique('assistant'), kind: 'Service', role: 'Assistant' },
+    });
+    expect(account.status()).toBe(201);
+    const key = await api.post(`/api/v1/accounts/${(await account.json()).id}/keys`, { data: { name: 'e2e' } });
+    const assistant = await playwright.request.newContext({
+      baseURL,
+      extraHTTPHeaders: { 'X-Api-Key': (await key.json()).secret },
+    });
+    const asked = await assistant.post('/mcp', {
+      data: {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'request_collector_enrolment', arguments: { machine, kind: 'always-on' } },
+      },
+    });
+    const reply = JSON.parse((await asked.json()).result.content[0].text) as { code: string; state: string };
+    expect(reply.state).toBe('pending');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    expect((await anonymous.post('/api/v1/ingest/enrol', { data: { code: reply.code, machine } })).status()).toBe(400);
+
+    // The request waits for a person, who approves it in the interface.
+    await signIn(page, '/machines');
+    const request = page.getByRole('row', { name: new RegExp(machine) });
+    await expect(request).toContainText('Waiting for approval');
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await request.getByRole('button', { name: `Approve the request for ${machine}` }).click();
+    await expect(request).toContainText('Approved, code not used yet');
+
+    expect((await anonymous.post('/api/v1/ingest/enrol', { data: { code: reply.code, machine } })).status()).toBe(200);
+    await page.reload();
+    await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Waiting for its first contact');
   });
 
   test('an operator writes notes: creates one, edits it, links to it, renames it and the link follows, removes it', async ({

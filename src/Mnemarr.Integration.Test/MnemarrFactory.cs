@@ -41,6 +41,15 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     /// <summary>The password that a break-glass reset gives to <see cref="AdminName"/> at start, when a test restarts a host with one.</summary>
     protected virtual string? ResetPassword => null;
 
+    /// <summary>Whether a key may send only for the machine it was enrolled for. Off for the tests that make their own collector accounts; on for the tests of the enrolment itself.</summary>
+    protected virtual bool RequireEnrolment => false;
+
+    /// <summary>The folder of programs the host serves to machines that join (none by default).</summary>
+    protected virtual string? DownloadFolder => null;
+
+    /// <summary>The address machines are told to reach the host at, when it is not the one of the request.</summary>
+    protected virtual string? PublicUrl => null;
+
     /// <summary>Whether the host starts with a first administrator. A test of an empty Mnemarr turns it off.</summary>
     protected virtual bool HasAdministrator => true;
 
@@ -89,6 +98,12 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
             {
                 options.File = ConfigurationText is null ? null : ConfigurationFile;
                 options.ReloadSeconds = 1;
+            });
+            services.PostConfigure<Mnemarr.Core.Collectors.IngestOptions>(options => options.RequireEnrolment = RequireEnrolment);
+            services.PostConfigure<Mnemarr.Core.Collectors.CollectorOptions>(options =>
+            {
+                options.DownloadFolder = DownloadFolder;
+                options.PublicUrl = PublicUrl;
             });
             services.PostConfigure<AuthOptions>(options =>
             {
@@ -157,6 +172,89 @@ public sealed class MnemarrFactory : MnemarrFactoryBase
         : base(createFolder: true)
     {
     }
+}
+
+/// <summary>An application that, like a real one, lets a key send only for the machine it was enrolled for.</summary>
+public sealed class EnrolledOnlyFactory : MnemarrFactoryBase
+{
+    public EnrolledOnlyFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override bool RequireEnrolment => true;
+}
+
+/// <summary>A model that gives what a test says: titles written by a model, without a network.</summary>
+public sealed class FakeTitleWriter : Mnemarr.Core.Titles.ITitleWriter
+{
+    public List<string> Asked { get; } = [];
+
+    public Task<Mnemarr.Core.Titles.GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken)
+    {
+        Asked.Add(transcript);
+        return Task.FromResult<Mnemarr.Core.Titles.GeneratedTitle?>(new Mnemarr.Core.Titles.GeneratedTitle("The model's title", "The model's summary."));
+    }
+}
+
+/// <summary>An application where a model writes the titles of conversations: a fake one, and a background pass that never comes by itself during a test.</summary>
+public sealed class TitlesFactory : MnemarrFactoryBase
+{
+    public TitlesFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    public FakeTitleWriter Writer { get; } = new();
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<Mnemarr.Core.Titles.ITitleWriter>(Writer);
+        services.PostConfigure<Mnemarr.Core.Titles.TitleOptions>(options =>
+        {
+            options.Enabled = true;
+            options.ApiKeyFile = "/not-read-by-the-fake";
+            options.PassSeconds = 3600;
+            options.IdleMinutes = 1440;
+        });
+    }
+}
+
+/// <summary>An application that serves the programs a machine installs: fake files, so that the checksums can be told.</summary>
+public class DownloadsFactory : MnemarrFactoryBase
+{
+    private readonly string _downloads = Path.Combine(Path.GetTempPath(), $"mnemarr-dl-{Guid.NewGuid():N}");
+
+    public DownloadsFactory()
+        : base(createFolder: true)
+    {
+        Directory.CreateDirectory(_downloads);
+        File.WriteAllText(Path.Combine(_downloads, "mnemarr-collector-windows-x86_64.exe"), "the windows program");
+        File.WriteAllText(Path.Combine(_downloads, "mnemarr-collector-linux-x86_64"), "the linux program");
+        File.WriteAllText(Path.Combine(_downloads, "not-served.txt"), "a file that is not one of the programs");
+    }
+
+    protected override bool RequireEnrolment => true;
+
+    protected override string? DownloadFolder => _downloads;
+
+    /// <summary>What the checksum of a fake program is.</summary>
+    public static string Sha256Of(string text) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing && Directory.Exists(_downloads))
+        {
+            Directory.Delete(_downloads, recursive: true);
+        }
+    }
+}
+
+/// <summary>The same, behind a proxy that ends TLS: the address given to machines is set, and is https.</summary>
+public sealed class PublicUrlFactory : DownloadsFactory
+{
+    protected override string? PublicUrl => "https://mnemarr.homelab.example";
 }
 
 /// <summary>An application whose data folder does not exist, as with a volume that was never mounted.</summary>

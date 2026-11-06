@@ -164,9 +164,9 @@ public sealed class McpApiFixture : IClassFixture<MnemarrFactory>, IClassFixture
 
         string[] reading = ["list_sources", "search", "list_notes", "read_note", "list_tags"];
         readerTools.Should().BeEquivalentTo(reading);
-        assistantTools.Should().BeEquivalentTo(reading, "the write tools are off by default");
+        assistantTools.Should().BeEquivalentTo([.. reading, "request_collector_enrolment"], "the write tools are off by default, and asking for a machine needs a person's approval anyway");
         collectorTools.Should().BeEmpty();
-        writingTools.Should().BeEquivalentTo([.. reading, "create_note", "update_note", "append_to_note", "rename_note", "delete_note"]);
+        writingTools.Should().BeEquivalentTo([.. reading, "request_collector_enrolment", "create_note", "update_note", "append_to_note", "rename_note", "delete_note"]);
         writingReaderTools.Should().BeEquivalentTo(reading, "a role that cannot write does not get the tools, whatever the switch says");
     }
 

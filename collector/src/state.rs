@@ -27,6 +27,9 @@ pub struct FileState {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct State {
     pub files: BTreeMap<String, FileState>,
+    /// Which server and machine these positions are for. Positions are what a server holds, so they are only good for the one that was sent to:
+    /// a machine that joins again under another name, or a server that was emptied, is a new beginning.
+    pub identity: Option<String>,
 }
 
 impl State {
@@ -55,7 +58,22 @@ impl State {
                 );
             }
         }
-        Self { files }
+        let identity = document
+            .get("identity")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        Self { files, identity }
+    }
+
+    /// Says which server and machine this state is for. When it was for another (or for none, as in a state kept by an older collector), it starts
+    /// again from nothing, since what was sent was sent to somebody else: the server skips what it already has. True when it did.
+    pub fn adopt(&mut self, identity: &str) -> bool {
+        if self.identity.as_deref() == Some(identity) {
+            return false;
+        }
+        self.files.clear();
+        self.identity = Some(identity.to_string());
+        true
     }
 
     /// Writes the state beside its place and moves it in, so that a crash leaves the old one.
@@ -76,7 +94,9 @@ impl State {
         let temporary = path.with_extension("tmp");
         // Written and flushed to the disk before it takes the place of the old one: a crash leaves the old file or the whole new one.
         let mut file = fs::File::create(&temporary)?;
-        file.write_all(&serde_json::to_vec_pretty(&json!({ "files": files }))?)?;
+        file.write_all(&serde_json::to_vec_pretty(
+            &json!({ "identity": self.identity, "files": files }),
+        )?)?;
         file.sync_all()?;
         fs::rename(&temporary, path)
     }
@@ -117,6 +137,64 @@ mod tests {
         fs::write(&path, "{ not json").unwrap();
 
         assert_eq!(State::load(&path), State::default());
+        fs::remove_dir_all(folder).unwrap();
+    }
+
+    #[test]
+    fn should_start_again_for_another_server_or_machine_and_keep_what_it_has_for_the_same() {
+        let mut state = State::default();
+        state.files.insert(
+            "/a.jsonl".to_string(),
+            FileState {
+                offset: 10,
+                lines: 1,
+                application: None,
+                head: 1,
+            },
+        );
+
+        assert!(
+            state.adopt("https://one.example|pc"),
+            "a state of nobody is for nobody: it starts"
+        );
+        assert!(state.files.is_empty());
+        state.files.insert(
+            "/a.jsonl".to_string(),
+            FileState {
+                offset: 10,
+                lines: 1,
+                application: None,
+                head: 1,
+            },
+        );
+        assert!(!state.adopt("https://one.example|pc"));
+        assert_eq!(
+            state.files.len(),
+            1,
+            "the same machine of the same server keeps its positions"
+        );
+        assert!(
+            state.adopt("https://one.example|other-name"),
+            "the machine joined again under another name"
+        );
+        assert!(state.files.is_empty());
+        assert!(
+            state.adopt("https://two.example|other-name"),
+            "another server"
+        );
+    }
+
+    #[test]
+    fn should_remember_whom_it_is_for_between_two_runs() {
+        let folder = std::env::temp_dir().join(format!("mnemarr-state-id-{}", std::process::id()));
+        let path = folder.join("state.json");
+        let mut state = State::default();
+        state.adopt("https://one.example|pc");
+        state.save(&path).unwrap();
+
+        let mut loaded = State::load(&path);
+
+        assert!(!loaded.adopt("https://one.example|pc"));
         fs::remove_dir_all(folder).unwrap();
     }
 }

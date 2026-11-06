@@ -140,6 +140,43 @@ public static class Schema
         );
         CREATE INDEX conversations_by_machine ON conversations (machine, updated_at);
         """,
+        // 6: the machines that joined (a kind, the account that sends for each, when it was last heard from and what it said) and the codes that join them (kept as hashes).
+        """
+        CREATE TABLE machines (
+            name TEXT NOT NULL PRIMARY KEY,
+            kind TEXT NOT NULL,
+            account_id TEXT NOT NULL UNIQUE,
+            enrolled_at TEXT NOT NULL,
+            last_seen_at TEXT,
+            version TEXT,
+            pending_lines INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            revoked_at TEXT
+        );
+        CREATE TABLE enrolments (
+            id TEXT NOT NULL PRIMARY KEY,
+            machine TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            state TEXT NOT NULL,
+            code_hash TEXT NOT NULL UNIQUE,
+            requested_at TEXT NOT NULL,
+            requested_by TEXT NOT NULL,
+            approved_at TEXT,
+            approved_by TEXT,
+            expires_at TEXT NOT NULL
+        );
+        """,
+        // 7: a collector that a person paused says so with its sign of life (ADR 0027 §16).
+        """
+        ALTER TABLE machines ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+        """,
+        // 8: the title of a conversation is its own: what it says, where it comes from (the first sentence, a model, a person), a short summary, and how many times a model was tried (ADR 0028).
+        """
+        ALTER TABLE conversations ADD COLUMN title TEXT;
+        ALTER TABLE conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'first-sentence';
+        ALTER TABLE conversations ADD COLUMN summary TEXT;
+        ALTER TABLE conversations ADD COLUMN title_tries INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

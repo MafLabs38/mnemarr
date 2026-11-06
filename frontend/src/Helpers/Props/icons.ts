@@ -16,6 +16,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  TriangleAlert,
   Users,
 } from 'lucide-react';
 
@@ -39,4 +40,5 @@ export const icons = {
   ALLOWED: ShieldCheck,
   SUCCESS: CircleCheck,
   DANGER: CircleX,
+  WARNING: TriangleAlert,
 } as const;

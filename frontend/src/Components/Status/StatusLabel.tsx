@@ -10,12 +10,16 @@ import styles from './StatusLabel.module.css';
 const kindIcons: Record<Kind, LucideIcon> = {
   [kinds.SUCCESS]: icons.SUCCESS,
   [kinds.DANGER]: icons.DANGER,
+  [kinds.INFO]: icons.INFO,
+  [kinds.WARNING]: icons.WARNING,
 };
 
 /** Same rule for the colour: a new kind does not compile until it has its style. */
 const kindStyles: Record<Kind, string> = {
   [kinds.SUCCESS]: styles.success ?? '',
   [kinds.DANGER]: styles.danger ?? '',
+  [kinds.INFO]: styles.info ?? '',
+  [kinds.WARNING]: styles.warning ?? '',
 };
 
 interface StatusLabelProps {

@@ -43,77 +43,134 @@ impl std::fmt::Display for UploadError {
 
 impl std::error::Error for UploadError {}
 
+/// What a collector says of itself at the end of a pass (ADR 0027 §6): that it is there, which version it is, what it still has to send, and, when a
+/// file could not be read or a conversation was refused, a short sentence with no path and no content.
+pub struct Heartbeat<'a> {
+    pub version: &'a str,
+    pub pending_lines: u64,
+    pub error: Option<&'a str>,
+    /// A person asked it to be quiet: it still says it is there, and says why it sends nothing.
+    pub paused: bool,
+}
+
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
 pub trait Uploader {
     fn send(&self, batch: &Batch<'_>) -> Result<Reply, UploadError>;
+
+    /// The sign of life at the end of a pass. A test that does not look at it need not say anything.
+    fn heartbeat(&self, _beat: &Heartbeat<'_>) -> Result<(), UploadError> {
+        Ok(())
+    }
+}
+
+/// The client every call uses: no redirect is followed (the key is in a header that is not the standard one, and the code is a secret), and it
+/// names itself and its version.
+pub(crate) fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(60)))
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .user_agent(format!("mnemarr-collector/{}", crate::VERSION))
+        .build()
+        .into()
+}
+
+/// Reads why the server refused: the title of its problem document, or the first words of the body.
+pub(crate) fn reason_of(body: &str) -> String {
+    let text = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| body.to_string());
+    text.chars().take(300).collect()
 }
 
 /// Sends batches to a Mnemarr server over HTTP, with the ingest key of the machine.
 pub struct HttpUploader {
-    url: String,
+    base: String,
     key: String,
     agent: ureq::Agent,
 }
 
 impl HttpUploader {
     pub fn new(server: &str, key: &str) -> Self {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(60)))
-            .http_status_as_error(false)
-            // The key is in a header that is not the standard one: a redirect must not carry it to another host.
-            .max_redirects(0)
-            .user_agent(format!("mnemarr-collector/{}", crate::VERSION))
-            .build()
-            .into();
         Self {
-            url: format!(
-                "{}/api/v1/ingest/conversations",
-                server.trim_end_matches('/')
-            ),
+            base: format!("{}/api/v1/ingest", server.trim_end_matches('/')),
             key: key.to_string(),
-            agent,
+            agent: agent(),
         }
+    }
+
+    /// Posts a document with the key, and gives back the status and the body of the answer.
+    fn post(&self, path: &str, body: Value) -> Result<(u16, String), UploadError> {
+        let mut response = self
+            .agent
+            .post(format!("{}/{path}", self.base))
+            .header("X-Api-Key", &self.key)
+            .send_json(body)
+            .map_err(|error| UploadError::Later(error.to_string()))?;
+        let status = response.status().as_u16();
+        let text = response.body_mut().read_to_string().unwrap_or_default();
+        Ok((status, text))
+    }
+}
+
+/// A status that is not a success, as the collector tells it: a later pass tries again, or the server will not take this.
+fn failure(status: u16, body: &str) -> UploadError {
+    match status {
+        // Busy, or a server that is starting or failing: a later pass tries again.
+        408 | 425 | 429 | 500..=599 => UploadError::Later(format!("status {status}")),
+        _ => UploadError::Refused(status, reason_of(body)),
     }
 }
 
 impl Uploader for HttpUploader {
     fn send(&self, batch: &Batch<'_>) -> Result<Reply, UploadError> {
-        let body = json!({
-            "format": batch.format,
-            "machine": batch.machine,
-            "application": batch.application,
-            "session": batch.session,
-            "from": batch.from,
-            "lines": batch.lines,
-        });
-        let mut response = self
-            .agent
-            .post(&self.url)
-            .header("X-Api-Key", &self.key)
-            .send_json(body)
-            .map_err(|error| UploadError::Later(error.to_string()))?;
-        let status = response.status().as_u16();
-        if status == 200 {
-            let reply: Value = response
-                .body_mut()
-                .read_json()
-                .map_err(|error| UploadError::Later(error.to_string()))?;
-            return match (
-                reply.get("next").and_then(Value::as_u64),
-                reply.get("accepted").and_then(Value::as_u64),
-            ) {
-                (Some(next), Some(accepted)) => Ok(Reply { next, accepted }),
-                _ => Err(UploadError::Later(
-                    "the answer is not the one expected".to_string(),
-                )),
-            };
+        let (status, text) = self.post(
+            "conversations",
+            json!({
+                "format": batch.format,
+                "machine": batch.machine,
+                "application": batch.application,
+                "session": batch.session,
+                "from": batch.from,
+                "lines": batch.lines,
+            }),
+        )?;
+        if status != 200 {
+            return Err(failure(status, &text));
         }
-        let reason = response.body_mut().read_to_string().unwrap_or_default();
-        let reason: String = reason.chars().take(300).collect();
-        match status {
-            // Busy, or a server that is starting or failing: a later pass tries again.
-            408 | 425 | 429 | 500..=599 => Err(UploadError::Later(format!("status {status}"))),
-            _ => Err(UploadError::Refused(status, reason)),
+        let reply: Value =
+            serde_json::from_str(&text).map_err(|error| UploadError::Later(error.to_string()))?;
+        match (
+            reply.get("next").and_then(Value::as_u64),
+            reply.get("accepted").and_then(Value::as_u64),
+        ) {
+            (Some(next), Some(accepted)) => Ok(Reply { next, accepted }),
+            _ => Err(UploadError::Later(
+                "the answer is not the one expected".to_string(),
+            )),
+        }
+    }
+
+    fn heartbeat(&self, beat: &Heartbeat<'_>) -> Result<(), UploadError> {
+        let (status, text) = self.post(
+            "heartbeat",
+            json!({
+                "version": beat.version,
+                "pendingLines": beat.pending_lines,
+                "error": beat.error,
+                "paused": beat.paused,
+            }),
+        )?;
+        if status == 200 || status == 204 {
+            Ok(())
+        } else {
+            Err(failure(status, &text))
         }
     }
 }
@@ -326,5 +383,62 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, UploadError::Later(_)));
+    }
+
+    #[test]
+    fn should_send_a_sign_of_life_with_the_key_the_version_and_what_is_left() {
+        let (address, handle) = serve_once("204 No Content", "");
+
+        HttpUploader::new(&address, "the-key")
+            .heartbeat(&Heartbeat {
+                version: "0.2.0",
+                pending_lines: 7,
+                error: Some("1 file(s) could not be read"),
+                paused: true,
+            })
+            .unwrap();
+
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("POST /api/v1/ingest/heartbeat"));
+        assert!(request.to_ascii_lowercase().contains("x-api-key: the-key"));
+        let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({"version": "0.2.0", "pendingLines": 7, "error": "1 file(s) could not be read", "paused": true})
+        );
+    }
+
+    #[test]
+    fn should_say_that_a_key_is_refused_by_the_sign_of_life_and_try_again_later_when_the_server_fails()
+     {
+        let beat = Heartbeat {
+            version: "0.2.0",
+            pending_lines: 0,
+            error: None,
+            paused: false,
+        };
+        let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
+        assert!(matches!(
+            HttpUploader::new(&address, "old").heartbeat(&beat),
+            Err(UploadError::Refused(401, _))
+        ));
+        handle.join().unwrap();
+
+        let (address, handle) = serve_once("503 Service Unavailable", "{}");
+        assert!(matches!(
+            HttpUploader::new(&address, "k").heartbeat(&beat),
+            Err(UploadError::Later(_))
+        ));
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn should_read_the_reason_of_a_problem_document_or_the_first_words_of_anything_else() {
+        assert_eq!(
+            reason_of(r#"{"title":"The code is not valid."}"#),
+            "The code is not valid."
+        );
+        assert_eq!(reason_of("a page of a proxy"), "a page of a proxy");
+        assert_eq!(reason_of(&"x".repeat(1000)).len(), 300);
     }
 }

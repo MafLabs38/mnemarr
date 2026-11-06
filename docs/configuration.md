@@ -67,7 +67,51 @@ Assistants reach Mnemarr over the Model Context Protocol at `POST /mcp` ([ADR 00
 |---|---|---|
 | `MNEMARR__MCP__WRITETOOLS` | `false` | Whether the tools that write notes (`create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note`) are offered. Off by default, and an environment setting on purpose: neither the database nor the API can turn it on. A tool is only offered to a role that holds its permission, and a source that is read-only refuses writes whatever this says. |
 
-Tools that read: `list_sources`, `search`, `list_notes`, `read_note` (gives the `version` to send back with `update_note`), `list_tags`.
+Tools that read: `list_sources`, `search`, `list_notes`, `read_note` (gives the `version` to send back with `update_note`), `list_tags`. A tool that asks: `request_collector_enrolment` (role `Assistant` or `Admin`) opens a request to add a machine and returns a one-time code and the command to run; it is of no use until a person who manages the collectors approves it in the interface.
+
+## Machines and collectors (`Collectors`, `Ingest`)
+
+A key of a collector belongs to one machine ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)): it is made when the machine joins with a one-time code, and it can send for that machine only.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__INGEST__REQUIREENROLMENT` | `true` | Whether a key may send only for the machine it was enrolled for. Turn it off only for a sandbox, or for the day before every machine is enrolled: a hand-made `Collector` account can then write under any machine name. |
+| `MNEMARR__COLLECTORS__DOWNLOADFOLDER` | none | A folder with the programs a machine installs, one file per system: `mnemarr-collector-windows-x86_64.exe`, `mnemarr-collector-linux-x86_64`, `mnemarr-collector-macos-aarch64`. Mnemarr serves them (and no other file), with their checksum, to the machines that join, and gives a line to install for each system it has. The image carries them; a developer mounts a folder. |
+| `MNEMARR__COLLECTORS__PUBLICURL` | the address of the request | The address the lines and installers tell machines to reach Mnemarr at, such as `https://mnemarr.homelab.example`. Set it behind a proxy that does not pass the original host. |
+| `MNEMARR__COLLECTORS__ONLINEWITHINMINUTES` | `5` | A machine heard from within this many minutes is online (1 to 10080). |
+| `MNEMARR__COLLECTORS__SILENCEAFTERMINUTES` | `30` | An `always-on` machine that has not been heard from for this long degrades `/health/ready` (reason `collector-silent`); one that reports an error does too (`collector-failing`). An `intermittent` machine never does. At least the previous setting. |
+
+An existing hand-made `Collector` account stops working at the upgrade unless the first setting is turned off: enrol the machine instead (`mnemarr-collector enroll`).
+
+## Titles of conversations (`Titles`)
+
+A conversation is titled by its first sentence, or by what a person types. A model can write a better title and a short summary ([ADR 0028](adr/0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md)). **It is off by default, and turning it on sends the start and the end of conversations (the secrets already masked) to the provider of the model.**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__TITLES__ENABLED` | `false` | Whether a model writes titles and summaries, in the background and on request. |
+| `MNEMARR__TITLES__PROVIDER` | `Anthropic` | Who writes: `Anthropic` (the Messages API, with an API key), `OpenAI` (any API that speaks OpenAI's chat completions: OpenAI, Ollama, LM Studio, vLLM, OpenRouter…) or `Agent` (a companion; see [Using another model](#using-another-model-for-titles)). |
+| `MNEMARR__TITLES__APIKEYFILE` | none | Providers `Anthropic` (needed) and `OpenAI` (optional: a local server has no key): a file that holds the API key (a mounted secret). |
+| `MNEMARR__TITLES__AGENTURL` | none | Provider `Agent`: the address of the companion, on the host or its network (`http://host:8490`). Needed then. |
+| `MNEMARR__TITLES__AGENTSECRETFILE` | none | Provider `Agent`: a file that holds the secret shared with the companion. Needed then. |
+| `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model, in the words of the provider (`gpt-5-mini`, `llama3`, or an alias such as `haiku` for an agent). |
+| `MNEMARR__TITLES__ENDPOINT` | Anthropic's | The address of the API (providers `Anthropic`, where it defaults to Anthropic's, and `OpenAI`, where it is needed, such as `http://localhost:11434` for a local model). A key is only sent over HTTPS, or to this host. |
+| `MNEMARR__TITLES__IDLEMINUTES` | `10` | A conversation is titled once nothing has been added to it for this long. |
+| `MNEMARR__TITLES__PERPASS` | `5` | How many conversations a pass titles (a pass is every `PASSSECONDS`, 60): the cost is bounded. |
+| `MNEMARR__TITLES__MAXTRIES` | `3` | A conversation the model fails to title this many times keeps its first sentence. |
+| `MNEMARR__TITLES__MAXCHARS` | `6000` | How much of a conversation is sent, in characters. |
+
+### Using another model for titles
+
+Titles are written through one small interface, `ITitleWriter` (a transcript in, a title and a summary out); the name in `Titles:Provider` selects the `ITitleProvider` that builds it. Three come with Mnemarr. To use something else, pick the way that fits:
+
+- **An OpenAI-compatible API, or a local model**: `MNEMARR__TITLES__PROVIDER=OpenAI`, `ENDPOINT` to its address and `MODEL` to a model it serves. Nothing to write.
+- **Any other tool or system, without touching Mnemarr**: run a small companion that speaks the *agent protocol*, and set `PROVIDER=Agent`, `AGENTURL` and `AGENTSECRETFILE`. The protocol is one call: `POST {AgentUrl}/title` with `Authorization: Bearer <secret>` and `{"model", "system", "transcript"}`; the answer is `200 {"text": "..."}` where the text holds one JSON object `{"title": "...", "summary": "..."}` (a fence around it is tolerated). [tools/title-agent](../tools/title-agent/main.mjs) is an example: it runs the Claude Code CLI with an account's own login, so that the subscription is used and not an API.
+- **A provider in the code** (a fork, or a contribution): write a class that implements `ITitleProvider` (a name, the check of its settings, and the creation of an `ITitleWriter`) and register it with `services.AddSingleton<ITitleProvider, MyProvider>()`. [TitleProviders.cs](../src/Mnemarr.Core/Titles/TitleProviders.cs) holds the three built-in ones.
+
+Whatever the provider, turning titles on sends the start and the end of conversations (already masked) to it: with a local model, that text stays on your network.
+
+A person who holds `conversations.write` (`Admin`) changes a title, or asks the model to write it again, on the page of the note; the Machines page counts the titles and queues the first sentences for the model. What a person typed is never replaced by a model's.
 
 ## Configuration as code (`Config`)
 

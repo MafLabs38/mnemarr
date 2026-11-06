@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Mnemarr.Api.V1.Collectors;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core;
 
@@ -23,13 +24,15 @@ public sealed class McpController : ControllerBase
     private const int MaxRequestBytes = 4 * 1024 * 1024;
 
     private readonly McpTools _tools;
+    private readonly InstallCommands _installs;
 
-    public McpController(McpTools tools)
+    public McpController(McpTools tools, InstallCommands installs)
     {
         _tools = tools;
+        _installs = installs;
     }
 
-    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission));
+    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission), _installs.Server(Request));
 
     [HttpPost]
     [Consumes("application/json")]

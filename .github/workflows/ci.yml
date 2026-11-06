@@ -132,6 +132,8 @@ jobs:
   collector:
     name: collector (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # A test that starts the collector in the background must end: if one hangs, the job is stopped here, not after six hours.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -158,6 +160,23 @@ jobs:
           binary=target/release/mnemarr-collector
           [ -x "$binary" ] || binary="$binary.exe"
           "$binary" --version | grep -q '^mnemarr-collector '
+      # The program that was just tested is kept, with its checksum: it is what a machine installs (ADR 0027, and the release of vertical 2b).
+      - name: Checksum
+        working-directory: collector/target/release
+        shell: bash
+        run: |
+          binary=${{ runner.os == 'Windows' && 'mnemarr-collector.exe' || 'mnemarr-collector' }}
+          sha256sum "$binary" > "$binary.sha256"
+      - name: Keep the binary
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mnemarr-collector-${{ matrix.os }}
+          path: |
+            collector/target/release/mnemarr-collector
+            collector/target/release/mnemarr-collector.exe
+            collector/target/release/mnemarr-collector*.sha256
+          if-no-files-found: error
+          retention-days: 14
 
   sonarqube:
     name: sonarqube

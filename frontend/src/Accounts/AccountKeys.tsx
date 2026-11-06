@@ -9,6 +9,7 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import PageContent from 'Components/Page/PageContent';
 import PageContentBody from 'Components/Page/PageContentBody';
 import PageHeading from 'Components/Page/PageHeading';
+import { copyText } from 'Utilities/Clipboard/copyText';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
@@ -28,13 +29,10 @@ function NewKey({ created, onDismiss }: Readonly<{ created: CreatedApiKey; onDis
   const [copyFailed, setCopyFailed] = useState(false);
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(created.secret);
-      setCopied(true);
-    } catch {
-      // No clipboard on a page served over plain HTTP: the secret is selected with one click, and the person is told so.
-      setCopyFailed(true);
-    }
+    // When the page cannot copy at all, the secret is selected with one click, and the person is told to copy it.
+    const done = await copyText(created.secret);
+    setCopied(done);
+    setCopyFailed(!done);
   }
 
   return (

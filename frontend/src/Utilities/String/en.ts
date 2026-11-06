@@ -4,7 +4,6 @@
  */
 const en = {
   About: 'About',
-  Agents: 'Agents',
   AppName: 'Mnemarr',
   ApiReachable: 'API reachable',
   BackToOverview: 'Back to the overview',
@@ -51,6 +50,8 @@ const en = {
   ConfirmDelete: 'Confirm: delete {name}',
   Copied: 'Copied',
   CopyUnavailable: 'This page cannot reach the clipboard. Click the key to select it, then copy it yourself.',
+  CopyLineUnavailable:
+    'This browser will not copy from this page. Click the line to select it, then copy it yourself (Ctrl+C).',
   Copy: 'Copy',
   Create: 'Create',
   CreateAccount: 'Create an account',
@@ -267,6 +268,75 @@ const en = {
   'different-repository': 'the folder is the checkout of another repository',
   'credential-missing': 'the credential is not there, or its token cannot be read',
   'sync-failed': 'the repository could not be synchronised',
+  Machines: 'Machines',
+  Machine: 'Machine',
+  MachinesIntro:
+    'The machines that send their conversations to Mnemarr, and what each is doing. A key belongs to one machine and cannot send for another.',
+  MachinesError: 'The machines could not be read.',
+  NoMachines: 'No machine has joined yet. Add one below, and run the command it shows on that machine.',
+  MachineName: 'Name of the machine',
+  AddAMachine: 'Add a machine',
+  AddMachine: 'Add the machine',
+  AddMachineHelp:
+    'The name must be the one the machine will give itself. An always-on machine (a server) raises an alert when it falls silent; an intermittent one (a workstation) never does.',
+  KindAlwaysOn: 'Always on (a server)',
+  KindIntermittent: 'Intermittent (a workstation)',
+  NewCode: 'Code of the new machine',
+  PasteThisLine:
+    'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and installs it. The code in it works once, for 15 minutes, and is shown only now.',
+  DownloadFor: 'Download for {system}',
+  DownloadHelp:
+    'The file already knows this Mnemarr, the machine and the code: open it, and it joins the machine and installs the collector. Windows may say the publisher is unknown, because the program is not signed yet: choose "More info", then "Run anyway".',
+  OrPasteThisLine: 'Or, from a terminal, paste this line:',
+  NoProgram:
+    'This Mnemarr has no collector program to give. Install mnemarr-collector on {name} by other means, then run this command. The code works once, for 15 minutes, and is shown only now.',
+  InsecureWarning:
+    'This Mnemarr is served over plain HTTP: the key of the machine will travel without encryption on your network. Fine to try at home, not for real use.',
+  NewCodeCode: 'Code: {code}',
+  CopyCommand: 'Copy the command',
+  LastSeen: 'Last seen',
+  NeverSeen: 'Never',
+  ConversationsCount: 'Conversations',
+  RevokeMachine: 'Revoke the machine {name}',
+  StateOnline: 'Online',
+  StatePaused: 'Paused by its user',
+  StateAway: 'Away (asleep or off)',
+  StateWaiting: 'Waiting for its first contact',
+  StateUnenrolled: 'No longer enrolled (its conversations are kept)',
+  RemoveMachine: 'Remove the machine {name} from the list',
+  MachineNameUsed: 'It will be named: {name}',
+  StateSilent: 'Silent',
+  StateFailing: 'Failing',
+  StateRefused: 'Refused (revoked)',
+  Requests: 'Requests to add a machine',
+  NoRequests:
+    'Nothing is waiting: an assistant that asks for a machine to be added shows here until a person approves it.',
+  RequestPending: 'Waiting for approval',
+  RequestApproved: 'Approved, code not used yet',
+  RequestExpired: 'Expired',
+  RequestedBy: 'Asked by',
+  Approve: 'Approve',
+  Reject: 'Reject',
+  ApproveRequest: 'Approve the request for {name}',
+  RejectRequest: 'Reject the request for {name}',
+  ConversationTitle: 'Title',
+  TitleOfTheConversation: 'Title of the conversation',
+  ConversationTitles: 'Conversation titles',
+  TitleFromFirstSentence: 'the first sentence of the conversation',
+  TitleFromModel: 'written by a model',
+  TitleFromPerson: 'typed by a person',
+  ChangeTitle: 'Change the title',
+  SaveTitle: 'Save the title',
+  RewriteTitle: 'Rewrite with the model',
+  WritingTitle: 'The model is writing…',
+  TitleCounts:
+    '{summary} written by a model, {person} typed by a person, {firstSentence} with only the first sentence.',
+  TitlesModelOn:
+    'A model writes a title and a summary for each conversation once it has been left alone for a while. What a person typed is never replaced.',
+  TitlesModelOff:
+    'No model writes titles on this Mnemarr: a title is the first sentence of the conversation, or what a person types. To turn it on, see Titles in the configuration (the start and the end of conversations, already masked, are then sent to the provider of the model).',
+  RewriteAllTitles: 'Have the model write the titles that are only a first sentence',
+  TitlesQueued: '{count} conversation(s) are queued: the model writes their titles in the background.',
   SourceMissing: 'No source is declared for {kind}: what depends on it cannot work until one is.',
 } as const;
 
