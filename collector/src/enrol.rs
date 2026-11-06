@@ -1,13 +1,13 @@
-//! Joins this machine to Mnemarr (ADR 0027 §11): exchanges the one-time code a person approved for the key of this machine, and keeps the key
-//! and the address in the folder of the collector, where only this user reads them.
+//! Joins this machine to Mnemarr: exchanges the one-time code a person approved for the key of this machine (ADR 0027 §11), or asks to be linked and waits for
+//! a person to approve in Mnemarr (ADR 0030). The key is kept by `destinations`, in the folder of the collector, where only this user reads it.
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::config::{BOOTSTRAP_FILE, KEY_FILE};
 use crate::upload::{UploadError, agent, reason_of};
 
 /// What the server gave back: the key of this machine, shown once, the name it is bound to, and its kind.
@@ -55,28 +55,140 @@ fn parse(body: &str) -> Result<Enrolled, UploadError> {
     }
 }
 
-/// Writes the key, then the small file that says where Mnemarr is and what this machine is called. Returns the two paths.
-pub fn save(
-    dir: &Path,
+/// What Mnemarr gave a machine that asked to be linked: the short code to show, the secret to ask with, the address a person opens, and the timing.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct PairingRequest {
+    pub user_code: String,
+    pub device_code: String,
+    pub verification_url: String,
+    pub expires_in: Duration,
+    pub interval: Duration,
+}
+
+/// What became of a request to be linked, as the machine learns it by asking again.
+#[derive(Debug, PartialEq, Eq)]
+pub enum PairAnswer {
+    Pending,
+    Approved(Enrolled),
+    Rejected,
+    Expired,
+}
+
+fn post_json(server: &str, path: &str, body: Value) -> Result<(u16, String), UploadError> {
+    let mut response = agent()
+        .post(format!("{}{path}", server.trim_end_matches('/')))
+        // A write to the API needs this header unless it carries a key: a browser cannot add it to a form.
+        .header("X-Mnemarr-Request", "1")
+        .send_json(body)
+        .map_err(|error| UploadError::Later(error.to_string()))?;
+    let status = response.status().as_u16();
+    let text = response.body_mut().read_to_string().unwrap_or_default();
+    Ok((status, text))
+}
+
+fn unexpected() -> UploadError {
+    UploadError::Later("the answer is not the one expected".to_string())
+}
+
+/// Asks Mnemarr to link this machine: it answers with a short code and an address, and a person who manages the collectors approves there.
+pub fn pair_start(server: &str, hostname: &str) -> Result<PairingRequest, UploadError> {
+    let (status, body) = post_json(
+        server,
+        "/api/v1/ingest/pair",
+        json!({ "hostname": hostname }),
+    )?;
+    match status {
+        200 | 201 => {
+            let value: Value = serde_json::from_str(&body).map_err(|_| unexpected())?;
+            let text = |name: &str| value.get(name).and_then(Value::as_str).map(str::to_string);
+            let seconds = |name: &str| value.get(name).and_then(Value::as_u64);
+            match (
+                text("userCode"),
+                text("deviceCode"),
+                text("verificationUrl"),
+                seconds("expiresInSeconds"),
+                seconds("intervalSeconds"),
+            ) {
+                (
+                    Some(user_code),
+                    Some(device_code),
+                    Some(verification_url),
+                    Some(life),
+                    Some(every),
+                ) => Ok(PairingRequest {
+                    user_code,
+                    device_code,
+                    verification_url,
+                    expires_in: Duration::from_secs(life),
+                    interval: Duration::from_secs(every.max(1)),
+                }),
+                _ => Err(unexpected()),
+            }
+        }
+        429 | 408 | 425 | 500..=599 => Err(UploadError::Later(format!("status {status}"))),
+        _ => Err(UploadError::Refused(status, reason_of(&body))),
+    }
+}
+
+/// Asks what became of the request. The key is in the answer once, to the first to ask after the approval.
+pub fn pair_poll(server: &str, device_code: &str) -> Result<PairAnswer, UploadError> {
+    let (status, body) = post_json(
+        server,
+        "/api/v1/ingest/pair/poll",
+        json!({ "deviceCode": device_code }),
+    )?;
+    match status {
+        200 => {
+            let value: Value = serde_json::from_str(&body).map_err(|_| unexpected())?;
+            match value.get("state").and_then(Value::as_str) {
+                Some("pending") => Ok(PairAnswer::Pending),
+                Some("rejected") => Ok(PairAnswer::Rejected),
+                Some("expired") => Ok(PairAnswer::Expired),
+                Some("approved") => parse(&body).map(PairAnswer::Approved),
+                _ => Err(unexpected()),
+            }
+        }
+        429 | 408 | 425 | 500..=599 => Err(UploadError::Later(format!("status {status}"))),
+        _ => Err(UploadError::Refused(status, reason_of(&body))),
+    }
+}
+
+/// How a request to be linked ended.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LinkOutcome {
+    Linked(Enrolled),
+    Rejected,
+    Expired,
+}
+
+/// Asks to be linked and waits for a person. `show` is told the request as soon as it exists (to print the address and open the browser), and `wait` is
+/// how the time passes (a test does not sleep). A server that cannot be reached for a moment is asked again until the request would have expired anyway.
+pub fn link_by_asking(
     server: &str,
-    enrolled: &Enrolled,
-    insecure: bool,
-) -> io::Result<(PathBuf, PathBuf)> {
-    fs::create_dir_all(dir)?;
-    let key = dir.join(KEY_FILE);
-    write_private(&key, &enrolled.key)?;
-    let bootstrap = dir.join(BOOTSTRAP_FILE);
-    let text = serde_json::to_string_pretty(
-        &json!({ "server": server.trim_end_matches('/'), "machine": enrolled.machine, "insecure": insecure }),
-    )
-    .map_err(io::Error::other)?;
-    fs::write(&bootstrap, text)?;
-    Ok((key, bootstrap))
+    hostname: &str,
+    show: &dyn Fn(&PairingRequest),
+    wait: &dyn Fn(Duration),
+) -> Result<LinkOutcome, UploadError> {
+    let request = pair_start(server, hostname)?;
+    show(&request);
+    let mut waited = Duration::ZERO;
+    while waited <= request.expires_in + request.interval {
+        wait(request.interval);
+        waited += request.interval;
+        match pair_poll(server, &request.device_code) {
+            Ok(PairAnswer::Pending) | Err(UploadError::Later(_)) => {}
+            Ok(PairAnswer::Approved(enrolled)) => return Ok(LinkOutcome::Linked(enrolled)),
+            Ok(PairAnswer::Rejected) => return Ok(LinkOutcome::Rejected),
+            Ok(PairAnswer::Expired) => return Ok(LinkOutcome::Expired),
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(LinkOutcome::Expired)
 }
 
 /// A file only its user can read: created with that mode from the start, so that the key is never readable by others, even for a moment.
 #[cfg(unix)]
-fn write_private(path: &Path, text: &str) -> io::Result<()> {
+pub(crate) fn write_private(path: &Path, text: &str) -> io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     // An older file is replaced, not written into: its mode and its owner are not trusted.
@@ -96,7 +208,7 @@ fn write_private(path: &Path, text: &str) -> io::Result<()> {
 /// On Windows the folder is in the profile of the user, whose access is inherited from the profile; the access of everyone else is taken away
 /// as well, as far as the system lets this user do it.
 #[cfg(not(unix))]
-fn write_private(path: &Path, text: &str) -> io::Result<()> {
+pub(crate) fn write_private(path: &Path, text: &str) -> io::Result<()> {
     // The file is made empty and closed down first, then the text is written: the key is never in a file that others can read.
     fs::write(path, "")?;
     match std::env::var_os("USERNAME") {
@@ -154,12 +266,6 @@ mod tests {
             String::from_utf8_lossy(&request).to_string()
         });
         (address, handle)
-    }
-
-    fn folder(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("mnemarr-enrol-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        dir
     }
 
     #[test]
@@ -226,41 +332,195 @@ mod tests {
         handle.join().unwrap();
     }
 
+    /// A server that answers the requests it gets in turn with the answers it was given, and keeps what it was asked.
+    fn serve_in_turn(
+        answers: Vec<(&'static str, String)>,
+    ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let mut asked = Vec::new();
+            for (status, body) in answers {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let read = stream.read(&mut chunk).unwrap();
+                    request.extend_from_slice(&chunk[..read]);
+                    let text = String::from_utf8_lossy(&request).to_string();
+                    if let Some((head, rest)) = text.split_once("\r\n\r\n") {
+                        let length = head
+                            .to_ascii_lowercase()
+                            .lines()
+                            .find_map(|line| {
+                                line.strip_prefix("content-length: ")
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if rest.len() >= length {
+                            break;
+                        }
+                    }
+                    if read == 0 {
+                        break;
+                    }
+                }
+                asked.push(String::from_utf8_lossy(&request).to_string());
+                let answer = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(answer.as_bytes()).unwrap();
+            }
+            asked
+        });
+        (address, handle)
+    }
+
+    const STARTED: &str = r#"{"userCode":"ABCD-EFGH-JKLM","deviceCode":"dvc_secret","verificationUrl":"https://m.example/link?code=ABCD-EFGH-JKLM","expiresInSeconds":600,"intervalSeconds":3}"#;
+
     #[test]
-    fn should_keep_the_key_and_the_address_where_only_this_user_reads_the_key() {
-        let dir = folder("save");
-        let enrolled = Enrolled {
-            key: "mnm_the-key".to_string(),
-            machine: "pc".to_string(),
-            kind: "intermittent".to_string(),
-        };
+    fn should_ask_to_be_linked_show_the_address_wait_and_take_the_key_once_a_person_approved() {
+        let (address, handle) = serve_in_turn(vec![
+            ("201 Created", STARTED.to_string()),
+            ("200 OK", r#"{"state":"pending"}"#.to_string()),
+            ("200 OK", r#"{"state":"pending"}"#.to_string()),
+            (
+                "200 OK",
+                r#"{"state":"approved","key":"mnm_the-key","machine":"quimper-gaming","kind":"intermittent"}"#.to_string(),
+            ),
+        ]);
+        let shown = std::cell::RefCell::new(Vec::new());
+        let waits = std::cell::Cell::new(0u32);
 
-        let (key, bootstrap) = save(&dir, "https://mnemarr.example/", &enrolled, false).unwrap();
-
-        assert_eq!(fs::read_to_string(&key).unwrap(), "mnm_the-key");
-        let said: Value = serde_json::from_str(&fs::read_to_string(&bootstrap).unwrap()).unwrap();
-        assert_eq!(said["server"], "https://mnemarr.example");
-        assert_eq!(said["machine"], "pc");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                fs::metadata(&key).unwrap().permissions().mode() & 0o777,
-                0o600
-            );
-        }
-        // Enrolling again replaces the key, whatever mode the old file had.
-        save(
-            &dir,
-            "https://mnemarr.example",
-            &Enrolled {
-                key: "mnm_other".to_string(),
-                ..enrolled
+        let outcome = link_by_asking(
+            &address,
+            "Gaming PC",
+            &|request| shown.borrow_mut().push(request.clone()),
+            &|every| {
+                assert_eq!(every, Duration::from_secs(3));
+                waits.set(waits.get() + 1);
             },
-            false,
         )
         .unwrap();
-        assert_eq!(fs::read_to_string(&key).unwrap(), "mnm_other");
-        let _ = fs::remove_dir_all(&dir);
+
+        assert_eq!(
+            outcome,
+            LinkOutcome::Linked(Enrolled {
+                key: "mnm_the-key".to_string(),
+                machine: "quimper-gaming".to_string(),
+                kind: "intermittent".to_string()
+            })
+        );
+        assert_eq!(waits.get(), 3);
+        let shown = shown.into_inner();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].user_code, "ABCD-EFGH-JKLM");
+        assert_eq!(
+            shown[0].verification_url,
+            "https://m.example/link?code=ABCD-EFGH-JKLM"
+        );
+        let asked = handle.join().unwrap();
+        assert!(asked[0].contains("POST /api/v1/ingest/pair "));
+        assert!(asked[0].contains("Gaming PC"));
+        assert!(asked[1].contains("/api/v1/ingest/pair/poll") && asked[1].contains("dvc_secret"));
+        assert!(asked.iter().all(|request| {
+            request
+                .to_ascii_lowercase()
+                .contains("x-mnemarr-request: 1")
+        }));
+        assert!(
+            asked
+                .iter()
+                .all(|request| !request.to_ascii_lowercase().contains("x-api-key")),
+            "no key yet"
+        );
+    }
+
+    #[test]
+    fn should_say_when_a_person_refused_or_the_request_expired() {
+        for (state, expected) in [
+            ("rejected", LinkOutcome::Rejected),
+            ("expired", LinkOutcome::Expired),
+        ] {
+            let (address, handle) = serve_in_turn(vec![
+                ("201 Created", STARTED.to_string()),
+                ("200 OK", format!(r#"{{"state":"{state}"}}"#)),
+            ]);
+
+            let outcome = link_by_asking(&address, "pc", &|_| {}, &|_| {}).unwrap();
+
+            assert_eq!(outcome, expected);
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn should_go_on_asking_when_the_server_cannot_be_reached_for_a_moment_and_stop_when_it_refuses()
+    {
+        let (address, handle) = serve_in_turn(vec![
+            ("201 Created", STARTED.to_string()),
+            ("503 Service Unavailable", "{}".to_string()),
+            ("200 OK", r#"{"state":"rejected"}"#.to_string()),
+        ]);
+        assert_eq!(
+            link_by_asking(&address, "pc", &|_| {}, &|_| {}).unwrap(),
+            LinkOutcome::Rejected
+        );
+        handle.join().unwrap();
+
+        let (address, handle) = serve_in_turn(vec![
+            ("201 Created", STARTED.to_string()),
+            (
+                "400 Bad Request",
+                r#"{"title":"The request is not valid."}"#.to_string(),
+            ),
+        ]);
+        assert_eq!(
+            link_by_asking(&address, "pc", &|_| {}, &|_| {}).unwrap_err(),
+            UploadError::Refused(400, "The request is not valid.".to_string())
+        );
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn should_give_up_and_say_it_expired_when_nobody_answers_before_the_time_is_over() {
+        let mut answers = vec![("201 Created", STARTED.to_string())];
+        answers.extend((0..300).map(|_| ("200 OK", r#"{"state":"pending"}"#.to_string())));
+        let (address, _handle) = serve_in_turn(answers);
+        let waited = std::cell::Cell::new(Duration::ZERO);
+
+        let outcome = link_by_asking(&address, "pc", &|_| {}, &|every| {
+            waited.set(waited.get() + every)
+        })
+        .unwrap();
+
+        assert_eq!(outcome, LinkOutcome::Expired);
+        assert!(
+            waited.get() >= Duration::from_secs(600),
+            "it waited the whole time"
+        );
+        assert!(waited.get() <= Duration::from_secs(610));
+    }
+
+    #[test]
+    fn should_not_take_a_start_or_an_answer_that_is_not_the_one_expected() {
+        let (address, handle) =
+            serve_in_turn(vec![("201 Created", r#"{"userCode":"X"}"#.to_string())]);
+        assert!(matches!(
+            pair_start(&address, "pc"),
+            Err(UploadError::Later(_))
+        ));
+        handle.join().unwrap();
+
+        let (address, handle) = serve_in_turn(vec![(
+            "200 OK",
+            r#"{"state":"approved","machine":"pc"}"#.to_string(),
+        )]);
+        assert!(
+            matches!(pair_poll(&address, "dvc"), Err(UploadError::Later(_))),
+            "approved without a key"
+        );
+        handle.join().unwrap();
     }
 }
