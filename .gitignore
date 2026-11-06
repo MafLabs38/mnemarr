@@ -63,6 +63,9 @@ reports/
 
 # Rust (collector)
 collector/target/
+# The programs the CI copies into the image (the folder itself is kept, for the Dockerfile).
+collector-programs/*
+!collector-programs/.gitkeep
 
 # Binding of the SonarQube for IDE extension to a server: per developer, it names the server
 .sonarlint/

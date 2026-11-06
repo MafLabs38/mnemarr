@@ -32,9 +32,13 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:c89a6a61f494f20a
 WORKDIR /app
 COPY --from=backend /app ./
 COPY --from=frontend /build/_output/UI ./wwwroot
+# The programs a machine installs (ADR 0027 §12, ADR 0029): the CI puts here the ones it built and tested for this commit; a build without them
+# (a developer's `docker build`) serves none, and the page of the machines then offers no line to run.
+COPY --chown=1654:1654 collector-programs /collector-programs
 # The chiseled image has no shell to create folders: copy an empty one owned by the app user.
 COPY --from=backend --chown=1654:1654 /config /config
 ENV MNEMARR__DATAFOLDER=/config
+ENV MNEMARR__COLLECTORS__DOWNLOADFOLDER=/collector-programs
 # The base image sets ASPNETCORE_HTTP_PORTS=8080, which the Urls setting of appsettings.json overrides with a warning at every start.
 ENV ASPNETCORE_HTTP_PORTS=
 # The app user of the chiseled image, stated so that nothing reads this image as running as root.

@@ -32,7 +32,7 @@
 | `/mcp` | yes | an assistant has no browser; the key is its proof |
 | everything else (`/`, `/api/v1/*`, `/health/*`) | **no**: behind the single sign-on | the interface and the administration |
 
-Rules of the proxy for those two prefixes: allow-list them by prefix (nothing else on that host name), forward the `X-Api-Key` and `X-Mnemarr-Request` headers, limit the size of a body (a batch is at most 8 MB), and leave the rate limits to Mnemarr for now. Mnemarr counts the wrong enrolment codes itself: ten a minute for the whole server, then a 429.
+Rules of the proxy for those two prefixes: allow-list them by prefix (nothing else on that host name), forward the `X-Api-Key` and `X-Mnemarr-Request` headers, limit the size of a body (a batch is at most 8 MB), and **limit the requests per address**: the proxy sees the real address of a caller, Mnemarr does not read forwarded addresses (behind two proxies it would trust a header anyone can write). With nginx, in the `http` context `limit_req_zone $binary_remote_addr zone=mnemarr:10m rate=10r/s;` and in the two locations `limit_req zone=mnemarr burst=40 nodelay;`. Mnemarr itself counts the wrong enrolment codes (ten a minute for the whole server, then a 429), throttles the sign-in, and writes at most four programs at the same time (a 429 with `Retry-After` for the others) ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)).
 
 ## Try it on a home network without TLS
 
@@ -40,4 +40,4 @@ A Mnemarr served over plain HTTP (a developer's sandbox, a first try at home) sh
 
 ## Not decided here
 
-How the home installation publishes these two prefixes (a reverse proxy, a host name, the certificate) is the work of the vertical that runs Mnemarr for real, in the operator's own infrastructure repository. This page says what must be allowed; it does not name anybody's hosts.
+How an installation publishes these two prefixes (a reverse proxy, a host name, the certificate) is the operator's own infrastructure as code, in a repository of theirs. This page says what must be allowed; it does not name anybody's hosts. [The runbook](runbook.md) says what to do once it runs.

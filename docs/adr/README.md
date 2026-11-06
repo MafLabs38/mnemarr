@@ -32,3 +32,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0025](0025-the-collector-is-a-service-per-machine-enrolled-by-a-code-and-configured-from-the-server.md) | The collector is a service on each machine, enrolled by a code, and configured from the server | D-45 |
 | [0027](0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md) | Machines join with a code, hold a key bound to their name, and say they are alive | D-47 |
 | [0028](0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md) | The title of a conversation is its own: the first sentence, a model's, or a person's | D-48 |
+| [0029](0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md) | Mnemarr runs for real: programs in the image, snapshots of the database, brakes on the public endpoints | D-49 |
