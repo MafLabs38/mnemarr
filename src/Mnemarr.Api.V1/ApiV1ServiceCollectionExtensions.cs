@@ -11,6 +11,7 @@ public static class ApiV1ServiceCollectionExtensions
     {
         services.AddSingleton<Collectors.InstallCommands>();
         services.AddSingleton<Mcp.McpTools>();
+        services.AddMnemarrRateLimits();
         services.AddControllers(options => options.Filters.Add<RejectedFilter>()).AddApplicationPart(typeof(SystemController).Assembly);
         return services;
     }

@@ -131,7 +131,8 @@ jobs:
   # it has its own checks on both, then a smoke test of the real binary.
   collector:
     name: collector (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    # The Linux program is built on a runner that is pinned, not on `ubuntu-latest`: the oldest system that runs it is part of what is promised (docs/collector.md).
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # A test that starts the collector in the background must end: if one hangs, the job is stopped here, not after six hours.
     timeout-minutes: 20
     strategy:
@@ -338,6 +339,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # The programs a machine installs are the ones the `collector` job built and tested on this very commit (ADR 0029): their checksum is
+      # verified here, and they go in the image under the names the server serves (a Windows and a Linux one, both x86_64).
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mnemarr-collector-ubuntu-latest
+          path: collector-programs/linux
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mnemarr-collector-windows-latest
+          path: collector-programs/windows
+      - name: Put the programs in the image
+        run: |
+          set -euo pipefail
+          (cd collector-programs/linux && sha256sum -c mnemarr-collector.sha256)
+          (cd collector-programs/windows && sha256sum -c mnemarr-collector.exe.sha256)
+          mv collector-programs/linux/mnemarr-collector collector-programs/mnemarr-collector-linux-x86_64
+          mv collector-programs/windows/mnemarr-collector.exe collector-programs/mnemarr-collector-windows-x86_64.exe
+          rm -rf collector-programs/linux collector-programs/windows
+          test -s collector-programs/mnemarr-collector-linux-x86_64
+          test -s collector-programs/mnemarr-collector-windows-x86_64.exe
+          ls -l collector-programs
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:

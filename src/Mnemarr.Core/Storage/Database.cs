@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Backup;
 using Mnemarr.Core.Configuration;
 
 namespace Mnemarr.Core.Storage;
@@ -7,13 +8,15 @@ namespace Mnemarr.Core.Storage;
 public sealed class Database : IDatabase
 {
     private readonly string _folder;
+    private readonly IOptions<BackupOptions>? _backup;
     private readonly string _connectionString;
     private readonly Lock _gate = new();
     private volatile bool _ready;
 
-    public Database(IOptions<MnemarrOptions> options)
+    public Database(IOptions<MnemarrOptions> options, IOptions<BackupOptions>? backup = null)
     {
         _folder = options.Value.DataFolder;
+        _backup = backup;
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = Path.Combine(_folder, "mnemarr.db"),
@@ -61,8 +64,40 @@ public sealed class Database : IDatabase
                 return;
             }
 
+            CopyBeforeMigration(connection);
             Schema.Apply(connection);
             _ready = true;
+        }
+    }
+
+    /// <summary>
+    /// A migration is not undone, and a deployment that follows the versions applies it at start (ADR 0029): when a database that exists is about to be
+    /// migrated, a whole copy of it is kept first, in the <c>backup</c> folder, the last three. A copy that cannot be written stops the start: a migration is
+    /// not made without the way back.
+    /// </summary>
+    private void CopyBeforeMigration(SqliteConnection connection)
+    {
+        // An operator who turned the snapshots off (the host takes its own, or content must be erasable) has said no to copies; so is it here.
+        var from = Schema.CurrentVersion(connection);
+        if (from == 0 || from >= Schema.Version || _backup?.Value.Enabled == false)
+        {
+            return;
+        }
+
+        var folder = Path.Combine(_folder, SnapshotFiles.FolderName);
+        SnapshotFiles.EnsureFolder(folder);
+        // The moment comes first in the name, so that the order of the names is the order of the migrations, whatever the numbers of the versions.
+        SnapshotFiles.Write(connection, Path.Combine(folder, $"{SnapshotFiles.MigrationPrefix}{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-v{from}-to-v{Schema.Version}.db"));
+        try
+        {
+            foreach (var old in Directory.EnumerateFiles(folder, SnapshotFiles.MigrationPrefix + "*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(SnapshotFiles.MigrationCopiesKept))
+            {
+                File.Delete(old);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The copy that matters is whole: an old one that stays is not a reason to refuse to start.
         }
     }
 

@@ -56,7 +56,11 @@ public static partial class InstallScripts
         # An older copy that runs would keep its file: it is stopped first (nothing happens when there is none).
         if (Test-Path $exe) { & $exe stop 2>$null | Out-Null }
         Write-Host 'Downloading the collector...'
-        Invoke-WebRequest -UseBasicParsing "$server/api/v1/ingest/download/windows-x86_64" -OutFile $exe
+        # Mnemarr writes a few programs at a time and says "wait" (429) to the others: asked again a few times, a fleet that installs at once gets through.
+        for ($try = 1; $try -le 6; $try++) {
+            try { Invoke-WebRequest -UseBasicParsing "$server/api/v1/ingest/download/windows-x86_64" -OutFile $exe; break }
+            catch { if ($try -eq 6 -or $_.Exception.Response.StatusCode.value__ -ne 429) { throw }; Start-Sleep -Seconds 5 }
+        }
         if ((Get-FileHash $exe -Algorithm SHA256).Hash.ToLower() -ne '{{SHA256}}') {
             Remove-Item $exe -Force
             throw 'The program does not match its checksum: it was removed and nothing was installed.'
@@ -87,7 +91,8 @@ public static partial class InstallScripts
         # An older copy that runs would keep its file: it is stopped first (nothing happens when there is none).
         [ -x "$exe" ] && "$exe" stop >/dev/null 2>&1 || true
         echo 'Downloading the collector...'
-        curl -fsSL "$server/api/v1/ingest/download/$platform" -o "$exe"
+        # Mnemarr writes a few programs at a time and says "wait" (429) to the others: curl asks again, after the wait it was told.
+        curl -fsSL --retry 6 --retry-delay 5 "$server/api/v1/ingest/download/$platform" -o "$exe"
         if command -v sha256sum >/dev/null 2>&1; then actual=$(sha256sum "$exe" | cut -d' ' -f1); else actual=$(shasum -a 256 "$exe" | cut -d' ' -f1); fi
         if [ "$actual" != "$expected" ]; then
           rm -f "$exe"

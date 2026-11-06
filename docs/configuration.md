@@ -76,12 +76,26 @@ A key of a collector belongs to one machine ([ADR 0027](adr/0027-machines-join-w
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__INGEST__REQUIREENROLMENT` | `true` | Whether a key may send only for the machine it was enrolled for. Turn it off only for a sandbox, or for the day before every machine is enrolled: a hand-made `Collector` account can then write under any machine name. |
-| `MNEMARR__COLLECTORS__DOWNLOADFOLDER` | none | A folder with the programs a machine installs, one file per system: `mnemarr-collector-windows-x86_64.exe`, `mnemarr-collector-linux-x86_64`, `mnemarr-collector-macos-aarch64`. Mnemarr serves them (and no other file), with their checksum, to the machines that join, and gives a line to install for each system it has. Until the image carries them, fill the folder from the release artifacts of the CI (the Windows program is the artifact of the `collector (windows-latest)` job) and mount it. |
+| `MNEMARR__COLLECTORS__DOWNLOADFOLDER` | none | A folder with the programs a machine installs, one file per system: `mnemarr-collector-windows-x86_64.exe`, `mnemarr-collector-linux-x86_64`, `mnemarr-collector-macos-aarch64`. Mnemarr serves them (and no other file), with their checksum, to the machines that join, and gives a line to install for each system it has. The image carries the Windows and Linux programs of its own commit in `/collector-programs`, and this setting points there by default; set it to serve other programs, or to nothing to serve none. |
 | `MNEMARR__COLLECTORS__PUBLICURL` | the address of the request | The address the lines and installers tell machines to reach Mnemarr at, such as `https://mnemarr.homelab.example`. Set it behind a proxy that does not pass the original host. |
 | `MNEMARR__COLLECTORS__ONLINEWITHINMINUTES` | `5` | A machine heard from within this many minutes is online (1 to 10080). |
 | `MNEMARR__COLLECTORS__SILENCEAFTERMINUTES` | `30` | An `always-on` machine that has not been heard from for this long degrades `/health/ready` (reason `collector-silent`); one that reports an error does too (`collector-failing`). An `intermittent` machine never does. At least the previous setting. |
 
 An existing hand-made `Collector` account stops working at the upgrade unless the first setting is turned off: enrol the machine instead (`mnemarr-collector enroll`).
+
+## Backup (`Backup`)
+
+Mnemarr keeps a consistent copy of its database in the `backup` folder of the data folder, readable by its owner only ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)); what copies the data folder away is yours (see [the runbook](runbook.md)).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__BACKUP__ENABLED` | `true` | Whether snapshots are taken, and whether a whole copy of the database is kept before a migration. |
+| `MNEMARR__BACKUP__EVERYHOURS` | `24` | A snapshot is taken when the newest is this old (1 to 168). |
+| `MNEMARR__BACKUP__KEEP` | `7` | How many are kept; older ones are deleted (1 to 60). |
+
+A snapshot holds what the database held that day: **what you delete from Mnemarr stays readable in the snapshots** until they are replaced (`Keep` × `EveryHours`, a week by default), in the **last three copies made before a migration** (kept whatever their age), and in whatever your backup tool keeps beyond that. Keep this in mind for content you must be able to erase.
+
+When the last snapshot failed, or none has been taken for more than twice the interval, `/health/ready` says **degraded** with the reason `backup-failing` or `backup-late` (it stays 200: the application works).
 
 ## Titles of conversations (`Titles`)
 

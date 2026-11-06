@@ -47,6 +47,10 @@
 - **The person stays in control of a background process** (asked by the maintainer on 2026-11-05): on Windows and macOS an icon in the notification area says that it runs, shows its state, and offers *Pause* (for an hour, or until resumed), *Resume*, *Open Mnemarr* and *Quit*; on a server without a screen the same through `pause`, `resume` and `status`. A paused collector keeps sending its heartbeat, marked paused, so that Mnemarr shows **paused** and not "silent". The pause survives a restart. New dependencies for the icon are a decision of the pull request.
 - The collector never prevents sleep and costs the machine nothing it would notice.
 
+#### Follow-ups of running it for real
+
+- A **static Linux program** (musl), so that any distribution runs it, and **aarch64** programs for Linux and macOS (the image carries x86_64 only); the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
+
 #### 2c. Configuration from the server
 
 *Demo: switch a reader off for a machine in the interface and see the collector obey at its next pass.*
@@ -57,9 +61,9 @@
 
 *Demo: the production URL; the machines send their conversations; an assistant elsewhere reads them.*
 
-- Image released through the existing pipeline, **carrying the collector programs** (today an operator copies the CI artifacts into `Collectors:DownloadFolder` by hand), deployed by GitOps; the data folder on a local disk, backed up.
+- Image released through the existing pipeline, **carrying the collector programs** (done: [ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)), deployed by GitOps; the data folder on a local disk, backed up.
 - Exposure of the ingest and MCP endpoints outside the single sign-on, with Mnemarr's own keys (Q-07).
-- The runbook to add a machine.
+- The runbook to add a machine, to back up and to restore ([runbook](runbook.md)); a consistent snapshot of the database and a brake on the public endpoints ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)).
 - **The MVP is vertical 1, vertical 2 (2a and 2b at least) and vertical 3.** The order is 2a, 2b, 3, then 2c: exposing the ingest to the Internet waits for keys that are bound to their machine.
 
 ### 4. The other assistants

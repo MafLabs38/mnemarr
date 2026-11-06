@@ -251,6 +251,15 @@ public class DownloadsFactory : MnemarrFactoryBase
     }
 }
 
+/// <summary>The programs, with a Windows one big enough that a client that does not read it keeps the server writing it.</summary>
+public sealed class BigProgramFactory : DownloadsFactory
+{
+    public BigProgramFactory()
+    {
+        File.WriteAllBytes(Path.Combine(DownloadFolder!, "mnemarr-collector-windows-x86_64.exe"), new byte[8 * 1024 * 1024]);
+    }
+}
+
 /// <summary>The same, behind a proxy that ends TLS: the address given to machines is set, and is https.</summary>
 public sealed class PublicUrlFactory : DownloadsFactory
 {

@@ -18,7 +18,8 @@ public static class HealthExtensions
             .AddCheck<AccountsHealthCheck>("accounts", tags: [ReadyTag])
             .AddCheck<SourcesHealthCheck>("sources", tags: [ReadyTag])
             .AddCheck<ConfigurationHealthCheck>("configuration", tags: [ReadyTag])
-            .AddCheck<CollectorsHealthCheck>("collectors", tags: [ReadyTag]);
+            .AddCheck<CollectorsHealthCheck>("collectors", tags: [ReadyTag])
+            .AddCheck<BackupHealthCheck>("backup", tags: [ReadyTag]);
         return services;
     }
 

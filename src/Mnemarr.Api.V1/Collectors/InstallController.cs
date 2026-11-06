@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Mnemarr.Core;
 using Mnemarr.Core.Collectors;
 
@@ -32,6 +33,7 @@ public sealed class InstallController : ControllerBase
     /// joins that machine and installs itself. Without, it is the program as it is (what the installers download and verify).
     /// </summary>
     [HttpGet("download/{platform}")]
+    [EnableRateLimiting(RateLimits.ProgramDownload)]
     public IActionResult Download(string platform, [FromQuery] string? code, [FromQuery] string? machine)
     {
         Response.Headers.CacheControl = "no-store";

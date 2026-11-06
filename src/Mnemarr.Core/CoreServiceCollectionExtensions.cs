@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Backup;
 using Mnemarr.Core.Collectors;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Conversations;
@@ -43,6 +44,10 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<ISessionStore, SqliteSessionStore>();
         services.AddSingleton<SessionService>();
         services.AddHostedService<AuditRetentionService>();
+        services.AddOptions<BackupOptions>().Bind(configuration.GetSection("Backup")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<BackupOptions>, BackupOptionsValidator>();
+        services.AddSingleton<DatabaseBackup>();
+        services.AddHostedService<BackupService>();
         services.AddSingleton<AccountService>();
         services.AddSingleton<SignInService>();
         services.AddSingleton<ApiKeyService>();
