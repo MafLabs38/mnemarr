@@ -91,6 +91,9 @@ public static partial class ConversationFormats
         DateTimeOffset.TryParse(Text(root, "timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at.ToUniversalTime() : null;
 }
 
+/// <summary>What says which conversation a note is of: the format of its lines, the machine, the application, the session and when it began.</summary>
+public sealed record ConversationHeading(string Format, string Machine, string Application, string Session, DateTimeOffset StartedAt);
+
 /// <summary>A conversation as a note: front matter that says where it comes from, a title taken from what was first asked, and each turn under its own heading.</summary>
 public static class ConversationMarkdown
 {
@@ -108,15 +111,28 @@ public static class ConversationMarkdown
     public static string Render(string format, string machine, string application, string session, DateTimeOffset startedAt, IReadOnlyList<Turn> turns) =>
         Header(format, machine, application, session, startedAt, turns) + Sections(turns);
 
+    /// <summary>The whole note with the title and the summary that were given (what a model or a person wrote), or the first sentence when there is none.</summary>
+    public static string Render(ConversationHeading heading, IReadOnlyList<Turn> turns, string? title, string? summary) =>
+        Header(heading.Format, heading.Machine, heading.Application, heading.Session, heading.StartedAt, title ?? Title(turns, heading.Session), summary) + Sections(turns);
+
     /// <summary>The front matter that says where a conversation comes from, and its title (from its first turns).</summary>
-    public static string Header(string format, string machine, string application, string session, DateTimeOffset startedAt, IReadOnlyList<Turn> turns)
+    public static string Header(string format, string machine, string application, string session, DateTimeOffset startedAt, IReadOnlyList<Turn> turns) =>
+        Header(format, machine, application, session, startedAt, Title(turns, session), null);
+
+    /// <summary>The front matter, the title, and under it the summary when there is one (a quote: it is what a model said of the conversation, not what was said in it).</summary>
+    public static string Header(string format, string machine, string application, string session, DateTimeOffset startedAt, string title, string? summary)
     {
         var text = new StringBuilder();
         text.Append("---\n")
             .Append(CultureInfo.InvariantCulture, $"tags: [conversation, {application}]\n")
             .Append(CultureInfo.InvariantCulture, $"source: {format}\nmachine: {machine}\napplication: {application}\nsession: {session}\n")
             .Append(CultureInfo.InvariantCulture, $"started: {startedAt.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}\n---\n")
-            .Append("# ").Append(Title(turns, session)).Append("\n\n");
+            .Append("# ").Append(title).Append("\n\n");
+        if (!string.IsNullOrWhiteSpace(summary))
+        {
+            text.Append("> ").Append(summary).Append("\n\n");
+        }
+
         return text.ToString();
     }
 

@@ -381,3 +381,13 @@
   color: var(--inkSoft);
   font-size: var(--fontSizeMeta);
 }
+
+.conversationTitle {
+  margin: 8px 0 12px;
+}
+
+.titleForm {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+}

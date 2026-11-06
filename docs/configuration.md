@@ -83,6 +83,23 @@ A key of a collector belongs to one machine ([ADR 0027](adr/0027-machines-join-w
 
 An existing hand-made `Collector` account stops working at the upgrade unless the first setting is turned off: enrol the machine instead (`mnemarr-collector enroll`).
 
+## Titles of conversations (`Titles`)
+
+A conversation is titled by its first sentence, or by what a person types. A model can write a better title and a short summary ([ADR 0028](adr/0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md)). **It is off by default, and turning it on sends the start and the end of conversations (the secrets already masked) to the provider of the model.**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__TITLES__ENABLED` | `false` | Whether a model writes titles and summaries, in the background and on request. |
+| `MNEMARR__TITLES__APIKEYFILE` | none | A file that holds the API key of the provider (a mounted secret). Needed when it is on. |
+| `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model. |
+| `MNEMARR__TITLES__ENDPOINT` | `https://api.anthropic.com` | The address of the API; HTTPS only. |
+| `MNEMARR__TITLES__IDLEMINUTES` | `10` | A conversation is titled once nothing has been added to it for this long. |
+| `MNEMARR__TITLES__PERPASS` | `5` | How many conversations a pass titles (a pass is every `PASSSECONDS`, 60): the cost is bounded. |
+| `MNEMARR__TITLES__MAXTRIES` | `3` | A conversation the model fails to title this many times keeps its first sentence. |
+| `MNEMARR__TITLES__MAXCHARS` | `6000` | How much of a conversation is sent, in characters. |
+
+A person who holds `conversations.write` (`Admin`) changes a title, or asks the model to write it again, on the page of the note; the Machines page counts the titles and queues the first sentences for the model. What a person typed is never replaced by a model's.
+
 ## Configuration as code (`Config`)
 
 `GET /api/v1/config/status` says whether a file is in charge, whether it was applied and why not (in words that give no path); the interface shows it and does not offer to apply a document while a file is in charge.

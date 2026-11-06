@@ -18,6 +18,7 @@ export const adminSession: Session = {
     'collectors.manage',
     'collectors.request',
     'conversations.read',
+    'conversations.write',
     'ingest.write',
     'notes.read',
     'notes.write',

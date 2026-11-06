@@ -9,6 +9,7 @@ import translate from 'Utilities/String/translate';
 import AddMachine from './AddMachine';
 import MachineList from './MachineList';
 import Requests from './Requests';
+import TitlesCard from './TitlesCard';
 
 /** The machines that send conversations: what each is doing, who asked to add one, and how to add one (ADR 0027). */
 export default function Machines() {
@@ -21,6 +22,9 @@ export default function Machines() {
         <p>{translate('MachinesIntro')}</p>
         <Card title={translate('Machines')}>
           <MachineList />
+        </Card>
+        <Card title={translate('ConversationTitles')}>
+          <TitlesCard />
         </Card>
         {canManage && (
           <>

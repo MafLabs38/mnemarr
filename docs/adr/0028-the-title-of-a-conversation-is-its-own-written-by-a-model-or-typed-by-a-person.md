@@ -1,0 +1,26 @@
+# 0028 — The title of a conversation is its own: the first sentence, a model's, or a person's
+
+- **Status**: accepted
+- **Date**: 2026-11-06
+- **Spec**: D-48; builds on D-44 ([0024](0024-conversations-are-collected-by-position-masked-twice-and-written-as-notes.md)) and replaces what [0025](0025-the-collector-is-a-service-per-machine-enrolled-by-a-code-and-configured-from-the-server.md) §9 deferred (the summary title)
+
+## Context
+
+A conversation was titled by the first sentence that says something. That is cheap and private, and it reads badly: the first thing a person says is rarely what the conversation was about. [0025](0025-the-collector-is-a-service-per-machine-enrolled-by-a-code-and-configured-from-the-server.md) kept a title written by a model for later, because it costs a call to a model for each conversation and sends text out of the host. The maintainer asked for it: a title that says something is worth that. They also asked that a title be changeable without collecting the conversation again, and that a person can correct what a model wrote.
+
+## Decision
+
+1. **The title is the conversation's own.** It is kept apart from the note (`title`, `title_source`, `summary`, `title_tries` of the `conversations` table), with where it comes from: `first-sentence` (the start, always there), `summary` (written by a model), `person` (typed). The note is derived: it is written again from the raw lines, which Mnemarr keeps, with the title and, under it, the summary as a quote. Changing a title collects nothing again; the note is written under the lock of the source, and read into the index again, so that the search finds the new title at once. A batch that comes in later adds its turns to the note and leaves the title alone; a note written whole again uses the title the conversation has.
+2. **What a person typed always wins.** A model never replaces a person's title (its summary may be added); a person replaces a model's title and keeps its summary. Asking a model to write a title again is a person's request, and replaces whatever there was. Only a person who holds the new permission `conversations.write` (`Admin`) changes a title or asks a model; `conversations.read` sees them.
+3. **A model writes titles in the background, and on request.** Off by default (`Titles:Enabled`). When on, a pass every minute takes a few conversations (`Titles:PerPass`, five) that have only a first sentence and have been left alone for a while (`Titles:IdleMinutes`, ten), sends the start and the end of each (`Titles:MaxChars`, 6000 characters, the secrets already masked) and asks for a title of at most 70 characters, in the language of the person, and a summary of one or two sentences. A conversation of one turn is not asked; a conversation the model fails to title three times (`Titles:MaxTries`) is left with its first sentence, so that a failing model does not cost for ever. The pass is bounded: its cost is.
+4. **What a model says is text, not instructions.** The conversation is given as data, with the instruction not to follow what is in it; the answer must be one JSON object; a title and a summary are cleaned (one line of plain words, no brackets, no hash mark, no leading quote mark, 80 and 400 characters at most) so that nothing a model writes, or is tricked into writing, can make a link, a tag or a heading in the note.
+5. **The provider is behind an interface.** `ITitleWriter` takes a transcript and gives a title and a summary. The first implementation is the Messages API of Anthropic (`Titles:Model`, `claude-haiku-5-5` by default): one call, the key read from a file at each call (`Titles:ApiKeyFile`, a mounted secret, never an environment variable), HTTPS only, no redirect followed (the key is in a header), a failure says the status and nothing of the answer. Another provider, or a model that runs on the host, is a class.
+6. **It is a choice that sends text out, and it is said.** Turning it on sends the start and the end of conversations to the provider; SECURITY.md and the configuration say so, and the page of the machines says it is off, and what that means. A person who does not want that keeps first sentences and types the titles that matter.
+7. **The API and the interface.** `GET /api/v1/conversations/title?path=` and `PUT` (a person's title), `POST /api/v1/conversations/title/rewrite` (a model, now), `GET /api/v1/conversations/titles` (counts by origin, and whether a model is on) and `POST /api/v1/conversations/titles/rewrite` (queue the first sentences again). A conversation is addressed by the path of its note. A conversation note shows its title with where it comes from, and the buttons *Change the title* and *Rewrite with the model*; the Machines page shows the counts and one button for all.
+
+## Consequences
+
+- Conversations already collected get their title by the pass, or by one button: nothing is deleted or collected again.
+- A model costs a few cents for hundreds of conversations at the default size, and is bounded by a pass and by tries.
+- The titles of the notes that Mnemarr serves to assistants say what the conversation was about, so a search by words in a title finds better.
+- Not here: a summary that updates as a conversation grows, a title per assistant or per project convention, other providers.

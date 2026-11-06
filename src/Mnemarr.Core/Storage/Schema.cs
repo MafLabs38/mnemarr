@@ -170,6 +170,13 @@ public static class Schema
         """
         ALTER TABLE machines ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
         """,
+        // 8: the title of a conversation is its own: what it says, where it comes from (the first sentence, a model, a person), a short summary, and how many times a model was tried (ADR 0028).
+        """
+        ALTER TABLE conversations ADD COLUMN title TEXT;
+        ALTER TABLE conversations ADD COLUMN title_source TEXT NOT NULL DEFAULT 'first-sentence';
+        ALTER TABLE conversations ADD COLUMN summary TEXT;
+        ALTER TABLE conversations ADD COLUMN title_tries INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

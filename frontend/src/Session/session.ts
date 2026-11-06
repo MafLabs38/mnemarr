@@ -23,6 +23,7 @@ export const permissions = {
   sourcesManage: 'sources.manage',
   search: 'search',
   conversationsRead: 'conversations.read',
+  conversationsWrite: 'conversations.write',
   collectorsManage: 'collectors.manage',
 } as const;
 

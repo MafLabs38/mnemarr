@@ -13,45 +13,28 @@ use tray_icon::{Icon, TrayIconBuilder};
 use crate::control;
 use crate::status::{self, Condition, Shared};
 
-/// The side of the icon, in pixels.
-const SIZE: u32 = 32;
+/// The side of the icon, in pixels. Windows draws it smaller, from this.
+const SIZE: u32 = 64;
 /// How often the icon looks at how the collector is.
 const REFRESH: Duration = Duration::from_millis(500);
 /// How long "pause for a while" lasts.
 const PAUSE: Duration = Duration::from_secs(3600);
 
-/// The colour of the icon for a condition: green when all is well, grey when paused, amber when Mnemarr cannot be reached, red when something is wrong.
-fn colour(condition: &Condition) -> [u8; 3] {
-    match condition {
-        Condition::Online => [46, 204, 113],
-        Condition::Paused => [150, 154, 166],
-        Condition::Starting => [120, 150, 210],
-        Condition::Offline(_) => [243, 156, 18],
-        Condition::Problem(_) | Condition::Refused => [231, 76, 60],
-    }
-}
+// The brain of Mnemarr, as a thin line on a transparent ground; its colour says how the collector is. Drawn from `assets/brain.svg` by `tools/icons/render.mjs`.
+const ONLINE: &[u8] = include_bytes!("../assets/brain-online.rgba");
+const PAUSED: &[u8] = include_bytes!("../assets/brain-paused.rgba");
+const OFFLINE: &[u8] = include_bytes!("../assets/brain-offline.rgba");
+const STARTING: &[u8] = include_bytes!("../assets/brain-starting.rgba");
 
-/// A round dot of the colour of the condition, with soft edges.
+/// The icon for a condition: a green brain when all is well, orange when paused, red when Mnemarr cannot be reached or something is wrong, grey-blue while it starts.
 fn icon_for(condition: &Condition) -> Result<Icon, String> {
-    let [red, green, blue] = colour(condition);
-    let centre = (SIZE as f32 - 1.0) / 2.0;
-    let radius = SIZE as f32 / 2.0 - 2.0;
-    let mut pixels = Vec::with_capacity((SIZE * SIZE * 4) as usize);
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let distance = ((x as f32 - centre).powi(2) + (y as f32 - centre).powi(2)).sqrt();
-            let alpha = (radius + 0.5 - distance).clamp(0.0, 1.0);
-            // A lighter heart, so that the dot is told from a plain disc in a crowd of icons.
-            let heart = if distance < radius * 0.38 { 70 } else { 0 };
-            pixels.extend_from_slice(&[
-                red.saturating_add(heart),
-                green.saturating_add(heart),
-                blue.saturating_add(heart),
-                (alpha * 255.0) as u8,
-            ]);
-        }
-    }
-    Icon::from_rgba(pixels, SIZE, SIZE).map_err(|error| error.to_string())
+    let pixels = match condition {
+        Condition::Online => ONLINE,
+        Condition::Paused => PAUSED,
+        Condition::Starting => STARTING,
+        Condition::Offline(_) | Condition::Problem(_) | Condition::Refused => OFFLINE,
+    };
+    Icon::from_rgba(pixels.to_vec(), SIZE, SIZE).map_err(|error| error.to_string())
 }
 
 /// Opens an address in the browser of the person, without a console window.

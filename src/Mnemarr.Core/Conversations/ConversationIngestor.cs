@@ -113,6 +113,7 @@ public sealed partial class ConversationIngestor
         var application = known?.Application ?? Slug(batch.Application);
         var path = known?.NotePath ?? ConversationMarkdown.NotePath(batch.Machine, application, startedAt, batch.Session);
         var noteBytes = known?.NoteBytes ?? 0;
+        var title = known?.Title;
         if (known is null)
         {
             _raw.WriteInfo(batch.Machine, batch.Session, new RawInfo(batch.Format, application, startedAt));
@@ -122,33 +123,24 @@ public sealed partial class ConversationIngestor
         {
             // The new turns go to the end of the note, after what was last written (what a failed attempt added is cut off): the cost of a pass does
             // not grow with the conversation. A note that is not what was recorded is written again whole, from the raw lines.
-            var appended = noteBytes > 0 ? AppendTo(source, path, noteBytes, ConversationMarkdown.Sections(freshTurns)) : null;
-            noteBytes = appended ?? Write(source, path, WholeNote(batch, application, startedAt, noteBytes > 0 ? ConversationFormats.Turns(batch.Format, _raw.Read(batch.Machine, batch.Session, total)) : freshTurns));
+            var appended = noteBytes > 0 ? NoteFiles.AppendTo(source, path, noteBytes, ConversationMarkdown.Sections(freshTurns)) : null;
+            if (appended is null)
+            {
+                // Written whole, from the raw lines when the note is not what was recorded: with the title the conversation has, not a new first sentence.
+                var turns = noteBytes > 0 ? ConversationFormats.Turns(batch.Format, _raw.Read(batch.Machine, batch.Session, total)) : freshTurns;
+                title ??= ConversationMarkdown.Title(turns, batch.Session);
+                noteBytes = NoteFiles.Write(source, path, ConversationMarkdown.Render(new ConversationHeading(batch.Format, batch.Machine, application, batch.Session, startedAt), turns, title, known?.Summary));
+            }
+            else
+            {
+                noteBytes = appended.Value;
+            }
+
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
         }
 
-        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account));
+        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account, title, known?.TitleSource ?? TitleSources.FirstSentence, known?.Summary));
         return new IngestResult(total, fresh.Count);
-    }
-
-    private static string WholeNote(IngestBatch batch, string application, DateTimeOffset startedAt, IReadOnlyList<Turn> turns) =>
-        ConversationMarkdown.Render(batch.Format, batch.Machine, application, batch.Session, startedAt, turns);
-
-    /// <summary>Adds text to the end of a note, after the first <paramref name="expectedLength"/> bytes: the length it was left at. Null when the note is not there, or is shorter.</summary>
-    private static long? AppendTo(Source source, string relativePath, long expectedLength, string text)
-    {
-        var full = Path.Combine(source.Path, relativePath);
-        if (!File.Exists(full) || new FileInfo(full).Length < expectedLength)
-        {
-            return null;
-        }
-
-        using var stream = new FileStream(full, FileMode.Open, FileAccess.Write);
-        stream.SetLength(expectedLength);
-        stream.Seek(0, SeekOrigin.End);
-        var bytes = new UTF8Encoding(false).GetBytes(text);
-        stream.Write(bytes);
-        return expectedLength + bytes.Length;
     }
 
     private static string MaskedLine(string line)
@@ -161,27 +153,6 @@ public sealed partial class ConversationIngestor
         {
             // A line that cannot be checked is not kept: a secret must not get in because the check gave up.
             throw new RejectedException(Problem.Invalid, "A line could not be checked for secrets: it was refused.");
-        }
-    }
-
-    private static long Write(Source source, string relativePath, string markdown)
-    {
-        var full = Path.Combine(source.Path, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        var temporary = Path.Combine(Path.GetDirectoryName(full)!, $".mnemarr-{Guid.NewGuid():N}.tmp");
-        try
-        {
-            var bytes = new UTF8Encoding(false).GetBytes(markdown);
-            File.WriteAllBytes(temporary, bytes);
-            File.Move(temporary, full, overwrite: true);
-            return bytes.Length;
-        }
-        finally
-        {
-            if (File.Exists(temporary))
-            {
-                File.Delete(temporary);
-            }
         }
     }
 

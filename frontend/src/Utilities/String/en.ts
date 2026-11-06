@@ -319,6 +319,24 @@ const en = {
   Reject: 'Reject',
   ApproveRequest: 'Approve the request for {name}',
   RejectRequest: 'Reject the request for {name}',
+  ConversationTitle: 'Title',
+  TitleOfTheConversation: 'Title of the conversation',
+  ConversationTitles: 'Conversation titles',
+  TitleFromFirstSentence: 'the first sentence of the conversation',
+  TitleFromModel: 'written by a model',
+  TitleFromPerson: 'typed by a person',
+  ChangeTitle: 'Change the title',
+  SaveTitle: 'Save the title',
+  RewriteTitle: 'Rewrite with the model',
+  WritingTitle: 'The model is writing…',
+  TitleCounts:
+    '{summary} written by a model, {person} typed by a person, {firstSentence} with only the first sentence.',
+  TitlesModelOn:
+    'A model writes a title and a summary for each conversation once it has been left alone for a while. What a person typed is never replaced.',
+  TitlesModelOff:
+    'No model writes titles on this Mnemarr: a title is the first sentence of the conversation, or what a person types. To turn it on, see Titles in the configuration (the start and the end of conversations, already masked, are then sent to the provider of the model).',
+  RewriteAllTitles: 'Have the model write the titles that are only a first sentence',
+  TitlesQueued: '{count} conversation(s) are queued: the model writes their titles in the background.',
   SourceMissing: 'No source is declared for {kind}: what depends on it cannot work until one is.',
 } as const;
 

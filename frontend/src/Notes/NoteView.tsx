@@ -6,6 +6,7 @@ import LoadingIndicator from 'Components/LoadingIndicator';
 import { ApiError } from 'Helpers/Api/apiGet';
 import translate from 'Utilities/String/translate';
 
+import ConversationTitle from './ConversationTitle';
 import { KindBadge } from './KindBadge';
 import { kindLook } from './kinds';
 import NoteActions from './NoteActions';
@@ -67,6 +68,7 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
           ))}
         </ul>
       )}
+      {note.sourceKind === 'Conversations' && <ConversationTitle path={note.path} />}
       <NoteActions key={note.version} note={note} />
       <NoteMarkdown note={note} />
       <section aria-label={translate('Backlinks')} className={styles.backlinks}>

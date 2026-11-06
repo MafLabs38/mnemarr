@@ -80,7 +80,7 @@
 
 *Demo: after a day of work, the memory vault holds notes of what was decided and learned, linked to the conversations.*
 
-- A background job (through the assistant runner, ADR 0007) reads new conversations and writes or updates notes per application, supersedes the contradicted ones, keeps provenance (D-17). It also writes the **summary title** of each conversation (opt-in).
+- A background job (through the assistant runner, ADR 0007) reads new conversations and writes or updates notes per application, supersedes the contradicted ones, keeps provenance (D-17). The **summary title** of each conversation is built already ([ADR 0028](adr/0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md)).
 - Needs a decision on what pays for it (a subscription through the CLI, or an API key); it costs per conversation.
 
 ### 7. Search by meaning

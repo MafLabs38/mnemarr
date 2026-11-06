@@ -18,6 +18,9 @@ public static class Permissions
     /// <summary>Reading the conversations of the assistants: what people said to them, which is more private than any note.</summary>
     public const string ConversationsRead = "conversations.read";
 
+    /// <summary>Changing the title of a conversation, and having a model write titles again (ADR 0028): what is said in a conversation is not changed, only how it is called.</summary>
+    public const string ConversationsWrite = "conversations.write";
+
     /// <summary>Adding, approving, rejecting and revoking the machines that send conversations (ADR 0027): who decides which machines may.</summary>
     public const string CollectorsManage = "collectors.manage";
 
@@ -25,5 +28,5 @@ public static class Permissions
     public const string CollectorsRequest = "collectors.request";
 
     public static IReadOnlyList<string> All { get; } =
-        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, CollectorsManage, CollectorsRequest];
+        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, ConversationsWrite, CollectorsManage, CollectorsRequest];
 }

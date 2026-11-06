@@ -429,6 +429,15 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByText('We kept the cache in memory.')).toBeVisible();
     await expect(page.getByText('This note is not edited here')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled();
+
+    // A person gives the conversation a title of their own, without collecting it again: the note, the tree and the search follow.
+    await expect(page.getByText('the first sentence of the conversation')).toBeVisible();
+    await page.getByRole('button', { name: 'Change the title' }).click();
+    await page.getByRole('textbox', { name: 'Title' }).fill(`Decision about the cache ${word}`);
+    await page.getByRole('button', { name: 'Save the title' }).click();
+    await expect(page.getByText('typed by a person')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: `Decision about the cache ${word}` })).toBeVisible();
+    await expect(page.getByRole('link', { name: `Decision about the cache ${word}` })).toBeVisible();
   });
 
   test('an assistant asks for a machine over MCP, a person approves the request, and the code then works', async ({

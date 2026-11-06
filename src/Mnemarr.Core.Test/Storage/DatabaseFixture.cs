@@ -105,6 +105,29 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
+    public void should_give_the_conversations_of_a_database_made_before_titles_a_first_sentence_title_to_start_from()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path) VALUES ('pc', 's1', 'app', 'claude-code', 3, 'then', 'now', 'pc/app/x.md');
+                ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+                PRAGMA user_version = 7;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var check = upgraded.CreateCommand();
+        check.CommandText = "SELECT title, title_source, summary, title_tries FROM conversations";
+        using var reader = check.ExecuteReader();
+        reader.Read().Should().BeTrue();
+        (reader.IsDBNull(0), reader.GetString(1), reader.IsDBNull(2), reader.GetInt32(3)).Should().Be((true, "first-sentence", true, 0));
+    }
+
+    [Fact]
     public void should_add_the_pause_to_a_database_whose_machines_did_not_have_one_without_touching_them()
     {
         using (var connection = _workspace.Database.Open())
@@ -113,6 +136,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO machines (name, kind, account_id, enrolled_at) VALUES ('pc', 'intermittent', 'a', 'then');
                 ALTER TABLE machines DROP COLUMN paused;
+                ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
                 PRAGMA user_version = 6;
                 """;
             back.ExecuteNonQuery();
@@ -136,6 +160,7 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path) VALUES ('pc', 's1', 'app', 'claude-code', 3, 'then', 'now', 'pc/app/x.md');
                 DROP TABLE machines; DROP TABLE enrolments;
+                ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
                 PRAGMA user_version = 5;
                 """;
             back.ExecuteNonQuery();

@@ -185,6 +185,41 @@ public sealed class EnrolledOnlyFactory : MnemarrFactoryBase
     protected override bool RequireEnrolment => true;
 }
 
+/// <summary>A model that gives what a test says: titles written by a model, without a network.</summary>
+public sealed class FakeTitleWriter : Mnemarr.Core.Titles.ITitleWriter
+{
+    public List<string> Asked { get; } = [];
+
+    public Task<Mnemarr.Core.Titles.GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken)
+    {
+        Asked.Add(transcript);
+        return Task.FromResult<Mnemarr.Core.Titles.GeneratedTitle?>(new Mnemarr.Core.Titles.GeneratedTitle("The model's title", "The model's summary."));
+    }
+}
+
+/// <summary>An application where a model writes the titles of conversations: a fake one, and a background pass that never comes by itself during a test.</summary>
+public sealed class TitlesFactory : MnemarrFactoryBase
+{
+    public TitlesFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    public FakeTitleWriter Writer { get; } = new();
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<Mnemarr.Core.Titles.ITitleWriter>(Writer);
+        services.PostConfigure<Mnemarr.Core.Titles.TitleOptions>(options =>
+        {
+            options.Enabled = true;
+            options.ApiKeyFile = "/not-read-by-the-fake";
+            options.PassSeconds = 3600;
+            options.IdleMinutes = 1440;
+        });
+    }
+}
+
 /// <summary>An application that serves the programs a machine installs: fake files, so that the checksums can be told.</summary>
 public class DownloadsFactory : MnemarrFactoryBase
 {
