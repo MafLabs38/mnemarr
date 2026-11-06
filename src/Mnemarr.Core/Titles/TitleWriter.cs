@@ -89,3 +89,60 @@ public sealed class AnthropicTitleWriter : ITitleWriter
         }
     }
 }
+
+/// <summary>
+/// A companion agent that runs an agent CLI (Claude Code) with the account's own login, the way Portarr's assistant does (ADR 0028): one call for a title and a summary.
+/// The agent speaks a tiny protocol, <c>POST /title</c> with <c>{model, system, transcript}</c> and a bearer secret, and answers <c>{text}</c>. The secret is read at each call.
+/// </summary>
+public sealed class AgentTitleWriter : ITitleWriter
+{
+    private readonly IOptions<TitleOptions> _options;
+    private readonly HttpClient _http;
+
+    public AgentTitleWriter(IOptions<TitleOptions> options)
+        : this(options, new SocketsHttpHandler { AllowAutoRedirect = false })
+    {
+    }
+
+    /// <summary>For a test: the handler stands in for the network.</summary>
+    internal AgentTitleWriter(IOptions<TitleOptions> options, HttpMessageHandler handler)
+    {
+        _options = options;
+        // The secret is in a header: a redirect must not carry it somewhere else. The agent runs a model: it is slower than an API.
+        _http = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(120) };
+    }
+
+    public async Task<GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken)
+    {
+        var options = _options.Value;
+        string secret;
+        try
+        {
+            secret = (await File.ReadAllTextAsync(options.AgentSecretFile ?? string.Empty, cancellationToken)).Trim();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            throw new TitleWriterException("The file of the agent secret cannot be read.", ex);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.AgentUrl ?? string.Empty), "/title"));
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", secret);
+        request.Content = JsonContent.Create(new { model = options.Model, system = TitlePrompt.System, transcript });
+        try
+        {
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new TitleWriterException($"The agent answered {(int)response.StatusCode}.");
+            }
+
+            var answer = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+            var text = answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            return TitlePrompt.Parse(text);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            throw new TitleWriterException("The agent could not be reached.", ex);
+        }
+    }
+}

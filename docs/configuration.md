@@ -90,8 +90,11 @@ A conversation is titled by its first sentence, or by what a person types. A mod
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__TITLES__ENABLED` | `false` | Whether a model writes titles and summaries, in the background and on request. |
-| `MNEMARR__TITLES__APIKEYFILE` | none | A file that holds the API key of the provider (a mounted secret). Needed when it is on. |
-| `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model. |
+| `MNEMARR__TITLES__PROVIDER` | `Anthropic` | `Anthropic` (the Messages API, with an API key) or `Agent` (a companion that runs Claude Code with the account's own login: [tools/title-agent](../tools/title-agent/main.mjs)). |
+| `MNEMARR__TITLES__APIKEYFILE` | none | Provider `Anthropic`: a file that holds the API key (a mounted secret). Needed then. |
+| `MNEMARR__TITLES__AGENTURL` | none | Provider `Agent`: the address of the companion, on the host or its network (`http://host:8490`). Needed then. |
+| `MNEMARR__TITLES__AGENTSECRETFILE` | none | Provider `Agent`: a file that holds the secret shared with the companion. Needed then. |
+| `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model (an alias such as `haiku` for the `Agent` provider). |
 | `MNEMARR__TITLES__ENDPOINT` | `https://api.anthropic.com` | The address of the API; HTTPS only. |
 | `MNEMARR__TITLES__IDLEMINUTES` | `10` | A conversation is titled once nothing has been added to it for this long. |
 | `MNEMARR__TITLES__PERPASS` | `5` | How many conversations a pass titles (a pass is every `PASSSECONDS`, 60): the cost is bounded. |
