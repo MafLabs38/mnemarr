@@ -482,6 +482,69 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Waiting for its first contact');
   });
 
+  test('a computer that asks to be linked is approved by a person who names it, and then gets its key once and shows in the machines', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const machine = unique('linked');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const started = await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC' } });
+    expect(started.status()).toBe(201);
+    const { userCode, deviceCode, verificationUrl } = (await started.json()) as {
+      userCode: string;
+      deviceCode: string;
+      verificationUrl: string;
+    };
+    expect(new URL(verificationUrl).pathname).toBe('/link');
+    const poll = async () => (await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).json();
+    expect((await poll()).state).toBe('pending');
+
+    // The person follows the address the computer shows, signs in, checks the name it gives itself, and names it.
+    await signIn(page, `/link?code=${encodeURIComponent(userCode)}`);
+    await expect(page.getByText('Gaming PC')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.getByLabel('Name in this Mnemarr').fill(machine);
+    await page.getByLabel('Kind').selectOption('always-on');
+    await page.getByRole('button', { name: 'Link this computer' }).click();
+    await expect(page.getByText(`Linked as ${machine}`)).toBeVisible();
+
+    const answer = await poll();
+    expect(answer).toMatchObject({ state: 'approved', machine, kind: 'always-on' });
+    expect(answer.key).toBeTruthy();
+    expect((await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).status()).toBe(400);
+    const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
+    expect((await key.post('/api/v1/ingest/heartbeat', { data: { version: '0.0.0', pendingLines: 0 } })).status()).toBe(
+      200,
+    );
+
+    await page.getByRole('link', { name: 'See the machines' }).click();
+    await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Always on');
+  });
+
+  test('a computer that is waiting to be linked shows in the machines, and a person can refuse it', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const host = unique('refused-pc');
+    const { deviceCode } = (await (
+      await anonymous.post('/api/v1/ingest/pair', { data: { hostname: host } })
+    ).json()) as {
+      deviceCode: string;
+    };
+
+    await signIn(page, '/machines');
+    await page.getByRole('link', { name: `Review the request of ${host}` }).click();
+    await page.getByRole('button', { name: 'This is not my computer' }).click();
+    await expect(page.getByText('Refused.')).toBeVisible();
+
+    const answer = await (await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).json();
+    expect(answer.state).toBe('rejected');
+    expect(answer.key).toBeNull();
+  });
+
   test('an operator writes notes: creates one, edits it, links to it, renames it and the link follows, removes it', async ({
     page,
     playwright,
