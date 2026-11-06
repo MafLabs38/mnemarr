@@ -214,6 +214,19 @@ public sealed class EnrolmentApiFixture : EnrolmentFixtureBase, IClassFixture<En
     }
 
     [Fact]
+    public async Task should_let_an_assistant_ask_again_for_the_name_of_a_machine_that_was_revoked()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        await JoinAsync(callers.Admin, machine);
+        (await callers.Admin.DeleteAsync($"/api/v1/collectors/{machine}", Token)).IsSuccessStatusCode.Should().BeTrue();
+
+        var requested = await CallAsync(callers["Assistant"], "request_collector_enrolment", new { machine });
+
+        requested["state"]!.GetValue<string>().Should().Be("pending");
+    }
+
+    [Fact]
     public async Task should_not_approve_a_request_for_a_name_that_was_enrolled_since_it_was_made()
     {
         var callers = await Callers.ForAsync(_factory);

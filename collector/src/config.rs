@@ -427,6 +427,27 @@ mod tests {
     }
 
     #[test]
+    fn should_call_local_only_an_address_on_this_machine() {
+        for local in [
+            "http://localhost:8080",
+            "http://127.0.0.1",
+            "http://127.0.0.1:8384/api",
+            "http://[::1]:8384",
+        ] {
+            assert!(is_local(local), "{local}");
+        }
+        for elsewhere in [
+            "http://localhost.evil.example",
+            "http://127.0.0.1.example.com",
+            "http://x/127.0.0.1",
+            "http://mnemarr.example",
+            "http://192.168.1.10:8384",
+        ] {
+            assert!(!is_local(elsewhere), "{elsewhere}");
+        }
+    }
+
+    #[test]
     fn should_refuse_a_name_of_machine_that_the_server_would_refuse() {
         assert!(
             is_machine_name(&"a".repeat(50)),
