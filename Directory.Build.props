@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591: XML comments are not required on every public member. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <!-- The version the application shows is the one it was built with, not that plus the commit hash the SDK appends when .git is there. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Authors>Mnemarr contributors</Authors>
+    <Product>Mnemarr</Product>
+    <!-- Provisional, like the one in package.json and the collector: the license is not decided yet (docs/SPEC.md, Q-20). -->
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+  </PropertyGroup>
+  <!-- The SonarQube analyzer, with the rules of the server's profile (.editorconfig), in every project but the tests: what Sonar
+       would flag is seen at build time, not after the push. The server does not report issues in test code either. -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Test'))">
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,87 @@
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    # A version published a moment ago is not taken at once: a compromised release is usually withdrawn within days.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      dotnet:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    # A version published a moment ago is not taken at once: a compromised release is usually withdrawn within days.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      frontend:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # The release tooling is its own package: only the release job installs it.
+  - package-ecosystem: "npm"
+    directory: "/tools/release"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    groups:
+      release-tooling:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    # This code runs in the job that can write to the repository: same cooldown, and its lockfile diff is reviewed as privileged code.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # The collector is not in the image (ADR 0013): its bumps do not release a version of it.
+  - package-ecosystem: "cargo"
+    directory: "/collector"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    # A version published a moment ago is not taken at once: a compromised release is usually withdrawn within days.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build"
+      include: "scope"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    # A version published a moment ago is not taken at once: a compromised release is usually withdrawn within days.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    # A version published a moment ago is not taken at once: a compromised release is usually withdrawn within days.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci"
+      include: "scope"

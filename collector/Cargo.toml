@@ -1,0 +1,26 @@
+[package]
+name = "mnemarr-collector"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.89"
+license = "GPL-3.0-or-later"
+description = "Collector agent: reads the conversations of an AI assistant on this machine and sends them to Mnemarr"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+# CLAUDE.md, rule 5 of the Rust conventions: no unwrap or expect on input or I/O. Tests may (clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"
+
+[dependencies]
+regex = "1"
+serde_json = "1"
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
+
+[target.'cfg(windows)'.dependencies]
+tao = "0.37.2"
+tray-icon = "0.24.2"

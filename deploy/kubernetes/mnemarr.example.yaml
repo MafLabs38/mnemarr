@@ -1,0 +1,114 @@
+# Mnemarr on Kubernetes. Adjust the values marked <...>, then `kubectl apply -f`.
+# The ingest and MCP endpoints are meant to be reachable without the proxy's single sign-on
+# (Mnemarr authenticates every call itself, D-27): publish them on their own host name, not under the UI's.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mnemarr
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mnemarr-data
+  namespace: mnemarr
+spec:
+  accessModes: [ReadWriteOnce]
+  # A local, fast volume: not a network share (docs/adr/0004).
+  storageClassName: <local-storage-class>
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mnemarr
+  namespace: mnemarr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate        # one writer to the database and the data folder
+  selector:
+    matchLabels:
+      app: mnemarr
+  template:
+    metadata:
+      labels:
+        app: mnemarr
+    spec:
+      # Mnemarr never calls the Kubernetes API: do not hand a cluster credential to the pod.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mnemarr
+          image: ghcr.io/<owner>/mnemarr:<tag>   # pin a version
+          ports:
+            - containerPort: 8383
+          env:
+            - name: MNEMARR__DATAFOLDER
+              value: /config
+            # The first administrator, created only while there is no account: a name, and the password in a mounted secret.
+            # Choose a name that is not obvious: whoever knows it can lock that account for fifteen minutes (five wrong passwords).
+            - name: MNEMARR__AUTH__ADMINUSER
+              value: change-me-admin-name
+            - name: MNEMARR__AUTH__ADMINPASSWORDFILE
+              value: /run/secrets/mnemarr/admin-password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8383
+          readinessProbe:
+            # The data folder check is reused for 15 seconds, so a lost volume shows within that time plus one period.
+            httpGet:
+              path: /health/ready
+              port: 8383
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+              ephemeral-storage: 64Mi
+            limits:
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+          volumeMounts:
+            - name: admin-password
+              mountPath: /run/secrets/mnemarr
+              readOnly: true
+            - name: data
+              mountPath: /config
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: admin-password
+          secret:
+            secretName: mnemarr-admin   # created by you: `kubectl -n mnemarr create secret generic mnemarr-admin --from-file=admin-password=./admin-password`
+        - name: data
+          persistentVolumeClaim:
+            claimName: mnemarr-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mnemarr
+  namespace: mnemarr
+spec:
+  selector:
+    app: mnemarr
+  ports:
+    - port: 8383
+      targetPort: 8383

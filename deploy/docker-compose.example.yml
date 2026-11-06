@@ -1,0 +1,50 @@
+# Mnemarr on a Docker host. Copy, adjust the values marked <...>, then `docker compose up -d`.
+# The image runs as a non-root user (uid 1654) with no shell: the data folder must be writable by that user.
+services:
+  mnemarr:
+    image: ghcr.io/<owner>/mnemarr:<tag>   # pin a version
+    restart: unless-stopped
+    ports:
+      # Loopback only: Mnemarr speaks plain HTTP. Publish it through a reverse proxy with TLS, or change the address
+      # on purpose. Every call but the probes and the sign-in needs a session or a key (see docs/adr/0016).
+      - "127.0.0.1:8383:8383"
+    volumes:
+      - mnemarr-data:/config               # database, raw conversations, settings: back this up (see docs/SPEC.md, D-28)
+    environment:
+      MNEMARR__DATAFOLDER: /config
+      # The first administrator, created only while there is no account: a name, and the password in a file (a secret).
+      # Choose a name that is not obvious: whoever knows it can lock that account for fifteen minutes (five wrong passwords).
+      MNEMARR__AUTH__ADMINUSER: change-me-admin-name
+      MNEMARR__AUTH__ADMINPASSWORDFILE: /run/secrets/mnemarr_admin_password
+      # Where sources may be: mount a vault read-only (volumes: - /path/to/vault:/vaults/notes:ro) and name its parent here.
+      # MNEMARR__SOURCES__ROOTS__0: /vaults
+      # Git sources (ADR 0022): none is accepted until you name the hosts Mnemarr may clone from; give it a token for each host that needs one, in a file.
+      # The clone folder must be inside a root: add /config/sources next to /vaults if you use both.
+      # MNEMARR__GIT__HOSTS__0: github.com
+      # MNEMARR__GIT__CREDENTIALS__github__HOST: github.com
+      # MNEMARR__GIT__CREDENTIALS__github__TOKENFILE: /run/secrets/mnemarr_git_token
+      # MCP: the tools that WRITE notes are off. An operator turns them on here, on purpose (an assistant cannot): MNEMARR__MCP__WRITETOOLS: "true".
+      # Assistants connect to /mcp with the API key of a service account (see docs/configuration.md).
+      # Describe the sources as code (see mnemarr.config.example.yaml): mount the file and name it.
+      # MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
+    secrets:
+      - mnemarr_admin_password
+    # Hardening: nothing writes outside the data folder and a temporary folder.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+secrets:
+  mnemarr_admin_password:
+    file: ./mnemarr-admin-password   # one line, at least 12 characters; not in git
+
+volumes:
+  mnemarr-data:

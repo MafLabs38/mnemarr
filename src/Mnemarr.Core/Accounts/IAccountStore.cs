@@ -1,0 +1,28 @@
+namespace Mnemarr.Core.Accounts;
+
+public interface IAccountStore
+{
+    /// <summary>Adds an account. Throws <see cref="RejectedException"/> (conflict) when the name is taken, whatever its case.</summary>
+    void Add(Account account, string? passwordHash);
+
+    Account? Get(Guid id);
+
+    AccountCredentials? GetCredentials(string name);
+
+    IReadOnlyList<Account> List();
+
+    bool Update(Guid id, string role, bool enabled);
+
+    bool SetPasswordHash(Guid id, string passwordHash);
+
+    /// <summary>Removes an account with its keys. False when there was none.</summary>
+    bool Remove(Guid id);
+
+    int Count();
+
+    /// <summary>How many enabled accounts hold the Admin role: the last one must stay.</summary>
+    int CountEnabledAdmins();
+
+    /// <summary>How many accounts hold each role (a role nobody holds is absent): one grouped read, however many accounts there are.</summary>
+    IReadOnlyDictionary<string, int> CountByRole();
+}

@@ -1,0 +1,31 @@
+# A configuration document for Mnemarr (configuration as code, ADR 0020). Keep it in your own infrastructure repository.
+# Give it to Mnemarr as a file (MNEMARR__CONFIG__FILE=/config-as-code/mnemarr.yaml), or apply it with PUT /api/v1/config.
+# A section that is absent is left alone; one that is present, even empty, is managed by this document.
+
+# The memory vault: exactly one, and required. Mnemarr is its only author.
+# The mode is the write switch, read-only unless you say otherwise.
+memory:
+  path: /vaults/memory
+  mode: ReadWrite
+
+# Knowledge vaults: hand-written notes, as many as there are (courses, notes taken for work).
+knowledge:
+  - name: courses
+    path: /vaults/courses
+  - name: work-notes
+    path: /vaults/work-notes
+    mode: ReadWrite
+  # A source can be the checkout of a Git repository (ADR 0022): the folder is where it is cloned (empty or not there yet).
+  # The credential is the name of a token the operator configured (MNEMARR__GIT__CREDENTIALS__github__...): never write a token here.
+  - name: team-notes
+    path: /config/sources/team-notes
+    repository:
+      url: https://github.com/<owner>/team-notes
+      branch: main
+      credential: github
+
+# The documentation of applications, read from their repositories: one source per application.
+applicationDocs:
+  - name: portarr
+    path: /vaults/portarr
+    mode: ReadOnly

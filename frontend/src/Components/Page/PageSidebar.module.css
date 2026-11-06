@@ -1,0 +1,100 @@
+/* A full-height column pinned under the header (like the *arr sidebars): the menu scrolls inside it. */
+.sidebar {
+  position: sticky;
+  top: var(--headerHeight);
+  display: flex;
+  flex: 0 0 var(--sidebarWidth);
+  flex-direction: column;
+  align-self: flex-start;
+  height: calc(100vh - var(--headerHeight));
+  padding: 16px 12px;
+  border-right: var(--borderWidth) solid var(--hairline);
+  background-color: var(--paperWarm);
+}
+
+.menu {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  gap: 4px;
+  padding: 4px;
+}
+
+.link,
+.activeLink,
+.soonEntry {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radiusMedium);
+  color: var(--inkSoft);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.link:hover {
+  background-color: var(--paperCard);
+  color: var(--ink);
+}
+
+.activeLink {
+  background-color: var(--accent);
+  box-shadow: var(--shadowButton);
+  color: var(--inkOnAccent);
+}
+
+/* An entry whose page is not built yet: shown so the whole shape of the product is visible, but not a link. */
+.soonEntry {
+  color: var(--inkMuted);
+  cursor: default;
+}
+
+.soonBadge {
+  margin-left: auto;
+  padding: 0 8px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusPill);
+  font-size: var(--fontSizeMeta);
+  font-weight: 800;
+}
+
+/* Small screens: the menu becomes a horizontal bar under the header. */
+@media (width <= 768px) {
+  .sidebar {
+    position: static;
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    align-self: stretch;
+    height: auto;
+    padding: 8px 12px;
+    border-right: none;
+    border-bottom: var(--borderWidth) solid var(--hairline);
+  }
+
+  .menu {
+    flex-direction: row;
+    min-width: 0;
+    overflow: auto hidden;
+  }
+
+  .link,
+  .activeLink,
+  .soonEntry {
+    padding: 8px 12px;
+  }
+
+  /* Hidden from the eye to save room, but still read: "Sources, Soon". */
+  .soonBadge {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

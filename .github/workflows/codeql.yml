@@ -1,0 +1,47 @@
+# Static analysis (SAST) with CodeQL, from the organization's github-template (quality option "codeql").
+# Alerts appear in Security > Code scanning; the repository ruleset blocks merges on high or critical alerts,
+# and waits for these results, so this workflow must exist before the first pull request can merge.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1" # weekly, to catch new queries on unchanged code
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # build-mode none: no build needed, fast, and accurate enough for C# and TypeScript.
+        # The Rust collector is not analysed by CodeQL here: it has clippy with warnings as errors.
+        language: [csharp, javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # Security only (default and extended): code quality is SonarQube's job, with the rules of its profile, in the build and in
+          # the IDE. The "security-and-quality" suite adds many notes that never block (only high and critical security alerts do) and
+          # duplicates Sonar.
+          queries: security-extended
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          category: /language:${{ matrix.language }}

@@ -1,0 +1,15 @@
+/* The "sticker": a thick border, very rounded corners and a hard shadow with no blur. */
+.card {
+  padding: 20px 24px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusLarge);
+  background-color: var(--paperCard);
+  box-shadow: var(--shadowCard);
+}
+
+.title {
+  margin: 0 0 16px;
+  font-family: var(--displayFontFamily);
+  font-size: var(--fontSizeCardTitle);
+  font-weight: 700;
+}

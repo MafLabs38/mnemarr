@@ -1,0 +1,42 @@
+/*
+ * Mnemarr theme tokens: the same names and values as Portarr (its docs/DESIGN.md, section 6), so that the products
+ * of the family look alike and components taken from the *arr apps stay compatible.
+ * Dark only for now. The light theme and the color-impaired mode arrive with Settings, UI.
+ */
+
+:root,
+[data-theme='dark'] {
+  /* Surfaces */
+  --paper: #121630;
+  --paperWarm: #161b3b;
+  --paperCard: #1d2245;
+  --paperSunken: #0d1026;
+  --hairline: #2c3366;
+  --hairlineStrong: #3a4280;
+
+  /* Text */
+  --ink: #eef0ff;
+  --inkSoft: #c3c8ee;
+  --inkMuted: #a9b1d6;
+  --inkOnAccent: #1a1d3a;
+
+  /* Accent and brand */
+  --accent: #ffc145;
+  --accentDeep: #b9851b;
+  --secondary: #3ee0c5;
+
+  /* Statuses */
+  --successColor: #5eea9b;
+  --warningColor: #ff9f43;
+  --dangerColor: #ff6b81;
+  --infoColor: #7aa8ff;
+  --disabledColor: #a9b1d6;
+  --purple: #b18cff;
+  --pink: #ff8fa0;
+
+  /* Shadows: hard, no blur (the sticker effect) */
+  --shadowColor: #0b0e22;
+  --shadowCard: 0 6px 0 var(--shadowColor);
+  --shadowButton: 0 4px 0 var(--accentDeep);
+  --shadowPressed: 0 1px 0 var(--accentDeep);
+}

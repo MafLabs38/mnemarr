@@ -1,0 +1,131 @@
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Options;
+using Mnemarr.Core.Backup;
+using Mnemarr.Core.Configuration;
+
+namespace Mnemarr.Core.Storage;
+
+public sealed class Database : IDatabase
+{
+    private readonly string _folder;
+    private readonly IOptions<BackupOptions>? _backup;
+    private readonly string _connectionString;
+    private readonly Lock _gate = new();
+    private volatile bool _ready;
+
+    public Database(IOptions<MnemarrOptions> options, IOptions<BackupOptions>? backup = null)
+    {
+        _folder = options.Value.DataFolder;
+        _backup = backup;
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = Path.Combine(_folder, "mnemarr.db"),
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            ForeignKeys = true,
+        }.ToString();
+    }
+
+    public SqliteConnection Open()
+    {
+        // SQLite would create the folder itself: a volume that was never mounted would then look like a fresh, empty one.
+        if (!Directory.Exists(_folder))
+        {
+            throw new DirectoryNotFoundException("The data folder does not exist.");
+        }
+
+        // SQLite would create the file with the umask of the process and the WAL files after it: it is made for its owner first.
+        CreateRestrictedFile();
+
+        var connection = new SqliteConnection(_connectionString);
+        try
+        {
+            connection.Open();
+            EnsureSchema(connection);
+            return connection;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+    }
+
+    private void EnsureSchema(SqliteConnection connection)
+    {
+        if (_ready)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (_ready)
+            {
+                return;
+            }
+
+            CopyBeforeMigration(connection);
+            Schema.Apply(connection);
+            _ready = true;
+        }
+    }
+
+    /// <summary>
+    /// A migration is not undone, and a deployment that follows the versions applies it at start (ADR 0029): when a database that exists is about to be
+    /// migrated, a whole copy of it is kept first, in the <c>backup</c> folder, the last three. A copy that cannot be written stops the start: a migration is
+    /// not made without the way back.
+    /// </summary>
+    private void CopyBeforeMigration(SqliteConnection connection)
+    {
+        // An operator who turned the snapshots off (the host takes its own, or content must be erasable) has said no to copies; so is it here.
+        var from = Schema.CurrentVersion(connection);
+        if (from == 0 || from >= Schema.Version || _backup?.Value.Enabled == false)
+        {
+            return;
+        }
+
+        var folder = Path.Combine(_folder, SnapshotFiles.FolderName);
+        SnapshotFiles.EnsureFolder(folder);
+        // The moment comes first in the name, so that the order of the names is the order of the migrations, whatever the numbers of the versions.
+        SnapshotFiles.Write(connection, Path.Combine(folder, $"{SnapshotFiles.MigrationPrefix}{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-v{from}-to-v{Schema.Version}.db"));
+        try
+        {
+            foreach (var old in Directory.EnumerateFiles(folder, SnapshotFiles.MigrationPrefix + "*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(SnapshotFiles.MigrationCopiesKept))
+            {
+                File.Delete(old);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The copy that matters is whole: an old one that stays is not a reason to refuse to start.
+        }
+    }
+
+    /// <summary>
+    /// The database holds the hashes of passwords, sessions and keys: only the owner reads it, from its creation (SQLite gives the WAL files
+    /// the mode of the main file) and also when it was restored from a backup with another mode.
+    /// </summary>
+    private void CreateRestrictedFile()
+    {
+        if (_ready || OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var file = Path.Combine(_folder, "mnemarr.db");
+        const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        if (!File.Exists(file))
+        {
+            try
+            {
+                using var created = new FileStream(file, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = OwnerOnly });
+            }
+            catch (IOException) when (File.Exists(file))
+            {
+                // Another connection created it first: it was made by this method too.
+            }
+        }
+
+        File.SetUnixFileMode(file, OwnerOnly);
+    }
+}

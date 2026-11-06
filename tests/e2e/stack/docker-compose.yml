@@ -1,0 +1,85 @@
+# The stack the end-to-end tests run against: the image built from this repository, with an empty data folder.
+name: mnemarr-e2e
+services:
+  mnemarr:
+    build:
+      context: ../../..
+    ports:
+      - '8383:8383'
+    # The image runs as a non-root user: give it a throw-away data folder it owns.
+    tmpfs:
+      - /config:uid=1654,gid=1654
+      # A folder of notes the application may write, for each browser of the tests (they run in parallel in one stack).
+      - /work/chromium:uid=1654,gid=1654
+      - /work/firefox:uid=1654,gid=1654
+    # The first administrator, as a real deployment gives it: a name and the password in a mounted file (a test-only value).
+    environment:
+      MNEMARR__AUTH__ADMINUSER: admin
+      MNEMARR__AUTH__ADMINPASSWORDFILE: /run/admin-password
+      # The tests speak plain HTTP: the session cookie cannot be Secure here.
+      MNEMARR__AUTH__COOKIESECURITY: SameAsRequest
+      # Where sources may be: a folder of notes mounted read-only, as an operator would mount a vault.
+      MNEMARR__SOURCES__ROOTS__0: /notes
+      # A Git source is cloned into a folder the application can write: the data folder's own sources folder.
+      MNEMARR__SOURCES__ROOTS__1: /config/sources
+      MNEMARR__SOURCES__ROOTS__2: /work
+      # Where Mnemarr may clone from. The host never resolves (a reserved name), so that a sync fails the same way offline and in CI.
+      MNEMARR__GIT__HOSTS__0: git.example
+      # Configuration as code: the stack is described by a document, as a deployment would be.
+      MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
+      # The programs a machine installs, as the image carries them: fake files here, so that what the page offers can be fetched.
+      MNEMARR__COLLECTORS__DOWNLOADFOLDER: /downloads
+    configs:
+      - source: admin_password
+        target: /run/admin-password
+        mode: 0444
+      - source: demo_note
+        target: /notes/demo/docker.md
+        mode: 0444
+      - source: memory_note
+        target: /notes/memory/decision.md
+        mode: 0444
+      - source: mnemarr_config
+        target: /config-as-code/mnemarr.yaml
+        mode: 0444
+      - source: collector_windows
+        target: /downloads/mnemarr-collector-windows-x86_64.exe
+        mode: 0444
+      - source: collector_linux
+        target: /downloads/mnemarr-collector-linux-x86_64
+        mode: 0444
+configs:
+  collector_windows:
+    content: the windows program of the end-to-end stack
+  collector_linux:
+    content: the linux program of the end-to-end stack
+  admin_password:
+    content: e2e-admin-password
+  demo_note:
+    content: |
+      # Docker
+
+      ## Images
+
+      An image is made of read-only layers: a layer for each instruction of the build.
+
+      > [!tip] Related
+      > The choice that was made is in [[decision]]. #infra
+
+      ```mermaid
+      flowchart TB
+        A[Dockerfile] --> B[Image]
+        B --> C[Container]
+      ```
+  memory_note:
+    content: |
+      # A decision
+
+      The memory vault of the end-to-end stack, and [[docker]] is where it began.
+  mnemarr_config:
+    content: |
+      memory:
+        path: /notes/memory
+      knowledge:
+        - name: seeded
+          path: /notes/demo

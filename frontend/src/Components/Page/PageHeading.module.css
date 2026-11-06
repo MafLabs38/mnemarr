@@ -1,0 +1,18 @@
+.heading {
+  margin-bottom: 24px;
+}
+
+.scope {
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--displayFontFamily);
+  font-size: var(--fontSizePageTitle);
+  font-weight: 700;
+}
