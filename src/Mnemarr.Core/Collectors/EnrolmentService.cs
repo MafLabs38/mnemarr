@@ -23,11 +23,13 @@ public sealed class EnrolmentService
     private readonly IEnrolmentStore _enrolments;
     private readonly MachineAccounts _accounts;
     private readonly EnrolmentThrottle _throttle;
+    private readonly MachineJoining _joining;
     private readonly IAuditLog _audit;
     private readonly TimeProvider _clock;
 
-    public EnrolmentService(IMachineStore machines, IEnrolmentStore enrolments, MachineAccounts accounts, EnrolmentThrottle throttle, IAuditLog audit, TimeProvider clock)
+    public EnrolmentService(IMachineStore machines, IEnrolmentStore enrolments, MachineAccounts accounts, MachineJoining joining, EnrolmentThrottle throttle, IAuditLog audit, TimeProvider clock)
     {
+        _joining = joining;
         _machines = machines;
         _enrolments = enrolments;
         _accounts = accounts;
@@ -154,12 +156,7 @@ public sealed class EnrolmentService
                 throw new RejectedException(Problem.Invalid, NotValid);
             }
 
-            // The machine joins again: a person approved it, so the key it had is replaced, and a machine that was revoked is back.
-            var account = _accounts.ForJoining(_machines.Get(enrolment.Machine), enrolment.Machine, enrolment.RequestedBy);
-            var key = _accounts.NewKey(account, now, enrolment.RequestedBy);
-            _machines.Enrol(new Machine(enrolment.Machine, enrolment.Kind, account.Id, now, null, null, 0, null, null));
-            _audit.Append(AuditActors.Unknown, "collector.enrolled", enrolment.Machine, MachineKinds.Name(enrolment.Kind));
-            return new EnrolledMachine(key, enrolment.Machine, enrolment.Kind);
+            return _joining.Join(enrolment.Machine, enrolment.Kind, enrolment.RequestedBy, now);
         }
     }
 

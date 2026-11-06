@@ -66,6 +66,8 @@ public sealed class EndpointsFixture
         "api/v1/ingest/heartbeat",
         "api/v1/ingest/install.ps1",
         "api/v1/ingest/install.sh",
+        "api/v1/ingest/pair",
+        "api/v1/ingest/pair/poll",
         "api/v1/notes",
         "api/v1/notes/tags",
         "api/v1/notes/{sourceId:guid}/append",
@@ -75,6 +77,10 @@ public sealed class EndpointsFixture
         "api/v1/notes/{sourceId:guid}/{**path}",
         "api/v1/notes/{sourceId:guid}/{**path}",
         "api/v1/notes/{sourceId:guid}/{**path}",
+        "api/v1/pairings",
+        "api/v1/pairings/lookup",
+        "api/v1/pairings/{id:guid}/approve",
+        "api/v1/pairings/{id:guid}/reject",
         "api/v1/roles",
         "api/v1/search",
         "api/v1/sources",
@@ -102,7 +108,7 @@ public sealed class EndpointsFixture
             .Select(endpoint => endpoint.RoutePattern.RawText)
             .Order(StringComparer.Ordinal);
 
-        anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/download/{platform}", "api/v1/ingest/enrol", "api/v1/ingest/install.ps1", "api/v1/ingest/install.sh", "{*path:nonfile}");
+        anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/download/{platform}", "api/v1/ingest/enrol", "api/v1/ingest/install.ps1", "api/v1/ingest/install.sh", "api/v1/ingest/pair", "api/v1/ingest/pair/poll", "{*path:nonfile}");
     }
 
     [Fact]

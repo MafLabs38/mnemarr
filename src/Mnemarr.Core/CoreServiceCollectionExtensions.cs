@@ -88,6 +88,10 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<EnrolmentThrottle>();
         services.AddSingleton<CollectorDownloads>();
         services.AddSingleton<MachineAccounts>();
+        services.AddSingleton<MachineJoining>();
+        services.AddSingleton<IPairingStore, SqlitePairingStore>();
+        services.AddSingleton<PairingStarts>();
+        services.AddSingleton<PairingService>();
         services.AddSingleton<EnrolmentService>();
         services.AddSingleton<CollectorService>();
         services.AddOptions<TitleOptions>().Bind(configuration.GetSection("Titles")).ValidateOnStart();

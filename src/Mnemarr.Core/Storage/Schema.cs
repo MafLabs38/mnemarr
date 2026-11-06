@@ -177,6 +177,21 @@ public static class Schema
         ALTER TABLE conversations ADD COLUMN summary TEXT;
         ALTER TABLE conversations ADD COLUMN title_tries INTEGER NOT NULL DEFAULT 0;
         """,
+        // 9: the machines that ask to be linked (ADR 0030): a short code and a secret of their own, kept as hashes, and the name a person chose when they approved.
+        """
+        CREATE TABLE pairings (
+            id TEXT NOT NULL PRIMARY KEY,
+            hostname TEXT NOT NULL,
+            state TEXT NOT NULL,
+            machine TEXT,
+            kind TEXT,
+            user_code_hash TEXT NOT NULL UNIQUE,
+            device_hash TEXT NOT NULL UNIQUE,
+            requested_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            approved_by TEXT
+        );
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>
