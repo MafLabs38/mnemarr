@@ -24,6 +24,9 @@ public sealed class PairingService
     private const string DeviceCodePrefix = "dvc_";
     private const int MaxHostnameLength = 50;
     private const int OpenListed = 50;
+
+    /// <summary>A request is forgotten a day after its time ended: long enough for a machine that was asleep to learn that it expired.</summary>
+    private static readonly TimeSpan Kept = TimeSpan.FromDays(1);
     private readonly IPairingStore _pairings;
     private readonly MachineAccounts _accounts;
     private readonly MachineJoining _joining;
@@ -57,6 +60,7 @@ public sealed class PairingService
         {
             var now = _clock.GetUtcNow();
             _starts.Take(now);
+            _pairings.Prune(now - Kept);
             if (_pairings.CountOpen(now) >= MaxOpen)
             {
                 throw new RejectedException(Problem.Busy, "Requests are waiting for a person to answer them: answer or let them expire first.", TimeSpan.FromMinutes(1));

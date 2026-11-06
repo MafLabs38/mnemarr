@@ -23,6 +23,9 @@ public interface IPairingStore
     bool Reject(Guid id);
 
     bool Use(Guid id);
+
+    /// <summary>Forgets the requests whose time ended before <paramref name="cutoff"/>, answered or not: they are of no use to anyone. Returns how many.</summary>
+    int Prune(DateTimeOffset cutoff);
 }
 
 public sealed class SqlitePairingStore : IPairingStore
@@ -100,6 +103,15 @@ public sealed class SqlitePairingStore : IPairingStore
     public bool Reject(Guid id) => Change("UPDATE pairings SET state = 'Rejected' WHERE id = $id AND state = 'Pending'", id);
 
     public bool Use(Guid id) => Change("UPDATE pairings SET state = 'Used' WHERE id = $id AND state = 'Approved'", id);
+
+    public int Prune(DateTimeOffset cutoff)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM pairings WHERE expires_at < $cutoff";
+        command.Parameters.AddWithValue("$cutoff", StorageText.Format(cutoff));
+        return command.ExecuteNonQuery();
+    }
 
     private bool Change(string update, Guid id)
     {

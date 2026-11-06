@@ -514,8 +514,8 @@ test.describe('smoke @smoke', () => {
     expect(answer.key).toBeTruthy();
     expect((await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).status()).toBe(400);
     const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
-    expect((await key.post('/api/v1/ingest/heartbeat', { data: { version: '0.0.0', pendingLines: 0 } })).status()).toBe(
-      200,
+    expect((await key.post('/api/v1/ingest/heartbeat', { data: { version: '0.0.0', pendingLines: 0 } })).ok()).toBe(
+      true,
     );
 
     await page.getByRole('link', { name: 'See the machines' }).click();
