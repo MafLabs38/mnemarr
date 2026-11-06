@@ -53,7 +53,7 @@ A collector of an earlier version is read as a list of one destination, with the
    irm 'https://mnemarr.homelab.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=my-laptop' | iex
    curl -fsSL 'https://mnemarr.homelab.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=my-laptop' | sh
    ```
-   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; `%APPDATA%` on Windows) with the address and the name in `collector.json` beside it, and then `mnemarr-collector run`. Those two commands are also yours to run by hand when the program is already there.
+   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `key-<name>` in the folder of the collector (`~/.config/mnemarr-collector/`; `%APPDATA%` on Windows; a file only your user can read), with the Mnemarr it belongs to listed in `destinations.json` beside it (it is **added** to the Mnemarr the machine already sends to), and then `mnemarr-collector install`. Those two commands are also yours to run by hand when the program is already there.
 3. The line **installs and hands the window back**: the collector runs in the background, with no window, and starts with your session. The machine appears on the page as **waiting** until its first pass, then **online**.
 
 To see or control it afterwards (the same program, in the folder it was installed in):
@@ -77,7 +77,7 @@ If the address of Mnemarr is plain `http://` (a sandbox), the page says that the
 
 A computer that already has the collector does not need this page: run `mnemarr-collector link --server https://mnemarr.homelab.example`, or use the icon (see above). It then appears in **Computers asking to be linked**, with a link to approve it.
 
-The code works once, for 15 minutes, for that machine name. A machine that enrols again replaces its key (the old one stops working). To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
+The code works once, for 15 minutes, for that machine name. A machine that enrols again in the same Mnemarr replaces its key there (the old one stops working); the other Mnemarr it sends to are not touched. To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
 
 An assistant can ask for a machine over MCP (`request_collector_enrolment`): the request waits on the page until a person approves it.
 

@@ -56,11 +56,16 @@ fn say(text: &str) {
     }
 }
 
-/// What a pass runs with, for each Mnemarr this machine sends to (ADR 0030).
-fn configurations(options: &Options) -> Result<Vec<Config>, ExitCode> {
+/// What a pass runs with, for each Mnemarr this machine sends to (ADR 0030), or why there is none.
+fn resolve_configs(options: &Options) -> Result<Vec<Config>, mnemarr_collector::UsageError> {
     let get = |name: &str| std::env::var(name).ok();
     let read = |path: &str| std::fs::read_to_string(path).ok();
-    resolve_all(options, &get, &read).map_err(|error| {
+    resolve_all(options, &get, &read)
+}
+
+/// The same, for a command that was just typed: what is wrong is said with the usage, and the command ends.
+fn configurations(options: &Options) -> Result<Vec<Config>, ExitCode> {
+    resolve_configs(options).map_err(|error| {
         let _ = writeln!(io::stderr(), "{error}\n\n{}", usage());
         ExitCode::from(2)
     })
@@ -221,6 +226,7 @@ fn collect_loop(
     let mut configs = initial;
     let mut was_paused = false;
     let mut told_none = false;
+    let mut last_problem = String::new();
     loop {
         let paused = dir
             .as_deref()
@@ -257,11 +263,19 @@ fn collect_loop(
                 .first()
                 .map_or(std::time::Duration::from_secs(30), |config| config.interval),
         );
-        // The list is read again: a Mnemarr linked from the icon, or by `link`, is sent to from this pass on.
-        if let Ok(fresh) = configurations(options) {
-            configs = fresh;
-        } else if dir.is_some() {
-            configs.clear();
+        // The list is read again: a Mnemarr linked from the icon, or by `link`, is sent to from this pass on. What is wrong with it is said once.
+        match resolve_configs(options) {
+            Ok(fresh) => {
+                last_problem.clear();
+                configs = fresh;
+            }
+            Err(error) => {
+                if last_problem != error.0 {
+                    say(&error.0);
+                    last_problem = error.0;
+                }
+                configs.clear();
+            }
         }
     }
 }
