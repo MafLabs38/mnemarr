@@ -24,8 +24,9 @@ function copyBySelection(text: string): boolean {
   document.body.append(field);
   field.select();
   try {
-    // Old, and the only way that works without a secure context.
-    return typeof document.execCommand === 'function' && document.execCommand('copy');
+    // Documented exception to typescript:S1874 (deprecated execCommand): it is deprecated but is the only way that works without a secure
+    // context (a Mnemarr served over plain HTTP at home), and `navigator.clipboard` is tried first.
+    return typeof document.execCommand === 'function' && document.execCommand('copy'); // NOSONAR
   } catch {
     return false;
   } finally {
