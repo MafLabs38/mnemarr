@@ -84,6 +84,6 @@ public sealed class AgentTitleWriterFixture : IDisposable
     {
         var options = new TitleOptions { Enabled = true, Provider = provider, AgentUrl = url, AgentSecretFile = secretFile };
 
-        new TitleOptionsValidator().Validate(null, options).Succeeded.Should().Be(valid);
+        new TitleOptionsValidator(TitleProviders.BuiltIn).Validate(null, options).Succeeded.Should().Be(valid);
     }
 }

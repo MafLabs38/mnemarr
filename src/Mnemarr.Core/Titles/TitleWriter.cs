@@ -29,6 +29,7 @@ public sealed class TitleWriterException : Exception
 /// <summary>The Messages API of Anthropic: one call for a title and a summary, with the key read from its file at each call (a rotation needs no restart).</summary>
 public sealed class AnthropicTitleWriter : ITitleWriter
 {
+    internal const string DefaultEndpoint = "https://api.anthropic.com";
     private const int MaxTokens = 300;
     private readonly IOptions<TitleOptions> _options;
     private readonly HttpClient _http;
@@ -59,7 +60,7 @@ public sealed class AnthropicTitleWriter : ITitleWriter
             throw new TitleWriterException("The file of the API key cannot be read.", ex);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.Endpoint), "/v1/messages"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.Endpoint ?? AnthropicTitleWriter.DefaultEndpoint), "/v1/messages"));
         request.Headers.Add("x-api-key", key);
         request.Headers.Add("anthropic-version", "2023-06-01");
         request.Content = JsonContent.Create(new
@@ -145,4 +146,75 @@ public sealed class AgentTitleWriter : ITitleWriter
             throw new TitleWriterException("The agent could not be reached.", ex);
         }
     }
+}
+
+/// <summary>
+/// Any API that speaks the chat completions protocol of OpenAI: OpenAI itself, and the servers that copy it (Ollama, LM Studio, vLLM, OpenRouter…), so a local model works too.
+/// The key is optional (a local server has none) and is read from its file at each call.
+/// </summary>
+public sealed class OpenAiTitleWriter : ITitleWriter
+{
+    private const int MaxTokens = 300;
+    private readonly IOptions<TitleOptions> _options;
+    private readonly HttpClient _http;
+
+    public OpenAiTitleWriter(IOptions<TitleOptions> options)
+        : this(options, new SocketsHttpHandler { AllowAutoRedirect = false })
+    {
+    }
+
+    /// <summary>For a test: the handler stands in for the network.</summary>
+    internal OpenAiTitleWriter(IOptions<TitleOptions> options, HttpMessageHandler handler)
+    {
+        _options = options;
+        // The key is in a header: a redirect must not carry it somewhere else. A local model can be slow.
+        _http = new HttpClient(handler, disposeHandler: true) { Timeout = TimeSpan.FromSeconds(120) };
+    }
+
+    public async Task<GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken)
+    {
+        var options = _options.Value;
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.Endpoint ?? string.Empty), "/v1/chat/completions"));
+        if (!string.IsNullOrWhiteSpace(options.ApiKeyFile))
+        {
+            try
+            {
+                var key = (await File.ReadAllTextAsync(options.ApiKeyFile, cancellationToken)).Trim();
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                throw new TitleWriterException("The file of the API key cannot be read.", ex);
+            }
+        }
+
+        request.Content = JsonContent.Create(new
+        {
+            model = options.Model,
+            max_tokens = MaxTokens,
+            messages = new[] { new { role = "system", content = TitlePrompt.System }, new { role = "user", content = transcript } },
+        });
+        try
+        {
+            using var response = await _http.SendAsync(request, cancellationToken);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new TitleWriterException($"The model answered {(int)response.StatusCode}.");
+            }
+
+            var answer = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
+            return TitlePrompt.Parse(FirstMessage(answer));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            throw new TitleWriterException("The model could not be reached.", ex);
+        }
+    }
+
+    private static string? FirstMessage(JsonElement answer) =>
+        answer.ValueKind == JsonValueKind.Object
+        && answer.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0
+        && choices[0].TryGetProperty("message", out var message) && message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
+            ? content.GetString()
+            : null;
 }

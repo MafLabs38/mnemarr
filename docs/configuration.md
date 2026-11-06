@@ -90,16 +90,26 @@ A conversation is titled by its first sentence, or by what a person types. A mod
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__TITLES__ENABLED` | `false` | Whether a model writes titles and summaries, in the background and on request. |
-| `MNEMARR__TITLES__PROVIDER` | `Anthropic` | `Anthropic` (the Messages API, with an API key) or `Agent` (a companion that runs Claude Code with the account's own login: [tools/title-agent](../tools/title-agent/main.mjs)). |
-| `MNEMARR__TITLES__APIKEYFILE` | none | Provider `Anthropic`: a file that holds the API key (a mounted secret). Needed then. |
+| `MNEMARR__TITLES__PROVIDER` | `Anthropic` | Who writes: `Anthropic` (the Messages API, with an API key), `OpenAI` (any API that speaks OpenAI's chat completions: OpenAI, Ollama, LM Studio, vLLM, OpenRouter…) or `Agent` (a companion; see [Using another model](#using-another-model-for-titles)). |
+| `MNEMARR__TITLES__APIKEYFILE` | none | Providers `Anthropic` (needed) and `OpenAI` (optional: a local server has no key): a file that holds the API key (a mounted secret). |
 | `MNEMARR__TITLES__AGENTURL` | none | Provider `Agent`: the address of the companion, on the host or its network (`http://host:8490`). Needed then. |
 | `MNEMARR__TITLES__AGENTSECRETFILE` | none | Provider `Agent`: a file that holds the secret shared with the companion. Needed then. |
-| `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model (an alias such as `haiku` for the `Agent` provider). |
-| `MNEMARR__TITLES__ENDPOINT` | `https://api.anthropic.com` | The address of the API; HTTPS only. |
+| `MNEMARR__TITLES__MODEL` | `claude-haiku-5-5` | The model, in the words of the provider (`gpt-5-mini`, `llama3`, or an alias such as `haiku` for an agent). |
+| `MNEMARR__TITLES__ENDPOINT` | Anthropic's | The address of the API (providers `Anthropic`, where it defaults to Anthropic's, and `OpenAI`, where it is needed, such as `http://localhost:11434` for a local model). A key is only sent over HTTPS, or to this host. |
 | `MNEMARR__TITLES__IDLEMINUTES` | `10` | A conversation is titled once nothing has been added to it for this long. |
 | `MNEMARR__TITLES__PERPASS` | `5` | How many conversations a pass titles (a pass is every `PASSSECONDS`, 60): the cost is bounded. |
 | `MNEMARR__TITLES__MAXTRIES` | `3` | A conversation the model fails to title this many times keeps its first sentence. |
 | `MNEMARR__TITLES__MAXCHARS` | `6000` | How much of a conversation is sent, in characters. |
+
+### Using another model for titles
+
+Titles are written through one small interface, `ITitleWriter` (a transcript in, a title and a summary out); the name in `Titles:Provider` selects the `ITitleProvider` that builds it. Three come with Mnemarr. To use something else, pick the way that fits:
+
+- **An OpenAI-compatible API, or a local model**: `MNEMARR__TITLES__PROVIDER=OpenAI`, `ENDPOINT` to its address and `MODEL` to a model it serves. Nothing to write.
+- **Any other tool or system, without touching Mnemarr**: run a small companion that speaks the *agent protocol*, and set `PROVIDER=Agent`, `AGENTURL` and `AGENTSECRETFILE`. The protocol is one call: `POST {AgentUrl}/title` with `Authorization: Bearer <secret>` and `{"model", "system", "transcript"}`; the answer is `200 {"text": "..."}` where the text holds one JSON object `{"title": "...", "summary": "..."}` (a fence around it is tolerated). [tools/title-agent](../tools/title-agent/main.mjs) is an example: it runs the Claude Code CLI with an account's own login, so that the subscription is used and not an API.
+- **A provider in the code** (a fork, or a contribution): write a class that implements `ITitleProvider` (a name, the check of its settings, and the creation of an `ITitleWriter`) and register it with `services.AddSingleton<ITitleProvider, MyProvider>()`. [TitleProviders.cs](../src/Mnemarr.Core/Titles/TitleProviders.cs) holds the three built-in ones.
+
+Whatever the provider, turning titles on sends the start and the end of conversations (already masked) to it: with a local model, that text stays on your network.
 
 A person who holds `conversations.write` (`Admin`) changes a title, or asks the model to write it again, on the page of the note; the Machines page counts the titles and queues the first sentences for the model. What a person typed is never replaced by a model's.
 

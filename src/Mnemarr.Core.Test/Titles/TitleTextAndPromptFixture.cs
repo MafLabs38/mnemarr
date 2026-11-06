@@ -87,7 +87,7 @@ public sealed class TitleTextAndPromptFixture
     {
         var options = new TitleOptions { Enabled = on, ApiKeyFile = on ? null : "/key", Endpoint = "https://api.example" };
 
-        new TitleOptionsValidator().Validate(null, options).Succeeded.Should().Be(valid);
+        new TitleOptionsValidator(TitleProviders.BuiltIn).Validate(null, options).Succeeded.Should().Be(valid);
     }
 
     [Theory]
@@ -95,14 +95,14 @@ public sealed class TitleTextAndPromptFixture
     [InlineData("https://api.example", true)]
     [InlineData("not an address", false)]
     public void should_never_send_the_key_to_an_address_that_is_not_https(string endpoint, bool valid) =>
-        new TitleOptionsValidator().Validate(null, new TitleOptions { Enabled = true, ApiKeyFile = "/key", Endpoint = endpoint }).Succeeded.Should().Be(valid);
+        new TitleOptionsValidator(TitleProviders.BuiltIn).Validate(null, new TitleOptions { Enabled = true, ApiKeyFile = "/key", Endpoint = endpoint }).Succeeded.Should().Be(valid);
 
     [Fact]
     public void should_keep_the_numbers_of_the_settings_within_their_bounds()
     {
         var good = new TitleOptions { Enabled = true, ApiKeyFile = "/key" };
-        new TitleOptionsValidator().Validate(null, good).Succeeded.Should().BeTrue();
-        new TitleOptionsValidator().Validate(null, new TitleOptions { Enabled = true, ApiKeyFile = "/key", PerPass = 0 }).Succeeded.Should().BeFalse();
-        new TitleOptionsValidator().Validate(null, new TitleOptions { Enabled = true, ApiKeyFile = "/key", MaxChars = 10 }).Succeeded.Should().BeFalse();
+        new TitleOptionsValidator(TitleProviders.BuiltIn).Validate(null, good).Succeeded.Should().BeTrue();
+        new TitleOptionsValidator(TitleProviders.BuiltIn).Validate(null, new TitleOptions { Enabled = true, ApiKeyFile = "/key", PerPass = 0 }).Succeeded.Should().BeFalse();
+        new TitleOptionsValidator(TitleProviders.BuiltIn).Validate(null, new TitleOptions { Enabled = true, ApiKeyFile = "/key", MaxChars = 10 }).Succeeded.Should().BeFalse();
     }
 }

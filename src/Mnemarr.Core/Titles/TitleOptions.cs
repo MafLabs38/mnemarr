@@ -11,7 +11,7 @@ public sealed class TitleOptions
     /// <summary>Whether a model writes the titles and the summaries of conversations. Off: a title is the first sentence, or what a person typed.</summary>
     public bool Enabled { get; set; }
 
-    /// <summary>Who writes: <c>Anthropic</c> (the Messages API, with an API key) or <c>Agent</c> (a companion that runs an agent CLI, ADR 0028).</summary>
+    /// <summary>Who writes: the name of a <see cref="ITitleProvider"/>. Built in: <c>Anthropic</c>, <c>OpenAI</c> (any OpenAI-compatible API) and <c>Agent</c> (a companion, ADR 0028).</summary>
     public string Provider { get; set; } = TitleProviders.Anthropic;
 
     /// <summary>A file that holds the API key of the provider (a secret mounted as a file, never an environment variable).</summary>
@@ -25,8 +25,8 @@ public sealed class TitleOptions
 
     public string Model { get; set; } = "claude-haiku-5-5";
 
-    /// <summary>The address of the provider's API; HTTPS.</summary>
-    public string Endpoint { get; set; } = "https://api.anthropic.com";
+    /// <summary>The address of the provider's API: <c>Anthropic</c> and <c>OpenAI</c> use it; the first defaults to Anthropic's, the second needs one.</summary>
+    public string? Endpoint { get; set; }
 
     /// <summary>A conversation is given a title once nothing has been added to it for this many minutes.</summary>
     public int IdleMinutes { get; set; } = 10;
@@ -43,14 +43,12 @@ public sealed class TitleOptions
     public int MaxChars { get; set; } = 6000;
 }
 
-public static class TitleProviders
-{
-    public const string Anthropic = "Anthropic";
-    public const string Agent = "Agent";
-}
-
 public sealed class TitleOptionsValidator : IValidateOptions<TitleOptions>
 {
+    private readonly ITitleProvider[] _providers;
+
+    public TitleOptionsValidator(IEnumerable<ITitleProvider> providers) => _providers = [.. providers];
+
     public ValidateOptionsResult Validate(string? name, TitleOptions options)
     {
         if (!options.Enabled)
@@ -63,12 +61,10 @@ public sealed class TitleOptionsValidator : IValidateOptions<TitleOptions>
             return ValidateOptionsResult.Fail("Titles:Model (MNEMARR__TITLES__MODEL) is needed.");
         }
 
-        var failure = options.Provider switch
-        {
-            TitleProviders.Anthropic => ValidateAnthropic(options),
-            TitleProviders.Agent => ValidateAgent(options),
-            _ => "Titles:Provider (MNEMARR__TITLES__PROVIDER) is Anthropic or Agent.",
-        };
+        var provider = TitleProviders.Find(_providers, options.Provider);
+        var failure = provider is null
+            ? $"Titles:Provider (MNEMARR__TITLES__PROVIDER) is one of: {string.Join(", ", _providers.Select(known => known.Name))}."
+            : provider.Validate(options);
         if (failure is not null)
         {
             return ValidateOptionsResult.Fail(failure);
@@ -80,29 +76,5 @@ public sealed class TitleOptionsValidator : IValidateOptions<TitleOptions>
         }
 
         return ValidateOptionsResult.Success;
-    }
-
-    private static string? ValidateAnthropic(TitleOptions options)
-    {
-        if (string.IsNullOrWhiteSpace(options.ApiKeyFile))
-        {
-            return "Titles:ApiKeyFile (MNEMARR__TITLES__APIKEYFILE) is needed when Titles:Enabled is on: a file that holds the API key.";
-        }
-
-        return !Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps
-            ? "Titles:Endpoint (MNEMARR__TITLES__ENDPOINT) must be an https address: the key is sent with every call."
-            : null;
-    }
-
-    private static string? ValidateAgent(TitleOptions options)
-    {
-        if (!Uri.TryCreate(options.AgentUrl, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
-        {
-            return "Titles:AgentUrl (MNEMARR__TITLES__AGENTURL) is needed with the Agent provider: the address of the companion agent.";
-        }
-
-        return string.IsNullOrWhiteSpace(options.AgentSecretFile)
-            ? "Titles:AgentSecretFile (MNEMARR__TITLES__AGENTSECRETFILE) is needed with the Agent provider: a file that holds the secret shared with the agent."
-            : null;
     }
 }

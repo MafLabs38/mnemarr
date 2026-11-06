@@ -87,9 +87,12 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<CollectorService>();
         services.AddOptions<TitleOptions>().Bind(configuration.GetSection("Titles")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<TitleOptions>, TitleOptionsValidator>();
-        services.TryAddSingleton<ITitleWriter>(provider => provider.GetRequiredService<IOptions<TitleOptions>>().Value.Provider == TitleProviders.Agent
-            ? new AgentTitleWriter(provider.GetRequiredService<IOptions<TitleOptions>>())
-            : new AnthropicTitleWriter(provider.GetRequiredService<IOptions<TitleOptions>>()));
+        foreach (var provider in TitleProviders.BuiltIn)
+        {
+            services.AddSingleton(typeof(ITitleProvider), provider);
+        }
+
+        services.TryAddSingleton<ITitleWriter>(sp => TitleProviders.Select(sp.GetServices<ITitleProvider>(), sp.GetRequiredService<IOptions<TitleOptions>>()));
         services.AddSingleton<ConversationTitles>();
         services.AddSingleton<TitleWriting>();
         services.AddHostedService<TitleService>();
