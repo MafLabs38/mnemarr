@@ -32,9 +32,9 @@ public sealed class ConversationTitles
 
     /// <summary>
     /// Sets the title (and the summary) of a conversation and writes its note again. Null, and nothing changed, when a model's title would replace a
-    /// person's. <paramref name="source"/> is <see cref="TitleSources.Person"/> or <see cref="TitleSources.Summary"/>.
+    /// person's, unless <paramref name="replacePerson"/> (the person asked for it). <paramref name="source"/> is <see cref="TitleSources.Person"/> or <see cref="TitleSources.Summary"/>.
     /// </summary>
-    public async Task<ConversationRecord?> SetAsync(string machine, string session, string title, string source, string? summary, CancellationToken cancellationToken)
+    public async Task<ConversationRecord?> SetAsync(string machine, string session, string title, string source, string? summary, CancellationToken cancellationToken, bool replacePerson = false)
     {
         if (source is not (TitleSources.Person or TitleSources.Summary))
         {
@@ -55,7 +55,7 @@ public sealed class ConversationTitles
         {
             // Read again under the lock: a batch or another title may have come in meanwhile.
             found = _store.Find(machine, session) ?? found;
-            if (source != TitleSources.Person && found.TitleSource == TitleSources.Person)
+            if (source != TitleSources.Person && found.TitleSource == TitleSources.Person && !replacePerson)
             {
                 return null;
             }

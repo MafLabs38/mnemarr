@@ -3,6 +3,7 @@ import Button from 'Components/Form/Button';
 import { useRewriteAllTitles, useTitleCounts } from 'Notes/conversationTitles';
 import { permissions } from 'Session/session';
 import { usePermissions } from 'Session/SessionContext';
+import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
 import styles from './Machines.module.css';
@@ -15,13 +16,16 @@ export default function TitlesCard() {
   if (!counts.data) {
     return null;
   }
-  const { modelEnabled, firstSentence, summary, person } = counts.data;
+  const { modelEnabled, firstSentence, summary, person, lastError, lastErrorAt } = counts.data;
   return (
     <>
       <p>{translate('TitleCounts', { summary, person, firstSentence })}</p>
       {modelEnabled ? (
         <>
           <p className={styles.hint}>{translate('TitlesModelOn')}</p>
+          {lastError && (
+            <Alert>{translate('TitlesLastError', { error: lastError, at: formatDateTime(lastErrorAt) })}</Alert>
+          )}
           {rewrite.error && <Alert>{rewrite.error.message}</Alert>}
           {rewrite.data && <output>{translate('TitlesQueued', { count: rewrite.data.queued })}</output>}
           {can(permissions.conversationsWrite) && (

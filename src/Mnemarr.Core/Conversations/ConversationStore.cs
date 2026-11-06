@@ -59,9 +59,6 @@ public interface IConversationStore
     /// <summary>The conversations a model may write a title for: only a first sentence so far, not written to for a while, not tried too many times.</summary>
     IReadOnlyList<ConversationRecord> NeedingTitle(DateTimeOffset idleBefore, int maxTries, int limit);
 
-    /// <summary>Puts one conversation back to "only a first sentence", whatever its title was.</summary>
-    void RequestOne(string machine, string session);
-
     /// <summary>Puts conversations back to "only a first sentence", so that a model writes their title again. What a person typed is kept unless said otherwise. Returns how many.</summary>
     int RequestAgain(bool includePerson);
 
@@ -145,16 +142,6 @@ public sealed class SqliteConversationStore : IConversationStore
         }
 
         return found;
-    }
-
-    public void RequestOne(string machine, string session)
-    {
-        using var connection = _database.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE conversations SET title_source = 'first-sentence', title_tries = 0 WHERE machine = $machine AND session = $session";
-        command.Parameters.AddWithValue(MachineParameter, machine);
-        command.Parameters.AddWithValue(SessionParameter, session);
-        command.ExecuteNonQuery();
     }
 
     public int RequestAgain(bool includePerson)

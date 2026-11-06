@@ -335,6 +335,7 @@ const en = {
     'A model writes a title and a summary for each conversation once it has been left alone for a while. What a person typed is never replaced.',
   TitlesModelOff:
     'No model writes titles on this Mnemarr: a title is the first sentence of the conversation, or what a person types. To turn it on, see Titles in the configuration (the start and the end of conversations, already masked, are then sent to the provider of the model).',
+  TitlesLastError: 'The model could not be asked at {at}: {error} Titles stay as they are until a call works again.',
   RewriteAllTitles: 'Have the model write the titles that are only a first sentence',
   TitlesQueued: '{count} conversation(s) are queued: the model writes their titles in the background.',
   SourceMissing: 'No source is declared for {kind}: what depends on it cannot work until one is.',

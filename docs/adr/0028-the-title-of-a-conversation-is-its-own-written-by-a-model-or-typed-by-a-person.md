@@ -23,4 +23,6 @@ A conversation was titled by the first sentence that says something. That is che
 - Conversations already collected get their title by the pass, or by one button: nothing is deleted or collected again.
 - A model costs a few cents for hundreds of conversations at the default size, and is bounded by a pass and by tries.
 - The titles of the notes that Mnemarr serves to assistants say what the conversation was about, so a search by words in a title finds better.
-- Not here: a summary that updates as a conversation grows, a title per assistant or per project convention, other providers.
+- Not here: a summary that updates as a conversation grows, a title per assistant or per project convention.
+- The `Agent` provider is the smallest form of the assistant runner of [0007](0007-assistant-runner-headless-agent-cli.md): a companion that runs the agent CLI with an account's own login and no tool. The consolidation vertical may fold its one call into that runner; the protocol is written in the configuration page so that this changes nothing for Mnemarr.
+- Plain `http://` is allowed for the agent address because the companion is meant to be on the host or a private network, as Portarr's is; the conversation and the secret travel in clear there. Put it behind HTTPS when it is not.

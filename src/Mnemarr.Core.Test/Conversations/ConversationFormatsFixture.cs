@@ -49,13 +49,13 @@ public sealed class ConversationFormatsFixture
     {
         var turns = new[] { new Turn("user", new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero), "# Not a title\n[[not-a-link]] #not-a-tag\n```\ncode\n```") };
 
-        var note = ConversationMarkdown.Render(ConversationFormats.ClaudeCode, "wacken", "mnemarr", "abcdef12-0000", turns[0].At!.Value, turns);
+        var note = ConversationMarkdown.Render(ConversationFormats.ClaudeCode, "workstation", "mnemarr", "abcdef12-0000", turns[0].At!.Value, turns);
 
-        note.Should().StartWith("---\ntags: [conversation, mnemarr]\nsource: claude-code\nmachine: wacken\napplication: mnemarr\nsession: abcdef12-0000\nstarted: 2026-11-04T14:03:00Z\n---\n# Not a title\n\n## User · 2026-11-04 14:03\n\n````text\n");
+        note.Should().StartWith("---\ntags: [conversation, mnemarr]\nsource: claude-code\nmachine: workstation\napplication: mnemarr\nsession: abcdef12-0000\nstarted: 2026-11-04T14:03:00Z\n---\n# Not a title\n\n## User · 2026-11-04 14:03\n\n````text\n");
         note.Should().Contain("[[not-a-link]] #not-a-tag").And.EndWith("````\n\n");
         MarkdownNotes.Parse(note).Links.Should().BeEmpty();
         MarkdownNotes.Parse(note).Tags.Should().BeEquivalentTo(["conversation", "mnemarr"]);
-        ConversationMarkdown.NotePath("wacken", "mnemarr", turns[0].At!.Value, "abcdef12-0000").Should().Be("wacken/mnemarr/2026-11-04-abcdef12-0000.md");
+        ConversationMarkdown.NotePath("workstation", "mnemarr", turns[0].At!.Value, "abcdef12-0000").Should().Be("workstation/mnemarr/2026-11-04-abcdef12-0000.md");
     }
 
     private static Turn User(string text) => new("user", null, text);
@@ -108,7 +108,7 @@ public sealed class ConversationFormatsFixture
         {
             System.Globalization.CultureInfo.CurrentCulture = thai;
 
-            ConversationMarkdown.NotePath("wacken", "mnemarr", at, "s1").Should().Be("wacken/mnemarr/2026-11-04-s1.md");
+            ConversationMarkdown.NotePath("workstation", "mnemarr", at, "s1").Should().Be("workstation/mnemarr/2026-11-04-s1.md");
             ConversationMarkdown.Sections([new Turn("user", at, "hello")]).Should().StartWith("## User · 2026-11-04 14:03");
         }
         finally

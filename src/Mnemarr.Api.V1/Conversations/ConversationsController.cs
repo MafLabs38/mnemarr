@@ -18,7 +18,7 @@ public sealed record RewriteTitleRequest(string? Path);
 public sealed record RewriteAllRequest(bool? IncludePerson);
 
 /// <summary>How many conversations have a title of each origin, and whether a model writes titles.</summary>
-public sealed record TitlesResource(bool ModelEnabled, int FirstSentence, int Summary, int Person);
+public sealed record TitlesResource(bool ModelEnabled, int FirstSentence, int Summary, int Person, string? LastError, DateTimeOffset? LastErrorAt);
 
 public sealed record QueuedResource(int Queued);
 
@@ -74,7 +74,8 @@ public sealed class ConversationsController : ControllerBase
     public TitlesResource Counts()
     {
         var counts = _store.TitleCounts();
-        return new TitlesResource(_writing.Enabled, counts.FirstSentence, counts.Summary, counts.Person);
+        var failure = _writing.LastFailure;
+        return new TitlesResource(_writing.Enabled, counts.FirstSentence, counts.Summary, counts.Person, failure?.Message, failure?.At);
     }
 
     /// <summary>Puts the conversations back to "only a first sentence", so that the model writes their titles again in the background (a person's are kept unless asked).</summary>

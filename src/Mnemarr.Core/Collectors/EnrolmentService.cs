@@ -47,6 +47,12 @@ public sealed class EnrolmentService
         lock (_accounts.Gate)
         {
             var now = _clock.GetUtcNow();
+            if (!approveNow && _machines.Get(machine) is { RevokedAt: null })
+            {
+                // An assistant's request must not be able to take over a machine that is working: the code would give its name to whoever holds it.
+                throw new RejectedException(Problem.Conflict, "A machine with this name is enrolled already: a person who manages the collectors replaces it, or the request uses another name.");
+            }
+
             if (!approveNow && _enrolments.CountPending(now) >= MaxPending)
             {
                 throw new RejectedException(Problem.Busy, "Requests are waiting for a person to approve them: approve or reject some first.", TimeSpan.FromMinutes(5));
@@ -80,6 +86,12 @@ public sealed class EnrolmentService
                 throw new RejectedException(Problem.Conflict, "This request is not waiting for approval any more.");
             }
 
+            if (_machines.Get(enrolment.Machine) is { RevokedAt: null })
+            {
+                // The machine joined since the request was made: approving would give its name, and a new key, to whoever holds the code.
+                throw new RejectedException(Problem.Conflict, "A machine with this name is enrolled already: reject this request, and add the machine again to replace it.");
+            }
+
             _enrolments.Approve(id, actor, now, now + CodeLife);
             _audit.Append(actor, "collector.enrolment-approved", enrolment.Machine);
             return _enrolments.Get(id)!;
@@ -97,6 +109,26 @@ public sealed class EnrolmentService
             }
 
             _audit.Append(actor, "collector.enrolment-rejected", enrolment.Machine);
+        }
+    }
+
+    /// <summary>
+    /// Whether a code is one that a person approved for this machine, without using it up: what stands before a program that carries the code is
+    /// written for an anonymous caller. A code that is not is counted like a wrong code of an exchange.
+    /// </summary>
+    public void RequireApproved(string? code, string machine)
+    {
+        lock (_accounts.Gate)
+        {
+            var now = _clock.GetUtcNow();
+            _throttle.Check(now);
+            var normalised = EnrolmentCodes.Normalise(code);
+            var enrolment = normalised is null ? null : _enrolments.FindByCodeHash(EnrolmentCodes.Hash(normalised));
+            if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal))
+            {
+                _throttle.Failed(now);
+                throw new RejectedException(Problem.Invalid, NotValid);
+            }
         }
     }
 
@@ -118,7 +150,7 @@ public sealed class EnrolmentService
             if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal) || !_enrolments.Use(enrolment.Id))
             {
                 _throttle.Failed(now);
-                _audit.Append(AuditActors.Unknown, "collector.enrol-refused", machine ?? string.Empty);
+                _audit.Append(AuditActors.Unknown, "collector.enrol-refused", MachineNames.IsValid(machine) ? machine! : "(not a valid name)");
                 throw new RejectedException(Problem.Invalid, NotValid);
             }
 

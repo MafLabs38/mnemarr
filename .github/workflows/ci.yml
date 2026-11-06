@@ -271,6 +271,9 @@ jobs:
         working-directory: tools/release
       - run: yarn test
         working-directory: tools/release
+      # The title agent (tools/title-agent) has no dependency: Node's own runner, with a fake CLI.
+      - name: Title agent tests
+        run: node --test tools/title-agent/main.test.mjs
 
   # The version of what was merged into main: semantic-release reads the Conventional Commits since the last tag, creates the tag
   # and the GitHub release (its notes are the changelog), and says the version it chose ('' when nothing deserves a release).

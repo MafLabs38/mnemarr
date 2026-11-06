@@ -117,8 +117,8 @@ export function useForgetMachine() {
 }
 
 /**
- * The name a machine will be given for what a person typed: a name is letters, digits, dots, hyphens and underscores, so "Quimper Gaming"
- * becomes `quimper-gaming` (lower case, accents dropped, spaces and other characters turned into hyphens). It is shown as it is typed, so that
+ * The name a machine will be given for what a person typed: a name is letters, digits, dots, hyphens and underscores, so "Home Office"
+ * becomes `home-office` (lower case, accents dropped, spaces and other characters turned into hyphens). It is shown as it is typed, so that
  * nobody is told off for an ordinary name.
  */
 export function machineNameFor(typed: string): string {

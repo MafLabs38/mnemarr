@@ -129,7 +129,42 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
         (await anonymous.GetAsync("/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await anonymous.GetAsync("/api/v1/ingest/download/windows-x86_64?machine=pc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await anonymous.GetAsync("/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=a%27%3Bcalc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await anonymous.GetAsync("/api/v1/ingest/download/macos-aarch64?code=ABCD-EFGH-JKLM&machine=pc", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await anonymous.GetAsync("/api/v1/ingest/download/macos-aarch64?code=ABCD-EFGH-JKLM&machine=pc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "a caller without an approved code is not told which systems there are programs for");
+    }
+
+    [Fact]
+    public async Task should_write_a_download_only_for_a_code_that_a_person_approved_for_that_machine()
+    {
+        var machine = Callers.Unique("pc");
+        var added = await AddAsync(_factory, machine);
+        var code = added.GetProperty("code").GetString();
+        using var anonymous = _factory.CreateClient();
+
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code=BCDF-GHJK-MNPQ&machine={machine}", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "a code that no one was given");
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code={code}&machine=another-pc", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "a code for another machine");
+        var program = await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code={code}&machine={machine}", Token);
+        program.StatusCode.Should().Be(HttpStatusCode.OK);
+        var bytes = await program.Content.ReadAsByteArrayAsync(Token);
+        program.Content.Headers.ContentLength.Should().Be(bytes.Length, "the length that is announced is the one that is sent");
+        System.Text.Encoding.UTF8.GetString(bytes).Should().StartWith("the windows program").And.EndWith("MNMRCFG1");
+        var settingLength = (int)BitConverter.ToUInt32(bytes, bytes.Length - 12);
+        bytes.Length.Should().Be("the windows program".Length + settingLength + 12, "the program, its setting, the length of the setting and the mark: nothing else");
+    }
+
+    [Fact]
+    public async Task should_refuse_a_download_for_a_code_that_waits_for_a_person_or_has_expired()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var waiting = Callers.Unique("pc");
+        var asked = await callers["Assistant"].PostAsJsonAsync("/api/v1/enrolments/requests", new { machine = waiting }, Token);
+        var waitingCode = (await asked.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("code").GetString();
+        var late = Callers.Unique("pc");
+        var lateCode = (await AddAsync(_factory, late)).GetProperty("code").GetString();
+        using var anonymous = _factory.CreateClient();
+
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code={waitingCode}&machine={waiting}", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "no person has approved it");
+        _factory.Clock.Advance(TimeSpan.FromMinutes(16));
+        (await anonymous.GetAsync($"/api/v1/ingest/download/windows-x86_64?code={lateCode}&machine={late}", Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "the code lives fifteen minutes");
     }
 
     [Fact]

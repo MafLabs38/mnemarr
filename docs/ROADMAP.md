@@ -57,7 +57,7 @@
 
 *Demo: the production URL; the machines send their conversations; an assistant elsewhere reads them.*
 
-- Image released through the existing pipeline, deployed by GitOps; the data folder on a local disk, backed up.
+- Image released through the existing pipeline, **carrying the collector programs** (today an operator copies the CI artifacts into `Collectors:DownloadFolder` by hand), deployed by GitOps; the data folder on a local disk, backed up.
 - Exposure of the ingest and MCP endpoints outside the single sign-on, with Mnemarr's own keys (Q-07).
 - The runbook to add a machine.
 - **The MVP is vertical 1, vertical 2 (2a and 2b at least) and vertical 3.** The order is 2a, 2b, 3, then 2c: exposing the ingest to the Internet waits for keys that are bound to their machine.

@@ -39,10 +39,10 @@ public sealed class CollectorDownloads
     public CollectorDownload? Find(string platform) => Open(platform) is { } found ? found.Download : null;
 
     /// <summary>
-    /// The program for a system with a setting added to it (the address, the machine, the code), and the name a person is offered it under; null
-    /// when there is no program for that system. The setting is written for one machine and one code, and the file is named after the machine.
+    /// The program for a system, and what is to be written after it (the address, the machine, the code), and the name a person is offered it under;
+    /// null when there is no program for that system. The program is not read here: it is streamed, with the trailer after it.
     /// </summary>
-    public (byte[] Bytes, string FileName)? Personalised(string platform, EmbeddedSetting setting)
+    public (string Path, byte[] Trailer, string FileName)? Personalised(string platform, EmbeddedSetting setting)
     {
         if (Open(platform) is not { } found)
         {
@@ -50,7 +50,7 @@ public sealed class CollectorDownloads
         }
 
         var extension = Path.GetExtension(found.Download.FileName);
-        return (setting.AppendTo(File.ReadAllBytes(found.Path)), $"mnemarr-collector-{setting.Machine}{extension}");
+        return (found.Path, setting.Trailer(), $"mnemarr-collector-{setting.Machine}{extension}");
     }
 
     /// <summary>The program for a system, ready to be read, or null.</summary>

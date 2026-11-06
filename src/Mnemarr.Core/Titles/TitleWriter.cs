@@ -12,6 +12,18 @@ public interface ITitleWriter
     Task<GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken);
 }
 
+/// <summary>Where a call goes: the configured address is a base that may carry a path (<c>https://host/api/v1</c>), and the call is joined to it, not put at the root.</summary>
+internal static class TitleAddress
+{
+    // The separator of an address is a slash on every system, whatever the system's own separator is.
+    private static readonly char Slash = Path.AltDirectorySeparatorChar;
+
+    public static Uri Join(string? baseAddress, string relative) =>
+        Uri.TryCreate((baseAddress ?? string.Empty).TrimEnd(Slash) + Slash, UriKind.Absolute, out var root)
+            ? new Uri(root, relative)
+            : throw new TitleWriterException("The address of the model is not valid.");
+}
+
 /// <summary>The model could not be asked, or refused: nothing is said of the answer, which could carry what was sent.</summary>
 public sealed class TitleWriterException : Exception
 {
@@ -60,7 +72,7 @@ public sealed class AnthropicTitleWriter : ITitleWriter
             throw new TitleWriterException("The file of the API key cannot be read.", ex);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.Endpoint ?? AnthropicTitleWriter.DefaultEndpoint), "/v1/messages"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, TitleAddress.Join(options.Endpoint ?? AnthropicTitleWriter.DefaultEndpoint, "v1/messages"));
         request.Headers.Add("x-api-key", key);
         request.Headers.Add("anthropic-version", "2023-06-01");
         request.Content = JsonContent.Create(new
@@ -84,7 +96,7 @@ public sealed class AnthropicTitleWriter : ITitleWriter
                 : null;
             return TitlePrompt.Parse(text);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
         {
             throw new TitleWriterException("The model could not be reached.", ex);
         }
@@ -126,7 +138,7 @@ public sealed class AgentTitleWriter : ITitleWriter
             throw new TitleWriterException("The file of the agent secret cannot be read.", ex);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.AgentUrl ?? string.Empty), "/title"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, TitleAddress.Join(options.AgentUrl, "title"));
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", secret);
         request.Content = JsonContent.Create(new { model = options.Model, system = TitlePrompt.System, transcript });
         try
@@ -141,7 +153,7 @@ public sealed class AgentTitleWriter : ITitleWriter
             var text = answer.ValueKind == JsonValueKind.Object && answer.TryGetProperty("text", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
             return TitlePrompt.Parse(text);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
         {
             throw new TitleWriterException("The agent could not be reached.", ex);
         }
@@ -174,7 +186,7 @@ public sealed class OpenAiTitleWriter : ITitleWriter
     public async Task<GeneratedTitle?> WriteAsync(string transcript, CancellationToken cancellationToken)
     {
         var options = _options.Value;
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.Endpoint ?? string.Empty), "/v1/chat/completions"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, TitleAddress.Join(options.Endpoint, ChatPath(options.Endpoint)));
         if (!string.IsNullOrWhiteSpace(options.ApiKeyFile))
         {
             try
@@ -205,11 +217,15 @@ public sealed class OpenAiTitleWriter : ITitleWriter
             var answer = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
             return TitlePrompt.Parse(FirstMessage(answer));
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
         {
             throw new TitleWriterException("The model could not be reached.", ex);
         }
     }
+
+    /// <summary>The address is the base with its version path (<c>https://host/api/v1</c>); one with no path at all (<c>http://localhost:11434</c>) is given the usual <c>v1</c>.</summary>
+    private static string ChatPath(string? endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var address) && address.AbsolutePath.Trim(Path.AltDirectorySeparatorChar).Length == 0 ? "v1/chat/completions" : "chat/completions";
 
     private static string? FirstMessage(JsonElement answer) =>
         answer.ValueKind == JsonValueKind.Object

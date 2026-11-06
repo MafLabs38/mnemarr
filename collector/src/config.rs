@@ -34,14 +34,14 @@ impl std::fmt::Debug for Config {
 pub fn is_machine_name(name: &str) -> bool {
     let mut characters = name.chars();
     characters.next().is_some_and(|c| c.is_ascii_alphanumeric())
-        && name.len() <= 100
+        && name.len() <= 50
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
 /// Whether an address is on this machine: the only place a key may be sent without being encrypted.
-fn is_local(server: &str) -> bool {
+pub fn is_local(server: &str) -> bool {
     let host = server
         .strip_prefix("http://")
         .unwrap_or(server)
@@ -192,7 +192,7 @@ pub fn resolve(
         })?;
     if !is_machine_name(&machine) {
         return Err(UsageError(format!(
-            "'{machine}' is not a name of machine that the server accepts: letters, digits, dots, hyphens and underscores, up to 100 characters, starting with a letter or a digit. Give another with --machine or MNEMARR_MACHINE"
+            "'{machine}' is not a name of machine that the server accepts: letters, digits, dots, hyphens and underscores, up to 50 characters, starting with a letter or a digit. Give another with --machine or MNEMARR_MACHINE"
         )));
     }
     let projects = match &options.projects {
@@ -427,8 +427,33 @@ mod tests {
     }
 
     #[test]
+    fn should_call_local_only_an_address_on_this_machine() {
+        for local in [
+            "http://localhost:8080",
+            "http://127.0.0.1",
+            "http://127.0.0.1:8384/api",
+            "http://[::1]:8384",
+        ] {
+            assert!(is_local(local), "{local}");
+        }
+        for elsewhere in [
+            "http://localhost.evil.example",
+            "http://127.0.0.1.example.com",
+            "http://x/127.0.0.1",
+            "http://mnemarr.example",
+            "http://192.168.1.10:8384",
+        ] {
+            assert!(!is_local(elsewhere), "{elsewhere}");
+        }
+    }
+
+    #[test]
     fn should_refuse_a_name_of_machine_that_the_server_would_refuse() {
-        for name in ["my pc", "pc\u{e9}", "-pc", "", &"a".repeat(101)] {
+        assert!(
+            is_machine_name(&"a".repeat(50)),
+            "the longest name there is"
+        );
+        for name in ["my pc", "pc\u{e9}", "-pc", "", &"a".repeat(51)] {
             let get = environment(&[
                 ("MNEMARR_SERVER", "https://m.example"),
                 ("MNEMARR_COLLECTOR_KEY", "k"),

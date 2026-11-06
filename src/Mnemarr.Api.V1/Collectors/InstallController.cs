@@ -18,11 +18,13 @@ public sealed class InstallController : ControllerBase
     private const string PlainText = "text/plain; charset=utf-8";
     private readonly CollectorDownloads _downloads;
     private readonly InstallCommands _commands;
+    private readonly EnrolmentService _enrolments;
 
-    public InstallController(CollectorDownloads downloads, InstallCommands commands)
+    public InstallController(CollectorDownloads downloads, InstallCommands commands, EnrolmentService enrolments)
     {
         _downloads = downloads;
         _commands = commands;
+        _enrolments = enrolments;
     }
 
     /// <summary>
@@ -40,9 +42,11 @@ public sealed class InstallController : ControllerBase
         }
 
         var (server, normalised, name) = Checked(code, machine);
+        // Anonymous, and a program is several megabytes: only a code that a person approved for this machine learns anything or gets one, and it is streamed.
+        _enrolments.RequireApproved(normalised, name);
         var personalised = _downloads.Personalised(platform, new EmbeddedSetting(server, name, normalised, Insecure: server.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
             ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr has no collector program for that system.");
-        return File(personalised.Bytes, "application/octet-stream", personalised.FileName);
+        return new PersonalisedProgramResult(personalised.Path, personalised.Trailer, personalised.FileName);
     }
 
     [HttpGet("install.ps1")]
@@ -87,5 +91,21 @@ public sealed class InstallController : ControllerBase
     {
         Response.Headers.CacheControl = "no-store";
         return Content(text, PlainText);
+    }
+}
+
+/// <summary>The program streamed from its file with the setting written after it: nothing of the program is held in memory.</summary>
+internal sealed class PersonalisedProgramResult(string path, byte[] trailer, string fileName) : IActionResult
+{
+    public async Task ExecuteResultAsync(ActionContext context)
+    {
+        var response = context.HttpContext.Response;
+        var cancellationToken = context.HttpContext.RequestAborted;
+        await using var program = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        response.ContentType = "application/octet-stream";
+        response.ContentLength = program.Length + trailer.Length;
+        response.Headers.ContentDisposition = new Microsoft.Net.Http.Headers.ContentDispositionHeaderValue("attachment") { FileName = fileName }.ToString();
+        await program.CopyToAsync(response.Body, cancellationToken);
+        await response.Body.WriteAsync(trailer, cancellationToken);
     }
 }

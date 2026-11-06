@@ -77,3 +77,6 @@ import-image/
 # Made by the AI review workflow in its own checkout
 review.md
 pr.diff
+
+# Browser-tool snapshots of the dev instance: they hold real host names and codes.
+.playwright-mcp/

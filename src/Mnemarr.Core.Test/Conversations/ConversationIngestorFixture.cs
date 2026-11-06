@@ -34,9 +34,9 @@ public sealed class ConversationIngestorFixture : IDisposable
     private static string Line(string type, string text, string at) =>
         System.Text.Json.JsonSerializer.Serialize(new { type, timestamp = at, message = new { role = type, content = text } });
 
-    private static IngestBatch Batch(long from, params string[] lines) => new(ConversationFormats.ClaudeCode, "wacken", "Mnemarr Core", "abcdef12-3456", from, lines);
+    private static IngestBatch Batch(long from, params string[] lines) => new(ConversationFormats.ClaudeCode, "workstation", "Mnemarr Core", "abcdef12-3456", from, lines);
 
-    private string NoteFile => Path.Combine(_workspace.DataFolder, "conversations", "wacken", "mnemarr-core", "2026-11-04-abcdef12-3456.md");
+    private string NoteFile => Path.Combine(_workspace.DataFolder, "conversations", "workstation", "mnemarr-core", "2026-11-04-abcdef12-3456.md");
 
     private List<string> Hits(string words) => [.. _index.Search(new SearchRequest(words), SourceScope.All).Select(hit => hit.Path)];
 
@@ -47,7 +47,7 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         result.Should().Be(new IngestResult(2, 2));
         File.ReadAllText(NoteFile).Should().Contain("# How do I rotate the tokens?").And.Contain("revoke the old key");
-        Hits("revoke").Should().Equal("wacken/mnemarr-core/2026-11-04-abcdef12-3456.md");
+        Hits("revoke").Should().Equal("workstation/mnemarr-core/2026-11-04-abcdef12-3456.md");
         var source = _catalog.List(SourceScope.All).Single();
         source.Should().Match<Source>(s => s.Kind == SourceKind.Conversations && s.Managed && s.Mode == SourceMode.ReadOnly);
     }
@@ -101,7 +101,7 @@ public sealed class ConversationIngestorFixture : IDisposable
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), Token);
         await _ingestor.IngestAsync(Batch(1, Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
 
-        var raw = Directory.EnumerateFiles(Path.Combine(_workspace.DataFolder, "raw", "wacken", "abcdef12-3456"), "*.jsonl.gz").Select(Path.GetFileName).Order().ToList();
+        var raw = Directory.EnumerateFiles(Path.Combine(_workspace.DataFolder, "raw", "workstation", "abcdef12-3456"), "*.jsonl.gz").Select(Path.GetFileName).Order().ToList();
 
         raw.Should().Equal("000000000000.jsonl.gz", "000000000001.jsonl.gz");
     }
@@ -113,14 +113,14 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         result.Should().Be(new IngestResult(1, 1));
         File.Exists(NoteFile).Should().BeFalse();
-        _store.Find("wacken", "abcdef12-3456")!.Lines.Should().Be(1);
+        _store.Find("workstation", "abcdef12-3456")!.Lines.Should().Be(1);
     }
 
     [Theory]
     [InlineData("../escape", "abcdef12")]
-    [InlineData("wacken", ".hidden")]
+    [InlineData("workstation", ".hidden")]
     [InlineData("wa cken", "abcdef12")]
-    [InlineData("wacken", "a/b")]
+    [InlineData("workstation", "a/b")]
     public async Task should_refuse_a_machine_or_a_session_that_is_not_a_plain_name(string machine, string session)
     {
         var refusal = await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, machine, "app", session, 0, [Line("user", "x", "2026-11-04T14:03:00Z")]), Token));
@@ -131,7 +131,7 @@ public sealed class ConversationIngestorFixture : IDisposable
     [Fact]
     public async Task should_refuse_a_format_it_does_not_read_an_empty_batch_and_a_negative_position()
     {
-        await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(new IngestBatch("other", "wacken", "app", "s1", 0, ["x"]), Token));
+        await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(new IngestBatch("other", "workstation", "app", "s1", 0, ["x"]), Token));
         await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(Batch(0), Token));
         await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(Batch(-1, "x"), Token));
     }
@@ -149,7 +149,7 @@ public sealed class ConversationIngestorFixture : IDisposable
     {
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z"), Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
 
-        _store.Machines().Should().ContainSingle().Which.Should().Be(new MachineActivity("wacken", 1, 2, _clock.GetUtcNow()));
+        _store.Machines().Should().ContainSingle().Which.Should().Be(new MachineActivity("workstation", 1, 2, _clock.GetUtcNow()));
     }
 
     [Fact]
@@ -173,11 +173,11 @@ public sealed class ConversationIngestorFixture : IDisposable
         await _ingestor.IngestAsync(Batch(1, Line("assistant", "Use the admin page.", "2026-11-04T14:04:00Z"), Line("user", "And then?", "2026-11-04T14:05:00Z")), Token);
 
         var whole = ConversationMarkdown.Render(
-            ConversationFormats.ClaudeCode, "wacken", "mnemarr-core", "abcdef12-3456", new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero),
+            ConversationFormats.ClaudeCode, "workstation", "mnemarr-core", "abcdef12-3456", new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero),
             ConversationFormats.Turns(ConversationFormats.ClaudeCode, [Line("user", "How do I rotate the tokens?", "2026-11-04T14:03:00Z"), Line("assistant", "Use the admin page.", "2026-11-04T14:04:00Z"), Line("user", "And then?", "2026-11-04T14:05:00Z")]));
 
         File.ReadAllText(NoteFile).Should().Be(whole);
-        Hits("admin").Should().Equal("wacken/mnemarr-core/2026-11-04-abcdef12-3456.md");
+        Hits("admin").Should().Equal("workstation/mnemarr-core/2026-11-04-abcdef12-3456.md");
     }
 
     [Fact]
@@ -206,20 +206,20 @@ public sealed class ConversationIngestorFixture : IDisposable
     [Fact]
     public async Task should_keep_two_sessions_that_start_alike_in_two_notes()
     {
-        await _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, "wacken", "app", "session-1", 0, [Line("user", "alpha story here", "2026-11-04T14:03:00Z")]), Token);
-        await _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, "wacken", "app", "session-2", 0, [Line("user", "beta story here", "2026-11-04T14:03:00Z")]), Token);
+        await _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, "workstation", "app", "session-1", 0, [Line("user", "alpha story here", "2026-11-04T14:03:00Z")]), Token);
+        await _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, "workstation", "app", "session-2", 0, [Line("user", "beta story here", "2026-11-04T14:03:00Z")]), Token);
 
-        Hits("alpha").Should().Equal("wacken/app/2026-11-04-session-1.md");
-        Hits("beta").Should().Equal("wacken/app/2026-11-04-session-2.md");
+        Hits("alpha").Should().Equal("workstation/app/2026-11-04-session-1.md");
+        Hits("beta").Should().Equal("workstation/app/2026-11-04-session-2.md");
     }
 
     [Fact]
     public async Task should_keep_the_application_a_conversation_was_first_given()
     {
         await _ingestor.IngestAsync(Batch(0, Line("user", "one thing", "2026-11-04T14:03:00Z")), Token);
-        await _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, "wacken", "Something Else", "abcdef12-3456", 1, [Line("assistant", "two things", "2026-11-04T14:04:00Z")]), Token);
+        await _ingestor.IngestAsync(new IngestBatch(ConversationFormats.ClaudeCode, "workstation", "Something Else", "abcdef12-3456", 1, [Line("assistant", "two things", "2026-11-04T14:04:00Z")]), Token);
 
-        _store.Find("wacken", "abcdef12-3456")!.Should().Match<ConversationRecord>(record => record.Application == "mnemarr-core" && record.NotePath.StartsWith("wacken/mnemarr-core/", StringComparison.Ordinal));
+        _store.Find("workstation", "abcdef12-3456")!.Should().Match<ConversationRecord>(record => record.Application == "mnemarr-core" && record.NotePath.StartsWith("workstation/mnemarr-core/", StringComparison.Ordinal));
         File.ReadAllText(NoteFile).Should().Contain("two things");
     }
 
@@ -286,7 +286,7 @@ public sealed class ConversationIngestorFixture : IDisposable
         Directory.CreateDirectory(paths.ConversationsFolder);
         Directory.CreateDirectory(paths.RawFolder);
 
-        foreach (var folder in new[] { paths.ConversationsFolder, Path.Combine(paths.ConversationsFolder, "wacken"), paths.RawFolder, _workspace.DataFolder })
+        foreach (var folder in new[] { paths.ConversationsFolder, Path.Combine(paths.ConversationsFolder, "workstation"), paths.RawFolder, _workspace.DataFolder })
         {
             var declare = () => catalog.Add("mine-" + Guid.NewGuid().ToString("N")[..6], SourceKind.Knowledge, SourceMode.ReadOnly, folder, SourceScope.All, "alice");
             declare.Should().Throw<RejectedException>(folder);
@@ -327,7 +327,7 @@ public sealed class ConversationIngestorFixture : IDisposable
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")), Token);
         await _ingestor.IngestAsync(Batch(1, Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
 
-        var info = new RawConversations(_workspace.Options).ReadInfo("wacken", "abcdef12-3456");
+        var info = new RawConversations(_workspace.Options).ReadInfo("workstation", "abcdef12-3456");
 
         info.Should().Be(new RawInfo(ConversationFormats.ClaudeCode, "mnemarr-core", new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero)));
     }
@@ -337,7 +337,7 @@ public sealed class ConversationIngestorFixture : IDisposable
     {
         // A conversation held under another format (a second assistant will make this real): its lines are not read by the wrong parser.
         var at = new DateTimeOffset(2026, 11, 4, 14, 3, 0, TimeSpan.Zero);
-        _store.Save(new ConversationRecord("wacken", "abcdef12-3456", "mnemarr-core", "another-format", 1, at, at, "wacken/mnemarr-core/2026-11-04-abcdef12-3456.md"));
+        _store.Save(new ConversationRecord("workstation", "abcdef12-3456", "mnemarr-core", "another-format", 1, at, at, "workstation/mnemarr-core/2026-11-04-abcdef12-3456.md"));
 
         var refused = await Assert.ThrowsAsync<RejectedException>(() => _ingestor.IngestAsync(Batch(1, Line("user", "two", "2026-11-04T14:04:00Z")), Token));
 
@@ -359,11 +359,11 @@ public sealed class ConversationIngestorFixture : IDisposable
     public async Task should_keep_the_account_that_sent_the_last_batch_with_the_conversation()
     {
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z")) with { Account = "pc-key" }, Token);
-        (_store.Find("wacken", "abcdef12-3456")!.Account).Should().Be("pc-key");
+        (_store.Find("workstation", "abcdef12-3456")!.Account).Should().Be("pc-key");
 
         await _ingestor.IngestAsync(Batch(1, Line("assistant", "two", "2026-11-04T14:04:00Z")) with { Account = "other-key" }, Token);
 
-        _store.Find("wacken", "abcdef12-3456")!.Account.Should().Be("other-key");
+        _store.Find("workstation", "abcdef12-3456")!.Account.Should().Be("other-key");
     }
 
     [Fact]
@@ -375,6 +375,6 @@ public sealed class ConversationIngestorFixture : IDisposable
 
         var machines = _store.Machines();
 
-        machines.Select(machine => (machine.Machine, machine.Conversations, machine.Lines)).Should().Equal(("laptop", 1, 1L), ("wacken", 2, 3L));
+        machines.Select(machine => (machine.Machine, machine.Conversations, machine.Lines)).Should().Equal(("laptop", 1, 1L), ("workstation", 2, 3L));
     }
 }

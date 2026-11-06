@@ -4,7 +4,7 @@ The collector is a small program (Rust) that runs as a **service on each machine
 
 It is **not part of Mnemarr's container**: it is an external helper that talks to Mnemarr only through its API, over outbound HTTPS.
 
-> **What is built, and what is designed.** Built (besides what follows): `install`, `start`, `stop`, `status` and `uninstall` (Windows and Linux; macOS runs it in the background without starting it with the session). Designed and not built yet: the icon in the notification area and the pause. Built: the loop, the reading of Claude Code files, masking, sending by position, the position file, the ingest API, **enrolment with a one-time code, a key bound to the machine, the heartbeat and the page of the machines** ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)). Designed in ADR 0025 and not built yet: the container form for servers, configuration read from the server, the other readers.
+> **What is built, and what is designed.** Built (besides what follows): `install`, `start`, `stop`, `status` and `uninstall` (Windows and Linux; macOS runs it in the background without starting it with the session). Built too: the icon in the notification area (Windows) and the pause. Built: the loop, the reading of Claude Code files, masking, sending by position, the position file, the ingest API, **enrolment with a one-time code, a key bound to the machine, the heartbeat and the page of the machines** ([ADR 0027](adr/0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)). Designed in ADR 0025 and not built yet: the container form for servers, configuration read from the server, the other readers.
 
 ## What it does and does not do
 
@@ -48,7 +48,7 @@ To see or control it afterwards (the same program, in the folder it was installe
 | `mnemarr-collector resume` | ends the pause |
 | `mnemarr-collector uninstall` | stops it and stops it starting with your session; the machine stays joined |
 
-**On Windows it shows an icon in the notification area** (the small arrow near the clock, where hidden icons are kept): a dot that is **green** when all is well, **grey** when paused, **amber** when Mnemarr cannot be reached, **red** when something is wrong. Right-click it for the menu: the state in words, *Pause for one hour*, *Pause until I resume*, *Resume*, *Open Mnemarr* and *Quit the collector*. Windows hides new icons behind the arrow: drag it onto the bar to keep it in sight. `--no-tray` removes the icon.
+**On Windows it shows an icon in the notification area** (the small arrow near the clock, where hidden icons are kept): a line drawing of a brain that is **green** when all is well, **orange** when paused, **red** when Mnemarr cannot be reached or something is wrong (grey-blue while it starts). Right-click it for the menu: the state in words, *Pause for one hour*, *Pause until I resume*, *Resume*, *Open Mnemarr* and *Quit the collector*. Windows hides new icons behind the arrow: drag it onto the bar to keep it in sight. `--no-tray` removes the icon.
 
 On Windows it is in your own list of programs that start with your session (Task Manager, *Startup apps*), where you can also switch it off; on Linux it is a unit of your own systemd (`systemctl --user status mnemarr-collector`). Its log is `collector.log` in its folder. No administrator rights are needed.
 
