@@ -138,6 +138,7 @@ public sealed class DatabaseFixture : IDisposable
         using var back = connection.CreateCommand();
         back.CommandText = """
             ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+            DROP TABLE IF EXISTS pairings;
             PRAGMA user_version = 7;
             """;
         back.ExecuteNonQuery();

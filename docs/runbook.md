@@ -21,6 +21,7 @@ What an operator does once Mnemarr runs for real. The examples use `mnemarr.exam
 2. Run the one line it shows in a terminal of that machine, **as the user whose conversations it will read**, or download the program it offers for Windows and open it. The code works for 15 minutes and once.
 3. The machine shows **online** within a minute. If it does not: [the collector page](collector.md) lists what it says when it cannot join.
 4. An assistant may ask for the code over MCP (`request_collector_enrolment`); it waits for you to approve it on the same page.
+5. **A computer that already has the collector** needs none of this to be linked to this Mnemarr: on that computer, `mnemarr-collector link --server <address of this Mnemarr>` (or **Link to a Mnemarr…** on the icon, on Windows). It shows an address and a code; you open it signed in, check the name the computer gives itself, **choose the name it will have in this Mnemarr** and approve. The computer then sends here as well as to the Mnemarr it already sent to. A computer that asked and is not approved waits in **Computers asking to be linked** for 10 minutes.
 
 The page offers a line per system **that this image carries a program for** (Windows and Linux, x86_64). A system with no program is not offered.
 

@@ -25,6 +25,25 @@ Each machine has a kind, declared in Mnemarr:
 | `always-on` | servers, virtual machines | after a threshold (30 minutes by default) Mnemarr says so: something is wrong |
 | `intermittent` | a workstation that sleeps or is switched off at night | never an alert: Mnemarr shows when it was last seen |
 
+## Send to several Mnemarr, and link another (built, ADR 0030)
+
+A collector is not tied to one Mnemarr: it keeps a list of **destinations** and sends every conversation to each of them, each with its own key, its own name
+for the machine and its own positions. A development instance and a production one both receive; one that is down does not hold the other back.
+
+| Command | What it does |
+|---|---|
+| `mnemarr-collector link [--server URL] [--name NAME]` | links this machine to a Mnemarr **by asking**: it shows an address to open (and opens it), a person approves there and names the machine, and the key comes to the collector by itself. `--no-browser` only prints the address |
+| `mnemarr-collector link --server URL --code CODE` | the same with a one-time code that a person made in Mnemarr (what the installers do) |
+| `mnemarr-collector destinations` | lists the Mnemarr this machine sends to |
+| `mnemarr-collector unlink NAME` | stops sending to that Mnemarr (what it received stays there; revoke the machine there to remove it for good) |
+
+On Windows, the icon has **Link to a Mnemarr…**: a page opens on this computer (it is served on the loopback address only, for a few minutes), you type the
+address of the Mnemarr, the page of that Mnemarr opens in the browser where you approve this computer and choose its name, and the local page tells you when
+it is done. **Linking a computer that already has a collector adds the Mnemarr; it does not replace the others**, whichever way you do it (the icon, `link`,
+the line of the page, or the downloaded program).
+
+A collector of an earlier version is read as a list of one destination, with the positions it had.
+
 ## Join a machine (built, ADR 0027)
 
 1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows, once, for the system you are on, a **Download** button (Windows) and **one line** to paste, each with a one-time code inside.
@@ -55,6 +74,8 @@ The Linux program that the image serves is built on Ubuntu 24.04 and links the s
 On Windows it is in your own list of programs that start with your session (Task Manager, *Startup apps*), where you can also switch it off; on Linux it is a unit of your own systemd (`systemctl --user status mnemarr-collector`). Its log is `collector.log` in its folder. No administrator rights are needed.
 
 If the address of Mnemarr is plain `http://` (a sandbox), the page says that the key will travel without encryption, and the line makes the collector accept it (`--allow-insecure-http`). Over HTTPS there is nothing of the kind. A Mnemarr that carries no collector program (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`) shows only the command that joins a machine that has the program.
+
+A computer that already has the collector does not need this page: run `mnemarr-collector link --server https://mnemarr.homelab.example`, or use the icon (see above). It then appears in **Computers asking to be linked**, with a link to approve it.
 
 The code works once, for 15 minutes, for that machine name. A machine that enrols again replaces its key (the old one stops working). To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
 
