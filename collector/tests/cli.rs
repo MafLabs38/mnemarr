@@ -572,7 +572,7 @@ fn should_unlink_a_mnemarr_and_stop_sending_to_it_and_say_when_there_is_none_of_
     let (development, production) = (FakeMnemarr::start(), FakeMnemarr::start());
     assert!(computer.link(&development).status.success());
     assert!(computer.link(&production).status.success());
-    let name = format!("127.0.0.1");
+    let name = "127.0.0.1".to_string();
     let second = format!("{name}-2");
 
     let missing = computer.run(&["unlink", "nothing"]);
