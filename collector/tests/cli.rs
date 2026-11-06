@@ -567,6 +567,43 @@ fn should_link_by_asking_show_the_address_to_open_wait_for_the_approval_and_send
 }
 
 #[test]
+fn should_ask_to_be_linked_even_when_the_name_of_the_computer_is_not_a_name_of_machine_because_a_person_chooses_the_name()
+ {
+    let computer = Computer::new("spaces");
+    let mnemarr = FakeMnemarr::start();
+
+    let output = collector()
+        .args([
+            "link",
+            "--server",
+            &mnemarr.address,
+            "--no-browser",
+            "--allow-insecure-http",
+        ])
+        .args([
+            "--config-dir",
+            computer.home.join("config").to_str().unwrap(),
+        ])
+        .env("HOME", &computer.home)
+        .env("USERPROFILE", &computer.home)
+        .env("XDG_STATE_HOME", computer.home.join("state"))
+        .env_remove("HOSTNAME")
+        .env("COMPUTERNAME", "Gaming PC (de Maf)")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "{}", said(&output));
+    let asked = mnemarr.requests.lock().unwrap();
+    assert!(
+        asked
+            .iter()
+            .any(|(path, _, body)| path == "/api/v1/ingest/pair"
+                && body.contains("Gaming PC (de Maf)")),
+        "it suggests the name the computer has, as it is: Mnemarr cleans it and a person chooses the name"
+    );
+}
+
+#[test]
 fn should_unlink_a_mnemarr_and_stop_sending_to_it_and_say_when_there_is_none_of_that_name() {
     let computer = Computer::new("unlink");
     let (development, production) = (FakeMnemarr::start(), FakeMnemarr::start());

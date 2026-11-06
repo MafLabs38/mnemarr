@@ -446,10 +446,6 @@ fn link(options: &LinkOptions) -> ExitCode {
         return ExitCode::from(2);
     };
     let server = server.trim_end_matches('/').to_string();
-    let machine = match machine_name(options.machine.as_ref()) {
-        Ok(machine) => machine,
-        Err(code) => return code,
-    };
     if let Err(error) = check_server(&server, options.allow_insecure_http) {
         say(&error.to_string());
         return ExitCode::from(2);
@@ -459,6 +455,11 @@ fn link(options: &LinkOptions) -> ExitCode {
         return ExitCode::from(2);
     };
     if let Some(code) = &options.code {
+        // With a code, the name is the one the code was made for: it has to be a name that Mnemarr accepts.
+        let machine = match machine_name(options.machine.as_ref()) {
+            Ok(machine) => machine,
+            Err(code) => return code,
+        };
         return match enrol::exchange(&server, code, &machine) {
             Ok(enrolled) => keep(
                 &dir,
@@ -473,6 +474,14 @@ fn link(options: &LinkOptions) -> ExitCode {
             }
         };
     }
+    // Asking, the machine only suggests what it is called, as it is: Mnemarr cleans it and the person who approves chooses the name.
+    let read = |path: &str| std::fs::read_to_string(path).ok();
+    let hostname = options
+        .machine
+        .clone()
+        .or_else(|| get("MNEMARR_MACHINE"))
+        .or_else(|| default_machine(&get, &read))
+        .unwrap_or_else(|| "this computer".to_string());
     let show = |request: &enrol::PairingRequest| {
         say(&format!(
             "to link this computer, open {} and check that the code is {}",
@@ -483,7 +492,7 @@ fn link(options: &LinkOptions) -> ExitCode {
         }
         say("waiting for you to approve it in Mnemarr...");
     };
-    match enrol::link_by_asking(&server, &machine, &show, &thread::sleep) {
+    match enrol::link_by_asking(&server, &hostname, &show, &thread::sleep) {
         Ok(LinkOutcome::Linked(enrolled)) => keep(
             &dir,
             &server,

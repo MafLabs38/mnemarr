@@ -47,6 +47,12 @@
 - **The person stays in control of a background process** (asked by the maintainer on 2026-11-05): on Windows and macOS an icon in the notification area says that it runs, shows its state, and offers *Pause* (for an hour, or until resumed), *Resume*, *Open Mnemarr* and *Quit*; on a server without a screen the same through `pause`, `resume` and `status`. A paused collector keeps sending its heartbeat, marked paused, so that Mnemarr shows **paused** and not "silent". The pause survives a restart. New dependencies for the icon are a decision of the pull request.
 - The collector never prevents sleep and costs the machine nothing it would notice.
 
+#### Linking: several Mnemarr and linking by asking ([ADR 0030](adr/0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md), built)
+
+*Demo: a computer that already has the collector is linked to a second Mnemarr from its icon, in a few clicks, without reinstalling: both receive its conversations.*
+
+- The collector sends every conversation to every destination (each with its own key, name and positions); `link` (by asking, or with a code), `unlink`, `destinations`; the icon's **Link to a Mnemarr…** and its menu of Mnemarr; the page that answers a computer that asks, and the list of those that wait. Not now: finding computers by mDNS, per-destination reader settings (2c), macOS and Linux icons.
+
 #### Follow-ups of running it for real
 
 - A **static Linux program** (musl), so that any distribution runs it, and **aarch64** programs for Linux and macOS (the image carries x86_64 only); the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
