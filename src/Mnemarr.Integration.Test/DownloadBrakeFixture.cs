@@ -31,6 +31,7 @@ public sealed class DownloadBrakeFixture : IClassFixture<BigProgramFactory>
             using var fifth = await anonymous.GetAsync(Program, HttpCompletionOption.ResponseHeadersRead, Token);
             fifth.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
             fifth.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromSeconds(5));
+            (await fifth.Content.ReadAsStringAsync(Token)).Should().Contain("\"status\":429");
         }
         finally
         {

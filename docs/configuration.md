@@ -89,7 +89,7 @@ Mnemarr keeps a consistent copy of its database in the `backup` folder of the da
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MNEMARR__BACKUP__ENABLED` | `true` | Whether snapshots are taken. |
+| `MNEMARR__BACKUP__ENABLED` | `true` | Whether snapshots are taken, and whether a whole copy of the database is kept before a migration. |
 | `MNEMARR__BACKUP__EVERYHOURS` | `24` | A snapshot is taken when the newest is this old (1 to 168). |
 | `MNEMARR__BACKUP__KEEP` | `7` | How many are kept; older ones are deleted (1 to 60). |
 

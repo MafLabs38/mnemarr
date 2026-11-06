@@ -171,6 +171,27 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
+    public void should_keep_no_copy_before_a_migration_when_the_snapshots_are_turned_off_and_refuse_a_database_that_is_newer_than_the_application()
+    {
+        Scalar("SELECT 1");
+        RewindToVersionSeven();
+        var off = Options.Create(new Mnemarr.Core.Backup.BackupOptions { Enabled = false });
+
+        new Database(_workspace.Options, off).Open().Dispose();
+
+        Copies().Should().BeEmpty("the operator said no to copies");
+        using (var connection = _workspace.Database.Open())
+        {
+            using var forward = connection.CreateCommand();
+            forward.CommandText = $"PRAGMA user_version = {Schema.Version + 1};";
+            forward.ExecuteNonQuery();
+        }
+
+        Assert.Throws<UnsupportedSchemaException>(() => new Database(_workspace.Options).Open());
+        Copies().Should().BeEmpty("a database from a newer version is not copied, it is refused");
+    }
+
+    [Fact]
     public void should_not_migrate_a_database_when_the_copy_before_it_cannot_be_written()
     {
         Scalar("SELECT 1");

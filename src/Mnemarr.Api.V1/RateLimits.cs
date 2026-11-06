@@ -28,10 +28,13 @@ public static class RateLimits
                 limit.PermitLimit = ProgramDownloadPermits;
                 limit.QueueLimit = 0;
             });
-            options.OnRejected = (context, _) =>
+            options.OnRejected = async (context, cancellationToken) =>
             {
                 context.HttpContext.Response.Headers.RetryAfter = RetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                return ValueTask.CompletedTask;
+                // The same shape as every other refusal of the API.
+                await context.HttpContext.Response.WriteAsJsonAsync(
+                    new Microsoft.AspNetCore.Mvc.ProblemDetails { Status = StatusCodes.Status429TooManyRequests, Title = "Programs are being written for other machines: try again in a few seconds." },
+                    cancellationToken);
             };
         });
 }

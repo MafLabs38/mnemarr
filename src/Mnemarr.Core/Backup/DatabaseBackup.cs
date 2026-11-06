@@ -36,7 +36,7 @@ public sealed class DatabaseBackup
     public bool Enabled => _options.Value.Enabled;
 
     /// <summary>Where the snapshots are: the <c>backup</c> folder of the data folder.</summary>
-    public string Folder => Path.Combine(_data.Value.DataFolder, "backup");
+    public string Folder => Path.Combine(_data.Value.DataFolder, SnapshotFiles.FolderName);
 
     /// <summary>Since when the snapshots fail, or null when the last attempt worked (or there was none, or they are turned off): said at once, even when an earlier snapshot is recent.</summary>
     public DateTimeOffset? FailingSince => Enabled ? _failing?.Since : null;

@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Backup;
 using Mnemarr.Core.Configuration;
 
 namespace Mnemarr.Core.Storage;
@@ -7,13 +8,15 @@ namespace Mnemarr.Core.Storage;
 public sealed class Database : IDatabase
 {
     private readonly string _folder;
+    private readonly IOptions<BackupOptions>? _backup;
     private readonly string _connectionString;
     private readonly Lock _gate = new();
     private volatile bool _ready;
 
-    public Database(IOptions<MnemarrOptions> options)
+    public Database(IOptions<MnemarrOptions> options, IOptions<BackupOptions>? backup = null)
     {
         _folder = options.Value.DataFolder;
+        _backup = backup;
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = Path.Combine(_folder, "mnemarr.db"),
@@ -74,19 +77,20 @@ public sealed class Database : IDatabase
     /// </summary>
     private void CopyBeforeMigration(SqliteConnection connection)
     {
+        // An operator who turned the snapshots off (the host takes its own, or content must be erasable) has said no to copies; so is it here.
         var from = Schema.CurrentVersion(connection);
-        if (from == 0 || from >= Schema.Version)
+        if (from == 0 || from >= Schema.Version || _backup?.Value.Enabled == false)
         {
             return;
         }
 
-        var folder = Path.Combine(_folder, "backup");
+        var folder = Path.Combine(_folder, SnapshotFiles.FolderName);
         SnapshotFiles.EnsureFolder(folder);
         // The moment comes first in the name, so that the order of the names is the order of the migrations, whatever the numbers of the versions.
-        SnapshotFiles.Write(connection, Path.Combine(folder, $"before-migration-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-v{from}-to-v{Schema.Version}.db"));
+        SnapshotFiles.Write(connection, Path.Combine(folder, $"{SnapshotFiles.MigrationPrefix}{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-v{from}-to-v{Schema.Version}.db"));
         try
         {
-            foreach (var old in Directory.EnumerateFiles(folder, "before-migration-*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(3))
+            foreach (var old in Directory.EnumerateFiles(folder, SnapshotFiles.MigrationPrefix + "*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(SnapshotFiles.MigrationCopiesKept))
             {
                 File.Delete(old);
             }

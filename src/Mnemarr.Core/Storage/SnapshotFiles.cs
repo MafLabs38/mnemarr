@@ -9,6 +9,14 @@ namespace Mnemarr.Core.Storage;
 internal static class SnapshotFiles
 {
     public const string Partial = ".partial";
+
+    /// <summary>The folder of the copies, in the data folder: the unit of backup.</summary>
+    public const string FolderName = "backup";
+
+    /// <summary>The copies made before a migration are named after the moment, then the versions: the last <see cref="MigrationCopiesKept"/> are kept.</summary>
+    public const string MigrationPrefix = "before-migration-";
+
+    public const int MigrationCopiesKept = 3;
     private const UnixFileMode OwnerReadWrite = UnixFileMode.UserRead | UnixFileMode.UserWrite;
     private const UnixFileMode OwnerOnly = OwnerReadWrite | UnixFileMode.UserExecute;
 
