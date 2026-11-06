@@ -68,6 +68,7 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
         script.Should().Contain(DownloadsFactory.Sha256Of("the windows program")).And.Contain($"--machine '{machine}'").And.Contain(added.GetProperty("code").GetString()!)
             .And.Contain("/api/v1/ingest/download/windows-x86_64").And.Contain("--allow-insecure-http").And.Contain("Get-FileHash").And.Contain("$env:LOCALAPPDATA");
         script.Should().Contain("& $exe install").And.Contain("you can close this window");
+        script.Should().Contain("-ne 429", "a program that is told to wait (429) is asked for again, only for that status");
         script.Should().NotContain("& $exe run", "an installer installs and hands the window back: it is not the collector");
         script.Should().NotContain("{{", "every placeholder was filled");
         script.Should().NotContain(DownloadsFactory.Sha256Of("the linux program"));
@@ -85,6 +86,7 @@ public sealed class InstallApiFixture : IClassFixture<DownloadsFactory>, IClassF
             .And.Contain("This Mnemarr has no collector for");
         script.Should().NotContain("Darwin-arm64", "there is no program for macOS here").And.NotContain("{{");
         script.Should().Contain("\"$exe\" install").And.NotContain("exec \"$exe\" run", "an installer installs and hands the terminal back");
+        script.Should().Contain("curl -fsSL --retry 6", "a program that is told to wait (429) is asked for again");
     }
 
     [Fact]

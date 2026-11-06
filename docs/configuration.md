@@ -93,7 +93,7 @@ Mnemarr keeps a consistent copy of its database in the `backup` folder of the da
 | `MNEMARR__BACKUP__EVERYHOURS` | `24` | A snapshot is taken when the newest is this old (1 to 168). |
 | `MNEMARR__BACKUP__KEEP` | `7` | How many are kept; older ones are deleted (1 to 60). |
 
-A snapshot holds what the database held that day: **what you delete from Mnemarr stays readable in the snapshots** until they are replaced (`Keep` × `EveryHours`, a week by default), and in whatever your backup tool keeps beyond that. Keep this in mind for content you must be able to erase.
+A snapshot holds what the database held that day: **what you delete from Mnemarr stays readable in the snapshots** until they are replaced (`Keep` × `EveryHours`, a week by default), in the **last three copies made before a migration** (kept whatever their age), and in whatever your backup tool keeps beyond that. Keep this in mind for content you must be able to erase.
 
 When the last snapshot failed, or none has been taken for more than twice the interval, `/health/ready` says **degraded** with the reason `backup-failing` or `backup-late` (it stays 200: the application works).
 

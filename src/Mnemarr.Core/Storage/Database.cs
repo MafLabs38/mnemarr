@@ -82,10 +82,18 @@ public sealed class Database : IDatabase
 
         var folder = Path.Combine(_folder, "backup");
         SnapshotFiles.EnsureFolder(folder);
-        SnapshotFiles.Write(connection, Path.Combine(folder, $"before-migration-v{from}-to-v{Schema.Version}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fff}.db"));
-        foreach (var old in Directory.EnumerateFiles(folder, "before-migration-*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(3))
+        // The moment comes first in the name, so that the order of the names is the order of the migrations, whatever the numbers of the versions.
+        SnapshotFiles.Write(connection, Path.Combine(folder, $"before-migration-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-v{from}-to-v{Schema.Version}.db"));
+        try
         {
-            File.Delete(old);
+            foreach (var old in Directory.EnumerateFiles(folder, "before-migration-*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(3))
+            {
+                File.Delete(old);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The copy that matters is whole: an old one that stays is not a reason to refuse to start.
         }
     }
 

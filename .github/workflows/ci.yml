@@ -131,7 +131,8 @@ jobs:
   # it has its own checks on both, then a smoke test of the real binary.
   collector:
     name: collector (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    # The Linux program is built on a runner that is pinned, not on `ubuntu-latest`: the oldest system that runs it is part of what is promised (docs/collector.md).
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # A test that starts the collector in the background must end: if one hangs, the job is stopped here, not after six hours.
     timeout-minutes: 20
     strategy:

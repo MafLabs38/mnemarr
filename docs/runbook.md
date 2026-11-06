@@ -51,7 +51,7 @@ Check from time to time that a restore works (below) on a spare folder, not on t
 
 ## Update
 
-A deployment that follows the version tags (see [releasing](releasing.md)) picks a release up by itself. With Compose, change the tag and `docker compose up -d`. The database is migrated at start, and a migration is not undone: Mnemarr keeps a whole copy of the database before it migrates it (`backup/before-migration-vN-to-vM-….db`, the last three), and does not start if it cannot write it. **Check that your tool copies `backup/`**, and keep the copy for a while after an update. To go back to the previous version, restore that copy with the previous image (see Restore).
+A deployment that follows the version tags (see [releasing](releasing.md)) picks a release up by itself. With Compose, change the tag and `docker compose up -d`. The database is migrated at start, and a migration is not undone: Mnemarr keeps a whole copy of the database before it migrates it (`backup/before-migration-<moment>-vN-to-vM.db`, the last three), and does not start if it cannot write it. **Check that your tool copies `backup/`**, and keep the copy for a while after an update. To go back to the previous version, restore that copy with the previous image (see Restore).
 
 ## When something is wrong
 

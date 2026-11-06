@@ -157,7 +157,12 @@ public sealed class DatabaseFixture : IDisposable
         }
 
         var copy = Copies().Should().ContainSingle().Subject;
-        Path.GetFileName(copy).Should().StartWith($"before-migration-v7-to-v{Schema.Version}-");
+        Path.GetFileName(copy).Should().StartWith("before-migration-").And.EndWith($"-v7-to-v{Schema.Version}.db");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.GetUnixFileMode(copy).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite, "it holds the hashes of passwords and keys");
+        }
+
         using var old = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = copy, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         old.Open();
         using var version = old.CreateCommand();
@@ -166,16 +171,36 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
-    public void should_keep_the_copies_of_the_last_three_migrations_only()
+    public void should_not_migrate_a_database_when_the_copy_before_it_cannot_be_written()
     {
         Scalar("SELECT 1");
-        for (var i = 0; i < 5; i++)
+        RewindToVersionSeven();
+        File.WriteAllText(Path.Combine(_workspace.DataFolder, "backup"), "a file where the folder of the copies should be");
+
+        Assert.ThrowsAny<IOException>(() => new Database(_workspace.Options).Open());
+
+        File.Delete(Path.Combine(_workspace.DataFolder, "backup"));
+        using var untouched = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(_workspace.DataFolder, "mnemarr.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        untouched.Open();
+        using var version = untouched.CreateCommand();
+        version.CommandText = "PRAGMA user_version;";
+        Convert.ToInt32(version.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture).Should().Be(7, "the migration did not run without the way back");
+    }
+
+    [Fact]
+    public void should_keep_the_copies_of_the_last_three_migrations_only_and_forget_the_oldest_by_the_moment_and_not_by_the_numbers()
+    {
+        Scalar("SELECT 1");
+        Directory.CreateDirectory(Path.Combine(_workspace.DataFolder, "backup"));
+        // A copy from long ago, between versions with more digits than the later ones: by name, "v7-to-v10" would be the newest.
+        File.WriteAllText(Path.Combine(_workspace.DataFolder, "backup", "before-migration-20200101-000000-0000000-v99-to-v100.db"), "old");
+        for (var i = 0; i < 3; i++)
         {
             RewindToVersionSeven();
             new Database(_workspace.Options).Open().Dispose();
         }
 
-        Copies().Should().HaveCount(3);
+        Copies().Should().HaveCount(3).And.NotContain(file => file.Contains("v99-to-v100", StringComparison.Ordinal));
     }
 
     [Fact]
