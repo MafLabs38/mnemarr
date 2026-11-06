@@ -105,6 +105,29 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
+    public void should_add_the_pause_to_a_database_whose_machines_did_not_have_one_without_touching_them()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO machines (name, kind, account_id, enrolled_at) VALUES ('pc', 'intermittent', 'a', 'then');
+                ALTER TABLE machines DROP COLUMN paused;
+                PRAGMA user_version = 6;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var check = upgraded.CreateCommand();
+        check.CommandText = "SELECT name, paused FROM machines";
+        using var reader = check.ExecuteReader();
+        reader.Read().Should().BeTrue();
+        (reader.GetString(0), reader.GetInt32(1)).Should().Be(("pc", 0));
+    }
+
+    [Fact]
     public void should_add_the_machines_and_the_enrolments_to_a_database_that_has_conversations_without_touching_them()
     {
         using (var connection = _workspace.Database.Open())

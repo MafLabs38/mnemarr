@@ -7,8 +7,8 @@ public sealed class MachineStatesFixture
     private static readonly DateTimeOffset Now = new(2026, 11, 5, 12, 0, 0, TimeSpan.Zero);
     private static readonly CollectorOptions Options = new() { OnlineWithinMinutes = 5, SilenceAfterMinutes = 30 };
 
-    private static Machine Machine(MachineKind kind, int? seenMinutesAgo = null, string? error = null, bool revoked = false) => new(
-        "pc", kind, Guid.NewGuid(), Now.AddDays(-1), seenMinutesAgo is { } minutes ? Now.AddMinutes(-minutes) : null, "0.1.0", 0, error, revoked ? Now.AddHours(-1) : null);
+    private static Machine Machine(MachineKind kind, int? seenMinutesAgo = null, string? error = null, bool revoked = false, bool paused = false) => new(
+        "pc", kind, Guid.NewGuid(), Now.AddDays(-1), seenMinutesAgo is { } minutes ? Now.AddMinutes(-minutes) : null, "0.1.0", 0, error, revoked ? Now.AddHours(-1) : null, paused);
 
     [Theory]
     [InlineData(MachineKind.Intermittent, null, MachineState.Waiting)]
@@ -53,4 +53,21 @@ public sealed class MachineStatesFixture
     [InlineData(5, 999999, false)]
     public void should_accept_the_two_delays_only_when_the_second_is_not_shorter_than_the_first(int online, int silence, bool valid) =>
         new CollectorOptionsValidator().Validate(null, new CollectorOptions { OnlineWithinMinutes = online, SilenceAfterMinutes = silence }).Succeeded.Should().Be(valid);
+
+    [Fact]
+    public void should_say_paused_for_a_machine_that_says_a_person_paused_it_and_is_still_heard_from_and_never_make_an_alert_of_it()
+    {
+        MachineStates.Of(Machine(MachineKind.AlwaysOn, 1, paused: true), Now, Options).Should().Be(MachineState.Paused);
+        MachineStates.Of(Machine(MachineKind.Intermittent, 1, paused: true), Now, Options).Should().Be(MachineState.Paused);
+        MachineStates.IsAlert(Machine(MachineKind.AlwaysOn, 1, paused: true), Now, Options).Should().BeFalse("a pause is deliberate");
+    }
+
+    [Fact]
+    public void should_not_keep_a_machine_paused_that_stopped_saying_so_and_still_say_failing_or_refused_first()
+    {
+        MachineStates.Of(Machine(MachineKind.Intermittent, 60, paused: true), Now, Options).Should().Be(MachineState.Away, "it is off, whatever it last said");
+        MachineStates.Of(Machine(MachineKind.AlwaysOn, 60, paused: true), Now, Options).Should().Be(MachineState.Silent);
+        MachineStates.Of(Machine(MachineKind.Intermittent, 1, error: "x", paused: true), Now, Options).Should().Be(MachineState.Failing);
+        MachineStates.Of(Machine(MachineKind.Intermittent, 1, revoked: true, paused: true), Now, Options).Should().Be(MachineState.Refused);
+    }
 }

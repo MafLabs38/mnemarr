@@ -54,15 +54,15 @@ public sealed class SqliteMachineStore : IMachineStore
         _database = database;
     }
 
-    public Machine? Get(string name) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at FROM machines WHERE name = $key", name);
+    public Machine? Get(string name) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines WHERE name = $key", name);
 
-    public Machine? GetByAccount(Guid accountId) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at FROM machines WHERE account_id = $key", accountId.ToString());
+    public Machine? GetByAccount(Guid accountId) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines WHERE account_id = $key", accountId.ToString());
 
     public IReadOnlyList<Machine> List()
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at FROM machines ORDER BY name";
+        command.CommandText = "SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines ORDER BY name";
         using var reader = command.ExecuteReader();
         var machines = new List<Machine>();
         while (reader.Read())
@@ -78,9 +78,9 @@ public sealed class SqliteMachineStore : IMachineStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO machines (name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at)
-            VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL)
-            ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL
+            INSERT INTO machines (name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused)
+            VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL, 0)
+            ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL, paused = 0
             """;
         command.Parameters.AddWithValue(NameParameter, machine.Name);
         command.Parameters.AddWithValue("$kind", MachineKinds.Name(machine.Kind));
@@ -95,7 +95,7 @@ public sealed class SqliteMachineStore : IMachineStore
         using var command = connection.CreateCommand();
         command.CommandText = heartbeat is null
             ? "UPDATE machines SET last_seen_at = $at WHERE name = $name"
-            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error WHERE name = $name";
+            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused WHERE name = $name";
         command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
         if (heartbeat is not null)
@@ -103,6 +103,7 @@ public sealed class SqliteMachineStore : IMachineStore
             command.Parameters.AddWithValue("$version", heartbeat.Version);
             command.Parameters.AddWithValue("$pending", heartbeat.PendingLines);
             command.Parameters.AddWithValue("$error", (object?)heartbeat.Error ?? DBNull.Value);
+            command.Parameters.AddWithValue("$paused", heartbeat.Paused ? 1 : 0);
         }
 
         command.ExecuteNonQuery();
@@ -146,7 +147,8 @@ public sealed class SqliteMachineStore : IMachineStore
         reader.IsDBNull(5) ? null : reader.GetString(5),
         reader.GetInt64(6),
         reader.IsDBNull(7) ? null : reader.GetString(7),
-        reader.IsDBNull(8) ? null : StorageText.Parse(reader.GetString(8)));
+        reader.IsDBNull(8) ? null : StorageText.Parse(reader.GetString(8)),
+        reader.GetInt32(9) != 0);
 }
 
 public sealed class SqliteEnrolmentStore : IEnrolmentStore

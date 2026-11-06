@@ -299,6 +299,7 @@ const en = {
   ConversationsCount: 'Conversations',
   RevokeMachine: 'Revoke the machine {name}',
   StateOnline: 'Online',
+  StatePaused: 'Paused by its user',
   StateAway: 'Away (asleep or off)',
   StateWaiting: 'Waiting for its first contact',
   StateUnenrolled: 'No longer enrolled (its conversations are kept)',

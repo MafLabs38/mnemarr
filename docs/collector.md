@@ -44,7 +44,11 @@ To see or control it afterwards (the same program, in the folder it was installe
 | `mnemarr-collector status` | says whether it runs, whether it starts with your session, and where its log is |
 | `mnemarr-collector stop` | stops it now (it starts again with your next session) |
 | `mnemarr-collector start` | starts it again in the background |
+| `mnemarr-collector pause [--minutes N]` | makes it quiet for N minutes, or until `resume`: it reads and sends nothing, and says so to Mnemarr, which shows the machine as **paused** and not silent |
+| `mnemarr-collector resume` | ends the pause |
 | `mnemarr-collector uninstall` | stops it and stops it starting with your session; the machine stays joined |
+
+**On Windows it shows an icon in the notification area** (the small arrow near the clock, where hidden icons are kept): a dot that is **green** when all is well, **grey** when paused, **amber** when Mnemarr cannot be reached, **red** when something is wrong. Right-click it for the menu: the state in words, *Pause for one hour*, *Pause until I resume*, *Resume*, *Open Mnemarr* and *Quit the collector*. Windows hides new icons behind the arrow: drag it onto the bar to keep it in sight. `--no-tray` removes the icon.
 
 On Windows it is in your own list of programs that start with your session (Task Manager, *Startup apps*), where you can also switch it off; on Linux it is a unit of your own systemd (`systemctl --user status mnemarr-collector`). Its log is `collector.log` in its folder. No administrator rights are needed.
 

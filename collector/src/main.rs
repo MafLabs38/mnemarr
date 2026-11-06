@@ -9,11 +9,13 @@ use mnemarr_collector::collect::Report;
 use mnemarr_collector::config::{
     Config, check_server, config_dir, default_machine, is_machine_name, resolve,
 };
+use mnemarr_collector::control;
 use mnemarr_collector::embedded::{self, Embedded};
 use mnemarr_collector::enrol;
 use mnemarr_collector::service::{self, Installed, Started};
 use mnemarr_collector::setup;
 use mnemarr_collector::state::State;
+use mnemarr_collector::status::{self, Condition};
 use mnemarr_collector::upload::{Heartbeat, HttpUploader, UploadError, Uploader};
 use mnemarr_collector::{Command, EnrollOptions, Options, VERSION, parse, usage};
 
@@ -77,26 +79,65 @@ fn trouble(report: &Report) -> Option<String> {
     (!sentences.is_empty()).then(|| sentences.join("; "))
 }
 
-/// The sign of life that ends a pass. A key that is refused is said, once per pass; the loop goes on, because a person may be about to enrol it again.
-fn heartbeat(collector: &Collector<HttpUploader>, report: &Report) {
+/// The sign of life that ends a pass (and a pause: it still says it is there, and why it sends nothing). A key that is refused is said, once per
+/// pass; the loop goes on, because a person may be about to enrol it again.
+fn heartbeat(
+    collector: &Collector<HttpUploader>,
+    report: &Report,
+    paused: bool,
+) -> Result<(), UploadError> {
     let error = trouble(report);
     let beat = Heartbeat {
         version: VERSION,
         pending_lines: report.pending_lines,
         error: error.as_deref(),
+        paused,
     };
-    match collector.uploader.heartbeat(&beat) {
-        Ok(()) | Err(UploadError::Later(_)) => {}
-        Err(UploadError::Refused(status, reason)) => say(&format!(
+    let result = collector.uploader.heartbeat(&beat);
+    if let Err(UploadError::Refused(status, reason)) = &result {
+        say(&format!(
             "the server refused the sign of life ({status}): {reason}"
-        )),
+        ));
     }
+    result
 }
 
-/// One pass: what is new is sent, and the position reached is kept. Says whether the pass was done.
-fn pass(collector: &Collector<HttpUploader>, config: &Config, state: &mut State) -> bool {
-    let report = collector.pass(state);
-    heartbeat(collector, &report);
+/// How the collector is after a pass, for the icon.
+fn condition_after(report: &Report, beat: &Result<(), UploadError>, paused: bool) -> Condition {
+    if paused {
+        return Condition::Paused;
+    }
+    if let Err(UploadError::Refused(401 | 403, _)) = beat {
+        return Condition::Refused;
+    }
+    if let Some(reason) = &report.stopped {
+        return Condition::Offline(reason.chars().take(60).collect());
+    }
+    if let Err(UploadError::Later(reason)) = beat {
+        return Condition::Offline(reason.chars().take(60).collect());
+    }
+    trouble(report).map_or(Condition::Online, Condition::Problem)
+}
+
+/// One pass: what is new is sent, and the position reached is kept. Says whether the pass was done. When the person paused the collector, nothing is
+/// read or sent, and only the sign of life goes.
+fn pass(
+    collector: &Collector<HttpUploader>,
+    config: &Config,
+    state: &mut State,
+    paused: bool,
+    condition: &status::Shared,
+) -> bool {
+    let report = if paused {
+        Report::default()
+    } else {
+        collector.pass(state)
+    };
+    let beat = heartbeat(collector, &report, paused);
+    status::set(condition, condition_after(&report, &beat, paused));
+    if paused {
+        return true;
+    }
     if let Err(error) = state.save(&config.state) {
         say(&format!(
             "cannot keep the position in {}: {error}",
@@ -122,6 +163,36 @@ fn pass(collector: &Collector<HttpUploader>, config: &Config, state: &mut State)
             false
         }
         None => true,
+    }
+}
+
+/// Collects: a pass, a wait, a pass; for ever when asked to, else once. A pause the person asked for (from the icon or `pause`) is looked at before each pass.
+fn collect_loop(
+    collector: Collector<HttpUploader>,
+    config: Config,
+    mut state: State,
+    dir: Option<PathBuf>,
+    forever: bool,
+    condition: status::Shared,
+) -> ExitCode {
+    let mut was_paused = false;
+    loop {
+        let paused = dir
+            .as_deref()
+            .is_some_and(|dir| control::current(dir, std::time::SystemTime::now()).is_some());
+        if paused != was_paused {
+            say(if paused { "paused" } else { "resumed" });
+            was_paused = paused;
+        }
+        let done = pass(&collector, &config, &mut state, paused, &condition);
+        if !forever {
+            return if done {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            };
+        }
+        thread::sleep(config.interval);
     }
 }
 
@@ -183,17 +254,46 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
         config.server,
         config.machine
     ));
-    loop {
-        let done = pass(&collector, &config, &mut state);
-        if !forever {
-            return if done {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            };
-        }
-        thread::sleep(config.interval);
+    let get = |name: &str| std::env::var(name).ok();
+    let dir = config_dir(options.config_dir.as_deref(), &get);
+    let condition = status::shared();
+    if forever && !options.no_tray && cfg!(windows) {
+        return collect_with_icon(collector, config, state, dir, condition);
     }
+    collect_loop(collector, config, state, dir, forever, condition)
+}
+
+/// Where there is no icon to show (anywhere but Windows for now), it collects as it would without one.
+#[cfg(not(windows))]
+fn collect_with_icon(
+    collector: Collector<HttpUploader>,
+    config: Config,
+    state: State,
+    dir: Option<PathBuf>,
+    condition: status::Shared,
+) -> ExitCode {
+    collect_loop(collector, config, state, dir, true, condition)
+}
+
+/// Collects in a thread of its own and shows the icon in this one. When the icon cannot be made (a session with no taskbar), it goes on without it.
+#[cfg(windows)]
+fn collect_with_icon(
+    collector: Collector<HttpUploader>,
+    config: Config,
+    state: State,
+    dir: Option<PathBuf>,
+    condition: status::Shared,
+) -> ExitCode {
+    let (shown_dir, server, machine) = (dir.clone(), config.server.clone(), config.machine.clone());
+    let shared = condition.clone();
+    let worker = thread::spawn(move || collect_loop(collector, config, state, dir, true, shared));
+    if let Some(folder) = shown_dir {
+        // Only returns when the icon could not be made: *Quit* ends the program from inside.
+        if let Err(error) = mnemarr_collector::tray::run(folder, server, machine, condition) {
+            say(&format!("no icon in the notification area: {error}"));
+        }
+    }
+    worker.join().unwrap_or(ExitCode::from(1))
 }
 
 /// Joins this machine: the code a person approved is exchanged for the key of this machine, which is kept where only this user reads it.
@@ -363,6 +463,55 @@ fn uninstall(options: &Options) -> ExitCode {
     }
 }
 
+/// Asks the collector to be quiet: for a while (`--minutes`), or until `resume`. It also stops the icon from showing "online": the running collector reads
+/// the same file.
+fn pause(options: &Options) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    let result = match options.pause_minutes {
+        Some(minutes) => control::pause_for(
+            &dir,
+            std::time::Duration::from_secs(minutes.saturating_mul(60)),
+            std::time::SystemTime::now(),
+        ),
+        None => control::pause_forever(&dir),
+    };
+    match result {
+        Ok(()) => {
+            say(&match options.pause_minutes {
+                Some(minutes) => format!("paused for {minutes} minute(s): it reads and sends nothing, and says so to Mnemarr. To stop the pause: mnemarr-collector resume"),
+                None => "paused until you resume it: it reads and sends nothing, and says so to Mnemarr. To stop the pause: mnemarr-collector resume".to_string(),
+            });
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&format!("it could not be paused: {error}"));
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn resume(options: &Options) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    match control::resume(&dir) {
+        Ok(()) => {
+            say("resumed: it collects again at its next pass");
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&format!("it could not be resumed: {error}"));
+            ExitCode::from(1)
+        }
+    }
+}
+
 fn status(options: &Options) -> ExitCode {
     let get = |name: &str| std::env::var(name).ok();
     let read = |path: &str| std::fs::read_to_string(path).ok();
@@ -374,7 +523,7 @@ fn status(options: &Options) -> ExitCode {
     let state = service::status(&dir);
     let _ = writeln!(
         io::stdout(),
-        "machine: {}\nserver: {}\nrunning: {}\nstarts with your session: {}\nlog: {}",
+        "machine: {}\nserver: {}\nrunning: {}\nstarts with your session: {}\npaused: {}\nlog: {}",
         joined
             .as_ref()
             .map_or("not joined (run: mnemarr-collector enroll)", |config| {
@@ -386,6 +535,11 @@ fn status(options: &Options) -> ExitCode {
             .map_or("no".to_string(), |pid| format!("yes (process {pid})")),
         if state.starts_with_session {
             "yes"
+        } else {
+            "no"
+        },
+        if control::current(&dir, std::time::SystemTime::now()).is_some() {
+            "yes (mnemarr-collector resume)"
         } else {
             "no"
         },
@@ -483,6 +637,8 @@ fn main() -> ExitCode {
         Ok(Command::Start(options)) => start(&options),
         Ok(Command::Stop(options)) => stop(&options),
         Ok(Command::Status(options)) => status(&options),
+        Ok(Command::Pause(options)) => pause(&options),
+        Ok(Command::Resume(options)) => resume(&options),
         Err(error) => {
             // If even standard error is closed there is nobody left to tell.
             let _ = writeln!(io::stderr(), "{error}\n\n{}", usage());

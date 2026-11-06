@@ -100,7 +100,7 @@ public sealed class CollectorService
     {
         var machine = (accountId is { } id ? _machines.GetByAccount(id) : null) ?? throw new RejectedException(Problem.Forbidden, NoMachine);
         CheckNotRevoked(machine);
-        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError)));
+        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused));
     }
 
     /// <summary>Every machine that joined, and every name conversations came from that never joined, each with its state.</summary>

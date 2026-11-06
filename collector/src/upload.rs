@@ -49,6 +49,8 @@ pub struct Heartbeat<'a> {
     pub version: &'a str,
     pub pending_lines: u64,
     pub error: Option<&'a str>,
+    /// A person asked it to be quiet: it still says it is there, and says why it sends nothing.
+    pub paused: bool,
 }
 
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
@@ -162,6 +164,7 @@ impl Uploader for HttpUploader {
                 "version": beat.version,
                 "pendingLines": beat.pending_lines,
                 "error": beat.error,
+                "paused": beat.paused,
             }),
         )?;
         if status == 200 || status == 204 {
@@ -391,6 +394,7 @@ mod tests {
                 version: "0.2.0",
                 pending_lines: 7,
                 error: Some("1 file(s) could not be read"),
+                paused: true,
             })
             .unwrap();
 
@@ -400,7 +404,7 @@ mod tests {
         let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(
             body,
-            json!({"version": "0.2.0", "pendingLines": 7, "error": "1 file(s) could not be read"})
+            json!({"version": "0.2.0", "pendingLines": 7, "error": "1 file(s) could not be read", "paused": true})
         );
     }
 
@@ -411,6 +415,7 @@ mod tests {
             version: "0.2.0",
             pending_lines: 0,
             error: None,
+            paused: false,
         };
         let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
         assert!(matches!(

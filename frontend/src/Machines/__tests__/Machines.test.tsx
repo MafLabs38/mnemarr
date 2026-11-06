@@ -91,6 +91,7 @@ describe('Machines', () => {
     server([
       machine({ machine: 'online-pc', state: 'online' }),
       machine({ machine: 'sleeper', state: 'away' }),
+      machine({ machine: 'resting', state: 'paused' }),
       machine({ machine: 'server-1', kind: 'always-on', state: 'silent' }),
       machine({ machine: 'broken', state: 'failing', error: '2 files could not be read' }),
       machine({ machine: 'gone', state: 'refused' }),
@@ -106,6 +107,7 @@ describe('Machines', () => {
       expect(within(rowOf(screen.getByRole('rowheader', { name }))).getByText(label)).toBeInTheDocument();
     text('online-pc', 'Online');
     text('sleeper', 'Away (asleep or off)');
+    text('resting', 'Paused by its user');
     text('server-1', 'Silent');
     text('broken', 'Failing');
     text('gone', 'Refused (revoked)');

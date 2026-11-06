@@ -81,4 +81,23 @@ public sealed class CollectorHealthApiFixture : EnrolmentFixtureBase, IClassFixt
         (await StatusOfAsync(callers.Admin, machine)).GetProperty("state").GetString().Should().Be("online");
         await RevokeAsync(callers.Admin, machine);
     }
+
+    [Fact]
+    public async Task should_tell_a_machine_paused_by_its_person_as_paused_and_never_raise_the_health_check_for_it()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("server");
+        using var key = await JoinAsync(callers.Admin, machine, "always-on");
+
+        await key.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.1.0", pendingLines = 0, paused = true }, Token);
+
+        (await StatusOfAsync(callers.Admin, machine)).GetProperty("state").GetString().Should().Be("paused");
+        _factory.Clock.Advance(TimeSpan.FromMinutes(3));
+        await key.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.1.0", pendingLines = 0, paused = true }, Token);
+        (await HealthAsync()).Status.Should().Be(HealthStatus.Healthy);
+
+        await key.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.1.0", pendingLines = 0 }, Token);
+        (await StatusOfAsync(callers.Admin, machine)).GetProperty("state").GetString().Should().Be("online", "an older collector says nothing of a pause, and a resumed one says it is not");
+        await RevokeAsync(callers.Admin, machine);
+    }
 }

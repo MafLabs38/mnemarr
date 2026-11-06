@@ -166,6 +166,10 @@ public static class Schema
             expires_at TEXT NOT NULL
         );
         """,
+        // 7: a collector that a person paused says so with its sign of life (ADR 0027 §16).
+        """
+        ALTER TABLE machines ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

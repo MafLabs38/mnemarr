@@ -27,6 +27,9 @@ public enum MachineState
     /// <summary>Heard from recently.</summary>
     Online,
 
+    /// <summary>A person asked the collector to be quiet: it is there, and sends nothing on purpose. Never an alert.</summary>
+    Paused,
+
     /// <summary>An intermittent machine that is asleep or off: not an error.</summary>
     Away,
 
@@ -79,10 +82,11 @@ public sealed record Machine(
     string? Version,
     long PendingLines,
     string? Error,
-    DateTimeOffset? RevokedAt);
+    DateTimeOffset? RevokedAt,
+    bool Paused = false);
 
-/// <summary>What a collector says at the end of a pass.</summary>
-public sealed record Heartbeat(string Version, long PendingLines, string? Error);
+/// <summary>What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet.</summary>
+public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false);
 
 public enum EnrolmentState
 {

@@ -6,12 +6,16 @@
 
 pub mod collect;
 pub mod config;
+pub mod control;
 pub mod embedded;
 pub mod enrol;
 pub mod mask;
 pub mod service;
 pub mod setup;
 pub mod state;
+pub mod status;
+#[cfg(windows)]
+pub mod tray;
 pub mod upload;
 
 /// Version of this build, from the package metadata.
@@ -28,6 +32,10 @@ pub struct Options {
     pub interval_seconds: Option<u64>,
     /// The folder of the collector (the key, the address of Mnemarr), when the usual place is not the right one.
     pub config_dir: Option<String>,
+    /// How long `pause` lasts, in minutes: without it, until `resume`.
+    pub pause_minutes: Option<u64>,
+    /// Do not show an icon in the notification area (Windows shows one by default).
+    pub no_tray: bool,
     /// Also write what it says to this file (a collector started in the background has no terminal).
     pub log_file: Option<String>,
     /// Accept an address of Mnemarr that is plain `http://`: the key is then sent without encryption. For a network the person trusts (a sandbox at home).
@@ -65,10 +73,17 @@ pub enum Command {
     Stop(Options),
     /// Say whether it runs, and whether it starts with the session.
     Status(Options),
+    /// Be quiet for a while (`--minutes`), or until resumed.
+    Pause(Options),
+    /// Stop being quiet.
+    Resume(Options),
 }
 
 /// The flag that accepts a plain `http://` address. It has no value: it is there or it is not.
 const ALLOW_INSECURE_HTTP: &str = "--allow-insecure-http";
+
+/// The flag that keeps the icon away. It has no value either.
+const NO_TRAY: &str = "--no-tray";
 
 /// A command line the collector does not understand.
 #[derive(Debug, PartialEq, Eq)]
@@ -90,6 +105,8 @@ USAGE:\n    mnemarr-collector enroll --server URL --code CODE [--machine NAME]\n
 mnemarr-collector install           start with your session, and start now (in the background)\n    \
 mnemarr-collector start | stop      start it in the background, or stop it, now\n    \
 mnemarr-collector status            whether it runs, and whether it starts with your session\n    \
+mnemarr-collector pause [--minutes N]  be quiet for N minutes (default: until resumed)\n    \
+mnemarr-collector resume            stop being quiet\n    \
 mnemarr-collector uninstall         stop it and stop it starting with your session (the machine stays joined)\n    \
 mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
 mnemarr-collector once [OPTIONS]    one pass, then stop\n    \
@@ -102,6 +119,7 @@ OPTIONS:\n    --server URL        the address of Mnemarr (or MNEMARR_SERVER)\n  
 --interval SECONDS  the wait between two passes (default: 30)\n    \
 --config-dir DIR    where the key and the address of Mnemarr are kept (default: the configuration folder of the user)\n    \
 --log-file PATH     also write what it says to this file\n    \
+--no-tray           no icon in the notification area (Windows)\n    \
 --allow-insecure-http  accept an http:// address (the key then travels without encryption: only for a network you trust)\n"
     )
 }
@@ -131,6 +149,8 @@ where
         "start" => return Ok(Command::Start(options(args)?)),
         "stop" => return Ok(Command::Stop(options(args)?)),
         "status" => return Ok(Command::Status(options(args)?)),
+        "pause" => return Ok(Command::Pause(options(args)?)),
+        "resume" => return Ok(Command::Resume(options(args)?)),
         other => return Err(unexpected(other)),
     };
     match args.next() {
@@ -180,6 +200,10 @@ where
             options.allow_insecure_http = true;
             continue;
         }
+        if flag == NO_TRAY {
+            options.no_tray = true;
+            continue;
+        }
         let Some(value) = args.next() else {
             return Err(UsageError(format!("{flag} needs a value")));
         };
@@ -191,6 +215,11 @@ where
             "--projects" => options.projects = Some(value),
             "--state" => options.state = Some(value),
             "--log-file" => options.log_file = Some(value),
+            "--minutes" => {
+                options.pause_minutes = Some(value.parse().map_err(|_| {
+                    UsageError(format!("--minutes needs a number of minutes, not {value}"))
+                })?);
+            }
             "--config-dir" => options.config_dir = Some(value),
             "--interval" => {
                 options.interval_seconds = Some(value.parse().map_err(|_| {
@@ -250,6 +279,8 @@ mod tests {
             interval_seconds: Some(10),
             config_dir: None,
             log_file: None,
+            pause_minutes: None,
+            no_tray: false,
             allow_insecure_http: false,
         };
         let arguments = [
@@ -358,5 +389,24 @@ mod tests {
             panic!("status was expected");
         };
         assert_eq!(options.config_dir.as_deref(), Some("/c"));
+    }
+
+    #[test]
+    fn should_read_the_commands_that_pause_and_resume_and_the_flag_that_keeps_the_icon_away() {
+        let Ok(Command::Pause(options)) = parse(["pause", "--minutes", "60"]) else {
+            panic!("pause was expected");
+        };
+        assert_eq!(options.pause_minutes, Some(60));
+        assert!(matches!(parse(["resume"]), Ok(Command::Resume(_))));
+        assert_eq!(
+            parse(["pause", "--minutes", "soon"]),
+            Err(UsageError(
+                "--minutes needs a number of minutes, not soon".to_string()
+            ))
+        );
+        let Ok(Command::Run(options)) = parse(["run", "--no-tray"]) else {
+            panic!("run was expected");
+        };
+        assert!(options.no_tray);
     }
 }

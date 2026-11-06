@@ -25,7 +25,8 @@ public static class MachineStates
 
         if (now - seen <= options.OnlineWithin)
         {
-            return MachineState.Online;
+            // A pause is said by the collector at each pass: one that stopped saying it (the machine is off) is no longer paused.
+            return machine.Paused ? MachineState.Paused : MachineState.Online;
         }
 
         return machine.Kind == MachineKind.AlwaysOn ? MachineState.Silent : MachineState.Away;

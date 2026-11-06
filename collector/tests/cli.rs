@@ -222,3 +222,25 @@ fn should_run_as_ever_when_it_carries_a_setting_and_is_given_something_to_do() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn should_pause_for_a_while_or_until_resumed_and_say_so_in_its_status() {
+    let joined = Joined::new("pause");
+    assert!(said(&joined.run(&["status"])).contains("paused: no"));
+
+    let paused = joined.run(&["pause", "--minutes", "30"]);
+
+    assert!(paused.status.success(), "{}", said(&paused));
+    assert!(said(&paused).contains("paused for 30 minute(s)"));
+    assert!(said(&joined.run(&["status"])).contains("paused: yes"));
+    assert!(said(&joined.run(&["resume"])).contains("resumed"));
+    assert!(said(&joined.run(&["status"])).contains("paused: no"));
+
+    assert!(said(&joined.run(&["pause"])).contains("until you resume it"));
+    assert!(said(&joined.run(&["status"])).contains("paused: yes"));
+    assert!(joined.run(&["resume"]).status.success());
+    assert!(
+        said(&joined.run(&["resume"])).contains("resumed"),
+        "resuming when not paused changes nothing and is not an error"
+    );
+}

@@ -20,3 +20,7 @@ expect_used = "deny"
 regex = "1"
 serde_json = "1"
 ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
+
+[target.'cfg(windows)'.dependencies]
+tao = "0.37.2"
+tray-icon = "0.24.2"

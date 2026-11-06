@@ -5,7 +5,7 @@ import { isApiPath, useApiQuery } from 'Helpers/Hooks/useApiQuery';
 import { type Kind, kinds } from 'Helpers/Props/kinds';
 import type { TranslationKey } from 'Utilities/String/en';
 
-export type MachineState = 'unenrolled' | 'refused' | 'waiting' | 'failing' | 'online' | 'away' | 'silent';
+export type MachineState = 'unenrolled' | 'refused' | 'waiting' | 'failing' | 'online' | 'paused' | 'away' | 'silent';
 export type MachineKindName = 'always-on' | 'intermittent';
 
 /** A machine that joined, or a name that conversations came from and that never did (ADR 0027). */
@@ -58,6 +58,7 @@ export interface CreatedEnrolment {
 /** How a state is worded, and how it looks: never by colour alone (the label carries an icon and the words). */
 export const stateLook: Record<MachineState, { text: TranslationKey; kind: Kind }> = {
   online: { text: 'StateOnline', kind: kinds.SUCCESS },
+  paused: { text: 'StatePaused', kind: kinds.INFO },
   away: { text: 'StateAway', kind: kinds.INFO },
   waiting: { text: 'StateWaiting', kind: kinds.INFO },
   unenrolled: { text: 'StateUnenrolled', kind: kinds.INFO },
