@@ -288,10 +288,9 @@ fn collect_with_icon(
     let shared = condition.clone();
     let worker = thread::spawn(move || collect_loop(collector, config, state, dir, true, shared));
     if let Some(folder) = shown_dir {
-        // Only returns when the icon could not be made: *Quit* ends the program from inside.
-        if let Err(error) = mnemarr_collector::tray::run(folder, server, machine, condition) {
-            say(&format!("no icon in the notification area: {error}"));
-        }
+        // The icon never returns: *Quit* ends the program from inside. It only gives back an error, when it could not be made.
+        let Err(error) = mnemarr_collector::tray::run(folder, server, machine, condition);
+        say(&format!("no icon in the notification area: {error}"));
     }
     worker.join().unwrap_or(ExitCode::from(1))
 }
