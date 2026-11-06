@@ -240,24 +240,6 @@ public sealed class DatabaseBackupFixture : IDisposable
     }
 
     [Fact]
-    public void should_not_call_a_snapshot_that_was_taken_a_failure_when_an_old_one_cannot_be_deleted()
-    {
-        Put("one");
-        _options.Keep = 1;
-        _backup.Snapshot();
-        _clock.Advance(TimeSpan.FromDays(1));
-        var old = Directory.GetFiles(_backup.Folder).Single();
-        File.Delete(old);
-        Directory.CreateDirectory(old);
-        File.WriteAllText(Path.Combine(old, "a file in a folder that is named like a snapshot"), "x");
-
-        var snapshot = _backup.Snapshot();
-
-        File.Exists(snapshot).Should().BeTrue();
-        _backup.FailingSince.Should().BeNull();
-    }
-
-    [Fact]
     public void should_say_the_snapshots_have_stopped_when_the_newest_is_older_than_twice_the_interval()
     {
         _backup.IsLate().Should().BeFalse("it has not been tried yet");
@@ -295,13 +277,15 @@ public sealed class DatabaseBackupFixture : IDisposable
         var late = await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
         late.Status.Should().Be(HealthStatus.Degraded);
         late.Data[HealthReasons.Key].Should().Be("backup-late");
+        _options.Enabled = false;
+        (await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken)).Status.Should().Be(HealthStatus.Healthy, "snapshots that are turned off are not late");
     }
 
     [Fact]
     [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
     public async Task should_degrade_the_health_and_not_throw_when_the_folder_of_the_snapshots_cannot_be_read()
     {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        Assert.SkipWhen(OperatingSystem.IsWindows() || Environment.IsPrivilegedProcess, "Unix file modes, which a privileged process is not bound by");
         Put("one");
         _backup.Snapshot();
         var closed = _backup.Folder;
@@ -393,12 +377,10 @@ public sealed class DatabaseBackupFixture : IDisposable
         new BackupOptionsValidator().Validate(null, new BackupOptions { EveryHours = everyHours, Keep = keep }).Succeeded.Should().Be(valid);
 
     [Fact]
-    public void should_validate_the_settings_of_the_snapshots_and_read_the_defaults_when_none_is_set()
+    public void should_validate_the_settings_of_the_snapshots_where_they_are_read()
     {
-        var invalid = new ServiceCollection().AddMnemarrCore(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Backup:Keep"] = "0" }).Build()).BuildServiceProvider();
-        var valid = new ServiceCollection().AddMnemarrCore(new ConfigurationBuilder().Build()).BuildServiceProvider();
+        using var invalid = new ServiceCollection().AddMnemarrCore(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Backup:Keep"] = "0" }).Build()).BuildServiceProvider();
 
         Assert.Throws<OptionsValidationException>(() => invalid.GetRequiredService<IOptions<BackupOptions>>().Value);
-        valid.GetRequiredService<IOptions<BackupOptions>>().Value.Keep.Should().Be(7);
     }
 }

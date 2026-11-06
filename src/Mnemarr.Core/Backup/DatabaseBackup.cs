@@ -14,14 +14,12 @@ public sealed class DatabaseBackup
 {
     private const string Prefix = "mnemarr-";
     private const string Extension = ".db";
-    private const string Partial = ".partial";
     private const string Moment = "yyyyMMdd-HHmmss";
-    private const UnixFileMode OwnerReadWrite = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-    private const UnixFileMode OwnerOnly = OwnerReadWrite | UnixFileMode.UserExecute;
     private readonly IDatabase _database;
     private readonly IOptions<MnemarrOptions> _data;
     private readonly IOptions<BackupOptions> _options;
     private readonly TimeProvider _clock;
+    private readonly Lock _gate = new();
     private volatile Failing? _failing;
 
     public DatabaseBackup(IDatabase database, IOptions<MnemarrOptions> data, IOptions<BackupOptions> options, TimeProvider clock)
@@ -40,8 +38,8 @@ public sealed class DatabaseBackup
     /// <summary>Where the snapshots are: the <c>backup</c> folder of the data folder.</summary>
     public string Folder => Path.Combine(_data.Value.DataFolder, "backup");
 
-    /// <summary>Since when the snapshots fail, or null when the last attempt worked (or there was none).</summary>
-    public DateTimeOffset? FailingSince => _failing?.Since;
+    /// <summary>Since when the snapshots fail, or null when the last attempt worked (or there was none, or they are turned off): said at once, even when an earlier snapshot is recent.</summary>
+    public DateTimeOffset? FailingSince => Enabled ? _failing?.Since : null;
 
     /// <summary>When the newest snapshot was taken (from its name), or null when there is none.</summary>
     public DateTimeOffset? Latest() => Snapshots().Select(snapshot => snapshot.Moment).Cast<DateTimeOffset?>().Max();
@@ -52,26 +50,27 @@ public sealed class DatabaseBackup
     /// </summary>
     public bool IsDue() => Enabled && Directory.Exists(_data.Value.DataFolder) && (Latest() is not { } latest || _clock.GetUtcNow() - latest >= TimeSpan.FromHours(_options.Value.EveryHours));
 
-    /// <summary>Whether the last attempt failed: said at once, even when an earlier snapshot is recent.</summary>
-    public bool IsFailing => Enabled && FailingSince is not null;
-
     /// <summary>Whether snapshots have stopped for too long: the newest is older than twice the interval.</summary>
     public bool IsLate() => Enabled && Latest() is { } latest && _clock.GetUtcNow() - latest > TimeSpan.FromHours(2 * _options.Value.EveryHours);
 
     /// <summary>Takes a snapshot now, deletes the ones beyond <see cref="BackupOptions.Keep"/>, and says where it is.</summary>
     public string Snapshot()
     {
-        try
+        // One at a time: Prune deletes the copies that were never finished, which must not be one that another caller is writing.
+        lock (_gate)
         {
-            var path = TakeSnapshot();
-            _failing = null;
-            Prune();
-            return path;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _failing ??= new Failing(_clock.GetUtcNow());
-            throw;
+            try
+            {
+                var path = TakeSnapshot();
+                _failing = null;
+                Prune();
+                return path;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _failing ??= new Failing(_clock.GetUtcNow());
+                throw;
+            }
         }
     }
 
@@ -79,7 +78,7 @@ public sealed class DatabaseBackup
     {
         // The database is opened first: it refuses a data folder that does not exist, and nothing is created in its place.
         using var connection = _database.Open();
-        EnsureFolder();
+        SnapshotFiles.EnsureFolder(Folder);
         var path = Path.Combine(Folder, Prefix + _clock.GetUtcNow().ToString(Moment, CultureInfo.InvariantCulture) + Extension);
         if (File.Exists(path))
         {
@@ -87,48 +86,8 @@ public sealed class DatabaseBackup
             return path;
         }
 
-        var partial = path + Partial;
-        CreateEmptyForOwner(partial);
-        try
-        {
-            using (var command = connection.CreateCommand())
-            {
-                // SQLite writes into a file that is new or empty: the one just made, which only the owner can read.
-                command.CommandText = "VACUUM INTO $path";
-                command.Parameters.AddWithValue("$path", partial);
-                command.ExecuteNonQuery();
-            }
-
-            File.Move(partial, path);
-        }
-        catch
-        {
-            File.Delete(partial);
-            throw;
-        }
-
+        SnapshotFiles.Write(connection, path);
         return path;
-    }
-
-    private void EnsureFolder()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            Directory.CreateDirectory(Folder);
-            return;
-        }
-
-        // Also when it exists already: a folder that came back from a backup with wider modes is closed again.
-        Directory.CreateDirectory(Folder, OwnerOnly);
-        File.SetUnixFileMode(Folder, OwnerOnly);
-    }
-
-    private static void CreateEmptyForOwner(string file)
-    {
-        File.Delete(file);
-        using var created = OperatingSystem.IsWindows()
-            ? new FileStream(file, FileMode.CreateNew, FileAccess.Write)
-            : new FileStream(file, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = OwnerReadWrite });
     }
 
     /// <summary>
@@ -160,14 +119,14 @@ public sealed class DatabaseBackup
             }
 
             // A copy that was never finished (the process was stopped in the middle) is of no use to anyone.
-            foreach (var unfinished in Directory.EnumerateFiles(Folder, Prefix + "*" + Extension + Partial))
+            foreach (var unfinished in Directory.EnumerateFiles(Folder, Prefix + "*" + Extension + SnapshotFiles.Partial))
             {
                 File.Delete(unfinished);
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Tried again after the next snapshot.
+            // Tried again after the next snapshot: the one that was taken is whole.
         }
     }
 

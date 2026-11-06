@@ -61,8 +61,31 @@ public sealed class Database : IDatabase
                 return;
             }
 
+            CopyBeforeMigration(connection);
             Schema.Apply(connection);
             _ready = true;
+        }
+    }
+
+    /// <summary>
+    /// A migration is not undone, and a deployment that follows the versions applies it at start (ADR 0029): when a database that exists is about to be
+    /// migrated, a whole copy of it is kept first, in the <c>backup</c> folder, the last three. A copy that cannot be written stops the start: a migration is
+    /// not made without the way back.
+    /// </summary>
+    private void CopyBeforeMigration(SqliteConnection connection)
+    {
+        var from = Schema.CurrentVersion(connection);
+        if (from == 0 || from >= Schema.Version)
+        {
+            return;
+        }
+
+        var folder = Path.Combine(_folder, "backup");
+        SnapshotFiles.EnsureFolder(folder);
+        SnapshotFiles.Write(connection, Path.Combine(folder, $"before-migration-v{from}-to-v{Schema.Version}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fff}.db"));
+        foreach (var old in Directory.EnumerateFiles(folder, "before-migration-*.db").OrderByDescending(file => file, StringComparer.Ordinal).Skip(3))
+        {
+            File.Delete(old);
         }
     }
 

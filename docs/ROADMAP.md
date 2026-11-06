@@ -49,7 +49,7 @@
 
 #### Follow-ups of running it for real
 
-- A **static Linux program** (musl), so that any distribution runs it; the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
+- A **static Linux program** (musl), so that any distribution runs it, and **aarch64** programs for Linux and macOS (the image carries x86_64 only); the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
 
 #### 2c. Configuration from the server
 

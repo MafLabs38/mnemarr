@@ -17,7 +17,7 @@ public sealed class BackupHealthCheck : IHealthCheck
     {
         try
         {
-            if (_backup.FailingSince is { } since && _backup.IsFailing)
+            if (_backup.FailingSince is { } since)
             {
                 return Task.FromResult(HealthReasons.Degraded("backup-failing", $"A snapshot of the database could not be taken since {since:yyyy-MM-dd HH:mm} UTC: see the log."));
             }

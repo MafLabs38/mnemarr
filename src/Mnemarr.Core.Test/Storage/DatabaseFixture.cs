@@ -127,6 +127,57 @@ public sealed class DatabaseFixture : IDisposable
         (reader.IsDBNull(0), reader.GetString(1), reader.IsDBNull(2), reader.GetInt32(3)).Should().Be((true, "first-sentence", true, 0));
     }
 
+    /// <summary>The database as it was at version 7, before the titles of conversations (step 8): the columns of that step are dropped, as the other tests of migrations do.</summary>
+    private void RewindToVersionSeven()
+    {
+        using var connection = _workspace.Database.Open();
+        using var back = connection.CreateCommand();
+        back.CommandText = """
+            ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+            PRAGMA user_version = 7;
+            """;
+        back.ExecuteNonQuery();
+    }
+
+    private string[] Copies() => Directory.Exists(Path.Combine(_workspace.DataFolder, "backup"))
+        ? Directory.GetFiles(Path.Combine(_workspace.DataFolder, "backup"), "before-migration-*.db")
+        : [];
+
+    [Fact]
+    public void should_keep_a_whole_copy_of_a_database_that_is_about_to_be_migrated_and_none_of_one_that_is_new_or_up_to_date()
+    {
+        Scalar("SELECT 1");
+        Copies().Should().BeEmpty("a new database has nothing to lose");
+        new Database(_workspace.Options).Open().Dispose();
+        Copies().Should().BeEmpty("an up to date database is not migrated");
+        RewindToVersionSeven();
+
+        using (new Database(_workspace.Options).Open())
+        {
+        }
+
+        var copy = Copies().Should().ContainSingle().Subject;
+        Path.GetFileName(copy).Should().StartWith($"before-migration-v7-to-v{Schema.Version}-");
+        using var old = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = copy, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        old.Open();
+        using var version = old.CreateCommand();
+        version.CommandText = "PRAGMA user_version;";
+        Convert.ToInt32(version.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture).Should().Be(7, "the copy is the database as it was before the migration");
+    }
+
+    [Fact]
+    public void should_keep_the_copies_of_the_last_three_migrations_only()
+    {
+        Scalar("SELECT 1");
+        for (var i = 0; i < 5; i++)
+        {
+            RewindToVersionSeven();
+            new Database(_workspace.Options).Open().Dispose();
+        }
+
+        Copies().Should().HaveCount(3);
+    }
+
     [Fact]
     public void should_add_the_pause_to_a_database_whose_machines_did_not_have_one_without_touching_them()
     {

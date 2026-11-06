@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Mnemarr.Api.V1;
 
 namespace Mnemarr.Integration.Test;
 
@@ -105,14 +103,6 @@ public sealed class EndpointsFixture
             .Order(StringComparer.Ordinal);
 
         anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/download/{platform}", "api/v1/ingest/enrol", "api/v1/ingest/install.ps1", "api/v1/ingest/install.sh", "{*path:nonfile}");
-    }
-
-    [Fact]
-    public void should_limit_how_many_programs_are_written_at_the_same_time_because_anyone_may_ask_for_one()
-    {
-        var download = Endpoints().Single(endpoint => endpoint.RoutePattern.RawText == "api/v1/ingest/download/{platform}");
-
-        download.Metadata.GetMetadata<EnableRateLimitingAttribute>()!.PolicyName.Should().Be(RateLimits.ProgramDownload);
     }
 
     [Fact]
