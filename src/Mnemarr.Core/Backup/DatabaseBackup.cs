@@ -44,7 +44,7 @@ public sealed class DatabaseBackup
     public DateTimeOffset? FailingSince => _failing?.Since;
 
     /// <summary>When the newest snapshot was taken (from its name), or null when there is none.</summary>
-    public DateTimeOffset? Latest() => Directory.Exists(Folder) ? Directory.EnumerateFiles(Folder, Prefix + "*" + Extension).Select(MomentOf).Max() : null;
+    public DateTimeOffset? Latest() => Snapshots().Select(snapshot => snapshot.Moment).Cast<DateTimeOffset?>().Max();
 
     /// <summary>
     /// Whether a snapshot is due: there is none, or the newest is older than <see cref="BackupOptions.EveryHours"/>. Never when the data folder is not there:
@@ -52,17 +52,11 @@ public sealed class DatabaseBackup
     /// </summary>
     public bool IsDue() => Enabled && Directory.Exists(_data.Value.DataFolder) && (Latest() is not { } latest || _clock.GetUtcNow() - latest >= TimeSpan.FromHours(_options.Value.EveryHours));
 
-    /// <summary>Whether snapshots have stopped: the newest is older than twice the interval, or the attempts fail and there is no recent one.</summary>
-    public bool IsLate()
-    {
-        if (!Enabled)
-        {
-            return false;
-        }
+    /// <summary>Whether the last attempt failed: said at once, even when an earlier snapshot is recent.</summary>
+    public bool IsFailing => Enabled && FailingSince is not null;
 
-        var latest = Latest();
-        return latest is null ? FailingSince is not null : _clock.GetUtcNow() - latest.Value > TimeSpan.FromHours(2 * _options.Value.EveryHours);
-    }
+    /// <summary>Whether snapshots have stopped for too long: the newest is older than twice the interval.</summary>
+    public bool IsLate() => Enabled && Latest() is { } latest && _clock.GetUtcNow() - latest > TimeSpan.FromHours(2 * _options.Value.EveryHours);
 
     /// <summary>Takes a snapshot now, deletes the ones beyond <see cref="BackupOptions.Keep"/>, and says where it is.</summary>
     public string Snapshot()
@@ -71,6 +65,7 @@ public sealed class DatabaseBackup
         {
             var path = TakeSnapshot();
             _failing = null;
+            Prune();
             return path;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -112,7 +107,6 @@ public sealed class DatabaseBackup
             throw;
         }
 
-        Prune();
         return path;
     }
 
@@ -137,17 +131,43 @@ public sealed class DatabaseBackup
             : new FileStream(file, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = OwnerReadWrite });
     }
 
-    private void Prune()
+    /// <summary>
+    /// What is a snapshot, in one place: a file named after a moment. Anything else in the folder (a stray file, a half-written copy) is not one, for the
+    /// newest, for what is kept and for what is deleted. Newest first.
+    /// </summary>
+    private List<(string Path, DateTimeOffset Moment)> Snapshots()
     {
-        foreach (var old in Directory.EnumerateFiles(Folder, Prefix + "*" + Extension).OrderByDescending(file => file, StringComparer.Ordinal).Skip(_options.Value.Keep))
+        if (!Directory.Exists(Folder))
         {
-            File.Delete(old);
+            return [];
         }
 
-        // A copy that was never finished (the process was stopped in the middle) is of no use to anyone.
-        foreach (var unfinished in Directory.EnumerateFiles(Folder, Prefix + "*" + Extension + Partial))
+        return [.. Directory.EnumerateFiles(Folder, Prefix + "*" + Extension)
+            .Select(file => (Path: file, Moment: MomentOf(file)))
+            .Where(snapshot => snapshot.Moment is not null)
+            .Select(snapshot => (snapshot.Path, Moment: snapshot.Moment!.Value))
+            .OrderByDescending(snapshot => snapshot.Moment)];
+    }
+
+    /// <summary>Deletes what is beyond <see cref="BackupOptions.Keep"/>. A file that cannot be deleted is left for the next time: the snapshot that was taken is whole.</summary>
+    private void Prune()
+    {
+        try
         {
-            File.Delete(unfinished);
+            foreach (var old in Snapshots().Skip(_options.Value.Keep))
+            {
+                File.Delete(old.Path);
+            }
+
+            // A copy that was never finished (the process was stopped in the middle) is of no use to anyone.
+            foreach (var unfinished in Directory.EnumerateFiles(Folder, Prefix + "*" + Extension + Partial))
+            {
+                File.Delete(unfinished);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Tried again after the next snapshot.
         }
     }
 

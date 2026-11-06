@@ -47,6 +47,10 @@
 - **The person stays in control of a background process** (asked by the maintainer on 2026-11-05): on Windows and macOS an icon in the notification area says that it runs, shows its state, and offers *Pause* (for an hour, or until resumed), *Resume*, *Open Mnemarr* and *Quit*; on a server without a screen the same through `pause`, `resume` and `status`. A paused collector keeps sending its heartbeat, marked paused, so that Mnemarr shows **paused** and not "silent". The pause survives a restart. New dependencies for the icon are a decision of the pull request.
 - The collector never prevents sleep and costs the machine nothing it would notice.
 
+#### Follow-ups of running it for real
+
+- A **static Linux program** (musl), so that any distribution runs it; the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
+
 #### 2c. Configuration from the server
 
 *Demo: switch a reader off for a machine in the interface and see the collector obey at its next pass.*

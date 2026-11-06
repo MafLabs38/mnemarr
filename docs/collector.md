@@ -48,6 +48,8 @@ To see or control it afterwards (the same program, in the folder it was installe
 | `mnemarr-collector resume` | ends the pause |
 | `mnemarr-collector uninstall` | stops it and stops it starting with your session; the machine stays joined |
 
+The Linux program that the image serves is built on Ubuntu 24.04 and links the system's C library (glibc 2.39): a Linux older than that (Debian 12, Ubuntu 22.04, RHEL 9) may refuse to start it with a `GLIBC_… not found` error. Build it from the sources there (`cargo build --release` in `collector/`); a fully static program is on the roadmap.
+
 **On Windows it shows an icon in the notification area** (the small arrow near the clock, where hidden icons are kept): a line drawing of a brain that is **green** when all is well, **orange** when paused, **red** when Mnemarr cannot be reached or something is wrong (grey-blue while it starts). Right-click it for the menu: the state in words, *Pause for one hour*, *Pause until I resume*, *Resume*, *Open Mnemarr* and *Quit the collector*. Windows hides new icons behind the arrow: drag it onto the bar to keep it in sight. `--no-tray` removes the icon.
 
 On Windows it is in your own list of programs that start with your session (Task Manager, *Startup apps*), where you can also switch it off; on Linux it is a unit of your own systemd (`systemctl --user status mnemarr-collector`). Its log is `collector.log` in its folder. No administrator rights are needed.

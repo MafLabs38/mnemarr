@@ -25,12 +25,10 @@ public sealed partial class BackupService : BackgroundService
             return;
         }
 
-        // Start does not wait for the first snapshot: a slow or locked database must not hold the host back.
-        await Task.Yield();
         using var timer = new PeriodicTimer(Look, _clock);
         do
         {
-            // A copy of a large database blocks for a while: not on the thread that runs the host.
+            // A copy of a large database blocks for a while: not on the thread that runs the host, and start does not wait for it.
             await Task.Run(TakeIfDue, stoppingToken);
         }
         while (await WaitAsync(timer, stoppingToken));

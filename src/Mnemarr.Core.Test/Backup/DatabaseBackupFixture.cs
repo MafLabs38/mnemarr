@@ -222,7 +222,43 @@ public sealed class DatabaseBackupFixture : IDisposable
     }
 
     [Fact]
-    public void should_say_the_snapshots_have_stopped_when_the_newest_is_older_than_twice_the_interval_or_they_fail_and_there_is_none()
+    public void should_never_count_a_stray_file_as_a_snapshot_and_never_delete_a_snapshot_to_make_room_for_one()
+    {
+        Put("one");
+        _options.Keep = 2;
+        Directory.CreateDirectory(_backup.Folder);
+        File.WriteAllText(Path.Combine(_backup.Folder, "mnemarr-foo.db"), "a stray file that sorts after every moment");
+        var kept = new List<string>();
+        for (var day = 0; day < 4; day++)
+        {
+            kept.Add(_backup.Snapshot());
+            _clock.Advance(TimeSpan.FromDays(1));
+        }
+
+        Directory.GetFiles(_backup.Folder, "mnemarr-2*.db").OrderBy(file => file, StringComparer.Ordinal).Should().Equal(kept.Skip(2));
+        File.Exists(Path.Combine(_backup.Folder, "mnemarr-foo.db")).Should().BeTrue("what is not a snapshot is not touched");
+    }
+
+    [Fact]
+    public void should_not_call_a_snapshot_that_was_taken_a_failure_when_an_old_one_cannot_be_deleted()
+    {
+        Put("one");
+        _options.Keep = 1;
+        _backup.Snapshot();
+        _clock.Advance(TimeSpan.FromDays(1));
+        var old = Directory.GetFiles(_backup.Folder).Single();
+        File.Delete(old);
+        Directory.CreateDirectory(old);
+        File.WriteAllText(Path.Combine(old, "a file in a folder that is named like a snapshot"), "x");
+
+        var snapshot = _backup.Snapshot();
+
+        File.Exists(snapshot).Should().BeTrue();
+        _backup.FailingSince.Should().BeNull();
+    }
+
+    [Fact]
+    public void should_say_the_snapshots_have_stopped_when_the_newest_is_older_than_twice_the_interval()
     {
         _backup.IsLate().Should().BeFalse("it has not been tried yet");
         Put("one");
@@ -236,24 +272,51 @@ public sealed class DatabaseBackupFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_degrade_the_health_with_a_reason_when_the_snapshots_fail_or_stop_and_not_otherwise()
+    public async Task should_degrade_the_health_with_a_reason_as_soon_as_a_snapshot_fails_even_when_the_last_is_recent_and_when_they_stop_and_not_otherwise()
     {
         var check = new BackupHealthCheck(_backup);
-        (await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken)).Status.Should().Be(HealthStatus.Healthy);
-
-        BreakTheFolder();
-        Assert.ThrowsAny<IOException>(_backup.Snapshot);
-        var failing = await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
-        failing.Status.Should().Be(HealthStatus.Degraded);
-        failing.Data[HealthReasons.Key].Should().Be("backup-failing");
-
-        File.Delete(_backup.Folder);
+        (await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken)).Status.Should().Be(HealthStatus.Healthy, "nothing has been tried yet");
         Put("one");
         _backup.Snapshot();
+        _clock.Advance(TimeSpan.FromDays(1));
+        var blocker = Path.Combine(_backup.Folder, "mnemarr-" + _clock.GetUtcNow().ToString("yyyyMMdd-HHmmss") + ".db");
+        Directory.CreateDirectory(blocker);
+
+        Assert.ThrowsAny<IOException>(_backup.Snapshot);
+
+        var failing = await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
+        failing.Status.Should().Be(HealthStatus.Degraded, "the newest snapshot is a day old and still, the last attempt failed");
+        failing.Data[HealthReasons.Key].Should().Be("backup-failing");
+
+        Directory.Delete(blocker);
+        _backup.Snapshot();
+        (await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken)).Status.Should().Be(HealthStatus.Healthy);
         _clock.Advance(TimeSpan.FromHours(49));
         var late = await check.CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
         late.Status.Should().Be(HealthStatus.Degraded);
         late.Data[HealthReasons.Key].Should().Be("backup-late");
+    }
+
+    [Fact]
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    public async Task should_degrade_the_health_and_not_throw_when_the_folder_of_the_snapshots_cannot_be_read()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Unix file modes");
+        Put("one");
+        _backup.Snapshot();
+        var closed = _backup.Folder;
+        File.SetUnixFileMode(closed, UnixFileMode.None);
+        try
+        {
+            var result = await new BackupHealthCheck(_backup).CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
+
+            result.Status.Should().Be(HealthStatus.Degraded);
+            result.Data[HealthReasons.Key].Should().Be("backup-failing");
+        }
+        finally
+        {
+            File.SetUnixFileMode(closed, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     [Fact]
@@ -330,7 +393,7 @@ public sealed class DatabaseBackupFixture : IDisposable
         new BackupOptionsValidator().Validate(null, new BackupOptions { EveryHours = everyHours, Keep = keep }).Succeeded.Should().Be(valid);
 
     [Fact]
-    public void should_refuse_to_start_with_settings_that_are_out_of_bounds_and_start_with_the_defaults()
+    public void should_validate_the_settings_of_the_snapshots_and_read_the_defaults_when_none_is_set()
     {
         var invalid = new ServiceCollection().AddMnemarrCore(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Backup:Keep"] = "0" }).Build()).BuildServiceProvider();
         var valid = new ServiceCollection().AddMnemarrCore(new ConfigurationBuilder().Build()).BuildServiceProvider();

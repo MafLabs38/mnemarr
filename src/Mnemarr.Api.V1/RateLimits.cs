@@ -14,7 +14,7 @@ public static class RateLimits
     /// <summary>The policy of the download of a program: at most <see cref="ProgramDownloadPermits"/> at the same time, the others are refused at once.</summary>
     public const string ProgramDownload = "program-download";
 
-    public const int ProgramDownloadPermits = 4;
+    private const int ProgramDownloadPermits = 4;
 
     /// <summary>What a refused caller is told to wait: a program is written in a few seconds.</summary>
     private const string RetryAfterSeconds = "5";

@@ -46,7 +46,8 @@ Check from time to time that a restore works (below) on a spare folder, not on t
    rm -f mnemarr.db-wal mnemarr.db-shm
    chmod 600 mnemarr.db
    ```
-4. Start Mnemarr. A conversation that **goes on** after the restore is caught up: the server tells the collector where to resume and it sends again from there. A conversation that **ended after the snapshot** is not: the collector remembers having sent it and does not look at it again. To get everything back, on each machine stop the collector, delete its `state.json` (the folder `mnemarr-collector` under `$XDG_STATE_HOME`, `~/.local/state`, or `%LOCALAPPDATA%`), and start it: it sends every conversation again, and the server skips what it already has.
+4. **Redo what you did after the snapshot.** A restore brings back the database as it was: a key that was revoked since is valid again, a password that was changed is the old one, and a machine that was removed is back. Revoke again what you revoked (keep a note of it when you do), and change again what you changed, before you start Mnemarr to the Internet again.
+5. Start Mnemarr. A conversation that **goes on** after the restore is caught up: the server tells the collector where to resume and it sends again from there. A conversation that **ended after the snapshot** is not: the collector remembers having sent it and does not look at it again. To get everything back, on each machine stop the collector, delete its `state.json` (the folder `mnemarr-collector` under `$XDG_STATE_HOME`, `~/.local/state`, or `%LOCALAPPDATA%`), and start it: it sends every conversation again, and the server skips what it already has.
 
 ## Update
 
@@ -61,4 +62,4 @@ A deployment that follows the version tags (see [releasing](releasing.md)) picks
 | 429 on the installer or a download | too many programs are being written at once, or the proxy's per-address limit: wait a few seconds |
 | 429 on `enrol` | ten wrong codes in a minute for the whole server: wait a minute |
 | No line to run on the page | this image carries no program for that system |
-| *System > Status* **degraded** with `backup-failing` or `backup-late`, or the error `A snapshot of the database could not be taken` in the log | the data folder is full or read-only: free it; it is tried again an hour later |
+| *System > Status* **degraded** with `backup-failing` or `backup-late`, or the error `A snapshot of the database could not be taken` in the log | the log line says why: usually the data folder is full or read-only, or a file is where the `backup` folder should be, or the folder cannot be read. Fix it; it is tried again an hour later and the status goes back to healthy |
