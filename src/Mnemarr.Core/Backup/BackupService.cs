@@ -30,7 +30,8 @@ public sealed partial class BackupService : BackgroundService
         using var timer = new PeriodicTimer(Look, _clock);
         do
         {
-            TakeIfDue();
+            // A copy of a large database blocks for a while: not on the thread that runs the host.
+            await Task.Run(TakeIfDue, stoppingToken);
         }
         while (await WaitAsync(timer, stoppingToken));
     }

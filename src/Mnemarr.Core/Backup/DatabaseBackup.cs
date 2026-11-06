@@ -1,5 +1,4 @@
 using System.Globalization;
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Storage;
@@ -9,7 +8,7 @@ namespace Mnemarr.Core.Backup;
 /// <summary>
 /// A consistent copy of the database (ADR 0029). SQLite's <c>VACUUM INTO</c> writes a whole, compact database from one read transaction, while Mnemarr
 /// goes on working: it is what a backup tool should copy, not the live file with its write-ahead log. The copy is written under a name that no one
-/// copies away (<c>.partial</c>) and renamed when it is whole, and only the owner can read it, as the database itself.
+/// copies away (<c>.partial</c>), in a file that only the owner can read from its creation, and renamed when it is whole.
 /// </summary>
 public sealed class DatabaseBackup
 {
@@ -17,10 +16,13 @@ public sealed class DatabaseBackup
     private const string Extension = ".db";
     private const string Partial = ".partial";
     private const string Moment = "yyyyMMdd-HHmmss";
+    private const UnixFileMode OwnerReadWrite = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+    private const UnixFileMode OwnerOnly = OwnerReadWrite | UnixFileMode.UserExecute;
     private readonly IDatabase _database;
     private readonly IOptions<MnemarrOptions> _data;
     private readonly IOptions<BackupOptions> _options;
     private readonly TimeProvider _clock;
+    private volatile Failing? _failing;
 
     public DatabaseBackup(IDatabase database, IOptions<MnemarrOptions> data, IOptions<BackupOptions> options, TimeProvider clock)
     {
@@ -30,15 +32,19 @@ public sealed class DatabaseBackup
         _clock = clock;
     }
 
+    /// <summary>The moment the attempts began to fail.</summary>
+    private sealed record Failing(DateTimeOffset Since);
+
     public bool Enabled => _options.Value.Enabled;
 
-    public string Folder => _options.Value.Folder ?? Path.Combine(_data.Value.DataFolder, "backup");
+    /// <summary>Where the snapshots are: the <c>backup</c> folder of the data folder.</summary>
+    public string Folder => Path.Combine(_data.Value.DataFolder, "backup");
+
+    /// <summary>Since when the snapshots fail, or null when the last attempt worked (or there was none).</summary>
+    public DateTimeOffset? FailingSince => _failing?.Since;
 
     /// <summary>When the newest snapshot was taken (from its name), or null when there is none.</summary>
-    public DateTimeOffset? Latest() =>
-        Directory.Exists(Folder)
-            ? Directory.EnumerateFiles(Folder, Prefix + "*" + Extension).Select(MomentOf).OfType<DateTimeOffset>().Cast<DateTimeOffset?>().Max()
-            : null;
+    public DateTimeOffset? Latest() => Directory.Exists(Folder) ? Directory.EnumerateFiles(Folder, Prefix + "*" + Extension).Select(MomentOf).Max() : null;
 
     /// <summary>
     /// Whether a snapshot is due: there is none, or the newest is older than <see cref="BackupOptions.EveryHours"/>. Never when the data folder is not there:
@@ -46,8 +52,35 @@ public sealed class DatabaseBackup
     /// </summary>
     public bool IsDue() => Enabled && Directory.Exists(_data.Value.DataFolder) && (Latest() is not { } latest || _clock.GetUtcNow() - latest >= TimeSpan.FromHours(_options.Value.EveryHours));
 
+    /// <summary>Whether snapshots have stopped: the newest is older than twice the interval, or the attempts fail and there is no recent one.</summary>
+    public bool IsLate()
+    {
+        if (!Enabled)
+        {
+            return false;
+        }
+
+        var latest = Latest();
+        return latest is null ? FailingSince is not null : _clock.GetUtcNow() - latest.Value > TimeSpan.FromHours(2 * _options.Value.EveryHours);
+    }
+
     /// <summary>Takes a snapshot now, deletes the ones beyond <see cref="BackupOptions.Keep"/>, and says where it is.</summary>
     public string Snapshot()
+    {
+        try
+        {
+            var path = TakeSnapshot();
+            _failing = null;
+            return path;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _failing ??= new Failing(_clock.GetUtcNow());
+            throw;
+        }
+    }
+
+    private string TakeSnapshot()
     {
         // The database is opened first: it refuses a data folder that does not exist, and nothing is created in its place.
         using var connection = _database.Open();
@@ -55,48 +88,53 @@ public sealed class DatabaseBackup
         var path = Path.Combine(Folder, Prefix + _clock.GetUtcNow().ToString(Moment, CultureInfo.InvariantCulture) + Extension);
         if (File.Exists(path))
         {
-            // Two snapshots in the same second: the one that is there is whole.
+            // Two snapshots in the same second: the one that is there is whole, and a whole copy is never overwritten.
             return path;
         }
 
         var partial = path + Partial;
-        File.Delete(partial);
-        using (var command = connection.CreateCommand())
+        CreateEmptyForOwner(partial);
+        try
         {
-            command.CommandText = "VACUUM INTO $path";
-            command.Parameters.AddWithValue("$path", partial);
-            command.ExecuteNonQuery();
+            using (var command = connection.CreateCommand())
+            {
+                // SQLite writes into a file that is new or empty: the one just made, which only the owner can read.
+                command.CommandText = "VACUUM INTO $path";
+                command.Parameters.AddWithValue("$path", partial);
+                command.ExecuteNonQuery();
+            }
+
+            File.Move(partial, path);
+        }
+        catch
+        {
+            File.Delete(partial);
+            throw;
         }
 
-        connection.Close();
-        SqliteConnection.ClearAllPools();
-        Restrict(partial);
-        File.Move(partial, path);
         Prune();
         return path;
     }
 
     private void EnsureFolder()
     {
-        if (!Directory.Exists(Folder))
+        if (OperatingSystem.IsWindows())
         {
-            if (OperatingSystem.IsWindows())
-            {
-                Directory.CreateDirectory(Folder);
-            }
-            else
-            {
-                Directory.CreateDirectory(Folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            }
+            Directory.CreateDirectory(Folder);
+            return;
         }
+
+        // Also when it exists already: a folder that came back from a backup with wider modes is closed again.
+        Directory.CreateDirectory(Folder, OwnerOnly);
+        File.SetUnixFileMode(Folder, OwnerOnly);
     }
 
-    private static void Restrict(string file)
+    private static void CreateEmptyForOwner(string file)
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
+        File.Delete(file);
+        using var created = OperatingSystem.IsWindows()
+            ? new FileStream(file, FileMode.CreateNew, FileAccess.Write)
+            : new FileStream(file, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, UnixCreateMode = OwnerReadWrite });
     }
 
     private void Prune()

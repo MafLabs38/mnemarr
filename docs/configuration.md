@@ -85,14 +85,15 @@ An existing hand-made `Collector` account stops working at the upgrade unless th
 
 ## Backup (`Backup`)
 
-Mnemarr keeps a consistent copy of its database ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)); what copies the data folder away is yours (see [the runbook](runbook.md)).
+Mnemarr keeps a consistent copy of its database in the `backup` folder of the data folder, readable by its owner only ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)); what copies the data folder away is yours (see [the runbook](runbook.md)).
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `MNEMARR__BACKUP__ENABLED` | `true` | Whether snapshots are taken. |
-| `MNEMARR__BACKUP__FOLDER` | `<data folder>/backup` | Where they are kept. Only its owner can read them. |
 | `MNEMARR__BACKUP__EVERYHOURS` | `24` | A snapshot is taken when the newest is this old (1 to 168). |
 | `MNEMARR__BACKUP__KEEP` | `7` | How many are kept; older ones are deleted (1 to 60). |
+
+When snapshots fail, or none has been taken for more than twice the interval, `/health/ready` says **degraded** with the reason `backup-failing` or `backup-late` (it stays 200: the application works).
 
 ## Titles of conversations (`Titles`)
 

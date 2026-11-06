@@ -57,7 +57,7 @@
 
 *Demo: the production URL; the machines send their conversations; an assistant elsewhere reads them.*
 
-- Image released through the existing pipeline, **carrying the collector programs** (today an operator copies the CI artifacts into `Collectors:DownloadFolder` by hand), deployed by GitOps; the data folder on a local disk, backed up.
+- Image released through the existing pipeline, **carrying the collector programs** (done: [ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)), deployed by GitOps; the data folder on a local disk, backed up.
 - Exposure of the ingest and MCP endpoints outside the single sign-on, with Mnemarr's own keys (Q-07).
 - The runbook to add a machine, to back up and to restore ([runbook](runbook.md)); a consistent snapshot of the database and a brake on the public endpoints ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)).
 - **The MVP is vertical 1, vertical 2 (2a and 2b at least) and vertical 3.** The order is 2a, 2b, 3, then 2c: exposing the ingest to the Internet waits for keys that are bound to their machine.

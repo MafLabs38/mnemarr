@@ -21,7 +21,6 @@ builder.Services.AddMnemarrCore(builder.Configuration);
 builder.Services.AddMnemarrHealthChecks();
 builder.Services.AddMnemarrSecurity();
 builder.Services.AddMnemarrApiV1();
-builder.Services.AddMnemarrRateLimits();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ClientErrorExceptionHandler>();
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>

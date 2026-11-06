@@ -16,6 +16,9 @@ public static class RateLimits
 
     public const int ProgramDownloadPermits = 4;
 
+    /// <summary>What a refused caller is told to wait: a program is written in a few seconds.</summary>
+    private const string RetryAfterSeconds = "5";
+
     public static IServiceCollection AddMnemarrRateLimits(this IServiceCollection services) =>
         services.AddRateLimiter(options =>
         {
@@ -27,7 +30,7 @@ public static class RateLimits
             });
             options.OnRejected = (context, _) =>
             {
-                context.HttpContext.Response.Headers.RetryAfter = "5";
+                context.HttpContext.Response.Headers.RetryAfter = RetryAfterSeconds;
                 return ValueTask.CompletedTask;
             };
         });

@@ -32,7 +32,7 @@ The page offers a line per system **that this image carries a program for** (Win
 
 ## Back up
 
-Mnemarr writes a consistent snapshot of its database every 24 hours into the `backup` folder of the data folder and keeps the last seven (`Backup:*`, [configuration](configuration.md)). **Copy the whole data folder away with your own tool**: the snapshots, the raw conversations (`raw/`), the notes (`conversations/` and the sources you added) and the keys of the sessions (`keys/`) are all in it. A copy of the live `mnemarr.db` while the application runs is not always whole: restore from a snapshot.
+Mnemarr writes a consistent snapshot of its database every 24 hours into the `backup` folder of the data folder and keeps the last seven (`Backup:*`, [configuration](configuration.md)); the health check says so when it stops. **Copy the whole data folder away with your own tool**: the snapshots, the raw conversations (`raw/`), the notes (`conversations/` and the sources you added) and the keys of the sessions (`keys/`) are all in it. A copy of the live `mnemarr.db` while the application runs is not always whole: restore from a snapshot.
 
 Check from time to time that a restore works (below) on a spare folder, not on the live one.
 
@@ -46,7 +46,7 @@ Check from time to time that a restore works (below) on a spare folder, not on t
    rm -f mnemarr.db-wal mnemarr.db-shm
    chmod 600 mnemarr.db
    ```
-4. Start Mnemarr. What the collectors sent after the snapshot is **not lost**: each collector remembers where it was (by position) and sends it again; the notes of those conversations are written again from the raw lines.
+4. Start Mnemarr. A conversation that **goes on** after the restore is caught up: the server tells the collector where to resume and it sends again from there. A conversation that **ended after the snapshot** is not: the collector remembers having sent it and does not look at it again. To get everything back, on each machine stop the collector, delete its `state.json` (the folder `mnemarr-collector` under `$XDG_STATE_HOME`, `~/.local/state`, or `%LOCALAPPDATA%`), and start it: it sends every conversation again, and the server skips what it already has.
 
 ## Update
 
@@ -61,4 +61,4 @@ A deployment that follows the version tags (see [releasing](releasing.md)) picks
 | 429 on the installer or a download | too many programs are being written at once, or the proxy's per-address limit: wait a few seconds |
 | 429 on `enrol` | ten wrong codes in a minute for the whole server: wait a minute |
 | No line to run on the page | this image carries no program for that system |
-| The error `A snapshot of the database could not be taken` in the log | the data folder is full or read-only: free it; it is tried again an hour later |
+| *System > Status* **degraded** with `backup-failing` or `backup-late`, or the error `A snapshot of the database could not be taken` in the log | the data folder is full or read-only: free it; it is tried again an hour later |
