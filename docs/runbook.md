@@ -31,6 +31,16 @@ The page offers a line per system **that this image carries a program for** (Win
 - **A lost or leaked key**: revoke the machine, then add it again with the same name. The new key replaces the old one.
 - **A key of an assistant** (for `/mcp`): create a service account with the role you want under *Accounts*, give its key once, and revoke it there when it is no longer used.
 
+On the machines page, **Manage** on a row offers (ADR 0031):
+
+- **Rename**: the machine, or a name that conversations came from, gets a new name; what it sent is filed under it. The name must be free.
+- **Merge into another machine**: what a name sent is filed under a machine that is enrolled, and the name leaves the list. A conversation that the target
+  holds already is not made twice. This is what repairs a computer that was installed again under another name before Mnemarr knew computers.
+- **Reinstall**: a new code for a machine that exists, without revoking it, to install again or to update the collector on that computer.
+- **Remove, keep its conversations**: its keys stop working and it leaves the list; its conversations stay, under its name, where they can be renamed, merged or deleted.
+- **Delete with its conversations**: the machine and everything it sent leave the notes and the search. It cannot be undone: the daily snapshots of the database
+  still hold a copy until they are rotated out, and what is computed from conversations (consolidated notes) is not deleted.
+
 ## Back up
 
 Mnemarr writes a consistent snapshot of its database every 24 hours into the `backup` folder of the data folder and keeps the last seven (`Backup:*`, [configuration](configuration.md)); the health check says so when it stops. **Copy the whole data folder away with your own tool**: the snapshots, the raw conversations (`raw/`), the notes (`conversations/` and the sources you added) and the keys of the sessions (`keys/`) are all in it. A copy of the live `mnemarr.db` while the application runs is not always whole: restore from a snapshot.

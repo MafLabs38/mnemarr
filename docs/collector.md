@@ -44,6 +44,14 @@ the line of the page, or the downloaded program).
 
 A collector of an earlier version is read as a list of one destination, with the positions it had.
 
+## A machine is a computer, not a name (built, ADR 0031)
+
+The collector sends, when it joins a Mnemarr, an identifier of the computer: a SHA-256 hash of the identifier that the system made for itself at its own
+installation (`MachineGuid` on Windows, `/etc/machine-id` on Linux, the platform UUID on macOS), never the identifier itself. It survives removing the
+collector and installing it again. A Mnemarr that knows the computer keeps it as **the machine it already is**, whatever name you give: it takes the new
+name, what it sent is filed under it, and nothing is sent twice. A system that gives no identifier sends none, and the name is the identity, as before.
+Two computers cloned from one image share an identifier: name them apart on the machines page.
+
 ## Join a machine (built, ADR 0027)
 
 1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows, once, for the system you are on, a **Download** button (Windows) and **one line** to paste, each with a one-time code inside.
