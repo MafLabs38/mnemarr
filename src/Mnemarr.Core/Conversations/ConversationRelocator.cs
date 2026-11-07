@@ -11,7 +11,7 @@ public sealed record Relocation(int Moved, int AlreadyThere);
 /// Files conversations under another machine, or removes them (ADR 0031): a machine renamed or merged into another, a conversation that a renamed computer
 /// takes back, a machine deleted with what it sent. A conversation is a row, its raw lines and a note: the three move or go together, and the note is
 /// written again whole from the raw lines (it names its machine), under its new place, with the title it has. A conversation that the other machine holds
-/// already is not made twice: the one that is there stays.
+/// already is not made twice: the longer copy stays.
 /// </summary>
 public sealed class ConversationRelocator
 {
@@ -40,13 +40,27 @@ public sealed class ConversationRelocator
     public bool Holds(string machine) => _store.OfMachine(machine).Count > 0;
 
     /// <summary>
-    /// A conversation held under a name that is not a machine (a computer that was installed again under another name) goes to the machine that sends it
-    /// now, and goes on from where it was, instead of being made a second time. The caller holds the lock of the source. True when one was taken over.
+    /// A conversation held under names that are not machines (a computer that was installed again under another name) goes to the machine that sends it
+    /// now, and goes on from where it was, instead of being made a second time; the other copies of it under such names are dropped. The caller holds the
+    /// lock of the source. True when one was taken over.
     /// </summary>
     internal async Task<bool> AdoptAsync(Source source, string session, string machine, CancellationToken cancellationToken)
     {
-        var orphan = _store.OfSession(session).FirstOrDefault(held => !string.Equals(held.Machine, machine, StringComparison.Ordinal) && _machines.Get(held.Machine) is null);
-        return orphan is not null && await MoveHeldAsync(source, orphan, machine, cancellationToken);
+        var orphans = _store.OfSession(session).Where(held => !string.Equals(held.Machine, machine, StringComparison.Ordinal) && _machines.Get(held.Machine) is null).OrderByDescending(held => held.Lines).ToList();
+        if (orphans.Count == 0)
+        {
+            return false;
+        }
+
+        // The longest copy is taken over. The others are the same conversation, with the same lines or fewer, under names that are not machines: a
+        // conversation is stored once, so they go (nothing that was in them is lost).
+        var taken = await MoveHeldAsync(source, orphans[0], machine, cancellationToken);
+        foreach (var copy in orphans.Skip(1))
+        {
+            Drop(source, copy);
+        }
+
+        return taken;
     }
 
     /// <summary>Files every conversation of a machine under another.</summary>
@@ -114,10 +128,16 @@ public sealed class ConversationRelocator
     /// </summary>
     internal async Task<bool> MoveHeldAsync(Source source, ConversationRecord conversation, string to, CancellationToken cancellationToken)
     {
-        if (_store.Find(to, conversation.Session) is not null)
+        if (_store.Find(to, conversation.Session) is { } existing)
         {
-            Drop(source, conversation);
-            return false;
+            // Both hold this conversation: the longer copy is the one kept, so that no line is lost (the shorter is the same file, read earlier).
+            if (conversation.Lines <= existing.Lines)
+            {
+                Drop(source, conversation);
+                return false;
+            }
+
+            Drop(source, existing);
         }
 
         var turns = ConversationFormats.Turns(conversation.Format, _raw.Read(conversation.Machine, conversation.Session, conversation.Lines));

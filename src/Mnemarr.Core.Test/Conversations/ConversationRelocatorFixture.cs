@@ -127,4 +127,48 @@ public sealed class ConversationRelocatorFixture : IDisposable
         _store.OfMachine("server-1").Should().ContainSingle("a machine that exists keeps what it sent");
         _store.OfMachine("quimper-gaming").Should().ContainSingle();
     }
+
+    [Fact]
+    public async Task should_take_over_the_longest_copy_and_drop_the_other_copies_held_under_names_that_are_not_machines()
+    {
+        await _ingestor.IngestAsync(Batch("qimper-gaming", "aaaa1111", 0, Talk[0]), Token);
+        await _ingestor.IngestAsync(Batch("quimper-gaming", "aaaa1111", 0, Talk), Token);
+        Enrol("quimper-gaming3");
+
+        var result = await _ingestor.IngestAsync(Batch("quimper-gaming3", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
+
+        result.Should().Be(new IngestResult(3, 1), "it went on from the longest copy, which had two lines");
+        _store.OfSession("aaaa1111").Select(c => c.Machine).Should().Equal("quimper-gaming3");
+        Directory.Exists(NotesOf("qimper-gaming")).Should().BeFalse();
+        Directory.Exists(NotesOf("quimper-gaming")).Should().BeFalse();
+        Directory.Exists(RawOf("qimper-gaming")).Should().BeFalse();
+        Hits("revoke").Should().ContainSingle().Which.Should().StartWith("quimper-gaming3/");
+    }
+
+    [Fact]
+    public async Task should_keep_the_longer_copy_when_both_machines_hold_the_conversation_and_lose_no_line()
+    {
+        Enrol("quimper-gaming3");
+        await _ingestor.IngestAsync(Batch("quimper-gaming3", "aaaa1111", 0, Talk[0]), Token);
+        await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
+
+        var moved = await _relocator.MoveAllAsync("old-name", "quimper-gaming3", Token);
+
+        moved.Should().Be(new Relocation(1, 0), "the copy of the source was longer, so it is the one that is filed");
+        _store.OfSession("aaaa1111").Should().ContainSingle().Which.Should().Match<ConversationRecord>(c => c.Machine == "quimper-gaming3" && c.Lines == 3);
+        Hits("third").Should().ContainSingle().Which.Should().StartWith("quimper-gaming3/");
+    }
+
+    [Fact]
+    public async Task should_keep_the_copy_of_the_target_when_it_is_the_longer()
+    {
+        Enrol("quimper-gaming3");
+        await _ingestor.IngestAsync(Batch("quimper-gaming3", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, Talk[0]), Token);
+
+        var moved = await _relocator.MoveAllAsync("old-name", "quimper-gaming3", Token);
+
+        moved.Should().Be(new Relocation(0, 1));
+        _store.OfSession("aaaa1111").Should().ContainSingle().Which.Lines.Should().Be(2);
+    }
 }
