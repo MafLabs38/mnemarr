@@ -51,7 +51,8 @@ Set-Content -Path (Join-Path $config 'destinations.json') -Value $destinations
 New-Item (Join-Path $work 'feed\api\v1\ingest\updates') -ItemType Directory -Force | Out-Null
 Copy-Item (Join-Path $second '*') (Join-Path $work 'feed\api\v1\ingest\updates') -Recurse
 $server = Start-Process python -ArgumentList '-m', 'http.server', '8099', '--bind', '127.0.0.1', '--directory', (Join-Path $work 'feed') -PassThru -WindowStyle Hidden
-Start-Sleep -Seconds 2
+# The feed is served the way a Mnemarr serves it: anonymously (the integration tests prove the real controller; the key here is only what a destination holds).
+Wait-Until { try { (Invoke-WebRequest 'http://127.0.0.1:8099/api/v1/ingest/updates/releases.win.json' -UseBasicParsing).StatusCode -eq 200 } catch { $false } } 'the feed served'
 
 Write-Host '--- update from it'
 $before = (& $real status --config-dir $config) -join "`n"

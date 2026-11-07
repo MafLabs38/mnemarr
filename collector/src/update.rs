@@ -584,6 +584,13 @@ mod tests {
             load_settings(&dir).auto,
             "a file that cannot be read: the default"
         );
+        std::fs::write(dir.join(SETTINGS_FILE), "{}").unwrap();
+        assert!(load_settings(&dir).auto, "no choice in it: the default");
+        std::fs::write(dir.join(SETTINGS_FILE), r#"{"auto":"off"}"#).unwrap();
+        assert!(
+            load_settings(&dir).auto,
+            "a choice that is not on or off is not taken for one: the default"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

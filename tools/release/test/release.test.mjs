@@ -95,6 +95,8 @@ test('the jobs that release and publish have the same gates', () => {
   };
   // `installer` is not a gate: it packages the program at the version `release` chose, so it waits for `release` itself and only the image uses what it makes.
   assert.deepEqual(needs('image').filter((gate) => gate !== 'release' && gate !== 'installer'), needs('release'));
+  // The one that is not a gate is only that one, and the real test of the installer is a gate of both.
+  assert.ok(needs('image').includes('installer') && needs('image').includes('installer-smoke') && needs('release').includes('installer-smoke'));
 
   // The conditions themselves: the tag needs the end-to-end test and the Sonar analysis to have passed, the image needs a release on main.
   const condition = (name) => job(name).match(/^    if: >-\n((?:      .*\n)+)/m)?.[1].replaceAll(/\s+/g, ' ');

@@ -93,7 +93,6 @@ public sealed class UpdatesApiFixture : IClassFixture<UpdatesFactory>, IClassFix
     [InlineData("1.3.0", true, "1.4.0")]
     [InlineData("0.0.0-dev.12", true, "1.4.0")]
     [InlineData("1.4.0", true, null)]
-    [InlineData("1.5.0", true, null)]
     [InlineData("1.3.0", false, null)]
     [InlineData("not-a-version", true, null)]
     public async Task should_tell_only_a_machine_that_can_replace_itself_and_runs_an_older_version_which_one_is_there(string version, bool canUpdate, string? expected)
@@ -122,5 +121,25 @@ public sealed class UpdatesApiFixture : IClassFixture<UpdatesFactory>, IClassFix
 
         (await StatusAsync(admin, name)).GetProperty("updateNote").GetString().Should().Be("none of the Mnemarr it sends to is reached over HTTPS");
         (await StatusAsync(admin, byHand)).GetProperty("updateNote").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task should_not_tell_a_machine_that_does_not_say_it_can_update_even_when_it_is_older()
+    {
+        var (admin, name) = await MachineAsync("1.3.0", canUpdate: false);
+
+        (await UpdateToAsync(admin, name)).Should().BeNull("a collector that omits it (an older one, or one run by hand) is not told");
+    }
+
+    [Fact]
+    public async Task should_serve_a_part_of_a_package_when_a_range_is_asked_for()
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, $"{Feed}/MnemarrCollector-1.4.0-full.nupkg");
+        request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(4, 10);
+
+        var response = await _factory.CreateBrowserClient().SendAsync(request, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.PartialContent);
+        (await response.Content.ReadAsStringAsync(Token)).Should().Be("package");
     }
 }

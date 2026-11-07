@@ -37,7 +37,13 @@ public static class ProgramVersions
             return false;
         }
 
-        version = new SemanticVersion(major, minor, patch, pre.Length == 0 ? [] : pre.Split('.'));
+        var parts = pre.Length == 0 ? [] : pre.Split('.');
+        if (parts.Any(string.IsNullOrEmpty) || numbers.Any(number => number.Length > 1 && number[0] == '0'))
+        {
+            return false;
+        }
+
+        version = new SemanticVersion(major, minor, patch, parts);
         return true;
     }
 

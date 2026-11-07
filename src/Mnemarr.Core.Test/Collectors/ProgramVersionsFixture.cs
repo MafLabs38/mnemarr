@@ -1,6 +1,6 @@
 using Mnemarr.Core.Collectors;
 
-namespace Mnemarr.Integration.Test;
+namespace Mnemarr.Core.Test.Collectors;
 
 /// <summary>How the versions of the collector programs are ordered (ADR 0032).</summary>
 public sealed class ProgramVersionsFixture
@@ -24,6 +24,8 @@ public sealed class ProgramVersionsFixture
     [InlineData("1.0.0-alpha.1", "1.0.0-alpha.beta", -1)]
     [InlineData("1.0.0-beta", "1.0.0-alpha", 1)]
     [InlineData("1.0.0+build.5", "1.0.0", 0)]
+    [InlineData("1.0.0-1", "1.0.0-alpha", -1)]
+    [InlineData("1.0.0-alpha.1.2", "1.0.0-alpha.1", 1)]
     public void should_order_versions_by_their_precedence(string a, string b, int expected) => Compare(a, b).Should().Be(expected);
 
     [Theory]
@@ -34,5 +36,9 @@ public sealed class ProgramVersionsFixture
     [InlineData("1.2.x")]
     [InlineData("1.2.3-")]
     [InlineData("-1.2.3")]
+    [InlineData("99999999999.0.0")]
+    [InlineData("1.0.0-a..b")]
+    [InlineData("1.0.0-")]
+    [InlineData("01.2.3")]
     public void should_refuse_what_is_not_a_semantic_version(string text) => ProgramVersions.TryParse(text, out _).Should().BeFalse();
 }
