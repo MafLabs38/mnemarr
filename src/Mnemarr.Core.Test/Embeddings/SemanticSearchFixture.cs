@@ -32,7 +32,7 @@ public sealed class SemanticSearchFixture : IDisposable
     public SemanticSearchFixture()
     {
         Assert.SkipUnless(Library is not null, "No sqlite-vec library given.");
-        _options = new EmbeddingOptions { ModelFolder = "unused", ExtensionPath = Library, BatchSize = 2, MaxDistance = 0.6 };
+        _options = new EmbeddingOptions { ModelFolder = "unused", ExtensionPath = Library, BatchSize = 2, MaxDistance = 0.3 };
         _index = new SqliteNoteIndex(_workspace.Database);
         _sources = new SqliteSourceStore(_workspace.Database);
         _indexer = new SourceIndexer(_index, _workspace.Paths(), new ScanOutcomes(), _clock);
@@ -81,6 +81,18 @@ public sealed class SemanticSearchFixture : IDisposable
 
         hits[0].Match.Should().Be(SearchMatch.Both);
         hits[0].Path.Should().Be("backup.md");
+    }
+
+    [Fact]
+    public async Task should_rank_a_note_that_means_what_a_long_question_asks_above_one_that_shares_a_single_word_with_it()
+    {
+        await IndexAsync("courses", SourceKind.Knowledge, ("backup.md", "# Sauvegardes\nLe dossier backup est copié chaque nuit."), ("walk.md", "# Balade\nUne protection solaire pour la marche, un dimanche."));
+        await _embedder.RunAsync(Token);
+
+        var hits = _search.Search(new SearchRequest("quelle protection contre la perte de mes données dimanche"), SourceScope.All);
+
+        hits.Select(hit => hit.Path).Should().Equal("backup.md", "walk.md");
+        hits[0].Match.Should().Be(SearchMatch.Meaning);
     }
 
     [Fact]

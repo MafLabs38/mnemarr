@@ -34,6 +34,9 @@ internal static partial class FtsQuery
     [GeneratedRegex(@"[\p{L}\p{N}]+")]
     private static partial Regex Word();
 
+    /// <summary>How many words of a text count as search terms: the small words of a question are not counted.</summary>
+    public static int Meaningful(string text) => Word().Matches(text).Select(match => match.Value).Count(word => !SmallWords.Contains(word));
+
     /// <summary>Every word, quoted, any of them: the best matches come first. Null when there is no word to look for.</summary>
     public static string? From(string text)
     {

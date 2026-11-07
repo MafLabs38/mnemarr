@@ -16,6 +16,10 @@ public sealed partial class NoteSearch
     private const int RankConstant = 60;
     private const int MinimumDepth = 50;
 
+    // A question of several words matches, by any one of its words, notes that are not about it: the words weigh less beside the meaning, which reads the whole question.
+    private const int LongQuestion = 4;
+    private const double LongQuestionWordsWeight = 0.5;
+
     private readonly INoteIndex _index;
     private readonly IChunkHits _chunks;
     private readonly IEmbeddingProvider _embeddings;
@@ -43,17 +47,23 @@ public sealed partial class NoteSearch
         var depth = Math.Max(limit * 3, MinimumDepth);
         var keywords = _index.Search(request with { Limit = depth }, scope);
         var meaning = ByMeaning(request, scope, depth);
-        return meaning.Count == 0 ? [.. keywords.Take(limit)] : Merge(keywords, meaning, limit);
+        if (meaning.Count == 0)
+        {
+            return [.. keywords.Take(limit)];
+        }
+
+        var wordsWeight = FtsQuery.Meaningful(request.Query) >= LongQuestion ? LongQuestionWordsWeight : 1.0;
+        return Merge(keywords, meaning, limit, wordsWeight);
     }
 
-    private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit)
+    private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit, double wordsWeight)
     {
         var scores = new Dictionary<long, double>();
         var hits = new Dictionary<long, SearchHit>();
         var both = new HashSet<long>();
         for (var rank = 0; rank < keywords.Count; rank++)
         {
-            scores[keywords[rank].ChunkId] = 1.0 / (RankConstant + rank + 1);
+            scores[keywords[rank].ChunkId] = wordsWeight / (RankConstant + rank + 1);
             hits[keywords[rank].ChunkId] = keywords[rank];
         }
 
