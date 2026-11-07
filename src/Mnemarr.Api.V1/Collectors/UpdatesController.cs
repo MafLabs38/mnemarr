@@ -24,10 +24,19 @@ public sealed class UpdatesController : ControllerBase
         _updates = updates;
     }
 
-    /// <summary>A file of the feed: <c>releases.&lt;channel&gt;.json</c>, or a package. The collector asks for the first, then for the second that it chose.</summary>
+    /// <summary>
+    /// The feed: <c>releases.&lt;channel&gt;.json</c>, a few hundred bytes that say what the newest version is. It is not held back by the limit on the packages: a collector
+    /// that is refused its feed because four other machines are downloading a package would not try again until its next check, hours later.
+    /// </summary>
+    [HttpGet("updates/{name:regex(^releases\\.[[A-Za-z0-9._-]]+\\.json$)}")]
+    public IActionResult Feed(string name) => Serve(name);
+
+    /// <summary>A package (<c>-full.nupkg</c>, <c>-delta.nupkg</c>), the installer or the portable archive: several megabytes, so limited like the programs.</summary>
     [HttpGet("updates/{name}")]
     [EnableRateLimiting(RateLimits.ProgramDownload)]
-    public IActionResult File(string name)
+    public IActionResult File(string name) => Serve(name);
+
+    private IActionResult Serve(string name)
     {
         var path = _updates.Open(name) ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr carries no such update.");
         // What the feed says changes with each release: it is never kept.

@@ -373,11 +373,7 @@ fn can_wait_to_be_linked(options: &Options) -> bool {
 /// Whether the folder of the collector holds no destination, and nothing was given on the command line or in the environment to send to.
 fn nothing_linked(options: &Options) -> bool {
     let get = |name: &str| std::env::var(name).ok();
-    let given = options.server.is_some()
-        || options.key_file.is_some()
-        || get("MNEMARR_SERVER").is_some()
-        || get("MNEMARR_COLLECTOR_KEY").is_some();
-    !given
+    !mnemarr_collector::config::sending_is_given(options, &get)
         && config_dir(options.config_dir.as_deref(), &get)
             .is_some_and(|dir| destinations::load(&dir).is_empty())
 }

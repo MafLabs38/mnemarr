@@ -15,6 +15,7 @@ use semver::Version;
 use velopack::sources::HttpSource;
 use velopack::{HttpOptions, UpdateCheck, UpdateInfo, UpdateManager, VelopackApp};
 
+#[cfg(windows)]
 use crate::config::config_dir;
 use crate::destinations::Destination;
 #[cfg(windows)]
@@ -71,7 +72,8 @@ pub struct Offer {
 
 /// The newest of the offers: the Mnemarr a collector takes its update from when it sends to several, which carry different builds (a development one and a
 /// production one). When two carry the same version, the first one listed.
-pub fn newest(offers: &[Offer]) -> Option<&Offer> {
+#[cfg(test)]
+fn newest(offers: &[Offer]) -> Option<&Offer> {
     newest_index(offers).map(|index| &offers[index])
 }
 
@@ -577,12 +579,6 @@ impl Updater {
                 error.to_string()
             })
     }
-}
-
-/// Where the settings and the keys are kept, for the commands that have no `--config-dir` of their own.
-pub fn default_config_dir() -> Option<PathBuf> {
-    let get = |name: &str| std::env::var(name).ok();
-    config_dir(None, &get)
 }
 
 #[cfg(test)]

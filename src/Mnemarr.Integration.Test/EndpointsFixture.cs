@@ -73,6 +73,7 @@ public sealed class EndpointsFixture
         "api/v1/ingest/installer/{platform}",
         "api/v1/ingest/pair",
         "api/v1/ingest/pair/poll",
+        @"api/v1/ingest/updates/{name:regex(^releases\.[A-Za-z0-9._-]+\.json$)}",
         "api/v1/ingest/updates/{name}",
         "api/v1/notes",
         "api/v1/notes/tags",
@@ -114,7 +115,7 @@ public sealed class EndpointsFixture
             .Select(endpoint => endpoint.RoutePattern.RawText)
             .Order(StringComparer.Ordinal);
 
-        anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/download/{platform}", "api/v1/ingest/enrol", "api/v1/ingest/install.ps1", "api/v1/ingest/install.sh", "api/v1/ingest/installer/{platform}", "api/v1/ingest/pair", "api/v1/ingest/pair/poll", "api/v1/ingest/updates/{name}", "{*path:nonfile}");
+        anonymous.Should().Equal("/health/live", "/health/ready", "api/v1/auth/login", "api/v1/ingest/download/{platform}", "api/v1/ingest/enrol", "api/v1/ingest/install.ps1", "api/v1/ingest/install.sh", "api/v1/ingest/installer/{platform}", "api/v1/ingest/pair", "api/v1/ingest/pair/poll", @"api/v1/ingest/updates/{name:regex(^releases\.[A-Za-z0-9._-]+\.json$)}", "api/v1/ingest/updates/{name}", "{*path:nonfile}");
     }
 
     [Fact]
