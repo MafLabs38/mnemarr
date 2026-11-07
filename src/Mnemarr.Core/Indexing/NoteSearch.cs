@@ -1,6 +1,6 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Data.Sqlite;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Embeddings;
 

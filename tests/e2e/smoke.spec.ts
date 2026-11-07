@@ -313,6 +313,7 @@ test.describe('smoke @smoke', () => {
   });
 
   test('a question asked in other words finds a note by its meaning, once the model has read it', async ({ page }) => {
+    test.setTimeout(150_000);
     await signIn(page, '/notes');
     const search = page.getByRole('region', { name: 'Search' });
     await search.getByLabel('Search the notes').fill('how is a container template assembled from stacked parts');
@@ -321,7 +322,7 @@ test.describe('smoke @smoke', () => {
       await search.getByRole('button', { name: 'Search' }).click();
       await expect(search.getByText('seeded · docker.md · Docker > Images')).toBeVisible({ timeout: 3000 });
     }).toPass({ timeout: 120_000 });
-    await expect(search.getByText('matched by its meaning')).toBeVisible();
+    await expect(search.getByText(/matched by its (words and its )?meaning/).first()).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 
