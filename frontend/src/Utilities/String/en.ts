@@ -299,6 +299,7 @@ const en = {
   LastSeen: 'Last seen',
   NeverSeen: 'Never',
   ConversationsCount: 'Conversations',
+  UpdateAvailable: 'Update available',
   Manage: 'Manage',
   ManageMachine: 'Manage {name}',
   RenameTitle: 'Rename',
@@ -312,7 +313,7 @@ const en = {
   Merge: 'Merge',
   ReinstallTitle: 'Install the collector again',
   ReinstallHelp:
-    'A new code for {name}, to install again or to update the collector on that computer. The machine keeps its name and what it sent; its old key stops working here.',
+    'A new code for {name}, to install again or to update the collector on that computer (this Mnemarr says Update available when it carries a newer program). The machine keeps its name and what it sent; its old key stops working here.',
   Reinstall: 'Reinstall',
   RemovalTitle: 'Remove or delete',
   RemoveHelp:

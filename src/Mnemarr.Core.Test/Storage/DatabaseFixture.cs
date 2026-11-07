@@ -117,7 +117,7 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path) VALUES ('pc', 's1', 'app', 'claude-code', 3, 'then', 'now', 'pc/app/x.md');
                 ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
                 DROP TABLE IF EXISTS pairings;
-                DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+                ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 PRAGMA user_version = 7;
                 """;
             back.ExecuteNonQuery();
@@ -140,7 +140,7 @@ public sealed class DatabaseFixture : IDisposable
         back.CommandText = """
             ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
             DROP TABLE IF EXISTS pairings;
-            DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+            ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
             PRAGMA user_version = 7;
             """;
         back.ExecuteNonQuery();
@@ -241,7 +241,7 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a1', 'collector-pc', 'Service', 'Collector', 1, 'then');
                 INSERT INTO machines (name, kind, account_id, enrolled_at) VALUES ('pc', 'intermittent', 'a1', 'then');
                 DROP TABLE pairings;
-                DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+                ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 PRAGMA user_version = 8;
                 """;
             back.ExecuteNonQuery();
@@ -267,7 +267,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN paused;
                 ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
                 DROP TABLE IF EXISTS pairings;
-                DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+                ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 PRAGMA user_version = 6;
                 """;
             back.ExecuteNonQuery();

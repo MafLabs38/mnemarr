@@ -4,6 +4,7 @@ import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import LoadingIndicator from 'Components/LoadingIndicator';
 import StatusLabel from 'Components/Status/StatusLabel';
+import { kinds } from 'Helpers/Props/kinds';
 import { permissions } from 'Session/session';
 import { usePermissions } from 'Session/SessionContext';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
@@ -36,7 +37,10 @@ function MachineRow({
         </td>
         <td>{machine.lastSeen ? formatDateTime(machine.lastSeen) : translate('NeverSeen')}</td>
         <td>{machine.conversations}</td>
-        <td>{machine.version ?? ''}</td>
+        <td>
+          {machine.version ?? ''}
+          {machine.updateAvailable && <StatusLabel kind={kinds.WARNING}>{translate('UpdateAvailable')}</StatusLabel>}
+        </td>
         <td>
           {canManage && (
             <Button

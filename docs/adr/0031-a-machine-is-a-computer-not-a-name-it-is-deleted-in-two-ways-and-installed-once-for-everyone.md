@@ -43,9 +43,11 @@ Trying the collector on a real computer showed four defects that have one root: 
    whether to keep the keys and the positions), started with the session. It is not a system service: a service has no session, so no icon and no access to
    the conversation files of the user. On first launch it asks which Mnemarr to link to, with the linking of ADR 0030 (a person approves, names the machine);
    a code stays a way to link without a screen.
-7. **Updating is part of it.** The collector says its release version at each pass (the version is passed into the build) and the machines page shows *update
-   available*. The update replaces the program from the Mnemarr it sends to, after checking its checksum, without losing the destinations. Whether it is
-   one click or automatic is the person's choice, off by default for a server.
+7. **Updating is part of it.** The collector says at each pass which system it is for and the SHA-256 of the program it runs; Mnemarr compares it with the
+   program it carries for that system, and the machines page shows *Update available* when they differ. The hash is used, not a version number: it works for
+   a build that is not a release, and it cannot be wrong about what runs. (Built.) The update itself, **not built**, replaces the program from the Mnemarr it
+   sends to, after checking its checksum, without losing the destinations; whether it is one click or automatic is the person's choice, off by default for a
+   server, and is decided with the installer (Q-40).
 8. **Reinstall is not a revoke.** Until updating exists, a machine row offers *Reinstall* (a one-time code for the same machine, replacing its key on that
    Mnemarr only).
 

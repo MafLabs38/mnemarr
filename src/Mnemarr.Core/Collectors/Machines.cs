@@ -84,10 +84,13 @@ public sealed record Machine(
     string? Error,
     DateTimeOffset? RevokedAt,
     bool Paused = false,
-    string? ComputerId = null);
+    string? ComputerId = null,
+    string? Platform = null,
+    string? Program = null);
 
 /// <summary>What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet.</summary>
-public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false);
+/// <summary><paramref name="Platform"/> and <paramref name="Program"/>: the system the collector is for and the hash of the program it runs.</summary>
+public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null);
 
 public enum EnrolmentState
 {
@@ -137,4 +140,6 @@ public sealed record MachineStatus(
     DateTimeOffset? EnrolledAt,
     string? Version,
     long PendingLines,
-    string? Error);
+    string? Error,
+    string? Platform = null,
+    string? Program = null);

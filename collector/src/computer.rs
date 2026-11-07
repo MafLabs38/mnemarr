@@ -13,6 +13,22 @@ pub fn id() -> Option<&'static str> {
         .as_deref()
 }
 
+/// The system and the processor this program is for, named as a Mnemarr names its programs (`windows-x86_64`, `linux-x86_64`, `macos-aarch64`).
+pub fn platform() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// The SHA-256 of the program that is running, read once: what a Mnemarr compares with the program it carries to tell whether this one is the same (ADR 0031 §7).
+/// `None` when the program cannot read itself, and nothing is then said.
+pub fn program_hash() -> Option<&'static str> {
+    static HASH: OnceLock<Option<String>> = OnceLock::new();
+    HASH.get_or_init(|| {
+        let path = std::env::current_exe().ok()?;
+        std::fs::read(path).ok().map(|bytes| sha256_hex(&bytes))
+    })
+    .as_deref()
+}
+
 /// The hash of an identifier the system gave: its lower-case, trimmed text under a fixed prefix. Nothing for an empty text or an obvious placeholder.
 pub fn hash_of(raw: &str) -> Option<String> {
     let trimmed = raw.trim().to_lowercase();
@@ -208,6 +224,26 @@ mod tests {
             platform_uuid_from(printed).as_deref(),
             Some("8F3A1B2C-1111-2222-3333-444455556666")
         );
+    }
+
+    #[test]
+    fn should_name_the_platform_as_a_mnemarr_names_its_programs_and_hash_its_own_program() {
+        let platform = platform();
+        assert!(
+            [
+                "windows-x86_64",
+                "linux-x86_64",
+                "macos-aarch64",
+                "linux-aarch64",
+                "macos-x86_64"
+            ]
+            .contains(&platform.as_str()),
+            "{platform}"
+        );
+        // The program that runs the tests is a file that can be read: its hash is 64 digits, and the same each time.
+        let hash = program_hash().expect("the test program can read itself");
+        assert_eq!(hash.len(), 64);
+        assert_eq!(program_hash(), Some(hash));
     }
 
     #[test]

@@ -13,9 +13,10 @@ namespace Mnemarr.Api.V1.Collectors;
 /// name that conversations came from and that never joined; the state is <c>unenrolled</c>, <c>refused</c>, <c>waiting</c>, <c>failing</c>,
 /// <c>online</c>, <c>away</c> or <c>silent</c> (ADR 0027 §7).
 /// </summary>
-public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error)
+public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool UpdateAvailable)
 {
-    public static MachineResource From(MachineStatus status) => new(
+    /// <summary><paramref name="updateAvailable"/>: this Mnemarr carries a program for the system of the machine, and it is not the program the machine runs.</summary>
+    public static MachineResource From(MachineStatus status, bool updateAvailable) => new(
         status.Name,
         status.Kind is { } kind ? MachineKinds.Name(kind) : null,
         status.State.ToString().ToLowerInvariant(),
@@ -25,14 +26,10 @@ public sealed record MachineResource(string Machine, string? Kind, string State,
         status.EnrolledAt,
         status.Version,
         status.PendingLines,
-        status.Error);
+        status.Error,
+        updateAvailable);
 }
 
-/// <summary>
-/// What may be seen of the collectors: the machines that joined or sent conversations, and what state they are in. It tells something about the
-/// conversations (who held some, how many lines), so it needs the right to read them, like the conversations themselves. It is not under the
-/// ingest prefix, which is the one a proxy may publish without a single sign-on for the collectors alone (Q-28).
-/// </summary>
 public sealed record RenameMachineRequest(string? Name);
 
 public sealed record MergeMachineRequest(string? Into);
@@ -42,20 +39,30 @@ public sealed record MergeResult(int Moved, int AlreadyThere);
 
 public sealed record EraseResult(int Conversations);
 
+/// <summary>
+/// What may be seen of the collectors: the machines that joined or sent conversations, and what state they are in. It tells something about the
+/// conversations (who held some, how many lines), so it needs the right to read them, like the conversations themselves. It is not under the
+/// ingest prefix, which is the one a proxy may publish without a single sign-on for the collectors alone (Q-28).
+/// </summary>
 [ApiController]
 [Route("api/v1/collectors")]
 public sealed class CollectorsController : ControllerBase
 {
     private readonly CollectorService _collectors;
+    private readonly CollectorDownloads _downloads;
 
-    public CollectorsController(CollectorService collectors)
+    public CollectorsController(CollectorService collectors, CollectorDownloads downloads)
     {
         _collectors = collectors;
+        _downloads = downloads;
     }
 
     [HttpGet]
     [Authorize(Policy = Permissions.ConversationsRead)]
-    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(MachineResource.From)];
+    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, UpdateAvailable(status)))];
+
+    private bool UpdateAvailable(MachineStatus status) =>
+        status.Program is { } running && status.Platform is { } platform && _downloads.Find(platform) is { } carried && !string.Equals(carried.Sha256, running, StringComparison.Ordinal);
 
     /// <summary>Takes a machine that was revoked out of the list, so that its name is free again. Its conversations stay.</summary>
     [HttpPost("{machine}/forget")]

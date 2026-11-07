@@ -165,6 +165,8 @@ impl Uploader for HttpUploader {
                 "pendingLines": beat.pending_lines,
                 "error": beat.error,
                 "paused": beat.paused,
+                "platform": crate::computer::platform(),
+                "program": crate::computer::program_hash(),
             }),
         )?;
         if status == 200 || status == 204 {
@@ -404,7 +406,15 @@ mod tests {
         let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
         assert_eq!(
             body,
-            json!({"version": "0.2.0", "pendingLines": 7, "error": "1 file(s) could not be read", "paused": true})
+            json!({
+                "version": "0.2.0",
+                "pendingLines": 7,
+                "error": "1 file(s) could not be read",
+                "paused": true,
+                // What this program is, so that a Mnemarr can tell whether it carries another one (ADR 0031 §7).
+                "platform": crate::computer::platform(),
+                "program": crate::computer::program_hash(),
+            })
         );
     }
 

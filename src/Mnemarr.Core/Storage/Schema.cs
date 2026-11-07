@@ -198,6 +198,11 @@ public static class Schema
         CREATE UNIQUE INDEX machines_by_computer ON machines (computer_id) WHERE computer_id IS NOT NULL;
         ALTER TABLE pairings ADD COLUMN computer_id TEXT;
         """,
+        // 11: which program a machine runs (the system it is for, and the hash of the program), so that a person is told when this Mnemarr carries another (ADR 0031 §7).
+        """
+        ALTER TABLE machines ADD COLUMN platform TEXT;
+        ALTER TABLE machines ADD COLUMN program TEXT;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>
