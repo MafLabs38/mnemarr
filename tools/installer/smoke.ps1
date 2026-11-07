@@ -64,6 +64,10 @@ Write-Host $after
 if ($after -notmatch 'version: 0\.0\.2') { throw "It did not become 0.0.2: '$after'" }
 Wait-Until { (Get-ItemProperty $run).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session, still right after the update'
 
+# After an update the program restarts, and starts the collector in the background through a chain of programs: it is let to finish before the program is taken
+# away, as a person who uninstalls a minute later would find it (an uninstall in the middle of that chain starts a collector after the folder is gone).
+Wait-Until { ((& $real status) -join ' ') -match 'running: yes' } 'the collector running again after the update'
+
 Write-Host '--- uninstall'
 & (Join-Path $app 'Update.exe') uninstall --silent
 try {
