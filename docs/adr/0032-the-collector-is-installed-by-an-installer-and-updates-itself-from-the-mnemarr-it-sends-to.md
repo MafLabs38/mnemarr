@@ -39,11 +39,22 @@ again for each machine. The maintainer already ships his other Windows applicati
    one the person allowed for sending conversations. The trust is the one in the Mnemarr that the person linked, over TLS. The package is checked against the
    checksum of the feed. The program is **not signed** (Windows shows its warning at the first run; signing is for later and changes nothing here).
 7. **Versions are semantic versions**: a release is `X.Y.Z`; any other build is `0.0.1-dev.<run>` (Velopack refuses anything below 0.0.1), older than
-   every release. The collector reports the version the installer knows, and whether it can replace itself; the machines page says **Update available: X**
+   every release (on `main`, a build that no release deserves is also `0.0.1-dev.<run>`: it is older than a release, and newer than an earlier dev build). The collector reports the version the installer knows, and whether it can replace itself; the machines page says **Update available: X**
    for a machine that can and is older, and keeps "another program than this Mnemarr carries" (the hash of ADR 0031 §7) for the others.
 8. **The CI makes and tries it.** The job `installer` packages the Windows program that the `collector` job built and tested, at the version of the build,
    in a job of its own that cannot write anywhere (the tool is fetched at a pinned version); the job `installer (windows)` **installs it on a real Windows
    runner without a window, updates it from a feed served on that computer, and uninstalls it**, checking the entry, the PATH, the version and what is left.
+
+## Approval by the address (refines ADR 0030 §5 and ADR 0031 §3)
+
+On 2026-11-07 the maintainer asked that the page of Mnemarr that the computer opens **fills in the code** from the address, instead of asking the person to type
+it again: with the code in the address, typing it is a copy and paste that proves nothing to a person who just clicked. From the list of requests there is no
+address, so the person still types the code the computer shows. What is lost is the proof that the person looked at the computer: **an address sent by a
+stranger now shows a request that the person did not make**, with its code filled in, and one click approves it (the stranger then holds a key that writes
+conversations). The checks that remain are the name the computer gives itself, which the person reads, and the expiry of a request after ten minutes. One is
+added: **a computer that says it is a machine that already joined cannot take it over (its key stops, the new one takes its conversations) until the person
+writes the name of that machine**, which an address cannot do for them. Accepted by the maintainer as the way it should feel; to be tightened (a second code that only
+the computer shows) if the product is exposed to people who send links.
 
 ## Trust
 

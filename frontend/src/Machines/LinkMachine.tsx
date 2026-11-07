@@ -48,6 +48,10 @@ function Answer({
   const [code, setCode] = useState(linkedCode);
   const [typed, setTyped] = useState(() => pairing.knownAs ?? machineNameFor(pairing.hostname));
   const [kind, setKind] = useState<MachineKindName>('intermittent');
+  // A computer that says it is a machine that already joined takes that machine over: nothing proves it, and the address that opened this page can be anybody's,
+  // so the person writes the name of that machine to say they mean it.
+  const [takeOver, setTakeOver] = useState('');
+  const takeOverConfirmed = pairing.knownAs === null || takeOver.trim() === pairing.knownAs;
   const approve = useApprovePairing();
   const reject = useRejectPairing();
   const name = machineNameFor(typed);
@@ -69,6 +73,14 @@ function Answer({
         {translate('LinkHostname')}: <strong>{pairing.hostname}</strong>
       </p>
       {pairing.knownAs && <Alert>{translate('LinkKnownAs', { name: pairing.knownAs })}</Alert>}
+      {pairing.knownAs && (
+        <TextField
+          label={translate('LinkTakeOver', { name: pairing.knownAs })}
+          onChange={(event) => setTakeOver(event.target.value)}
+          required
+          value={takeOver}
+        />
+      )}
       <p className={styles.hint}>{translate('PairingExpires', { time: formatDateTime(pairing.expiresAt) })}</p>
       {failure && <Alert>{failure.message}</Alert>}
       <TextField
@@ -95,7 +107,7 @@ function Answer({
         value={kind}
       />
       <div className={styles.inline}>
-        <Button disabled={busy || name === '' || code.trim() === ''} type="submit">
+        <Button disabled={busy || name === '' || code.trim() === '' || !takeOverConfirmed} type="submit">
           {translate('LinkApprove')}
         </Button>
         <Button

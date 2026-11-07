@@ -579,6 +579,19 @@ mod tests {
     }
 
     #[test]
+    fn should_escape_what_the_reason_says_and_the_address_it_proposes() {
+        let served = serve_because(
+            "escaped",
+            Some(Reason {
+                text: "<script>alert(1)</script>".to_string(),
+                server: "\"><script>x</script>".to_string(),
+            }),
+        );
+        let (_, text) = send(&served.page.address, "", "GET", None, "");
+        assert!(!text.contains("<script>"));
+    }
+
+    #[test]
     fn should_serve_the_form_only_under_its_secret_to_this_computer_with_headers_that_keep_it_closed()
      {
         let served = serve("form");

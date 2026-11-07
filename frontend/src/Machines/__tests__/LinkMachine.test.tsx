@@ -79,6 +79,16 @@ describe('LinkMachine', () => {
     expect(screen.getByLabelText('Name in this Mnemarr')).toHaveValue('gaming-pc');
   });
 
+  it('does not take over a machine that already joined until the person writes its name', async () => {
+    server({ knownAs: 'gaming-pc' });
+    renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
+
+    const approve = await screen.findByRole('button', { name: 'Link this computer' });
+    expect(approve).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('To take over the machine gaming-pc, write its name here'), 'gaming-pc');
+    expect(approve).toBeEnabled();
+  });
+
   it('says what the server said when the name cannot be given, and keeps the form so that the person can name it again', async () => {
     server({ approveFails: true });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');

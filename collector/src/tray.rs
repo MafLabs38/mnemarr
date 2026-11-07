@@ -215,7 +215,10 @@ pub fn run(
                 .is_some_and(|item| event.id == *item.id())
             {
                 if updater.ready() {
-                    let _ = updater.apply();
+                    let applier = updater.clone();
+                    std::thread::spawn(move || {
+                        let _ = applier.apply();
+                    });
                 } else {
                     let checker = updater.clone();
                     let listed = destinations::load(&dir);
@@ -271,13 +274,16 @@ pub fn run(
         if now == Condition::Refused {
             if !refusal_told && page.is_none() {
                 refusal_told = true;
-                let server = shown_destinations
-                    .first()
-                    .map(|(_, server)| server.clone())
-                    .unwrap_or_default();
+                // The Mnemarr that refuses, not the first of the list: with several, the others may be well. Without one that is known, the page opens plain.
+                let server = status::refusing(&condition).and_then(|name| {
+                    shown_destinations
+                        .iter()
+                        .find(|(listed, _)| *listed == name)
+                        .map(|(_, server)| server.clone())
+                });
                 page = open_link_page(
                     &dir,
-                    Some(link_page::Reason {
+                    server.map(|server| link_page::Reason {
                         text: format!(
                             "The Mnemarr at {server} no longer accepts this computer: it was removed there or its key was revoked. Link this computer again to go on sending."
                         ),

@@ -585,6 +585,7 @@ test.describe('smoke @smoke', () => {
     await signIn(page, `/link?code=${encodeURIComponent(started.userCode)}`);
     await expect(page.getByText(new RegExp(`says it is the machine ${first}`))).toBeVisible();
     await page.getByLabel(/Code of this request/).fill(started.userCode);
+    await page.getByLabel(/To take over the machine/).fill(first);
     await page.getByLabel('Name in this Mnemarr').fill(second);
     await page.getByRole('button', { name: 'Link this computer' }).click();
     await expect(page.getByText(`Linked as ${second}`)).toBeVisible();

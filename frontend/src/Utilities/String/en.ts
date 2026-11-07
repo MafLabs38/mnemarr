@@ -359,6 +359,7 @@ const en = {
   LinkNameExists:
     'A machine named {name} exists already. Approving under that name replaces its key: the collector that runs with the old key stops. Choose another name unless this computer is that machine.',
   LinkCodeOnComputer: 'Code of this request: check that it is the one your computer shows',
+  LinkTakeOver: 'To take over the machine {name}, write its name here',
   LinkFind: 'Find the request',
   LinkNotFound:
     'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',

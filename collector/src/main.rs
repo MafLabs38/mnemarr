@@ -315,25 +315,22 @@ fn collect_loop(
     }
 }
 
-/// When an installed collector next asks for an update, and when it may next try to apply one that is ready (a failure to apply is not tried again at every pass).
+/// When an installed collector next asks for an update. An update that could not be applied is no longer "ready": it is looked for again at the next check.
 struct UpdateClock {
     next_check: std::time::Instant,
-    apply_after: std::time::Instant,
 }
 
 impl UpdateClock {
     fn new() -> Self {
-        let now = std::time::Instant::now();
         Self {
-            next_check: now + FIRST_CHECK,
-            apply_after: now,
+            next_check: std::time::Instant::now() + FIRST_CHECK,
         }
     }
 }
 
 /// Between two passes, for a collector that was installed with the installer: an update that is ready is applied (unless the person chose to apply them by
 /// hand), and, now and then, each Mnemarr is asked for a newer version, apart from the passes. Positions are kept after each pass, so nothing is lost when the
-/// collector restarts to apply it. An update that waits is neither asked for again nor downloaded again; one that could not be applied is tried again later,
+/// collector restarts to apply it. An update that waits is neither asked for again nor downloaded again; one that could not be applied is looked for again at the next check,
 /// not at every pass.
 fn keep_up_to_date(dir: &std::path::Path, clock: &mut UpdateClock) {
     let updater = updater();
@@ -342,11 +339,10 @@ fn keep_up_to_date(dir: &std::path::Path, clock: &mut UpdateClock) {
     }
     let now = std::time::Instant::now();
     if updater.ready() {
-        if update::load_settings(dir).auto && now >= clock.apply_after {
+        if update::load_settings(dir).auto {
             say("applying the update: the collector restarts");
             if let Err(error) = updater.apply() {
                 say(&format!("the update could not be applied: {error}"));
-                clock.apply_after = now + CHECK_EVERY;
             }
         }
         return;

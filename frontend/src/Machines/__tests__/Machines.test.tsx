@@ -59,7 +59,7 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
                 "irm 'http://mnemarr.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=server-1' | iex",
               downloadUrl:
                 'http://mnemarr.example/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=server-1',
-              setupUrl: 'http://mnemarr.example/api/v1/ingest/installer/windows',
+              setupUrl: 'http://mnemarr.example/api/v1/ingest/installer/windows-x86_64',
             },
             {
               system: 'unix',
@@ -159,7 +159,7 @@ describe('Machines', () => {
     await userEvent.selectOptions(within(notice).getByLabelText('System'), 'windows');
     expect(within(notice).getByRole('link', { name: 'Download the installer for Windows' })).toHaveAttribute(
       'href',
-      'http://mnemarr.example/api/v1/ingest/installer/windows',
+      'http://mnemarr.example/api/v1/ingest/installer/windows-x86_64',
     );
     const download = within(notice).getByRole('link', { name: 'Download for Windows' });
     expect(download).toHaveAttribute(

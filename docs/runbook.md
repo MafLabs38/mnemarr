@@ -38,6 +38,8 @@ If an update does not happen: `mnemarr-collector status` on the machine says whe
 
 ## Take a machine away, or change its key
 
+**Uninstall the collector from a computer**: *Settings, Apps, Mnemarr collector, Uninstall* (it keeps its keys and positions, so that installing again finds them). To forget everything on that computer, also delete the folder `%APPDATA%\mnemarr-collector` and, in Mnemarr, revoke the machine below.
+
 - **Revoke** it on the Machines page: its key stops working at once and the row stays, as *refused*, so that what it wrote can be found. **Remove from the list** frees its name.
 - **A lost or leaked key**: revoke the machine, then add it again with the same name. The new key replaces the old one.
 - **A key of an assistant** (for `/mcp`): create a service account with the role you want under *Accounts*, give its key once, and revoke it there when it is no longer used.

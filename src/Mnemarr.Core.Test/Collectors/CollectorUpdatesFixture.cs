@@ -127,13 +127,20 @@ public sealed class CollectorUpdatesFixture : IDisposable
     [Fact]
     public void should_read_the_feed_again_when_it_changes_and_not_when_it_does_not()
     {
+        var path = Path.Combine(_folder, "releases.win.json");
         Feed("""{"Assets":[{"Version":"1.0.0","Type":"Full"}]}""");
+        var written = File.GetLastWriteTimeUtc(path);
         var updates = Carrying();
 
         updates.LatestVersion("windows-x86_64").Should().Be("1.0.0");
-        Feed("""{"Assets":[{"Version":"1.1.0","Type":"Full"},{"Version":"1.0.0","Type":"Full"}]}""");
-        File.SetLastWriteTimeUtc(Path.Combine(_folder, "releases.win.json"), DateTime.UtcNow.AddMinutes(1));
 
+        // The same length and the same moment: what is kept is returned, whatever the file says now.
+        Feed("""{"Assets":[{"Version":"1.1.0","Type":"Full"}]}""");
+        File.SetLastWriteTimeUtc(path, written);
+        updates.LatestVersion("windows-x86_64").Should().Be("1.0.0", "a feed that did not change is not read again");
+
+        // The same length, another moment: it is read again.
+        File.SetLastWriteTimeUtc(path, written.AddMinutes(1));
         updates.LatestVersion("windows-x86_64").Should().Be("1.1.0", "a feed that was replaced is read again, not kept");
     }
 
