@@ -6,6 +6,7 @@
 
 pub mod browser;
 pub mod collect;
+pub mod computer;
 pub mod config;
 pub mod control;
 pub mod destinations;

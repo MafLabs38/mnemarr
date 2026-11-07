@@ -26,8 +26,10 @@ Trying the collector on a real computer showed four defects that have one root: 
    `quimper-gaming`" and may rename it. Nothing is sent twice, the folder is the same. Renaming a machine renames its folder.
 3. **Cloned computers are two machines when the system tells them apart**, and are reported (not merged in silence) when two different collectors claim one
    identifier at once. This case is not solved further: a person with cloned virtual machines names them.
-4. **A conversation is stored once.** A conversation already held, by its identifier, is not made again under another machine: the first holder keeps it.
-   This is the net under rule 2 for what was already duplicated.
+4. **A conversation is stored once.** A conversation held under a name that is not a machine (a computer that was installed again under another name, or
+   a machine that was removed) is taken over by the machine that sends it now: it goes on from the lines it has, and its note and raw lines are filed under
+   the new machine. One held by a machine that exists is left to it. This is the net under rule 2 for what was already duplicated; *Merge* is what a person
+   uses for the rest, and it drops the copy of a conversation that the target holds already.
 5. **Two ways to remove a machine**, both asking to confirm:
    - **Remove the machine**: its keys stop working and it leaves the list; its conversations stay, filed under its name, shown as "no longer enrolled", **with
      actions** (rename, merge into another machine, delete).

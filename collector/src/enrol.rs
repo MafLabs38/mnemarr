@@ -18,6 +18,15 @@ pub struct Enrolled {
     pub kind: String,
 }
 
+/// Adds the identifier of this computer to what is sent to join a Mnemarr, when the system has one (ADR 0031): a Mnemarr that knows the computer keeps
+/// it as the machine it was, under whatever name.
+fn with_computer(mut body: Value) -> Value {
+    if let (Some(id), Some(map)) = (crate::computer::id(), body.as_object_mut()) {
+        map.insert("computerId".to_string(), Value::String(id.to_string()));
+    }
+    body
+}
+
 /// The exchange of a code: anonymous, the code is all that is needed. The answer to a wrong code says nothing of what was wrong.
 pub fn exchange(server: &str, code: &str, machine: &str) -> Result<Enrolled, UploadError> {
     let mut response = agent()
@@ -27,7 +36,7 @@ pub fn exchange(server: &str, code: &str, machine: &str) -> Result<Enrolled, Upl
         ))
         // A write to the API needs this header unless it carries a key: a browser cannot add it to a form.
         .header("X-Mnemarr-Request", "1")
-        .send_json(json!({ "code": code, "machine": machine }))
+        .send_json(with_computer(json!({ "code": code, "machine": machine })))
         .map_err(|error| UploadError::Later(error.to_string()))?;
     let status = response.status().as_u16();
     let body = response.body_mut().read_to_string().unwrap_or_default();
@@ -95,7 +104,7 @@ pub fn pair_start(server: &str, hostname: &str) -> Result<PairingRequest, Upload
     let (status, body) = post_json(
         server,
         "/api/v1/ingest/pair",
-        json!({ "hostname": hostname }),
+        with_computer(json!({ "hostname": hostname })),
     )?;
     match status {
         200 | 201 => {
