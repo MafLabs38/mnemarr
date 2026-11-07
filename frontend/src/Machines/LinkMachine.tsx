@@ -38,10 +38,14 @@ function NameTaken({ name, knownAs }: Readonly<{ name: string; knownAs: string |
 }
 
 /** The person says who the computer is for this Mnemarr: the name it will have here and whether it is always on, or refuses it. */
-function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (outcome: Outcome) => void }>) {
-  // The code is typed from the screen of the computer, always, even when the person came by the link the computer opened: a link that anybody can make carries a
-  // code too, and only reading the code on the computer proves that this request is the one in front of the person.
-  const [code, setCode] = useState('');
+function Answer({
+  pairing,
+  linkedCode,
+  onDone,
+}: Readonly<{ pairing: PairingItem; linkedCode: string; onDone: (outcome: Outcome) => void }>) {
+  // The code is in the address the computer opened, and is filled in from it. A person who comes from the list of requests types it from the screen of the
+  // computer. The person still reads the name the computer gives itself, below, and decides.
+  const [code, setCode] = useState(linkedCode);
   const [typed, setTyped] = useState(() => pairing.knownAs ?? machineNameFor(pairing.hostname));
   const [kind, setKind] = useState<MachineKindName>('intermittent');
   const approve = useApprovePairing();
@@ -171,7 +175,7 @@ export default function LinkMachine() {
               </form>
             )}
             {wanted.notFound && <Alert>{translate('LinkNotFound')}</Alert>}
-            {wanted.pairing && <Answer onDone={setOutcome} pairing={wanted.pairing} />}
+            {wanted.pairing && <Answer linkedCode={code} onDone={setOutcome} pairing={wanted.pairing} />}
           </Card>
         )}
       </PageContentBody>

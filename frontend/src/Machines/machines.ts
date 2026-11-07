@@ -76,7 +76,7 @@ export const stateLook: Record<MachineState, { text: TranslationKey; kind: Kind 
 };
 
 /** The states change with the clock, not only with what a person does: the page asks again now and then. */
-const REFRESH_MS = 15_000;
+const REFRESH_MS = 5000;
 
 const isMachinesQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/collectors', '/enrolments');
 

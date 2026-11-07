@@ -358,8 +358,7 @@ const en = {
   LinkCodeLabel: 'Code shown on the computer',
   LinkNameExists:
     'A machine named {name} exists already. Approving under that name replaces its key: the collector that runs with the old key stops. Choose another name unless this computer is that machine.',
-  LinkCodeOnComputer:
-    'Type the code that your computer shows (so that this request is the one in front of you). It is on the page the collector opened on that computer: the tab you came from.',
+  LinkCodeOnComputer: 'Code of this request: check that it is the one your computer shows',
   LinkFind: 'Find the request',
   LinkNotFound:
     'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',
