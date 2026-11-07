@@ -358,6 +358,7 @@ fn keep_up_to_date(dir: &std::path::Path, clock: &mut UpdateClock) {
         thread::spawn(move || match checker.check(&listed) {
             UpdateState::Ready(version) => say(&format!("version {version} is downloaded")),
             UpdateState::Failed(reason) => say(&format!("no update: {reason}")),
+            UpdateState::Blocked(why) => say(&format!("no update: {}", why.text())),
             _ => {}
         });
     }
@@ -838,11 +839,23 @@ fn launch_installed() -> ExitCode {
         return ExitCode::from(1);
     };
     let exe = update::stable_exe(&running);
+    // What Velopack says about how it started this program: the very first time after the installation, or restarted after an update.
+    let first_run =
+        std::env::var("VELOPACK_FIRSTRUN").is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+    let after_update =
+        std::env::var("VELOPACK_RESTART").is_ok_and(|value| value.eq_ignore_ascii_case("true"));
     if cfg!(windows) {
-        let _ = service::register(&exe, None);
         if let Some(root) = exe.parent() {
             let _ = update::write_shim(root);
         }
+        // Starting with the session is made when the program is installed, and only then: a person who removed it (`uninstall`) does not find it back after an update.
+        if first_run {
+            let _ = service::register(&exe, None);
+        }
+    }
+    if after_update && !service::status(&dir).starts_with_session {
+        // It was not set to start with the session: an update does not start it.
+        return ExitCode::SUCCESS;
     }
     match service::start(&dir, &exe, None) {
         Ok(Started::Started | Started::AlreadyRunning) => ExitCode::SUCCESS,
@@ -903,6 +916,10 @@ fn update_command(options: &UpdateOptions) -> ExitCode {
         }
         UpdateState::Failed(reason) => {
             say(&format!("no update: {reason}"));
+            ExitCode::from(1)
+        }
+        UpdateState::Blocked(why) => {
+            say(&format!("no update: {}", why.text()));
             ExitCode::from(1)
         }
         _ => {

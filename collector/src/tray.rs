@@ -247,7 +247,9 @@ pub fn run(
                 UpdateState::Checking | UpdateState::Downloading(_) => {
                     ("Looking for an update...".to_string(), false)
                 }
-                UpdateState::Failed(_) => ("Update failed: try again".to_string(), true),
+                UpdateState::Failed(_) | UpdateState::Blocked(_) => {
+                    ("Update failed: try again".to_string(), true)
+                }
                 _ => ("Check for updates".to_string(), true),
             };
             if text != shown_update {

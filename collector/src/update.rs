@@ -99,8 +99,30 @@ pub enum UpdateState {
     Downloading(String),
     /// A newer version is here, and is applied when the collector restarts.
     Ready(String),
-    /// The last attempt failed, with what went wrong.
+    /// The last attempt failed, with what went wrong (what the updater or the network said: for this computer's log, never for a Mnemarr).
     Failed(String),
+    /// Nothing could be asked, for a reason that is this program's own and can be told to a Mnemarr.
+    Blocked(Blocked),
+}
+
+/// Why nothing could be asked: sentences of this program's own, which are the only ones said to a Mnemarr (what the network said may hold the address of another).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Blocked {
+    /// It is not linked to any Mnemarr.
+    NotLinked,
+    /// None of the Mnemarr it sends to is reached over HTTPS (an update is code: it is never taken over plain http).
+    NoHttps,
+}
+
+impl Blocked {
+    pub fn text(self) -> &'static str {
+        match self {
+            Self::NotLinked => "it is not linked to any Mnemarr",
+            Self::NoHttps => {
+                "none of the Mnemarr it sends to is reached over HTTPS (an update is code: it is never taken over plain http)"
+            }
+        }
+    }
 }
 
 impl UpdateState {
@@ -117,20 +139,13 @@ impl UpdateState {
                 format!("version {version} is ready: it is applied when the collector restarts")
             }
             Self::Failed(reason) => format!("the last check failed: {reason}"),
+            Self::Blocked(why) => format!("no check: {}", why.text()),
         }
     }
 }
 
-/// The part of a failure that may be said to a Mnemarr: this program's own sentences about why nothing can be done, and for anything else a general one.
-pub fn public_note(reason: &str) -> String {
-    if reason.starts_with("none of the Mnemarr it sends to")
-        || reason == "it is not linked to any Mnemarr"
-    {
-        reason.to_string()
-    } else {
-        "the last check could not reach a Mnemarr or take its update".to_string()
-    }
-}
+/// What is said to a Mnemarr of a failure that is not one of this program's own sentences: nothing of what the network said.
+pub const GENERAL_NOTE: &str = "the last check could not reach a Mnemarr or take its update";
 
 /// Where the update of the running collector is at, as it wrote it (for `status`, which is another process); nothing when it is not running or has written none.
 pub fn recorded_state(dir: &Path) -> Option<String> {
@@ -491,11 +506,10 @@ impl Updater {
             .collect();
         if allowed.is_empty() {
             // Said, not skipped in silence: a person who linked this computer to a Mnemarr over plain http wonders why nothing ever updates.
-            let state = UpdateState::Failed(if destinations.is_empty() {
-                "it is not linked to any Mnemarr".to_string()
+            let state = UpdateState::Blocked(if destinations.is_empty() {
+                Blocked::NotLinked
             } else {
-                "none of the Mnemarr it sends to is reached over HTTPS (an update is code: it is never taken over plain http)"
-                    .to_string()
+                Blocked::NoHttps
             });
             self.set(state.clone());
             return state;
@@ -522,7 +536,8 @@ impl Updater {
     /// may hold the address of another Mnemarr this computer sends to, and each Mnemarr is told nothing of the others (ADR 0030).
     pub fn note(&self) -> Option<String> {
         match self.state() {
-            UpdateState::Failed(reason) => Some(public_note(&reason)),
+            UpdateState::Blocked(why) => Some(why.text().to_string()),
+            UpdateState::Failed(_) => Some(GENERAL_NOTE.to_string()),
             _ => None,
         }
     }
@@ -755,21 +770,29 @@ mod tests {
     #[test]
     fn should_say_to_a_mnemarr_only_the_sentences_of_this_program_and_never_what_the_network_said()
     {
+        let updater = Updater {
+            version: None,
+            state: Arc::new(Mutex::new(UpdateState::Blocked(Blocked::NoHttps))),
+            pending: Arc::new(Mutex::new(None)),
+            folder: Arc::new(Mutex::new(None)),
+        };
+        assert!(updater.note().unwrap().starts_with("none of the Mnemarr"));
+        updater.set(UpdateState::Blocked(Blocked::NotLinked));
         assert_eq!(
-            public_note("it is not linked to any Mnemarr"),
-            "it is not linked to any Mnemarr"
+            updater.note().as_deref(),
+            Some("it is not linked to any Mnemarr")
         );
+        updater.set(UpdateState::Failed(
+            "other-mnemarr: error sending request for url (https://other.example/api/v1/ingest/updates/releases.win.json)".to_string(),
+        ));
+        let leaked = updater.note().unwrap();
+        assert_eq!(leaked, GENERAL_NOTE);
         assert!(
-            public_note(
-                "none of the Mnemarr it sends to is reached over HTTPS (an update is code)"
-            )
-            .starts_with("none of the Mnemarr")
+            !leaked.contains("other") && !leaked.contains("https"),
+            "{leaked}"
         );
-        let leaked = public_note(
-            "other-mnemarr: error sending request for url (https://other.example/api/v1/ingest/updates/releases.win.json)",
-        );
-        assert!(!leaked.contains("other"), "{leaked}");
-        assert!(!leaked.contains("https"), "{leaked}");
+        updater.set(UpdateState::UpToDate);
+        assert_eq!(updater.note(), None);
     }
 
     #[test]
