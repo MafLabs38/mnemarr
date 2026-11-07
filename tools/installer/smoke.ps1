@@ -66,7 +66,14 @@ Wait-Until { (Get-ItemProperty $run).MnemarrCollector -like "*$stub*" } 'the ent
 
 Write-Host '--- uninstall'
 & (Join-Path $app 'Update.exe') uninstall --silent
-Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the program taken away'
+try {
+    Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the program taken away' -Seconds 180
+} catch {
+    Write-Host 'What is left, and who holds it:'
+    Get-ChildItem $app -Recurse -ErrorAction SilentlyContinue | Select-Object -First 40 -ExpandProperty FullName | Write-Host
+    Get-Process | Where-Object { $_.Path -like "$app*" } | ForEach-Object { Write-Host "process $($_.Id) $($_.Path)" }
+    throw
+}
 Wait-Until { -not (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector } 'the entry that starts it with the session taken away'
 Wait-Until { -not (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $app) } 'the folder taken off the PATH'
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
