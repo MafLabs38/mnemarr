@@ -25,6 +25,33 @@ Each machine has a kind, declared in Mnemarr:
 | `always-on` | servers, virtual machines | after a threshold (30 minutes by default) Mnemarr says so: something is wrong |
 | `intermittent` | a workstation that sleeps or is switched off at night | never an alert: Mnemarr shows when it was last seen |
 
+## Send to several Mnemarr, and link another (built, ADR 0030)
+
+A collector is not tied to one Mnemarr: it keeps a list of **destinations** and sends every conversation to each of them, each with its own key, its own name
+for the machine and its own positions. A development instance and a production one both receive; one that is down does not hold the other back.
+
+| Command | What it does |
+|---|---|
+| `mnemarr-collector link [--server URL] [--name NAME]` | links this machine to a Mnemarr **by asking**: it shows an address to open (and opens it), a person approves there and names the machine, and the key comes to the collector by itself. `--no-browser` only prints the address |
+| `mnemarr-collector link --server URL --code CODE` | the same with a one-time code that a person made in Mnemarr (what the installers do) |
+| `mnemarr-collector destinations` | lists the Mnemarr this machine sends to |
+| `mnemarr-collector unlink NAME` | stops sending to that Mnemarr (what it received stays there; revoke the machine there to remove it for good) |
+
+On Windows, the icon has **Link to a Mnemarr…**: a page opens on this computer (it is served on the loopback address only, for a few minutes), you type the
+address of the Mnemarr, the page of that Mnemarr opens in the browser where you approve this computer and choose its name, and the local page tells you when
+it is done. **Linking a computer that already has a collector adds the Mnemarr; it does not replace the others**, whichever way you do it (the icon, `link`,
+the line of the page, or the downloaded program).
+
+A collector of an earlier version is read as a list of one destination, with the positions it had.
+
+## A machine is a computer, not a name (built, ADR 0031)
+
+The collector sends, when it joins a Mnemarr, an identifier of the computer: a SHA-256 hash of the identifier that the system made for itself at its own
+installation (`MachineGuid` on Windows, `/etc/machine-id` on Linux, the platform UUID on macOS), never the identifier itself. It survives removing the
+collector and installing it again. A Mnemarr that knows the computer keeps it as **the machine it already is**, whatever name you give: it takes the new
+name, what it sent is filed under it, and nothing is sent twice. The collector also sends it with each sign of life, so that a machine that joined before identifiers existed learns its own. A system that gives no identifier sends none, and the name is the identity, as before.
+Two computers cloned from one image share an identifier, so the second to join takes the first one's machine: remove the one that is not wanted, and name them apart.
+
 ## Join a machine (built, ADR 0027)
 
 1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows, once, for the system you are on, a **Download** button (Windows) and **one line** to paste, each with a one-time code inside.
@@ -34,7 +61,7 @@ Each machine has a kind, declared in Mnemarr:
    irm 'https://mnemarr.homelab.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=my-laptop' | iex
    curl -fsSL 'https://mnemarr.homelab.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=my-laptop' | sh
    ```
-   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; `%APPDATA%` on Windows) with the address and the name in `collector.json` beside it, and then `mnemarr-collector run`. Those two commands are also yours to run by hand when the program is already there.
+   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `key-<name>` in the folder of the collector (`~/.config/mnemarr-collector/`; `%APPDATA%` on Windows; a file only your user can read), with the Mnemarr it belongs to listed in `destinations.json` beside it (it is **added** to the Mnemarr the machine already sends to), and then `mnemarr-collector install`. Those two commands are also yours to run by hand when the program is already there.
 3. The line **installs and hands the window back**: the collector runs in the background, with no window, and starts with your session. The machine appears on the page as **waiting** until its first pass, then **online**.
 
 To see or control it afterwards (the same program, in the folder it was installed in):
@@ -56,7 +83,9 @@ On Windows it is in your own list of programs that start with your session (Task
 
 If the address of Mnemarr is plain `http://` (a sandbox), the page says that the key will travel without encryption, and the line makes the collector accept it (`--allow-insecure-http`). Over HTTPS there is nothing of the kind. A Mnemarr that carries no collector program (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`) shows only the command that joins a machine that has the program.
 
-The code works once, for 15 minutes, for that machine name. A machine that enrols again replaces its key (the old one stops working). To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
+A computer that already has the collector does not need this page: run `mnemarr-collector link --server https://mnemarr.homelab.example`, or use the icon (see above). It then appears in **Computers asking to be linked**, with a link to approve it.
+
+The code works once, for 15 minutes, for that machine name. A machine that enrols again in the same Mnemarr replaces its key there (the old one stops working); the other Mnemarr it sends to are not touched. To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
 
 An assistant can ask for a machine over MCP (`request_collector_enrolment`): the request waits on the page until a person approves it.
 

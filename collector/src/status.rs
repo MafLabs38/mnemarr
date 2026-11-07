@@ -33,17 +33,66 @@ impl Condition {
     }
 }
 
+/// How bad a condition is, to tell which of several is the one to show.
+fn severity(condition: &Condition) -> u8 {
+    match condition {
+        Condition::Refused => 5,
+        Condition::Offline(_) => 4,
+        Condition::Problem(_) => 3,
+        Condition::Starting => 2,
+        Condition::Online => 1,
+        Condition::Paused => 0,
+    }
+}
+
+/// The condition to show for several destinations: the worst of them, so that the icon is green only when all is well. A pause is for all of them.
+pub fn worst(conditions: &[Condition]) -> Condition {
+    conditions
+        .iter()
+        .max_by_key(|condition| severity(condition))
+        .cloned()
+        .unwrap_or(Condition::Starting)
+}
+
+/// What is shared: the condition to show, and how each destination is when there are several.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snapshot {
+    pub condition: Condition,
+    pub destinations: Vec<(String, Condition)>,
+}
+
 /// The condition, shared.
-pub type Shared = Arc<Mutex<Condition>>;
+pub type Shared = Arc<Mutex<Snapshot>>;
 
 pub fn shared() -> Shared {
-    Arc::new(Mutex::new(Condition::Starting))
+    Arc::new(Mutex::new(Snapshot {
+        condition: Condition::Starting,
+        destinations: Vec::new(),
+    }))
 }
 
 /// Says how the collector is.
 pub fn set(shared: &Shared, condition: Condition) {
     if let Ok(mut current) = shared.lock() {
-        *current = condition;
+        current.condition = condition;
+        current.destinations.clear();
+    }
+}
+
+/// Says how the collector is for each destination: the one to show is the worst, or the pause when a person asked for one.
+pub fn set_all(shared: &Shared, destinations: Vec<(String, Condition)>, paused: bool) {
+    if let Ok(mut current) = shared.lock() {
+        current.condition = if paused {
+            Condition::Paused
+        } else {
+            worst(
+                &destinations
+                    .iter()
+                    .map(|(_, condition)| condition.clone())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        current.destinations = destinations;
     }
 }
 
@@ -51,7 +100,24 @@ pub fn set(shared: &Shared, condition: Condition) {
 pub fn get(shared: &Shared) -> Condition {
     shared
         .lock()
-        .map_or(Condition::Starting, |current| current.clone())
+        .map_or(Condition::Starting, |current| current.condition.clone())
+}
+
+/// One line for each destination when there are several ("prod.example: online"), for the menu and the tooltip; none for a single one.
+pub fn lines(shared: &Shared) -> Vec<String> {
+    shared.lock().map_or_else(
+        |_| Vec::new(),
+        |current| {
+            if current.destinations.len() < 2 {
+                return Vec::new();
+            }
+            current
+                .destinations
+                .iter()
+                .map(|(name, condition)| format!("{name}: {}", condition.label()))
+                .collect()
+        },
+    )
 }
 
 #[cfg(test)]
@@ -83,5 +149,59 @@ mod tests {
         set(&shared, Condition::Paused);
 
         assert_eq!(get(&shared), Condition::Paused);
+    }
+
+    #[test]
+    fn should_show_the_worst_condition_of_several_destinations_so_that_green_means_all_is_well() {
+        let shared = shared();
+
+        set_all(
+            &shared,
+            vec![
+                ("prod".to_string(), Condition::Online),
+                (
+                    "dev".to_string(),
+                    Condition::Offline("no route".to_string()),
+                ),
+            ],
+            false,
+        );
+
+        assert!(matches!(get(&shared), Condition::Offline(_)));
+        assert_eq!(
+            lines(&shared),
+            vec![
+                "prod: online".to_string(),
+                "dev: cannot reach Mnemarr (no route)".to_string()
+            ]
+        );
+        set_all(
+            &shared,
+            vec![
+                ("prod".to_string(), Condition::Online),
+                ("dev".to_string(), Condition::Online),
+            ],
+            false,
+        );
+        assert_eq!(get(&shared), Condition::Online);
+        set_all(&shared, vec![("prod".to_string(), Condition::Online)], true);
+        assert_eq!(
+            get(&shared),
+            Condition::Paused,
+            "a pause is for all of them"
+        );
+        assert!(
+            lines(&shared).is_empty(),
+            "one destination needs no line of its own"
+        );
+        assert_eq!(worst(&[]), Condition::Starting);
+        assert_eq!(
+            worst(&[
+                Condition::Online,
+                Condition::Refused,
+                Condition::Problem("x".to_string())
+            ]),
+            Condition::Refused
+        );
     }
 }

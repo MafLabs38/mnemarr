@@ -45,7 +45,7 @@ public sealed class ConversationTitlesFixture : IDisposable
         var catalog = new SourceCatalog(new SqliteSourceStore(_workspace.Database), new SqliteAuditLog(_workspace.Database, _clock), paths, _clock);
         var indexer = new SourceIndexer(_index, paths, new ScanOutcomes(), _clock, locks);
         var raw = new RawConversations(_workspace.Options);
-        _ingestor = new ConversationIngestor(catalog, locks, indexer, raw, _store, _clock);
+        _ingestor = new ConversationIngestor(catalog, locks, indexer, raw, _store, new ConversationRelocator(catalog, locks, indexer, raw, _store, new Mnemarr.Core.Collectors.SqliteMachineStore(_workspace.Database)), _clock);
         _titles = new ConversationTitles(_store, raw, catalog, locks, indexer);
         _writing = new TitleWriting(_titles, _store, raw, _writer, Options.Create(_options), _clock);
     }

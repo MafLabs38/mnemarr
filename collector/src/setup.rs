@@ -5,6 +5,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::destinations;
 use crate::embedded::Embedded;
 use crate::enrol::{self, Enrolled};
 use crate::upload::UploadError;
@@ -84,8 +85,16 @@ pub fn run(
     write_program(&target, program).map_err(SetupError::Copy)?;
     let enrolled = enrol::exchange(&setting.server, &setting.code, &setting.machine)
         .map_err(SetupError::Join)?;
-    enrol::save(config_dir, &setting.server, &enrolled, setting.insecure)
-        .map_err(SetupError::Keep)?;
+    // The machine is linked to this Mnemarr in addition to those it already sends to: a collector that is installed again keeps them.
+    destinations::add(
+        config_dir,
+        &setting.server,
+        &enrolled.machine,
+        setting.insecure,
+        None,
+        &enrolled.key,
+    )
+    .map_err(SetupError::Keep)?;
     install(&target).map_err(SetupError::Install)?;
     Ok(enrolled)
 }
@@ -175,12 +184,16 @@ mod tests {
 
         assert_eq!(enrolled.machine, "gaming-pc");
         assert_eq!(fs::read(dir.join(program_name())).unwrap(), b"the program");
+        let linked = destinations::load(&config);
+        assert_eq!(linked.len(), 1);
         assert_eq!(
-            fs::read_to_string(config.join("key")).unwrap(),
-            "mnm_the-key"
+            (linked[0].machine.as_str(), linked[0].insecure),
+            ("gaming-pc", true)
         );
-        let said = fs::read_to_string(config.join("collector.json")).unwrap();
-        assert!(said.contains("\"insecure\": true"), "{said}");
+        assert_eq!(
+            destinations::key_of(&config, &linked[0]).as_deref(),
+            Some("mnm_the-key")
+        );
         let request = handle.join().unwrap();
         assert!(request.contains("ABCD-EFGH-JKLM") && request.contains("gaming-pc"));
         assert_eq!(
@@ -189,6 +202,39 @@ mod tests {
             "what runs is stopped before its file is replaced"
         );
         assert!(calls.borrow()[1].starts_with("install "));
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn should_add_this_mnemarr_to_those_the_machine_already_sends_to_when_the_program_is_opened_again()
+     {
+        let base = folder("again");
+        let (dir, config) = (base.join("program"), base.join("config"));
+        destinations::add(
+            &config,
+            "https://dev.example",
+            "dev-name",
+            false,
+            None,
+            "mnm_dev",
+        )
+        .unwrap();
+        let (address, handle) = serve_once(
+            "200 OK",
+            r#"{"key":"mnm_prod","machine":"gaming-pc","kind":"intermittent"}"#,
+        );
+
+        run(&setting(&address), b"p", &dir, &config, &|| {}, &|_| Ok(())).unwrap();
+
+        handle.join().unwrap();
+        let linked = destinations::load(&config);
+        assert_eq!(linked.len(), 2, "the first one is still there");
+        assert!(
+            linked
+                .iter()
+                .any(|item| item.server == "https://dev.example" && item.machine == "dev-name")
+        );
+        assert!(linked.iter().any(|item| item.machine == "gaming-pc"));
         let _ = fs::remove_dir_all(&base);
     }
 
@@ -219,7 +265,7 @@ mod tests {
         assert!(error.to_string().contains("not valid"));
         assert!(error.to_string().contains("Machines page"));
         assert!(!*installed.borrow());
-        assert!(!base.join("config").join("key").exists());
+        assert!(destinations::load(&base.join("config")).is_empty());
         let _ = fs::remove_dir_all(&base);
     }
 

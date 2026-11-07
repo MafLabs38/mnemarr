@@ -78,3 +78,9 @@
   font-weight: 700;
   text-decoration: none;
 }
+
+.manage {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1rem 0;
+}

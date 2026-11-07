@@ -177,6 +177,48 @@ public static class Schema
         ALTER TABLE conversations ADD COLUMN summary TEXT;
         ALTER TABLE conversations ADD COLUMN title_tries INTEGER NOT NULL DEFAULT 0;
         """,
+        // 9: the machines that ask to be linked (ADR 0030): a short code and a secret of their own, kept as hashes, and the name a person chose when they approved.
+        """
+        CREATE TABLE pairings (
+            id TEXT NOT NULL PRIMARY KEY,
+            hostname TEXT NOT NULL,
+            state TEXT NOT NULL,
+            machine TEXT,
+            kind TEXT,
+            user_code_hash TEXT NOT NULL UNIQUE,
+            device_hash TEXT NOT NULL UNIQUE,
+            requested_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            approved_by TEXT
+        );
+        """,
+        // 10: a machine is a computer (ADR 0031): the hash of the identifier the system made for itself, kept with the machine, and sent with a request to be linked.
+        """
+        ALTER TABLE machines ADD COLUMN computer_id TEXT;
+        CREATE UNIQUE INDEX machines_by_computer ON machines (computer_id) WHERE computer_id IS NOT NULL;
+        ALTER TABLE pairings ADD COLUMN computer_id TEXT;
+        """,
+        // 11: which program a machine runs (the system it is for, and the hash of the program), so that a person is told when this Mnemarr carries another (ADR 0031 §7).
+        """
+        ALTER TABLE machines ADD COLUMN platform TEXT;
+        ALTER TABLE machines ADD COLUMN program TEXT;
+        """,
+        // 12: the computer a conversation came from (the identifier of the machine that sent it, when it had one): a conversation is only taken over by the same computer (ADR 0031 §4).
+        """
+        ALTER TABLE conversations ADD COLUMN computer_id TEXT;
+        """,
+        // 13: the names a machine had before it was renamed (a collector goes on sending the name in its own configuration, and its key is what says who it is), and a lookup of a conversation by its session.
+        """
+        CREATE TABLE machine_aliases (
+            alias TEXT NOT NULL PRIMARY KEY,
+            machine TEXT NOT NULL
+        );
+        CREATE INDEX conversations_by_session ON conversations (session);
+        """,
+        // 14: how often a collector makes a pass, as it says it: a machine is taken to be sending while its last sign of life is younger than three passes (ADR 0031 §3).
+        """
+        ALTER TABLE machines ADD COLUMN interval_seconds INTEGER;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

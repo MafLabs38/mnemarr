@@ -21,6 +21,7 @@ What an operator does once Mnemarr runs for real. The examples use `mnemarr.exam
 2. Run the one line it shows in a terminal of that machine, **as the user whose conversations it will read**, or download the program it offers for Windows and open it. The code works for 15 minutes and once.
 3. The machine shows **online** within a minute. If it does not: [the collector page](collector.md) lists what it says when it cannot join.
 4. An assistant may ask for the code over MCP (`request_collector_enrolment`); it waits for you to approve it on the same page.
+5. **A computer that already has the collector** needs none of this to be linked to this Mnemarr: on that computer, `mnemarr-collector link --server <address of this Mnemarr>` (or **Link to a Mnemarr…** on the icon, on Windows). It shows an address and a code; you open it signed in, check the name the computer gives itself, **choose the name it will have in this Mnemarr** and approve. The computer then sends here as well as to the Mnemarr it already sent to. A computer that asked and is not approved waits in **Computers asking to be linked** for 10 minutes.
 
 The page offers a line per system **that this image carries a program for** (Windows and Linux, x86_64). A system with no program is not offered.
 
@@ -29,6 +30,16 @@ The page offers a line per system **that this image carries a program for** (Win
 - **Revoke** it on the Machines page: its key stops working at once and the row stays, as *refused*, so that what it wrote can be found. **Remove from the list** frees its name.
 - **A lost or leaked key**: revoke the machine, then add it again with the same name. The new key replaces the old one.
 - **A key of an assistant** (for `/mcp`): create a service account with the role you want under *Accounts*, give its key once, and revoke it there when it is no longer used.
+
+On the machines page, **Manage** on a row offers (ADR 0031):
+
+- **Rename**: the machine, or a name that conversations came from, gets a new name; what it sent is filed under it. The name must be free.
+- **Merge into another machine**: what a name sent is filed under a machine that is enrolled, and the name leaves the list. A conversation that the target
+  holds already is not made twice. This is what repairs a computer that was installed again under another name before Mnemarr knew computers.
+- **Reinstall**: a new code for a machine that exists, without revoking it, to install again or to update the collector on that computer.
+- **Remove, keep its conversations**: its keys stop working and it leaves the list; its conversations stay, under its name, where they can be renamed, merged or deleted.
+- **Delete with its conversations**: the machine and everything it sent leave the notes and the search. It cannot be undone: the daily snapshots of the database
+  still hold a copy until they are rotated out, and what is computed from conversations (consolidated notes) is not deleted.
 
 ## Back up
 

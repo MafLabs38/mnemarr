@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, type PlaywrightWorkerArgs, test } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 /** The administrator of the e2e stack (tests/e2e/stack/docker-compose.yml): a test-only value. */
 const ADMIN = { name: 'admin', password: 'e2e-admin-password' };
@@ -480,6 +480,178 @@ test.describe('smoke @smoke', () => {
     expect((await anonymous.post('/api/v1/ingest/enrol', { data: { code: reply.code, machine } })).status()).toBe(200);
     await page.reload();
     await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Waiting for its first contact');
+  });
+
+  test('a computer that asks to be linked is approved by a person who names it, and then gets its key once and shows in the machines', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const machine = unique('linked');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const started = await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC' } });
+    expect(started.status()).toBe(201);
+    const { userCode, deviceCode, verificationUrl } = (await started.json()) as {
+      userCode: string;
+      deviceCode: string;
+      verificationUrl: string;
+    };
+    expect(new URL(verificationUrl).pathname).toBe('/link');
+    const poll = async () => (await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).json();
+    expect((await poll()).state).toBe('pending');
+
+    // The person follows the address the computer shows, signs in, checks the name it gives itself, and names it.
+    await signIn(page, `/link?code=${encodeURIComponent(userCode)}`);
+    await expect(page.getByText('Gaming PC')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.getByLabel(/Type the code that your computer shows/).fill(userCode);
+    await page.getByLabel('Name in this Mnemarr').fill(machine);
+    await page.getByLabel('Kind').selectOption('always-on');
+    await page.getByRole('button', { name: 'Link this computer' }).click();
+    await expect(page.getByText(`Linked as ${machine}`)).toBeVisible();
+
+    const answer = await poll();
+    expect(answer).toMatchObject({ state: 'approved', machine, kind: 'always-on' });
+    expect(answer.key).toBeTruthy();
+    expect((await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).status()).toBe(400);
+    const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
+    expect((await key.post('/api/v1/ingest/heartbeat', { data: { version: '0.0.0', pendingLines: 0 } })).ok()).toBe(
+      true,
+    );
+
+    await page.getByRole('link', { name: 'See the machines' }).click();
+    await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Always on');
+  });
+
+  test('a computer that is waiting to be linked shows in the machines, and a person can refuse it', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const host = unique('refused-pc');
+    const { deviceCode } = (await (
+      await anonymous.post('/api/v1/ingest/pair', { data: { hostname: host } })
+    ).json()) as {
+      deviceCode: string;
+    };
+
+    await signIn(page, '/machines');
+    await page.getByRole('link', { name: `Review the request of ${host}` }).click();
+    await page.getByRole('button', { name: 'This is not my computer' }).click();
+    await expect(page.getByText('Refused.')).toBeVisible();
+
+    const answer = await (await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).json();
+    expect(answer.state).toBe('rejected');
+    expect(answer.key).toBeNull();
+  });
+
+  test('the same computer that is linked again under another name is the machine it was: renamed, with what it sent, and nothing twice', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const first = unique('typo');
+    const second = unique('right');
+    const computerId = createHash('sha256').update(randomUUID()).digest('hex');
+    const admin = await signedInRequest(playwright, baseURL ?? '');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const code = (
+      (await (await admin.post('/api/v1/enrolments', { data: { machine: first, kind: 'intermittent' } })).json()) as {
+        code: string;
+      }
+    ).code;
+    const joined = (await (
+      await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine: first, computerId } })
+    ).json()) as { key: string };
+    expect(joined.key).toBeTruthy();
+    const line = JSON.stringify({
+      type: 'user',
+      timestamp: '2026-11-04T14:03:00Z',
+      message: { role: 'user', content: 'How do I rotate the tokens?' },
+    });
+    const batch = (machine: string) => ({
+      format: 'claude-code',
+      machine,
+      application: 'Mnemarr',
+      session: `s-${first}`,
+      from: 0,
+      lines: [line],
+    });
+    // The same computer asks to be linked again, and a person names it differently.
+    const started = (await (
+      await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC', computerId } })
+    ).json()) as { userCode: string; deviceCode: string };
+    await signIn(page, `/link?code=${encodeURIComponent(started.userCode)}`);
+    await expect(page.getByText(new RegExp(`says it is the machine ${first}`))).toBeVisible();
+    await page.getByLabel(/Type the code that your computer shows/).fill(started.userCode);
+    await page.getByLabel('Name in this Mnemarr').fill(second);
+    await page.getByRole('button', { name: 'Link this computer' }).click();
+    await expect(page.getByText(`Linked as ${second}`)).toBeVisible();
+    const answer = await (
+      await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode: started.deviceCode } })
+    ).json();
+    expect(answer).toMatchObject({ state: 'approved', machine: second });
+
+    await page.getByRole('link', { name: 'See the machines' }).click();
+    await expect(page.getByRole('rowheader', { name: second, exact: true })).toBeVisible();
+    await expect(page.getByRole('rowheader', { name: first, exact: true })).toHaveCount(0);
+    const renewed = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
+    expect((await renewed.post('/api/v1/ingest/conversations', { data: batch(second) })).ok()).toBe(true);
+    await page.reload();
+    await expect(page.getByRole('row', { name: new RegExp(second) })).toContainText('1');
+  });
+
+  test('a person merges a name into a machine without doubling a conversation, then deletes a machine with what it sent, after being asked', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const ghost = unique('ghost');
+    const machine = unique('pc');
+    const admin = await signedInRequest(playwright, baseURL ?? '');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const line = JSON.stringify({
+      type: 'user',
+      timestamp: '2026-11-04T14:03:00Z',
+      message: { role: 'user', content: 'How do I rotate the tokens?' },
+    });
+    async function join(name: string, session: string) {
+      const code = (
+        (await (await admin.post('/api/v1/enrolments', { data: { machine: name, kind: 'intermittent' } })).json()) as {
+          code: string;
+        }
+      ).code;
+      const joined = (await (
+        await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine: name } })
+      ).json()) as { key: string };
+      const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': joined.key } });
+      expect(
+        (
+          await key.post('/api/v1/ingest/conversations', {
+            data: { format: 'claude-code', machine: name, application: 'Mnemarr', session, from: 0, lines: [line] },
+          })
+        ).ok(),
+      ).toBe(true);
+    }
+    await join(ghost, `shared-${ghost}`);
+    await join(machine, `shared-${ghost}`);
+    expect((await admin.post(`/api/v1/collectors/${ghost}/remove`)).status()).toBe(204);
+
+    await signIn(page, '/machines');
+    const row = (name: string) => page.getByRole('row', { name: new RegExp(`^${name}`) });
+    await expect(row(ghost)).toContainText('No longer enrolled');
+    await page.getByRole('button', { name: `Manage ${ghost}` }).click();
+    await page.getByLabel('Merge into').selectOption(machine);
+    await page.getByRole('button', { name: 'Merge', exact: true }).click();
+    await expect(page.getByRole('rowheader', { name: ghost, exact: true })).toHaveCount(0);
+    await expect(row(machine)).toContainText('1');
+
+    await page.getByRole('button', { name: `Manage ${machine}` }).click();
+    await page.getByRole('button', { name: `Delete the machine ${machine} with its conversations` }).click();
+    await expect(page.getByText(/This cannot be undone/)).toBeVisible();
+    await page.getByRole('button', { name: `Delete ${machine} and its conversations now` }).click();
+    await expect(page.getByRole('rowheader', { name: machine, exact: true })).toHaveCount(0);
   });
 
   test('an operator writes notes: creates one, edits it, links to it, renames it and the link follows, removes it', async ({

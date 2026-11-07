@@ -21,7 +21,10 @@ public static class Permissions
     /// <summary>Changing the title of a conversation, and having a model write titles again (ADR 0028): what is said in a conversation is not changed, only how it is called.</summary>
     public const string ConversationsWrite = "conversations.write";
 
-    /// <summary>Adding, approving, rejecting and revoking the machines that send conversations (ADR 0027): who decides which machines may.</summary>
+    /// <summary>
+    /// Adding, approving, rejecting and revoking the machines that send conversations (ADR 0027): who decides which machines may. Also renaming, merging and removing
+    /// them, and <b>deleting a machine with everything it sent</b>, which cannot be undone (ADR 0031): it is the permission of an administrator.
+    /// </summary>
     public const string CollectorsManage = "collectors.manage";
 
     /// <summary>Asking for the enrolment of a machine: harmless alone, since a person with <see cref="CollectorsManage"/> still has to approve it.</summary>

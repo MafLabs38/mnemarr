@@ -279,6 +279,8 @@ const en = {
   AddMachine: 'Add the machine',
   AddMachineHelp:
     'The name must be the one the machine will give itself. An always-on machine (a server) raises an alert when it falls silent; an intermittent one (a workstation) never does.',
+  AlreadyHasACollector:
+    'This computer already has the collector? Run the line, or open the download, again: it keeps the Mnemarr it already sends to and adds this one. Or, on the computer, use the icon: Link to a Mnemarr.',
   KindAlwaysOn: 'Always on (a server)',
   KindIntermittent: 'Intermittent (a workstation)',
   NewCode: 'Code of the new machine',
@@ -297,6 +299,37 @@ const en = {
   LastSeen: 'Last seen',
   NeverSeen: 'Never',
   ConversationsCount: 'Conversations',
+  ProgramDiffers: 'Another program than this Mnemarr carries',
+  Manage: 'Manage',
+  ManageMachine: 'Manage {name}',
+  RenameTitle: 'Rename',
+  Rename: 'Rename',
+  RenameHelp:
+    'What it sent is filed under the new name. The name must be free: to join it to a machine that exists, merge instead.',
+  MergeTitle: 'Merge into another machine',
+  MergeHelp:
+    'What {name} sent is filed under the machine you choose, without a conversation made twice, and {name} leaves the list.',
+  MergeInto: 'Merge into',
+  Merge: 'Merge',
+  ReinstallTitle: 'Install the collector again',
+  ReinstallHelp:
+    'A new code for {name}, to install again or to update the collector on that computer (this Mnemarr says when a machine runs another program than the one it carries). The machine keeps its name and what it sent; its old key stops working here.',
+  Reinstall: 'Reinstall',
+  RemovalTitle: 'Remove or delete',
+  RemoveHelp:
+    'Remove the machine from the list: its key stops working, and what it sent stays, under its name, where you can rename it, merge it or delete it.',
+  RemoveKeep: 'Remove, keep its conversations',
+  RemoveMachineKeep: 'Remove the machine {name} and keep its conversations',
+  EraseHelp: 'Delete the machine and everything it sent: its conversations leave the notes and the search.',
+  Erase: 'Delete with its conversations…',
+  EraseMachine: 'Delete the machine {name} with its conversations',
+  EraseConfirmTitle: 'Confirm the deletion',
+  EraseConfirm:
+    'Delete {name} and its {count} conversations? This cannot be undone. Copies in the snapshots of the database remain until they are rotated out; what is computed from conversations is not deleted.',
+  EraseYes: 'Yes, delete it all',
+  EraseNow: 'Delete {name} and its conversations now',
+  LinkKnownAs:
+    'This computer says it is the machine {name}, which already joined here. Mnemarr cannot prove it: approve only if that is right. It then takes over that machine, keeps what it sent, and the key {name} had stops working.',
   RevokeMachine: 'Revoke the machine {name}',
   StateOnline: 'Online',
   StatePaused: 'Paused by its user',
@@ -308,6 +341,32 @@ const en = {
   StateSilent: 'Silent',
   StateFailing: 'Failing',
   StateRefused: 'Refused (revoked)',
+  AskingToBeLinked: 'Computers asking to be linked',
+  NoPairings:
+    'No computer is asking. On a computer that has the collector, use its icon: Link to a Mnemarr (or run: mnemarr-collector link).',
+  PairingAsksFor: '{name} asks to be linked',
+  PairingExpires: 'Waiting until {time}',
+  ReviewPairing: 'Review the request of {name}',
+  LinkAComputer: 'Link a computer',
+  LinkIntro:
+    'A computer that has the collector asked to be linked to this Mnemarr. Check that you started it just now, on your own computer, and that the name below is its name.',
+  LinkCodeLabel: 'Code shown on the computer',
+  LinkNameExists:
+    'A machine named {name} exists already. Approving under that name replaces its key: the collector that runs with the old key stops. Choose another name unless this computer is that machine.',
+  LinkCodeOnComputer: 'Type the code that your computer shows (so that this request is the one in front of you)',
+  LinkFind: 'Find the request',
+  LinkNotFound:
+    'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',
+  LinkHostname: 'The computer says it is called',
+  LinkName: 'Name in this Mnemarr',
+  LinkNameHelp:
+    'If a machine of this name is already linked, it is replaced: its old key stops working. Another Mnemarr you link this computer to has its own name for it.',
+  LinkApprove: 'Link this computer',
+  LinkReject: 'This is not my computer',
+  LinkDone:
+    'Linked as {name}. The computer takes its key in a few seconds and starts sending its conversations; you can close this page.',
+  LinkRejected: 'Refused. The computer is told so, and gets nothing.',
+  LinkSeeMachines: 'See the machines',
   Requests: 'Requests to add a machine',
   NoRequests:
     'Nothing is waiting: an assistant that asks for a machine to be added shows here until a person approves it.',

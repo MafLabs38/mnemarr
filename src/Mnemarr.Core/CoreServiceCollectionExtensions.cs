@@ -88,6 +88,10 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<EnrolmentThrottle>();
         services.AddSingleton<CollectorDownloads>();
         services.AddSingleton<MachineAccounts>();
+        services.AddSingleton<MachineJoining>();
+        services.AddSingleton<IPairingStore, SqlitePairingStore>();
+        services.AddSingleton<PairingStarts>();
+        services.AddSingleton<PairingService>();
         services.AddSingleton<EnrolmentService>();
         services.AddSingleton<CollectorService>();
         services.AddOptions<TitleOptions>().Bind(configuration.GetSection("Titles")).ValidateOnStart();
@@ -103,6 +107,7 @@ public static class CoreServiceCollectionExtensions
         services.AddHostedService<TitleService>();
         services.AddSingleton<IConversationStore, SqliteConversationStore>();
         services.AddSingleton<RawConversations>();
+        services.AddSingleton<ConversationRelocator>();
         services.AddSingleton<ConversationIngestor>();
         services.AddHostedService<SourceSyncService>();
         services.AddSingleton<SourceIndexingService>();

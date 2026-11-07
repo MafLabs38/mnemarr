@@ -9,7 +9,16 @@ public interface IMachineStore
 
     Machine? GetByAccount(Guid accountId);
 
+    /// <summary>The machine that a computer is, whatever it is called now.</summary>
+    Machine? GetByComputer(string computerId);
+
     IReadOnlyList<Machine> List();
+
+    /// <summary>Gives a machine another name, and keeps the old one as a name it still answers to. False when there is no such machine.</summary>
+    bool Rename(string name, string newName);
+
+    /// <summary>The machine that a former name belongs to, or null.</summary>
+    string? AliasOf(string alias);
 
     /// <summary>Adds the machine, or puts a machine that enrols again back as it was just enrolled (a new account, no past, not revoked).</summary>
     void Enrol(Machine machine);
@@ -18,6 +27,9 @@ public interface IMachineStore
     void Seen(string name, DateTimeOffset at, Heartbeat? heartbeat);
 
     bool Revoke(string name, DateTimeOffset at);
+
+    /// <summary>Gives a machine that has no identifier the one of its computer. False when it has one, or when another machine holds it.</summary>
+    bool SetComputer(string name, string computerId);
 
     /// <summary>Takes a revoked machine out of the list. False when there is none, or it is not revoked.</summary>
     bool Remove(string name);
@@ -47,6 +59,7 @@ public interface IEnrolmentStore
 public sealed class SqliteMachineStore : IMachineStore
 {
     private const string NameParameter = "$name";
+    private const string MachineColumns = "name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id, platform, program, interval_seconds";
     private readonly IDatabase _database;
 
     public SqliteMachineStore(IDatabase database)
@@ -54,15 +67,55 @@ public sealed class SqliteMachineStore : IMachineStore
         _database = database;
     }
 
-    public Machine? Get(string name) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines WHERE name = $key", name);
+    public Machine? Get(string name) => One($"SELECT {MachineColumns} FROM machines WHERE name = $key", name);
 
-    public Machine? GetByAccount(Guid accountId) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines WHERE account_id = $key", accountId.ToString());
+    public Machine? GetByAccount(Guid accountId) => One($"SELECT {MachineColumns} FROM machines WHERE account_id = $key", accountId.ToString());
+
+    public Machine? GetByComputer(string computerId) => One($"SELECT {MachineColumns} FROM machines WHERE computer_id = $key", computerId);
+
+    public string? AliasOf(string alias)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT machine FROM machine_aliases WHERE alias = $alias";
+        command.Parameters.AddWithValue("$alias", alias);
+        return command.ExecuteScalar() as string;
+    }
+
+    public bool Rename(string name, string newName)
+    {
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        using var rename = connection.CreateCommand();
+        rename.Transaction = transaction;
+        rename.CommandText = "UPDATE machines SET name = $new WHERE name = $name";
+        rename.Parameters.AddWithValue(NameParameter, name);
+        rename.Parameters.AddWithValue("$new", newName);
+        if (rename.ExecuteNonQuery() == 0)
+        {
+            return false;
+        }
+
+        // The names it had before still answer for it, and the new name is not an alias of anything any more.
+        using var aliases = connection.CreateCommand();
+        aliases.Transaction = transaction;
+        aliases.CommandText = """
+            UPDATE machine_aliases SET machine = $new WHERE machine = $name;
+            DELETE FROM machine_aliases WHERE alias = $new;
+            INSERT OR REPLACE INTO machine_aliases (alias, machine) VALUES ($name, $new);
+            """;
+        aliases.Parameters.AddWithValue(NameParameter, name);
+        aliases.Parameters.AddWithValue("$new", newName);
+        aliases.ExecuteNonQuery();
+        transaction.Commit();
+        return true;
+    }
 
     public IReadOnlyList<Machine> List()
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines ORDER BY name";
+        command.CommandText = $"SELECT {MachineColumns} FROM machines ORDER BY name";
         using var reader = command.ExecuteReader();
         var machines = new List<Machine>();
         while (reader.Read())
@@ -78,10 +131,11 @@ public sealed class SqliteMachineStore : IMachineStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO machines (name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused)
-            VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL, 0)
-            ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL, paused = 0
+            INSERT INTO machines (name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id)
+            VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL, 0, $computer)
+            ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL, paused = 0, computer_id = coalesce($computer, computer_id)
             """;
+        command.Parameters.AddWithValue("$computer", (object?)machine.ComputerId ?? DBNull.Value);
         command.Parameters.AddWithValue(NameParameter, machine.Name);
         command.Parameters.AddWithValue("$kind", MachineKinds.Name(machine.Kind));
         command.Parameters.AddWithValue("$account", machine.AccountId.ToString());
@@ -95,7 +149,7 @@ public sealed class SqliteMachineStore : IMachineStore
         using var command = connection.CreateCommand();
         command.CommandText = heartbeat is null
             ? "UPDATE machines SET last_seen_at = $at WHERE name = $name"
-            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused WHERE name = $name";
+            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused, platform = $platform, program = $program, interval_seconds = $interval WHERE name = $name";
         command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
         if (heartbeat is not null)
@@ -104,6 +158,9 @@ public sealed class SqliteMachineStore : IMachineStore
             command.Parameters.AddWithValue("$pending", heartbeat.PendingLines);
             command.Parameters.AddWithValue("$error", (object?)heartbeat.Error ?? DBNull.Value);
             command.Parameters.AddWithValue("$paused", heartbeat.Paused ? 1 : 0);
+            command.Parameters.AddWithValue("$platform", (object?)heartbeat.Platform ?? DBNull.Value);
+            command.Parameters.AddWithValue("$program", (object?)heartbeat.Program ?? DBNull.Value);
+            command.Parameters.AddWithValue("$interval", (object?)heartbeat.IntervalSeconds ?? DBNull.Value);
         }
 
         command.ExecuteNonQuery();
@@ -119,11 +176,21 @@ public sealed class SqliteMachineStore : IMachineStore
         return command.ExecuteNonQuery() > 0;
     }
 
+    public bool SetComputer(string name, string computerId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE machines SET computer_id = $computer WHERE name = $name AND computer_id IS NULL AND NOT EXISTS (SELECT 1 FROM machines WHERE computer_id = $computer)";
+        command.Parameters.AddWithValue(NameParameter, name);
+        command.Parameters.AddWithValue("$computer", computerId);
+        return command.ExecuteNonQuery() > 0;
+    }
+
     public bool Remove(string name)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM machines WHERE name = $name AND revoked_at IS NOT NULL";
+        command.CommandText = "DELETE FROM machine_aliases WHERE machine = $name AND EXISTS (SELECT 1 FROM machines WHERE name = $name AND revoked_at IS NOT NULL); DELETE FROM machines WHERE name = $name AND revoked_at IS NOT NULL";
         command.Parameters.AddWithValue(NameParameter, name);
         return command.ExecuteNonQuery() > 0;
     }
@@ -148,7 +215,11 @@ public sealed class SqliteMachineStore : IMachineStore
         reader.GetInt64(6),
         reader.IsDBNull(7) ? null : reader.GetString(7),
         reader.IsDBNull(8) ? null : StorageText.Parse(reader.GetString(8)),
-        reader.GetInt32(9) != 0);
+        reader.GetInt32(9) != 0,
+        reader.IsDBNull(10) ? null : reader.GetString(10),
+        reader.IsDBNull(11) ? null : reader.GetString(11),
+        reader.IsDBNull(12) ? null : reader.GetString(12),
+        reader.IsDBNull(13) ? null : reader.GetInt32(13));
 }
 
 public sealed class SqliteEnrolmentStore : IEnrolmentStore

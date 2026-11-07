@@ -47,9 +47,22 @@
 - **The person stays in control of a background process** (asked by the maintainer on 2026-11-05): on Windows and macOS an icon in the notification area says that it runs, shows its state, and offers *Pause* (for an hour, or until resumed), *Resume*, *Open Mnemarr* and *Quit*; on a server without a screen the same through `pause`, `resume` and `status`. A paused collector keeps sending its heartbeat, marked paused, so that Mnemarr shows **paused** and not "silent". The pause survives a restart. New dependencies for the icon are a decision of the pull request.
 - The collector never prevents sleep and costs the machine nothing it would notice.
 
+#### Linking: several Mnemarr and linking by asking ([ADR 0030](adr/0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md), built)
+
+*Demo: a computer that already has the collector is linked to a second Mnemarr from its icon, in a few clicks, without reinstalling: both receive its conversations.*
+
+- The collector sends every conversation to every destination (each with its own key, name and positions); `link` (by asking, or with a code), `unlink`, `destinations`; the icon's **Link to a Mnemarr…** and its menu of Mnemarr; the page that answers a computer that asks, and the list of those that wait. Not now: finding computers by mDNS, per-destination reader settings (2c), macOS and Linux icons.
+
 #### Follow-ups of running it for real
 
 - A **static Linux program** (musl), so that any distribution runs it, and **aarch64** programs for Linux and macOS (the image carries x86_64 only); the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
+
+#### Follow-ups found by trying it on a real computer (2026-11-07, important): decided in [ADR 0031](adr/0031-a-machine-is-a-computer-not-a-name-it-is-deleted-in-two-ways-and-installed-once-for-everyone.md)
+
+- **A real uninstall.** Today the collector is a program in the user's own folder, started with their session, and absent from the system's list of installed applications and from the PATH (so that `mnemarr-collector uninstall` is "not recognised" in a terminal: it must be run by its full path): removing it takes a command that most people will not find. The installer adds the program's folder to the user's PATH (no administrator rights). It needs an entry in that list (Windows) with a working *Uninstall* that stops the collector, removes the program and its start-up entry, and asks whether to keep or delete the keys and the positions.
+- **A real, user-friendly update.** An installed collector has no way to learn that a newer program exists and no way to replace itself: an old one stays old (the maintainer's computer had no brain icon, so it ran the first build). To design: the collector says which program it runs (a hash, built) and the machines page shows *update available* (built), and the update is one click or automatic (the collector downloads the program from the Mnemarr it sends to, checks its checksum, replaces itself and restarts), without revoking or re-adding the machine and without losing its destinations. The ADR will decide manual or automatic, and from which Mnemarr.
+- **Smaller follow-ups of the review of this vertical.** The heartbeat answers with the machine's current name so that a renamed collector rewrites its own configuration (until then the old name is kept as an alias); the address of the approval page has a setting of its own for a Mnemarr whose collectors reach a host that publishes only the ingest prefix; the program hash is streamed and could use `ring::digest`, already in the build through the TLS library, instead of a hand-written SHA-256 (a direct dependency is the maintainer's decision); a collector's pass interval above the default makes the "sending right now" window of ADR 0031 too short.
+- **Reinstall a machine that exists** (built, ADR 0031 §8: *Manage → Reinstall*). Until the update above exists, the machines page has a *Reinstall* action on a machine row (a new one-time code for the same name, replacing its key on that Mnemarr only, with the download and the command), instead of revoking, removing and adding the machine again, which cuts it off meanwhile.
 
 #### 2c. Configuration from the server
 

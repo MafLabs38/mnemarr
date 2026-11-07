@@ -39,6 +39,8 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a', 'alice', 'User', 'Reader', 1, 'now');
                 DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
+                DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -66,6 +68,8 @@ public sealed class DatabaseFixture : IDisposable
                 DROP INDEX notes_by_name; DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; ALTER TABLE notes DROP COLUMN name; ALTER TABLE notes DROP COLUMN meta_version;
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
+                DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 2;
                 """;
             back.ExecuteNonQuery();
@@ -90,6 +94,8 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
+                DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 3;
                 """;
             back.ExecuteNonQuery();
@@ -113,6 +119,11 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path) VALUES ('pc', 's1', 'app', 'claude-code', 3, 'then', 'now', 'pc/app/x.md');
                 ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+                DROP TABLE IF EXISTS pairings;
+                ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+                ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
+                ALTER TABLE machines DROP COLUMN interval_seconds;
                 PRAGMA user_version = 7;
                 """;
             back.ExecuteNonQuery();
@@ -134,6 +145,11 @@ public sealed class DatabaseFixture : IDisposable
         using var back = connection.CreateCommand();
         back.CommandText = """
             ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+            DROP TABLE IF EXISTS pairings;
+            ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+            ALTER TABLE conversations DROP COLUMN computer_id;
+            DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
+            ALTER TABLE machines DROP COLUMN interval_seconds;
             PRAGMA user_version = 7;
             """;
         back.ExecuteNonQuery();
@@ -225,6 +241,34 @@ public sealed class DatabaseFixture : IDisposable
     }
 
     [Fact]
+    public void should_add_the_table_of_the_requests_to_be_linked_to_a_database_made_before_it_and_keep_the_machines()
+    {
+        using (var connection = _workspace.Database.Open())
+        {
+            using var back = connection.CreateCommand();
+            back.CommandText = """
+                INSERT INTO accounts (id, name, kind, role, enabled, created_at) VALUES ('a1', 'collector-pc', 'Service', 'Collector', 1, 'then');
+                INSERT INTO machines (name, kind, account_id, enrolled_at) VALUES ('pc', 'intermittent', 'a1', 'then');
+                DROP TABLE pairings;
+                ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+                ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
+                ALTER TABLE machines DROP COLUMN interval_seconds;
+                PRAGMA user_version = 8;
+                """;
+            back.ExecuteNonQuery();
+        }
+
+        using var upgraded = new Database(_workspace.Options).Open();
+
+        using var check = upgraded.CreateCommand();
+        check.CommandText = "SELECT (SELECT COUNT(*) FROM machines), (SELECT COUNT(*) FROM pairings)";
+        using var reader = check.ExecuteReader();
+        reader.Read().Should().BeTrue();
+        (reader.GetInt32(0), reader.GetInt32(1)).Should().Be((1, 0));
+    }
+
+    [Fact]
     public void should_add_the_pause_to_a_database_whose_machines_did_not_have_one_without_touching_them()
     {
         using (var connection = _workspace.Database.Open())
@@ -234,6 +278,11 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO machines (name, kind, account_id, enrolled_at) VALUES ('pc', 'intermittent', 'a', 'then');
                 ALTER TABLE machines DROP COLUMN paused;
                 ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+                DROP TABLE IF EXISTS pairings;
+                ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
+                ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
+                ALTER TABLE machines DROP COLUMN interval_seconds;
                 PRAGMA user_version = 6;
                 """;
             back.ExecuteNonQuery();
@@ -258,6 +307,9 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path) VALUES ('pc', 's1', 'app', 'claude-code', 3, 'then', 'now', 'pc/app/x.md');
                 DROP TABLE machines; DROP TABLE enrolments;
                 ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
+                ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 5;
                 """;
             back.ExecuteNonQuery();
@@ -281,6 +333,8 @@ public sealed class DatabaseFixture : IDisposable
             back.CommandText = """
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
+                DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 4;
                 """;
             back.ExecuteNonQuery();
