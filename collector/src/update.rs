@@ -345,6 +345,20 @@ fn source_of(server: &str) -> HttpSource {
     )
 }
 
+/// Puts the state back to "up to date" when a check ends without having said where it is at (a panic in the updater, for instance).
+struct Settle<'a>(&'a Updater);
+
+impl Drop for Settle<'_> {
+    fn drop(&mut self) {
+        if matches!(
+            self.0.state(),
+            UpdateState::Checking | UpdateState::Downloading(_)
+        ) {
+            self.0.set(UpdateState::UpToDate);
+        }
+    }
+}
+
 /// What was found by a check, and kept until it is applied.
 struct Pending {
     manager: UpdateManager,
@@ -517,6 +531,8 @@ impl Updater {
         if !self.begin() {
             return self.state();
         }
+        // Whatever happens below, the state does not stay "looking" for good.
+        let _settle = Settle(self);
         let (mut found, answered, failure) = Self::look(&allowed);
         let offers: Vec<Offer> = found.iter().map(|(offer, _)| offer.clone()).collect();
         let state = match newest_index(&offers) {
