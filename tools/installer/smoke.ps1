@@ -59,7 +59,15 @@ New-Item (Join-Path $work 'feed\api\v1\ingest\updates') -ItemType Directory -For
 Copy-Item (Join-Path $second '*') (Join-Path $work 'feed\api\v1\ingest\updates') -Recurse
 $server = Start-Process python -ArgumentList '-m', 'http.server', '8099', '--bind', '127.0.0.1', '--directory', (Join-Path $work 'feed') -PassThru -WindowStyle Hidden
 # The feed is served the way a Mnemarr serves it: anonymously (the integration tests prove the real controller; the key here is only what a destination holds).
-Wait-Until { try { (Invoke-WebRequest 'http://127.0.0.1:8099/api/v1/ingest/updates/releases.win.json' -UseBasicParsing).StatusCode -eq 200 } catch { $false } } 'the feed served'
+$feedUrl = 'http://127.0.0.1:8099/api/v1/ingest/updates/releases.win.json'
+$lastError = ''
+try {
+    Wait-Until { try { (New-Object Net.WebClient).DownloadString($feedUrl) | Out-Null; $true } catch { $script:lastError = $_.Exception.Message; $false } } 'the feed served' -Seconds 30
+} catch {
+    Write-Host "feed not served: $lastError; the server has exited: $($server.HasExited)"
+    Get-ChildItem (Join-Path $work 'feed') -Recurse | Select-Object -First 20 -ExpandProperty FullName | Write-Host
+    throw
+}
 
 Write-Host '--- update from it'
 $before = (& $real status --config-dir $config) -join "`n"
