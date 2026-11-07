@@ -152,7 +152,7 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         data.extend_from_slice(chunk.get(..read)?);
     }
     let text = String::from_utf8_lossy(&data).to_string();
-    let (head, body) = text.split_once("\r\n\r\n")?;
+    let (head, _) = text.split_once("\r\n\r\n")?;
     let mut lines = head.lines();
     let mut first = lines.next()?.split_whitespace();
     let (method, path) = (first.next()?.to_string(), first.next()?.to_string());
@@ -167,7 +167,7 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         method,
         path,
         host,
-        body: body.chars().take(length).collect(),
+        body: String::from_utf8_lossy(data.get(head_end..head_end + length)?).to_string(),
     })
 }
 

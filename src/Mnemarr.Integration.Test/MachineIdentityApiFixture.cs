@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Mnemarr.Core.Collectors;
 
 namespace Mnemarr.Integration.Test;
 
@@ -43,6 +44,7 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
             (await first.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(typo, "s1", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
+        _factory.Clock.Advance(MachineJoining.LiveWindow + TimeSpan.FromSeconds(1));
         var secondKey = await JoinAsComputerAsync(callers.Admin, right, computer);
 
         (await ListsAsync(callers.Admin, typo)).Should().BeFalse("the computer is the same machine: it has the name it asked for now, not a second row");
@@ -192,7 +194,7 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         var found = await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token);
         var id = (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
 
-        var approved = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = other, kind = "intermittent" }, Token);
+        var approved = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = started.GetProperty("userCode").GetString(), machine = other, kind = "intermittent" }, Token);
 
         approved.StatusCode.Should().Be(HttpStatusCode.Conflict, "the computer is already another machine here, and the name asked for is a third");
         (await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the request is still waiting: the person may name it again");
@@ -231,6 +233,7 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
 
         // The first machine holds the identifier now, so a reinstall of that computer under another name finds it.
         var renamed = Callers.Unique("renamed");
+        _factory.Clock.Advance(MachineJoining.LiveWindow + TimeSpan.FromSeconds(1));
         await JoinAsComputerAsync(callers.Admin, renamed, computer);
         (await ListsAsync(callers.Admin, first)).Should().BeFalse("the first machine was found by the identifier its heartbeat gave");
         (await ListsAsync(callers.Admin, second)).Should().BeTrue("the second did not take an identifier that was held");
@@ -261,5 +264,62 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
 
         (await ListsAsync(callers.Admin, before)).Should().BeFalse("the same computer took its conversation back: nothing is left under the old name");
         (await ConversationsOfAsync(callers.Admin, after)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task should_go_on_accepting_a_collector_that_sends_the_name_it_had_before_it_was_renamed_and_file_what_it_sends_under_the_new_name()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var before = Callers.Unique("before");
+        var after = Callers.Unique("after");
+        using var client = await JoinAsync(callers.Admin, before);
+        (await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(before, "s1", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/collectors/{before}/rename", new { name = after }, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var old = await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(before, "s2", Line("a second conversation here")), Token);
+        var current = await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(after, "s3", Line("a third conversation here")), Token);
+
+        old.StatusCode.Should().Be(HttpStatusCode.OK, "the key says who it is: the name in its own configuration is the one it had");
+        current.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ListsAsync(callers.Admin, before)).Should().BeFalse("what it sends is filed under the name the machine has now");
+        (await ConversationsOfAsync(callers.Admin, after)).Should().Be(3);
+        (await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch("a-stranger", "s4", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, "a name that was never its own is still refused");
+    }
+
+    [Fact]
+    public async Task should_not_hand_a_machine_that_is_sending_right_now_to_whoever_says_its_identifier_and_do_when_it_has_stopped()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var first = Callers.Unique("first");
+        var second = Callers.Unique("second");
+        var computer = ComputerId("pc");
+        using (var one = _factory.CreateKeyClient(await JoinAsComputerAsync(callers.Admin, first, computer)))
+        {
+            (await BeatAsync(one, computer)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        var code = (await AddAsync(callers.Admin, second)).GetProperty("code").GetString();
+        var live = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine = second, computerId = computer }, Token);
+        _factory.Clock.Advance(MachineJoining.LiveWindow + TimeSpan.FromSeconds(1));
+        var stopped = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine = second, computerId = computer }, Token);
+
+        live.StatusCode.Should().Be(HttpStatusCode.Conflict, "its collector sent a sign of life a moment ago");
+        stopped.StatusCode.Should().Be(HttpStatusCode.OK, "the code was not used up by the refused join, and the machine has stopped");
+        (await ListsAsync(callers.Admin, first)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task should_not_merge_into_a_machine_that_is_revoked()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var ghost = Callers.Unique("ghost");
+        var revoked = Callers.Unique("revoked");
+        using var client = await JoinAsync(callers.Admin, ghost);
+        (await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(ghost, "s1", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        await JoinAsync(callers.Admin, revoked);
+        (await callers.Admin.DeleteAsync($"/api/v1/collectors/{revoked}", Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/collectors/{ghost}/merge", new { into = revoked }, Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await ConversationsOfAsync(callers.Admin, ghost)).Should().Be(1, "nothing was moved");
     }
 }

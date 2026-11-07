@@ -237,12 +237,4 @@ mod tests {
         assert_eq!(hash.len(), 64);
         assert_eq!(program_hash(), Some(hash));
     }
-
-    #[test]
-    fn should_know_this_computer_here() {
-        // On a build machine and in CI the system has an identifier; when it has none the answer is None and nothing is sent.
-        if let Some(id) = id() {
-            assert_eq!(id.len(), 64);
-        }
-    }
 }

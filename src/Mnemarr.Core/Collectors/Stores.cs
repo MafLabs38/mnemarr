@@ -14,8 +14,11 @@ public interface IMachineStore
 
     IReadOnlyList<Machine> List();
 
-    /// <summary>Gives a machine another name. False when there is no such machine.</summary>
+    /// <summary>Gives a machine another name, and keeps the old one as a name it still answers to. False when there is no such machine.</summary>
     bool Rename(string name, string newName);
+
+    /// <summary>The machine that a former name belongs to, or null.</summary>
+    string? AliasOf(string alias);
 
     /// <summary>Adds the machine, or puts a machine that enrols again back as it was just enrolled (a new account, no past, not revoked).</summary>
     void Enrol(Machine machine);
@@ -70,14 +73,32 @@ public sealed class SqliteMachineStore : IMachineStore
 
     public Machine? GetByComputer(string computerId) => One($"SELECT {MachineColumns} FROM machines WHERE computer_id = $key", computerId);
 
-    public bool Rename(string name, string newName)
+    public string? AliasOf(string alias)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE machines SET name = $new WHERE name = $name";
+        command.CommandText = "SELECT machine FROM machine_aliases WHERE alias = $alias";
+        command.Parameters.AddWithValue("$alias", alias);
+        return command.ExecuteScalar() as string;
+    }
+
+    public bool Rename(string name, string newName)
+    {
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE machines SET name = $new WHERE name = $name;
+            UPDATE machine_aliases SET machine = $new WHERE machine = $name;
+            DELETE FROM machine_aliases WHERE alias = $new;
+            INSERT INTO machine_aliases (alias, machine) SELECT $name, $new WHERE EXISTS (SELECT 1 FROM machines WHERE name = $new);
+            """;
         command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$new", newName);
-        return command.ExecuteNonQuery() > 0;
+        var renamed = command.ExecuteNonQuery() > 0;
+        transaction.Commit();
+        return renamed;
     }
 
     public IReadOnlyList<Machine> List()
@@ -158,7 +179,7 @@ public sealed class SqliteMachineStore : IMachineStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM machines WHERE name = $name AND revoked_at IS NOT NULL";
+        command.CommandText = "DELETE FROM machine_aliases WHERE machine = $name AND EXISTS (SELECT 1 FROM machines WHERE name = $name AND revoked_at IS NOT NULL); DELETE FROM machines WHERE name = $name AND revoked_at IS NOT NULL";
         command.Parameters.AddWithValue(NameParameter, name);
         return command.ExecuteNonQuery() > 0;
     }

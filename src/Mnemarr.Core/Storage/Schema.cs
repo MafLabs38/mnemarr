@@ -207,6 +207,14 @@ public static class Schema
         """
         ALTER TABLE conversations ADD COLUMN computer_id TEXT;
         """,
+        // 13: the names a machine had before it was renamed (a collector goes on sending the name in its own configuration, and its key is what says who it is), and a lookup of a conversation by its session.
+        """
+        CREATE TABLE machine_aliases (
+            alias TEXT NOT NULL PRIMARY KEY,
+            machine TEXT NOT NULL
+        );
+        CREATE INDEX conversations_by_session ON conversations (session);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

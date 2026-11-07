@@ -40,6 +40,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE images; DROP TABLE note_tags; DROP TABLE note_links; DROP TABLE chunks_fts; DROP TABLE chunks; DROP TABLE notes; DROP TABLE sources;
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -68,6 +69,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 2;
                 """;
             back.ExecuteNonQuery();
@@ -93,6 +95,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE sources DROP COLUMN repository_url; ALTER TABLE sources DROP COLUMN repository_branch; ALTER TABLE sources DROP COLUMN repository_credential;
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 3;
                 """;
             back.ExecuteNonQuery();
@@ -119,6 +122,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE IF EXISTS pairings;
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 7;
                 """;
             back.ExecuteNonQuery();
@@ -143,6 +147,7 @@ public sealed class DatabaseFixture : IDisposable
             DROP TABLE IF EXISTS pairings;
             ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
             ALTER TABLE conversations DROP COLUMN computer_id;
+            DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
             PRAGMA user_version = 7;
             """;
         back.ExecuteNonQuery();
@@ -245,6 +250,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE pairings;
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 8;
                 """;
             back.ExecuteNonQuery();
@@ -272,6 +278,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE IF EXISTS pairings;
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 6;
                 """;
             back.ExecuteNonQuery();
@@ -298,6 +305,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE conversations DROP COLUMN title; ALTER TABLE conversations DROP COLUMN title_source; ALTER TABLE conversations DROP COLUMN summary; ALTER TABLE conversations DROP COLUMN title_tries;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 5;
                 """;
             back.ExecuteNonQuery();
@@ -322,6 +330,7 @@ public sealed class DatabaseFixture : IDisposable
                 INSERT INTO sources (id, name, kind, mode, path, created_at) VALUES ('s', 'courses', 'Knowledge', 'ReadOnly', '/x', 'now');
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
+                DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
                 PRAGMA user_version = 4;
                 """;
             back.ExecuteNonQuery();

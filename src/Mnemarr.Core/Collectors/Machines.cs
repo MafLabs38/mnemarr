@@ -125,6 +125,9 @@ public sealed record Enrolment(
 /// <summary>A new request and its code: the only time the code is available.</summary>
 public sealed record NewEnrolment(Enrolment Enrolment, string Code);
 
+/// <summary>The machine a key belongs to, under the name it has now, and the identifier of its computer when it has one (what an ingest is filed under).</summary>
+public sealed record Sender(string Machine, string? ComputerId);
+
 /// <summary>What a machine is given when it joins: its key, shown once.</summary>
 /// <summary><paramref name="RenamedFrom"/>: the computer was known under another name, which it now has: its conversations are to be filed under the new one.</summary>
 public sealed record EnrolledMachine(string Key, string Machine, MachineKind Kind, string? RenamedFrom = null);

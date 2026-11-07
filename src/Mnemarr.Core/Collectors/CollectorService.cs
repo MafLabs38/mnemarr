@@ -117,7 +117,15 @@ public sealed class CollectorService
             _audit.Append(actor, "collector.renamed", machine, newName);
         }
 
-        await _relocator.MoveAllAsync(machine, newName, cancellationToken);
+        try
+        {
+            await _relocator.MoveAllAsync(machine, newName, cancellationToken);
+        }
+        catch (RejectedException ex) when (ex.Problem == Problem.Busy)
+        {
+            // The machine has its new name and its key works at once; what is left is filed by the next batch, or by Merge on the machines page.
+            _audit.Append(actor, "collector.rename-incomplete", machine, newName);
+        }
     }
 
     /// <summary>Files what a machine sent under another machine that is enrolled, without making a conversation twice, and takes the first out of the list.</summary>
@@ -130,9 +138,9 @@ public sealed class CollectorService
 
         lock (_accounts.Gate)
         {
-            if (_machines.Get(into) is null)
+            if (_machines.Get(into) is not { RevokedAt: null })
             {
-                throw new RejectedException(Problem.NotFound, "There is no such machine to merge into: only a machine that is enrolled can receive.");
+                throw new RejectedException(Problem.NotFound, "There is no such machine to merge into: only a machine that is enrolled, and not revoked, can receive.");
             }
 
             if (_machines.Get(machine) is null && !_relocator.Holds(machine))
@@ -195,9 +203,9 @@ public sealed class CollectorService
 
     /// <summary>
     /// Whether a key may send for a machine: the one it was given to, and no other. A key of no machine is refused unless the setting says
-    /// that hand-made collector accounts are still allowed. A batch is also a sign of life. The answer is the identifier of the computer, when the machine has one.
+    /// that hand-made collector accounts are still allowed. A batch is also a sign of life. The answer is the machine the key belongs to, under its name now, and the identifier of its computer when it has one.
     /// </summary>
-    public string? Authorize(Guid? accountId, string claimedMachine)
+    public Sender Authorize(Guid? accountId, string claimedMachine)
     {
         var machine = accountId is { } id ? _machines.GetByAccount(id) : null;
         if (machine is null)
@@ -207,17 +215,18 @@ public sealed class CollectorService
                 throw new RejectedException(Problem.Forbidden, NoMachine);
             }
 
-            return null;
+            return new Sender(claimedMachine, null);
         }
 
         CheckNotRevoked(machine);
-        if (!string.Equals(machine.Name, claimedMachine, StringComparison.Ordinal))
+        // The key says who it is. The name it sends is the one in its own configuration: the name it has now, or one it had before it was renamed.
+        if (!string.Equals(machine.Name, claimedMachine, StringComparison.Ordinal) && !string.Equals(_machines.AliasOf(claimedMachine), machine.Name, StringComparison.Ordinal))
         {
             throw new RejectedException(Problem.Forbidden, $"This key belongs to the machine '{machine.Name}': it cannot send for another.");
         }
 
         _machines.Seen(machine.Name, _clock.GetUtcNow(), null);
-        return machine.ComputerId;
+        return new Sender(machine.Name, machine.ComputerId);
     }
 
     /// <summary>The sign of life at the end of a pass. The machine is the one the key belongs to.</summary>

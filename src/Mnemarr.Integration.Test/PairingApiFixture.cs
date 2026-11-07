@@ -33,11 +33,16 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
         return await response.Content.ReadFromJsonAsync<JsonElement>(Token);
     }
 
+    /// <summary>The code each request shows, as the person typed it: approving needs it.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> Codes = new();
+
     private static async Task<Guid> LookupAsync(HttpClient admin, string userCode)
     {
         var found = await admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = userCode }, Token);
         found.StatusCode.Should().Be(HttpStatusCode.OK);
-        return (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+        var id = (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+        Codes[id] = userCode;
+        return id;
     }
 
     [Fact]
@@ -55,7 +60,7 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
 
         var id = await LookupAsync(callers.Admin, userCode.ToLowerInvariant().Replace("-", " ", StringComparison.Ordinal));
         (await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/pairings", Token)).EnumerateArray().Should().Contain(item => item.GetProperty("id").GetGuid() == id && item.GetProperty("hostname").GetString() == "Gaming PC");
-        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine, kind = "always-on" }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine, kind = "always-on" }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         var answer = await PollAsync(deviceCode);
         answer.GetProperty("state").GetString().Should().Be("approved");
@@ -67,6 +72,23 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
         (await StatusOfAsync(callers.Admin, machine)).GetProperty("kind").GetString().Should().Be("always-on");
         (await PollAsync(deviceCode, HttpStatusCode.BadRequest)).GetProperty("title").GetString().Should().NotBeNullOrEmpty("the key is shown once");
         (await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/pairings", Token)).EnumerateArray().Should().NotContain(item => item.GetProperty("id").GetGuid() == id, "an answered request is not waiting any more");
+    }
+
+    [Fact]
+    public async Task should_not_approve_a_request_without_the_code_the_computer_shows_or_with_the_code_of_another()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var mine = await StartAsync("Gaming PC");
+        var id = await LookupAsync(callers.Admin, mine.GetProperty("userCode").GetString()!);
+        var other = await StartAsync("Another PC");
+        var otherCode = other.GetProperty("userCode").GetString();
+
+        var none = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = Callers.Unique("pc"), kind = "intermittent" }, Token);
+        var wrong = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = otherCode, machine = Callers.Unique("pc"), kind = "intermittent" }, Token);
+
+        none.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        wrong.StatusCode.Should().Be(HttpStatusCode.BadRequest, "a request is approved by its own code, not by its name or by another's code");
+        (await PollAsync(mine.GetProperty("deviceCode").GetString()!)).GetProperty("state").GetString().Should().Be("pending");
     }
 
     [Fact]
@@ -82,7 +104,7 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
         answer.GetProperty("state").GetString().Should().Be("rejected");
         answer.TryGetProperty("key", out var key).Should().BeTrue();
         key.ValueKind.Should().Be(JsonValueKind.Null);
-        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = Callers.Unique("pc"), kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict, "a refused request cannot be approved afterwards");
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine = Callers.Unique("pc"), kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict, "a refused request cannot be approved afterwards");
     }
 
     [Fact]
@@ -97,7 +119,7 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
 
         (await PollAsync(started.GetProperty("deviceCode").GetString()!)).GetProperty("state").GetString().Should().Be("expired");
         (await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = userCode }, Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = Callers.Unique("pc"), kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine = Callers.Unique("pc"), kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
@@ -112,7 +134,7 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
         {
             (await callers[role].GetAsync("/api/v1/pairings", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
             (await callers[role].PostAsJsonAsync("/api/v1/pairings/lookup", new { code = userCode }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
-            (await callers[role].PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = Callers.Unique("pc"), kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+            (await callers[role].PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine = Callers.Unique("pc"), kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
             (await callers[role].PostAsync($"/api/v1/pairings/{id}/reject", null, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
         }
 
@@ -127,8 +149,8 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
         var started = await StartAsync();
         var id = await LookupAsync(callers.Admin, started.GetProperty("userCode").GetString()!);
 
-        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = "a'; calc", kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = Callers.Unique("pc"), kind = "sometimes" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine = "a'; calc", kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine = Callers.Unique("pc"), kind = "sometimes" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         (await PollAsync(started.GetProperty("deviceCode").GetString()!)).GetProperty("state").GetString().Should().Be("pending");
     }
@@ -142,7 +164,7 @@ public sealed class PairingApiFixture : EnrolmentFixtureBase, IClassFixture<Enro
         var started = await StartAsync();
         var id = await LookupAsync(callers.Admin, started.GetProperty("userCode").GetString()!);
 
-        await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine, kind = "intermittent" }, Token);
+        await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = Codes[id], machine, kind = "intermittent" }, Token);
         var answer = await PollAsync(started.GetProperty("deviceCode").GetString()!);
 
         (await old.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(machine, "s1", Line("hello")), Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the key it had is replaced");

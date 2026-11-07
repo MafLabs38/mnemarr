@@ -35,8 +35,12 @@ export function useLookupPairing() {
 export function useApprovePairing() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (answer: { id: string; machine: string; kind: MachineKindName }) =>
-      apiSend<PairingItem>('POST', `/pairings/${answer.id}/approve`, { machine: answer.machine, kind: answer.kind }),
+    mutationFn: (answer: { id: string; machine: string; kind: MachineKindName; code: string }) =>
+      apiSend<PairingItem>('POST', `/pairings/${answer.id}/approve`, {
+        machine: answer.machine,
+        kind: answer.kind,
+        code: answer.code,
+      }),
     onSuccess: () => client.invalidateQueries({ predicate: isPairingQuery }),
   });
 }

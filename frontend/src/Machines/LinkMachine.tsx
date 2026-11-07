@@ -19,7 +19,13 @@ import { type PairingItem, useApprovePairing, useLookupPairing, usePairings, use
 type Outcome = { kind: 'linked'; name: string } | { kind: 'rejected' };
 
 /** The person says who the computer is for this Mnemarr: the name it will have here and whether it is always on, or refuses it. */
-function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (outcome: Outcome) => void }>) {
+function Answer({
+  pairing,
+  shownCode,
+  onDone,
+}: Readonly<{ pairing: PairingItem; shownCode: string; onDone: (outcome: Outcome) => void }>) {
+  // The code is the proof that the person is looking at the computer: it comes with the link the computer opened, or it is typed from the computer's screen.
+  const [code, setCode] = useState(shownCode);
   const [typed, setTyped] = useState(() => pairing.knownAs ?? machineNameFor(pairing.hostname));
   const [kind, setKind] = useState<MachineKindName>('intermittent');
   const approve = useApprovePairing();
@@ -29,7 +35,10 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    approve.mutate({ id: pairing.id, machine: name, kind }, { onSuccess: () => onDone({ kind: 'linked', name }) });
+    approve.mutate(
+      { id: pairing.id, machine: name, kind, code },
+      { onSuccess: () => onDone({ kind: 'linked', name }) },
+    );
   }
 
   return (
@@ -41,6 +50,14 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
       {pairing.knownAs && <Alert>{translate('LinkKnownAs', { name: pairing.knownAs })}</Alert>}
       <p className={styles.hint}>{translate('PairingExpires', { time: formatDateTime(pairing.expiresAt) })}</p>
       {(approve.error ?? reject.error) && <Alert>{(approve.error ?? reject.error)?.message}</Alert>}
+      {shownCode === '' && (
+        <TextField
+          label={translate('LinkCodeOnComputer')}
+          onChange={(event) => setCode(event.target.value)}
+          required
+          value={code}
+        />
+      )}
       <TextField
         label={translate('LinkName')}
         onChange={(event) => setTyped(event.target.value)}
@@ -59,7 +76,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
         value={kind}
       />
       <div className={styles.inline}>
-        <Button disabled={busy || name === ''} type="submit">
+        <Button disabled={busy || name === '' || code.trim() === ''} type="submit">
           {translate('LinkApprove')}
         </Button>
         <Button
@@ -139,7 +156,7 @@ export default function LinkMachine() {
               </form>
             )}
             {wanted.notFound && <Alert>{translate('LinkNotFound')}</Alert>}
-            {wanted.pairing && <Answer onDone={setOutcome} pairing={wanted.pairing} />}
+            {wanted.pairing && <Answer onDone={setOutcome} pairing={wanted.pairing} shownCode={code} />}
           </Card>
         )}
       </PageContentBody>

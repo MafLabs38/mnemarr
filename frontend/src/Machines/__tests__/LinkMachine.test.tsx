@@ -60,6 +60,7 @@ describe('LinkMachine', () => {
     expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/p1/approve')))).toEqual({
       machine: 'gaming-pc',
       kind: 'always-on',
+      code: 'ABCD-EFGH-JKLM',
     });
     expect(screen.getByRole('link', { name: 'See the machines' })).toHaveAttribute('href', '/machines');
   });
@@ -81,6 +82,22 @@ describe('LinkMachine', () => {
     expect(await screen.findByText('This computer is already the machine other-pc.')).toBeInTheDocument();
     expect(screen.getByLabelText('Name in this Mnemarr')).toBeInTheDocument();
     expect(screen.queryByText(/Linked as/)).not.toBeInTheDocument();
+  });
+
+  it('asks for the code the computer shows when the person comes from the list, and approves only with it', async () => {
+    const fetchMock = server({ list: [pairing] });
+    renderWithProviders(<LinkMachine />, '/link?id=p1');
+
+    const approve = await screen.findByRole('button', { name: 'Link this computer' });
+    expect(approve).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/Code shown on the computer/), 'abcd efgh jklm');
+    expect(approve).toBeEnabled();
+    await userEvent.click(approve);
+
+    expect(await screen.findByText(/Linked as gaming-pc/)).toBeInTheDocument();
+    expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/p1/approve')))).toMatchObject({
+      code: 'abcd efgh jklm',
+    });
   });
 
   it('refuses the computer when the person says it is not theirs, and says so', async () => {

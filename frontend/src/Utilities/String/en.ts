@@ -351,6 +351,7 @@ const en = {
   LinkIntro:
     'A computer that has the collector asked to be linked to this Mnemarr. Check that you started it just now, on your own computer, and that the name below is its name.',
   LinkCodeLabel: 'Code shown on the computer',
+  LinkCodeOnComputer: 'Code shown on the computer (to be sure it is that computer)',
   LinkFind: 'Find the request',
   LinkNotFound:
     'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',

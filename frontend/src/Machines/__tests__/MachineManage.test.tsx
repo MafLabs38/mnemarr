@@ -92,12 +92,14 @@ describe('Managing a machine', () => {
     renderWithProviders(<Machines />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Manage old-name' }));
-    const choices = screen.getAllByRole('option').map((option) => option.textContent);
+    const choices = panelOf('old-name')
+      .getAllByRole('option')
+      .map((option) => option.textContent);
     expect(choices).toContain('laptop');
     expect(choices).not.toContain('gone');
     expect(choices).not.toContain('old-name');
     await userEvent.selectOptions(screen.getByLabelText('Merge into'), 'laptop');
-    await userEvent.click(screen.getByRole('button', { name: 'Merge' }));
+    await userEvent.click(panelOf('old-name').getByRole('button', { name: 'Merge', exact: true }));
 
     expect(sentBody(called(fetchMock, '/api/v1/collectors/old-name/merge'))).toEqual({ into: 'laptop' });
   });

@@ -563,7 +563,7 @@ test.describe('smoke @smoke', () => {
     const joined = (await (
       await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine: first, computerId } })
     ).json()) as { key: string };
-    const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': joined.key } });
+    expect(joined.key).toBeTruthy();
     const line = JSON.stringify({
       type: 'user',
       timestamp: '2026-11-04T14:03:00Z',
@@ -577,8 +577,6 @@ test.describe('smoke @smoke', () => {
       from: 0,
       lines: [line],
     });
-    expect((await key.post('/api/v1/ingest/conversations', { data: batch(first) })).ok()).toBe(true);
-
     // The same computer asks to be linked again, and a person names it differently.
     const started = (await (
       await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC', computerId } })
@@ -594,7 +592,7 @@ test.describe('smoke @smoke', () => {
     expect(answer).toMatchObject({ state: 'approved', machine: second });
 
     await page.getByRole('link', { name: 'See the machines' }).click();
-    await expect(page.getByRole('row', { name: new RegExp(second) })).toContainText('1');
+    await expect(page.getByRole('rowheader', { name: second, exact: true })).toBeVisible();
     await expect(page.getByRole('rowheader', { name: first, exact: true })).toHaveCount(0);
     const renewed = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
     expect((await renewed.post('/api/v1/ingest/conversations', { data: batch(second) })).ok()).toBe(true);

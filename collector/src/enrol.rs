@@ -128,8 +128,9 @@ pub fn pair_start(server: &str, hostname: &str) -> Result<PairingRequest, Upload
                     user_code,
                     device_code,
                     verification_url,
-                    expires_in: Duration::from_secs(life),
-                    interval: Duration::from_secs(every.max(1)),
+                    // A server decides how long it waits, but not for ever and not in a way that overflows: a request lives an hour at most, and is asked about every minute at most.
+                    expires_in: Duration::from_secs(life.min(3600)),
+                    interval: Duration::from_secs(every.clamp(1, 60)),
                 }),
                 _ => Err(unexpected()),
             }

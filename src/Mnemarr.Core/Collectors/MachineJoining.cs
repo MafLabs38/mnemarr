@@ -10,14 +10,19 @@ namespace Mnemarr.Core.Collectors;
 /// </summary>
 public sealed class MachineJoining
 {
+    /// <summary>How long after its last sign of life a machine is taken to be sending: three passes of the collector.</summary>
+    public static readonly TimeSpan LiveWindow = TimeSpan.FromSeconds(90);
+
     private readonly IMachineStore _machines;
     private readonly MachineAccounts _accounts;
     private readonly IAuditLog _audit;
     private readonly ConversationRelocator _relocator;
     private readonly ILogger<MachineJoining> _logger;
+    private readonly TimeProvider _clock;
 
-    public MachineJoining(IMachineStore machines, MachineAccounts accounts, IAuditLog audit, ConversationRelocator relocator, ILogger<MachineJoining> logger)
+    public MachineJoining(IMachineStore machines, MachineAccounts accounts, IAuditLog audit, ConversationRelocator relocator, ILogger<MachineJoining> logger, TimeProvider clock)
     {
+        _clock = clock;
         _relocator = relocator;
         _logger = logger;
         _machines = machines;
@@ -39,11 +44,11 @@ public sealed class MachineJoining
             throw new RejectedException(Problem.Invalid, "The identifier of the computer is not valid.");
         }
 
-        KnownUnder(machine, computerId);
+        KnownUnder(machine, computerId, _clock.GetUtcNow());
     }
 
     /// <summary>The name under which this computer is known when it is not the one asked for (null when it is not known, or is known under this name).</summary>
-    private string? KnownUnder(string machine, string? computerId)
+    private string? KnownUnder(string machine, string? computerId, DateTimeOffset now)
     {
         if (computerId is null || _machines.GetByComputer(computerId) is not { } known || string.Equals(known.Name, machine, StringComparison.Ordinal))
         {
@@ -53,6 +58,13 @@ public sealed class MachineJoining
         if (_machines.Get(machine) is not null)
         {
             throw new RejectedException(Problem.Conflict, $"This computer is already the machine '{known.Name}', and '{machine}' is another machine: join under the name '{known.Name}', or merge the two machines first.");
+        }
+
+        // The identifier names a computer, it does not prove one (ADR 0031 §3): a machine that is sending right now is not taken over by whoever says its
+        // identifier. Stop its collector (a minute and a half), or remove it, and join again.
+        if (known.RevokedAt is null && known.LastSeenAt is { } seen && now - seen < LiveWindow)
+        {
+            throw new RejectedException(Problem.Conflict, $"This computer says it is the machine '{known.Name}', which is sending right now. Stop its collector and try again in a minute and a half, or remove '{known.Name}' first.");
         }
 
         return known.Name;
@@ -94,7 +106,7 @@ public sealed class MachineJoining
         }
 
         string? renamedFrom = null;
-        if (KnownUnder(machine, computerId) is { } known)
+        if (KnownUnder(machine, computerId, now) is { } known)
         {
             _machines.Rename(known, machine);
             renamedFrom = known;

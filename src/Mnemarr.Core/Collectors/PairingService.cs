@@ -98,8 +98,8 @@ public sealed class PairingService
             : throw new RejectedException(Problem.NotFound, "There is no such request waiting: it may be over or already answered. Start again on the machine.");
     }
 
-    /// <summary>A person says yes and names the machine; the machine takes its key the next time it asks.</summary>
-    public Pairing Approve(Guid id, string? machine, string? kind, string actor)
+    /// <summary>A person says yes, with the code the computer shows, and names the machine; the machine takes its key the next time it asks.</summary>
+    public Pairing Approve(Guid id, string? machine, string? kind, string? code, string actor)
     {
         if (!MachineNames.IsValid(machine))
         {
@@ -114,6 +114,14 @@ public sealed class PairingService
         lock (_accounts.Gate)
         {
             var pairing = Waiting(id);
+            // The code the computer shows is the proof that the person is looking at that computer: a request that anybody can make, with any host name, is not
+            // approved from its name alone.
+            var normalised = EnrolmentCodes.Normalise(code);
+            if (normalised is null || _pairings.FindByUserCodeHash(EnrolmentCodes.Hash(normalised))?.Id != id)
+            {
+                throw new RejectedException(Problem.Invalid, "The code is not the one this computer shows: look at the computer, and type the code it shows.");
+            }
+
             _joining.Check(machine!, pairing.ComputerId);
             _pairings.Approve(id, machine!, parsedKind, actor);
             _audit.Append(actor, "collector.pairing-approved", machine!, MachineKinds.Name(parsedKind));
