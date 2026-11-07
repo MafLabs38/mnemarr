@@ -26,6 +26,9 @@ pub const PACK_ID: &str = "MnemarrCollector";
 /// The file in the folder of the collector that holds what the person chose about updates.
 pub const SETTINGS_FILE: &str = "update.json";
 
+/// The file in the folder of the collector where the running collector writes where its update is at, so that `status` (another process) can tell.
+pub const STATE_FILE: &str = "update-state.txt";
+
 /// How long a request to a Mnemarr for its feed or its package may take.
 const TIMEOUT_MILLISECONDS: u64 = 60_000;
 
@@ -127,6 +130,14 @@ pub fn public_note(reason: &str) -> String {
     } else {
         "the last check could not reach a Mnemarr or take its update".to_string()
     }
+}
+
+/// Where the update of the running collector is at, as it wrote it (for `status`, which is another process); nothing when it is not running or has written none.
+pub fn recorded_state(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(dir.join(STATE_FILE))
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
 }
 
 /// What the person chose about updates.
@@ -331,6 +342,8 @@ pub struct Updater {
     version: Option<Version>,
     state: Arc<Mutex<UpdateState>>,
     pending: Arc<Mutex<Option<Arc<Pending>>>>,
+    /// The folder where the state is written for `status` to read, once the running collector knows it.
+    folder: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl Updater {
@@ -348,6 +361,7 @@ impl Updater {
             version,
             state: Arc::new(Mutex::new(state)),
             pending: Arc::new(Mutex::new(None)),
+            folder: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -369,8 +383,22 @@ impl Updater {
 
     fn set(&self, state: UpdateState) {
         if let Ok(mut current) = self.state.lock() {
-            *current = state;
+            *current = state.clone();
         }
+        if let Ok(folder) = self.folder.lock()
+            && let Some(folder) = folder.as_ref()
+        {
+            // Best effort: it is for `status`, which is another process.
+            let _ = std::fs::write(folder.join(STATE_FILE), state.text());
+        }
+    }
+
+    /// Says where the running collector keeps its folder: from now on, where the update is at is written there.
+    pub fn remember_in(&self, folder: &Path) {
+        if let Ok(mut slot) = self.folder.lock() {
+            *slot = Some(folder.to_path_buf());
+        }
+        self.set(self.state());
     }
 
     /// Whether an update is downloaded and waits to be applied.
@@ -393,9 +421,11 @@ impl Updater {
         true
     }
 
-    /// Asks each Mnemarr of the list what it carries, and gives back what is newer than the installed version, with the last thing that went wrong.
-    fn look(destinations: &[&Destination]) -> (Vec<(Offer, Pending)>, Option<String>) {
+    /// Asks each Mnemarr of the list what it carries, and gives back what is newer than the installed version, whether any of them answered, and the last thing
+    /// that went wrong.
+    fn look(destinations: &[&Destination]) -> (Vec<(Offer, Pending)>, bool, Option<String>) {
         let mut found = Vec::new();
+        let mut answered = false;
         let mut failure = None;
         for destination in destinations {
             let manager = match UpdateManager::new(source_of(&destination.server), None, None) {
@@ -407,6 +437,7 @@ impl Updater {
             };
             match manager.check_for_updates() {
                 Ok(UpdateCheck::UpdateAvailable(info)) => {
+                    answered = true;
                     if let Ok(version) = Version::parse(&info.TargetFullRelease.Version) {
                         let offer = Offer {
                             destination: destination.name.clone(),
@@ -421,11 +452,11 @@ impl Updater {
                         ));
                     }
                 }
-                Ok(_) => {}
+                Ok(_) => answered = true,
                 Err(error) => failure = Some(format!("{}: {error}", destination.name)),
             }
         }
-        (found, failure)
+        (found, answered, failure)
     }
 
     /// Takes the version of the winning offer and keeps it, ready to be applied.
@@ -472,13 +503,15 @@ impl Updater {
         if !self.begin() {
             return self.state();
         }
-        let (mut found, failure) = Self::look(&allowed);
+        let (mut found, answered, failure) = Self::look(&allowed);
         let offers: Vec<Offer> = found.iter().map(|(offer, _)| offer.clone()).collect();
         let state = match newest_index(&offers) {
             Some(index) => {
                 let (offer, pending) = found.swap_remove(index);
                 self.take(&offer, pending)
             }
+            // A Mnemarr that carries no updates (an older one, or built without them) is not a failure when another answered: only when none did.
+            None if answered => UpdateState::UpToDate,
             None => failure.map_or(UpdateState::UpToDate, UpdateState::Failed),
         };
         self.set(state.clone());
@@ -506,7 +539,12 @@ impl Updater {
         pending
             .manager
             .apply_updates_and_restart(&pending.info)
-            .map_err(|error| error.to_string())
+            .map_err(|error| {
+                self.set(UpdateState::Failed(format!(
+                    "it could not be applied: {error}"
+                )));
+                error.to_string()
+            })
     }
 }
 
@@ -732,5 +770,26 @@ mod tests {
         );
         assert!(!leaked.contains("other"), "{leaked}");
         assert!(!leaked.contains("https"), "{leaked}");
+    }
+
+    #[test]
+    fn should_leave_where_the_update_is_at_for_status_to_read_and_know_when_none_was_left() {
+        let dir = std::env::temp_dir().join(format!("mnemarr-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        assert_eq!(recorded_state(&dir), None);
+        std::fs::write(
+            dir.join(STATE_FILE),
+            "version 1.4.0 is ready: it is applied when the collector restarts\n",
+        )
+        .unwrap();
+        assert_eq!(
+            recorded_state(&dir).as_deref(),
+            Some("version 1.4.0 is ready: it is applied when the collector restarts")
+        );
+        std::fs::write(dir.join(STATE_FILE), "  \n").unwrap();
+        assert_eq!(recorded_state(&dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -451,6 +451,9 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
     }
     let get = |name: &str| std::env::var(name).ok();
     let dir = config_dir(options.config_dir.as_deref(), &get);
+    if forever && let Some(folder) = &dir {
+        updater().remember_in(folder);
+    }
     let condition = status::shared();
     if forever && !options.no_tray && cfg!(windows) {
         return collect_with_icon(options, configs, dir, condition);
@@ -909,6 +912,17 @@ fn update_command(options: &UpdateOptions) -> ExitCode {
     }
 }
 
+/// What `status` says of updates: where the running collector says its update is at, or, when none runs, that it is not known.
+fn update_line(dir: &std::path::Path) -> String {
+    let updater = updater();
+    if !updater.installed() {
+        return UpdateState::NotInstalled.text();
+    }
+    update::recorded_state(dir).unwrap_or_else(|| {
+        "not known (it is told by the running collector, which has not asked yet)".to_string()
+    })
+}
+
 /// Asks the collector to be quiet: for a while (`--minutes`), or until `resume`. It also stops the icon from showing "online": the running collector reads
 /// the same file.
 fn pause(options: &Options) -> ExitCode {
@@ -989,7 +1003,7 @@ fn status(options: &Options) -> ExitCode {
         io::stdout(),
         "machine: {machines}\nserver: {servers}\nversion: {}\nupdates: {}\nrunning: {}\nstarts with your session: {}\npaused: {}\nlog: {}",
         version_text(),
-        updater().state().text(),
+        update_line(&dir),
         state
             .running
             .map_or("no".to_string(), |pid| format!("yes (process {pid})")),

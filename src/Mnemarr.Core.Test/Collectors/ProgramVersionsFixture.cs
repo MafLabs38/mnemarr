@@ -40,5 +40,6 @@ public sealed class ProgramVersionsFixture
     [InlineData("1.0.0-a..b")]
     [InlineData("1.0.0-")]
     [InlineData("01.2.3")]
+    [InlineData("1.0.0-01")]
     public void should_refuse_what_is_not_a_semantic_version(string text) => ProgramVersions.TryParse(text, out _).Should().BeFalse();
 }

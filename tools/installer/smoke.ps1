@@ -101,5 +101,7 @@ try {
 }
 Wait-Until { -not (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector } 'the entry that starts it with the session taken away'
 Wait-Until { -not (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $app) } 'the folder taken off the PATH'
+# The machine stays joined: its keys and positions are in the folder of the collector, which is not the one the uninstaller removes.
+if (-not (Test-Path (Join-Path $config 'destinations.json'))) { throw 'The uninstall removed the folder of the collector: the machine would not stay joined' }
 Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
 Write-Host 'installer, update and uninstall: all done'

@@ -471,4 +471,32 @@ mod tests {
         assert_eq!(reason_of("a page of a proxy"), "a page of a proxy");
         assert_eq!(reason_of(&"x".repeat(1000)).len(), 300);
     }
+
+    #[test]
+    fn should_say_in_the_sign_of_life_that_it_can_update_and_why_it_could_not() {
+        let (address, handle) = serve_once("204 No Content", "");
+
+        HttpUploader::new(&address, "k")
+            .heartbeat(&Heartbeat {
+                version: "1.2.3",
+                pending_lines: 0,
+                error: None,
+                paused: false,
+                interval_seconds: 120,
+                can_update: true,
+                update_note: Some(
+                    "none of the Mnemarr it sends to is reached over HTTPS".to_string(),
+                ),
+            })
+            .unwrap();
+
+        let request = handle.join().unwrap();
+        let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(body["canUpdate"], json!(true));
+        assert_eq!(body["intervalSeconds"], json!(120));
+        assert_eq!(
+            body["updateNote"],
+            json!("none of the Mnemarr it sends to is reached over HTTPS")
+        );
+    }
 }

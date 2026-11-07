@@ -51,7 +51,13 @@ again for each machine. The maintainer already ships his other Windows applicati
 it, and the link page says so. The protection is the person's choice of what to link, TLS to it, and that an update never goes back to an older version; it is not a
 signature (the checksum of the feed comes from the same server as the package: it proves the file arrived whole, not who made it). A stricter rule, such as
 **marking which destinations may update the collector** (by default the one it was installed from), or signing the packages with a key that the collector pins,
-is possible and costs a choice at each link; it is the maintainer's to ask for. The requests for the feed and the packages are made by Velopack's own client,
+is possible and costs a choice at each link; it is the maintainer's to ask for. Two consequences are written down here. **The newest version wins, and an update never goes back**: one linked Mnemarr that offers a high version
+(a fork, a test instance, a mistake such as `9.9.9`) takes the collector for good, the others stop being able to update it, and nothing but installing again
+rolls it back. **A collector installed over an earlier one inherits the destinations it already had** (the folder of the collector is kept on purpose): a sandbox
+or a friend's Mnemarr linked long ago becomes an update source without anyone choosing it. Both are removed by the same stricter rule, and `mnemarr-collector
+destinations` lists what a collector is linked to.
+
+The requests for the feed and the packages are made by Velopack's own client,
 which follows redirects like the rest of the system's tools: a Mnemarr that is trusted to run code is trusted not to redirect it, and no key is sent on them.
 
 ## Not here

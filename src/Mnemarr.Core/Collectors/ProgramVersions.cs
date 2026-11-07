@@ -38,7 +38,7 @@ public static class ProgramVersions
         }
 
         var parts = pre.Length == 0 ? [] : pre.Split('.');
-        if (parts.Any(string.IsNullOrEmpty) || numbers.Any(number => number.Length > 1 && number[0] == '0'))
+        if (parts.Any(string.IsNullOrEmpty) || numbers.Any(number => number.Length > 1 && number[0] == '0') || parts.Any(part => part.Length > 1 && part[0] == '0' && part.All(char.IsAsciiDigit)))
         {
             return false;
         }

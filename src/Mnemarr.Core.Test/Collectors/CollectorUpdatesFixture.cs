@@ -33,6 +33,10 @@ public sealed class CollectorUpdatesFixture : IDisposable
     [InlineData("a\\b-Setup.exe", false)]
     [InlineData("-full.nupkg", false)]
     [InlineData("x-Setup.exe.txt", false)]
+    [InlineData("releases.win.json\n", false)]
+    [InlineData("MnemarrCollector-win-Setup.EXE", false)]
+    [InlineData("MnemarrCollector-win-Setup.exe\0", false)]
+    [InlineData("MnemarrCollector-1.0.0-full.nupkg\n", false)]
     [InlineData(".hidden-Setup.exe", false)]
     [InlineData("", false)]
     public void should_serve_only_the_files_the_installer_makes(string name, bool served) => CollectorUpdates.IsServed(name).Should().Be(served);

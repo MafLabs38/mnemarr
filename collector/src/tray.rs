@@ -186,7 +186,10 @@ pub fn run(
     let welcomed = dir.join("welcomed");
     if destinations::load(&dir).is_empty() && !welcomed.exists() {
         page = open_link_page(&dir);
-        let _ = std::fs::write(&welcomed, "1");
+        // Only when the page did open: a person whose browser could not be reached is offered it again at the next start.
+        if page.is_some() {
+            let _ = std::fs::write(&welcomed, "1");
+        }
     }
     let mut shown_update = String::new();
     EventLoop::new().run(move |_event, _target, control_flow| {
@@ -244,6 +247,7 @@ pub fn run(
                 UpdateState::Checking | UpdateState::Downloading(_) => {
                     ("Looking for an update...".to_string(), false)
                 }
+                UpdateState::Failed(_) => ("Update failed: try again".to_string(), true),
                 _ => ("Check for updates".to_string(), true),
             };
             if text != shown_update {
