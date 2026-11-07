@@ -42,7 +42,7 @@ Wait-Until { Test-Path $stub } 'the program at the root, which an update does no
 Wait-Until { (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session'
 Wait-Until { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $app } 'the folder on the PATH of the user'
 # A new terminal reads the PATH of the user: this one is given it, as a person would find it.
-$env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
+$env:Path = $env:Path + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $typed = (cmd /c 'mnemarr-collector --version 2>&1') -join ' '
 if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a command in a terminal: '$typed'" }
 $said = (& $real --version) -join ' '
