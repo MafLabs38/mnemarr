@@ -37,7 +37,7 @@ public sealed class ConversationRelocator
     public IReadOnlyList<MachineActivity> Machines() => _store.Machines();
 
     /// <summary>Whether conversations are held under this name.</summary>
-    public bool Holds(string machine) => _store.OfMachine(machine).Count > 0;
+    public bool Holds(string machine) => _store.AnyOfMachine(machine);
 
     /// <summary>
     /// A conversation that the same computer held under names that are not machines (it was installed again under another name) goes to the machine that

@@ -32,11 +32,9 @@ public sealed class PairController : ControllerBase
 
     private readonly PairingService _pairings;
     private readonly InstallCommands _commands;
-    private readonly MachineJoining _joining;
 
-    public PairController(PairingService pairings, InstallCommands commands, MachineJoining joining)
+    public PairController(PairingService pairings, InstallCommands commands)
     {
-        _joining = joining;
         _pairings = pairings;
         _commands = commands;
     }
@@ -65,12 +63,7 @@ public sealed class PairController : ControllerBase
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<PairPollResult> Poll(PairPollRequest request, CancellationToken cancellationToken)
     {
-        var answer = _pairings.Poll(request.DeviceCode);
-        if (answer.Machine is { } renamed)
-        {
-            // A computer that was known under another name: what it sent is filed under the name it has now.
-            await _joining.FileConversationsAsync(renamed, cancellationToken);
-        }
+        var answer = await _pairings.PollAsync(request.DeviceCode, cancellationToken);
 
         return answer.Machine is { } machine
             ? new PairPollResult(answer.State, machine.Key, machine.Machine, MachineKinds.Name(machine.Kind))

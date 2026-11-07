@@ -19,11 +19,9 @@ public sealed class EnrolController : ControllerBase
     public const int MaxRequestBytes = 4096;
 
     private readonly EnrolmentService _enrolments;
-    private readonly MachineJoining _joining;
 
-    public EnrolController(EnrolmentService enrolments, MachineJoining joining)
+    public EnrolController(EnrolmentService enrolments)
     {
-        _joining = joining;
         _enrolments = enrolments;
     }
 
@@ -36,8 +34,7 @@ public sealed class EnrolController : ControllerBase
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<EnrolResult> Enrol(EnrolRequest request, CancellationToken cancellationToken)
     {
-        var enrolled = _enrolments.Exchange(request.Code, request.Machine, request.ComputerId);
-        await _joining.FileConversationsAsync(enrolled, cancellationToken);
+        var enrolled = await _enrolments.ExchangeAsync(request.Code, request.Machine, request.ComputerId, cancellationToken);
 
         return new EnrolResult(enrolled.Key, enrolled.Machine, MachineKinds.Name(enrolled.Kind));
     }

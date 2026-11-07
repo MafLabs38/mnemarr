@@ -162,10 +162,6 @@ pub fn state_dir(get: &dyn Fn(&str) -> Option<String>, home: Option<&PathBuf>) -
         .map(|folder| folder.join("mnemarr-collector"))
 }
 
-/// Everything the passes need, for each Mnemarr this machine sends to (ADR 0030). When an address or a key is given (on the command line or in the
-/// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
-/// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
-/// not allowed, or whose key is gone, is left out and the others go on.
 /// Whether a destination can be used: its address is allowed, its machine name is one the server accepts, and its key can be read. The key is given back.
 pub fn check_destination(
     dir: &std::path::Path,
@@ -201,6 +197,10 @@ pub fn problems(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> Vec<
         .collect()
 }
 
+/// Everything the passes need, for each Mnemarr this machine sends to (ADR 0030). When an address or a key is given (on the command line or in the
+/// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
+/// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
+/// not allowed, or whose key is gone, is left out and the others go on.
 pub fn resolve_all(
     options: &Options,
     get: &dyn Fn(&str) -> Option<String>,

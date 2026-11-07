@@ -51,6 +51,9 @@ public interface IConversationStore
     /// <summary>Every conversation held for a machine.</summary>
     IReadOnlyList<ConversationRecord> OfMachine(string machine);
 
+    /// <summary>Whether any conversation is held for a machine (one row is read, not all of them).</summary>
+    bool AnyOfMachine(string machine);
+
     /// <summary>The conversations of this session, on whichever machine they are held.</summary>
     IReadOnlyList<ConversationRecord> OfSession(string session);
 
@@ -222,6 +225,15 @@ public sealed class SqliteConversationStore : IConversationStore
     }
 
     public IReadOnlyList<ConversationRecord> OfMachine(string machine) => Many($"SELECT {Columns} FROM conversations WHERE machine = $key ORDER BY started_at", machine);
+
+    public bool AnyOfMachine(string machine)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM conversations WHERE machine = $machine LIMIT 1";
+        command.Parameters.AddWithValue(MachineParameter, machine);
+        return command.ExecuteScalar() is not null;
+    }
 
     public IReadOnlyList<ConversationRecord> OfSession(string session) => Many($"SELECT {Columns} FROM conversations WHERE session = $key", session);
 

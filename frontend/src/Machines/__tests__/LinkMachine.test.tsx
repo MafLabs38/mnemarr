@@ -45,10 +45,10 @@ describe('LinkMachine', () => {
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
 
     expect(await screen.findByText('Gaming PC')).toBeInTheDocument();
-    expect(screen.getByText(/Check that your computer shows this code: ABCD-EFGH-JKLM/)).toBeInTheDocument();
     expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/lookup')))).toEqual({
       code: 'ABCD-EFGH-JKLM',
     });
+    await userEvent.type(screen.getByLabelText(/Type the code that your computer shows/), 'ABCD-EFGH-JKLM');
     const name = screen.getByLabelText('Name in this Mnemarr');
     expect(name).toHaveValue('gaming-pc');
     await userEvent.clear(name);
@@ -78,7 +78,8 @@ describe('LinkMachine', () => {
     server({ approveFails: true });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Link this computer' }));
+    await userEvent.type(await screen.findByLabelText(/Type the code that your computer shows/), 'ABCD-EFGH-JKLM');
+    await userEvent.click(screen.getByRole('button', { name: 'Link this computer' }));
 
     expect(await screen.findByText('This computer is already the machine other-pc.')).toBeInTheDocument();
     expect(screen.getByLabelText('Name in this Mnemarr')).toBeInTheDocument();
@@ -91,7 +92,7 @@ describe('LinkMachine', () => {
 
     const approve = await screen.findByRole('button', { name: 'Link this computer' });
     expect(approve).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/Code shown on the computer/), 'abcd efgh jklm');
+    await userEvent.type(screen.getByLabelText(/Type the code that your computer shows/), 'abcd efgh jklm');
     expect(approve).toBeEnabled();
     await userEvent.click(approve);
 

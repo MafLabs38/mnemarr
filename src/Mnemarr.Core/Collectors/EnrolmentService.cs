@@ -141,7 +141,15 @@ public sealed class EnrolmentService
     /// Exchanges a code for the key of a machine. Anonymous: the code is all that is needed, so a wrong one is counted and the count is
     /// limited for the whole server, and every failure gets the same words.
     /// </summary>
-    public EnrolledMachine Exchange(string? code, string? machine, string? computerId = null)
+    public async Task<EnrolledMachine> ExchangeAsync(string? code, string? machine, string? computerId, CancellationToken cancellationToken)
+    {
+        var joined = Exchange(code, machine, computerId);
+        // A computer that was known under another name: what it sent is filed under the name it has now (best effort, after the key was given).
+        await _joining.FileConversationsAsync(joined, cancellationToken);
+        return joined;
+    }
+
+    private EnrolledMachine Exchange(string? code, string? machine, string? computerId)
     {
         lock (_accounts.Gate)
         {

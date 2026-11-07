@@ -143,7 +143,19 @@ public sealed class PairingService
     /// The machine asks what became of its request. Anonymous, with the secret it was given: a secret that is wrong is counted for the whole server, like a
     /// wrong code. The key is given once, to the first to ask after the approval.
     /// </summary>
-    public PairingAnswer Poll(string? deviceCode)
+    public async Task<PairingAnswer> PollAsync(string? deviceCode, CancellationToken cancellationToken)
+    {
+        var answer = Poll(deviceCode);
+        if (answer.Machine is { } joined)
+        {
+            // A computer that was known under another name: what it sent is filed under the name it has now (best effort, after the key was given).
+            await _joining.FileConversationsAsync(joined, cancellationToken);
+        }
+
+        return answer;
+    }
+
+    private PairingAnswer Poll(string? deviceCode)
     {
         lock (_accounts.Gate)
         {
