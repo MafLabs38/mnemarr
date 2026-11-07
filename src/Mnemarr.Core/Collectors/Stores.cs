@@ -86,19 +86,29 @@ public sealed class SqliteMachineStore : IMachineStore
     {
         using var connection = _database.Open();
         using var transaction = connection.BeginTransaction();
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = """
-            UPDATE machines SET name = $new WHERE name = $name;
+        using var rename = connection.CreateCommand();
+        rename.Transaction = transaction;
+        rename.CommandText = "UPDATE machines SET name = $new WHERE name = $name";
+        rename.Parameters.AddWithValue(NameParameter, name);
+        rename.Parameters.AddWithValue("$new", newName);
+        if (rename.ExecuteNonQuery() == 0)
+        {
+            return false;
+        }
+
+        // The names it had before still answer for it, and the new name is not an alias of anything any more.
+        using var aliases = connection.CreateCommand();
+        aliases.Transaction = transaction;
+        aliases.CommandText = """
             UPDATE machine_aliases SET machine = $new WHERE machine = $name;
             DELETE FROM machine_aliases WHERE alias = $new;
-            INSERT INTO machine_aliases (alias, machine) SELECT $name, $new WHERE EXISTS (SELECT 1 FROM machines WHERE name = $new);
+            INSERT OR REPLACE INTO machine_aliases (alias, machine) VALUES ($name, $new);
             """;
-        command.Parameters.AddWithValue(NameParameter, name);
-        command.Parameters.AddWithValue("$new", newName);
-        var renamed = command.ExecuteNonQuery() > 0;
+        aliases.Parameters.AddWithValue(NameParameter, name);
+        aliases.Parameters.AddWithValue("$new", newName);
+        aliases.ExecuteNonQuery();
         transaction.Commit();
-        return renamed;
+        return true;
     }
 
     public IReadOnlyList<Machine> List()
