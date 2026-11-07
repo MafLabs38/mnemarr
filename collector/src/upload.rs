@@ -53,6 +53,8 @@ pub struct Heartbeat<'a> {
     pub paused: bool,
     /// How often a pass is made: a Mnemarr takes the machine to be sending while its last sign of life is younger than three passes.
     pub interval_seconds: u64,
+    /// The program was installed with the installer and can replace itself.
+    pub can_update: bool,
 }
 
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
@@ -171,6 +173,7 @@ impl Uploader for HttpUploader {
                 "program": crate::computer::program_hash(),
                 "computerId": crate::computer::id(),
                 "intervalSeconds": beat.interval_seconds,
+                "canUpdate": beat.can_update,
             }),
         )?;
         if status == 200 || status == 204 {
@@ -402,6 +405,7 @@ mod tests {
                 error: Some("1 file(s) could not be read"),
                 paused: true,
                 interval_seconds: 30,
+                can_update: false,
             })
             .unwrap();
 
@@ -421,6 +425,7 @@ mod tests {
                 "program": crate::computer::program_hash(),
                 "computerId": crate::computer::id(),
                 "intervalSeconds": 30,
+                "canUpdate": false,
             })
         );
     }
@@ -434,6 +439,7 @@ mod tests {
             error: None,
             paused: false,
             interval_seconds: 30,
+            can_update: false,
         };
         let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
         assert!(matches!(

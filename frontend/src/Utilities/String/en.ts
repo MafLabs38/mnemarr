@@ -286,6 +286,9 @@ const en = {
   NewCode: 'Code of the new machine',
   PasteThisLine:
     'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and installs it. The code in it works once, for 15 minutes, and is shown only now.',
+  DownloadInstaller: 'Download the installer for {system}',
+  DownloadInstallerHelp:
+    'Recommended: it installs the collector like any program (in the list of installed applications, with an uninstaller), keeps itself up to date, and asks which Mnemarr to link to: you approve it here. It holds no code.',
   DownloadFor: 'Download for {system}',
   DownloadHelp:
     'The file already knows this Mnemarr, the machine and the code: open it, and it joins the machine and installs the collector. Windows may say the publisher is unknown, because the program is not signed yet: choose "More info", then "Run anyway".',
@@ -300,6 +303,7 @@ const en = {
   NeverSeen: 'Never',
   ConversationsCount: 'Conversations',
   ProgramDiffers: 'Another program than this Mnemarr carries',
+  UpdateAvailableTo: 'Update available: {version}',
   Manage: 'Manage',
   ManageMachine: 'Manage {name}',
   RenameTitle: 'Rename',

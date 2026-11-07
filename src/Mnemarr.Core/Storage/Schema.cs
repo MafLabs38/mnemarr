@@ -219,6 +219,10 @@ public static class Schema
         """
         ALTER TABLE machines ADD COLUMN interval_seconds INTEGER;
         """,
+        // 15: whether a collector was installed with the installer and can replace itself: only those are told that an update is available (ADR 0032).
+        """
+        ALTER TABLE machines ADD COLUMN can_update INTEGER NOT NULL DEFAULT 0;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

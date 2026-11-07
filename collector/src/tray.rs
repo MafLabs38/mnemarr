@@ -16,6 +16,7 @@ use crate::control;
 use crate::destinations;
 use crate::link_page::{self, LinkPage};
 use crate::status::{self, Condition, Shared};
+use crate::update::{UpdateState, Updater};
 
 /// The side of the icon, in pixels. Windows draws it smaller, from this.
 const SIZE: u32 = 64;
@@ -52,12 +53,14 @@ struct Items {
     /// One to open each Mnemarr, with the address it opens.
     open: Vec<(MenuItem, String)>,
     link: MenuItem,
+    /// The way to look for a newer version, and to apply one that is ready: only for a collector that was installed with the installer.
+    update: Option<MenuItem>,
     quit: MenuItem,
 }
 
 /// Builds the menu for the Mnemarr this machine sends to: a line of state, a line for each when there are several, the pause, one way to open each, and the
 /// way to link another.
-fn build(destinations: &[(String, String)]) -> Result<Items, String> {
+fn build(destinations: &[(String, String)], can_update: bool) -> Result<Items, String> {
     let menu = Menu::new();
     let title = MenuItem::new("Mnemarr collector", false, None);
     let state_line = MenuItem::new("starting", false, None);
@@ -87,6 +90,7 @@ fn build(destinations: &[(String, String)]) -> Result<Items, String> {
         })
         .collect();
     let link = MenuItem::new("Link to a Mnemarr...", true, None);
+    let update = can_update.then(|| MenuItem::new("Check for updates", true, None));
     let quit = MenuItem::new("Quit the collector", true, None);
     let separator_one = PredefinedMenuItem::separator();
     let separator_two = PredefinedMenuItem::separator();
@@ -108,6 +112,9 @@ fn build(destinations: &[(String, String)]) -> Result<Items, String> {
         menu.append(item).map_err(|error| error.to_string())?;
     }
     menu.append(&link).map_err(|error| error.to_string())?;
+    if let Some(item) = &update {
+        menu.append(item).map_err(|error| error.to_string())?;
+    }
     menu.append(&separator_three)
         .map_err(|error| error.to_string())?;
     menu.append(&quit).map_err(|error| error.to_string())?;
@@ -120,6 +127,7 @@ fn build(destinations: &[(String, String)]) -> Result<Items, String> {
         resume,
         open,
         link,
+        update,
         quit,
     })
 }
@@ -160,9 +168,10 @@ pub fn run(
     dir: PathBuf,
     known: Vec<(String, String)>,
     condition: Shared,
+    updater: Updater,
 ) -> Result<Infallible, String> {
     let mut shown_destinations = current(&dir, &known);
-    let mut items = build(&shown_destinations)?;
+    let mut items = build(&shown_destinations, updater.installed())?;
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(items.menu.clone()))
         .with_tooltip("Mnemarr collector")
@@ -173,6 +182,13 @@ pub fn run(
     let mut shown = Condition::Starting;
     let mut shown_lines: Vec<String> = Vec::new();
     let mut page: Option<LinkPage> = None;
+    // The first time the collector runs and is linked to nothing, the page where a person links it opens by itself, once: nobody has to know where to look.
+    let welcomed = dir.join("welcomed");
+    if destinations::load(&dir).is_empty() && !welcomed.exists() {
+        page = open_link_page(&dir);
+        let _ = std::fs::write(&welcomed, "1");
+    }
+    let mut shown_update = String::new();
     EventLoop::new().run(move |_event, _target, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + REFRESH);
         while let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -187,6 +203,20 @@ pub fn run(
                     previous.stop();
                 }
                 page = open_link_page(&dir);
+            } else if items
+                .update
+                .as_ref()
+                .is_some_and(|item| event.id == *item.id())
+            {
+                if updater.ready() {
+                    let _ = updater.apply();
+                } else {
+                    let checker = updater.clone();
+                    let listed = destinations::load(&dir);
+                    std::thread::spawn(move || {
+                        checker.check(&listed);
+                    });
+                }
             } else if event.id == *items.quit.id() {
                 *control_flow = ControlFlow::Exit;
             } else if let Some((_, address)) =
@@ -198,13 +228,29 @@ pub fn run(
         // A Mnemarr that was linked from the page (or by a command) is in the menu from now on.
         let fresh = current(&dir, &known);
         if fresh != shown_destinations
-            && let Ok(rebuilt) = build(&fresh)
+            && let Ok(rebuilt) = build(&fresh, updater.installed())
         {
             tray.set_menu(Some(Box::new(rebuilt.menu.clone())));
             items = rebuilt;
             shown_destinations = fresh;
             shown_lines.clear();
             shown = Condition::Starting;
+            shown_update.clear();
+        }
+        // What the update line says follows where the update is at.
+        if let Some(item) = &items.update {
+            let (text, enabled) = match updater.state() {
+                UpdateState::Ready(version) => (format!("Update to {version}: restart now"), true),
+                UpdateState::Checking | UpdateState::Downloading(_) => {
+                    ("Looking for an update...".to_string(), false)
+                }
+                _ => ("Check for updates".to_string(), true),
+            };
+            if text != shown_update {
+                item.set_text(&text);
+                item.set_enabled(enabled);
+                shown_update = text;
+            }
         }
         // A pause is what the person asked for, and shows at once; the rest is what the collector last said of itself.
         let paused = control::current(&dir, SystemTime::now()).is_some();

@@ -47,6 +47,14 @@ export default function NewCode({
           value={system}
         />
       )}
+      {line?.setupUrl && (
+        <div className={styles.download}>
+          <a className={styles.downloadButton} download href={line.setupUrl}>
+            {translate('DownloadInstaller', { system: line.label })}
+          </a>
+          <p className={styles.hint}>{translate('DownloadInstallerHelp')}</p>
+        </div>
+      )}
       {line?.downloadUrl && (
         <div className={styles.download}>
           <a className={styles.downloadButton} download href={line.downloadUrl}>

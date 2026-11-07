@@ -59,7 +59,7 @@ public interface IEnrolmentStore
 public sealed class SqliteMachineStore : IMachineStore
 {
     private const string NameParameter = "$name";
-    private const string MachineColumns = "name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id, platform, program, interval_seconds";
+    private const string MachineColumns = "name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id, platform, program, interval_seconds, can_update";
     private readonly IDatabase _database;
 
     public SqliteMachineStore(IDatabase database)
@@ -149,7 +149,7 @@ public sealed class SqliteMachineStore : IMachineStore
         using var command = connection.CreateCommand();
         command.CommandText = heartbeat is null
             ? "UPDATE machines SET last_seen_at = $at WHERE name = $name"
-            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused, platform = $platform, program = $program, interval_seconds = $interval WHERE name = $name";
+            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused, platform = $platform, program = $program, interval_seconds = $interval, can_update = $canUpdate WHERE name = $name";
         command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
         if (heartbeat is not null)
@@ -161,6 +161,7 @@ public sealed class SqliteMachineStore : IMachineStore
             command.Parameters.AddWithValue("$platform", (object?)heartbeat.Platform ?? DBNull.Value);
             command.Parameters.AddWithValue("$program", (object?)heartbeat.Program ?? DBNull.Value);
             command.Parameters.AddWithValue("$interval", (object?)heartbeat.IntervalSeconds ?? DBNull.Value);
+            command.Parameters.AddWithValue("$canUpdate", heartbeat.CanUpdate ? 1 : 0);
         }
 
         command.ExecuteNonQuery();
@@ -219,7 +220,8 @@ public sealed class SqliteMachineStore : IMachineStore
         reader.IsDBNull(10) ? null : reader.GetString(10),
         reader.IsDBNull(11) ? null : reader.GetString(11),
         reader.IsDBNull(12) ? null : reader.GetString(12),
-        reader.IsDBNull(13) ? null : reader.GetInt32(13));
+        reader.IsDBNull(13) ? null : reader.GetInt32(13),
+        reader.GetInt32(14) != 0);
 }
 
 public sealed class SqliteEnrolmentStore : IEnrolmentStore

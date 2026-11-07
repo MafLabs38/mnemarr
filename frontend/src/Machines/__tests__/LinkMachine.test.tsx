@@ -120,6 +120,7 @@ describe('LinkMachine', () => {
       pendingLines: 0,
       error: null,
       programDiffers: false,
+      updateTo: null,
     };
     server({ machines: [existing] });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');

@@ -18,12 +18,18 @@ What an operator does once Mnemarr runs for real. The examples use `mnemarr.exam
 ## Add a machine
 
 1. In the interface: **Machines > Add a machine**, give it a name (letters, digits, dots, hyphens; 50 characters at most) and say whether it is always on or comes and goes.
-2. Run the one line it shows in a terminal of that machine, **as the user whose conversations it will read**, or download the program it offers for Windows and open it. The code works for 15 minutes and once.
+2. **On Windows, download the installer** it offers and open it (the same file for every machine, no code in it): the collector asks to be linked, and you approve it in **Computers asking to be linked**. Or run the one line it shows in a terminal of that machine, **as the user whose conversations it will read**, or download the program that carries a code and open it. The code works for 15 minutes and once.
 3. The machine shows **online** within a minute. If it does not: [the collector page](collector.md) lists what it says when it cannot join.
 4. An assistant may ask for the code over MCP (`request_collector_enrolment`); it waits for you to approve it on the same page.
 5. **A computer that already has the collector** needs none of this to be linked to this Mnemarr: on that computer, `mnemarr-collector link --server <address of this Mnemarr>` (or **Link to a Mnemarr…** on the icon, on Windows). It shows an address and a code; you open it signed in, check the name the computer gives itself, **choose the name it will have in this Mnemarr** and approve. The computer then sends here as well as to the Mnemarr it already sent to. A computer that asked and is not approved waits in **Computers asking to be linked** for 10 minutes.
 
 The page offers a line per system **that this image carries a program for** (Windows and Linux, x86_64). A system with no program is not offered.
+
+## Update the collectors
+
+A collector installed with the installer **updates itself** from the Mnemarr it sends to (see [the collector](collector.md)). Updating Mnemarr updates what it carries: the new image has the installer and the packages of the version it was built with, and collectors that send to it take the newer version within four hours. The machines page says **Update available: X** for those that are older. Nothing is to be done on the machines. To see what a Mnemarr carries: `GET /api/v1/ingest/updates/releases.win.json`.
+
+If an update does not happen: `mnemarr-collector status` on the machine says where it is at (`updates:`), and `mnemarr-collector update` asks now and says why it cannot (not installed with the installer, no Mnemarr reachable over HTTPS, nothing newer).
 
 ## Take a machine away, or change its key
 

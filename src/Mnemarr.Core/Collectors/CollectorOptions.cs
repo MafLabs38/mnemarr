@@ -19,6 +19,12 @@ public sealed class CollectorOptions
     /// </summary>
     public string? DownloadFolder { get; set; }
 
+    /// <summary>
+    /// The folder of the updates of the collector that the installer made (the feed, the packages, the installer; ADR 0032). Without it, the folder <c>updates</c> of
+    /// <see cref="DownloadFolder"/>. The image carries it.
+    /// </summary>
+    public string? UpdateFolder { get; set; }
+
     /// <summary>The address machines reach Mnemarr at, when the one a request came with is not it (behind a proxy that does not say so). Without it, the address of the request is used.</summary>
     public string? PublicUrl { get; set; }
 

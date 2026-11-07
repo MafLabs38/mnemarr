@@ -9,7 +9,8 @@ namespace Mnemarr.Api.V1.Collectors;
 /// <param name="Label">What the person is told it is for.</param>
 /// <param name="Command">The line itself.</param>
 /// <param name="DownloadUrl">The address of a program that already carries its setting, to open with a double click; null where that is not offered.</param>
-public sealed record InstallCommand(string System, string Label, string Command, string? DownloadUrl = null);
+/// <param name="SetupUrl">The address of the installer (ADR 0032), the same for every machine, which asks which Mnemarr to link to; null when this Mnemarr carries none.</param>
+public sealed record InstallCommand(string System, string Label, string Command, string? DownloadUrl = null, string? SetupUrl = null);
 
 /// <summary>The lines to install on each system this Mnemarr has a program for, and whether the address is served without TLS (the person must be told).</summary>
 public sealed record InstallInfo(IReadOnlyList<InstallCommand> Commands, bool Insecure);
@@ -21,10 +22,12 @@ public sealed record InstallInfo(IReadOnlyList<InstallCommand> Commands, bool In
 public sealed class InstallCommands
 {
     private readonly CollectorDownloads _downloads;
+    private readonly CollectorUpdates _updates;
     private readonly IOptions<CollectorOptions> _options;
 
-    public InstallCommands(CollectorDownloads downloads, IOptions<CollectorOptions> options)
+    public InstallCommands(CollectorDownloads downloads, CollectorUpdates updates, IOptions<CollectorOptions> options)
     {
+        _updates = updates;
         _downloads = downloads;
         _options = options;
     }
@@ -38,9 +41,10 @@ public sealed class InstallCommands
         var query = $"code={Uri.EscapeDataString(code)}&machine={Uri.EscapeDataString(machine)}";
         var have = _downloads.Available().Select(download => download.Platform).ToHashSet(StringComparer.Ordinal);
         var commands = new List<InstallCommand>();
-        if (have.Contains("windows-x86_64"))
+        var setup = _updates.InstallerName() is null ? null : $"{server}/api/v1/ingest/installer/windows";
+        if (have.Contains("windows-x86_64") || setup is not null)
         {
-            commands.Add(new InstallCommand("windows", "Windows", $"irm '{server}/api/v1/ingest/install.ps1?{query}' | iex", $"{server}/api/v1/ingest/download/windows-x86_64?{query}"));
+            commands.Add(new InstallCommand("windows", "Windows", $"irm '{server}/api/v1/ingest/install.ps1?{query}' | iex", have.Contains("windows-x86_64") ? $"{server}/api/v1/ingest/download/windows-x86_64?{query}" : null, setup));
         }
 
         if (have.Contains("linux-x86_64") || have.Contains("macos-aarch64"))

@@ -87,6 +87,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IEnrolmentStore, SqliteEnrolmentStore>();
         services.AddSingleton<EnrolmentThrottle>();
         services.AddSingleton<CollectorDownloads>();
+        services.AddSingleton<CollectorUpdates>();
         services.AddSingleton<MachineAccounts>();
         services.AddSingleton<MachineJoining>();
         services.AddSingleton<IPairingStore, SqlitePairingStore>();

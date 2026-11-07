@@ -39,7 +39,13 @@ function MachineRow({
         <td>{machine.conversations}</td>
         <td>
           {machine.version ?? ''}
-          {machine.programDiffers && <StatusLabel kind={kinds.WARNING}>{translate('ProgramDiffers')}</StatusLabel>}
+          {machine.updateTo ? (
+            <StatusLabel kind={kinds.WARNING}>
+              {translate('UpdateAvailableTo', { version: machine.updateTo })}
+            </StatusLabel>
+          ) : (
+            machine.programDiffers && <StatusLabel kind={kinds.WARNING}>{translate('ProgramDiffers')}</StatusLabel>
+          )}
         </td>
         <td>
           {canManage && (

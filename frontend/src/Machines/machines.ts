@@ -22,6 +22,8 @@ export interface MachineItem {
   error: string | null;
   /** This Mnemarr carries a program for the system of the machine, and it is not the one the machine runs (ADR 0031). */
   programDiffers: boolean;
+  /** The version a machine that was installed with the installer can update to, when this Mnemarr carries a newer one (ADR 0032). */
+  updateTo: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */
@@ -43,6 +45,8 @@ export interface InstallLine {
   command: string;
   /** A program that already carries its setting, to open with a double click: where one is offered. */
   downloadUrl: string | null;
+  /** The installer, the same for every machine, with no code in it: it asks which Mnemarr to link to when it starts (ADR 0032). */
+  setupUrl: string | null;
 }
 
 /**

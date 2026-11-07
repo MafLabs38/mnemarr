@@ -17,6 +17,7 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   pendingLines: 0,
   error: null,
   programDiffers: false,
+  updateTo: null,
   ...over,
 });
 
@@ -171,6 +172,17 @@ describe('Managing a machine', () => {
     renderWithProviders(<Machines />);
 
     expect(await screen.findByText('Another program than this Mnemarr carries')).toBeInTheDocument();
+    expect(screen.getAllByText('Another program than this Mnemarr carries')).toHaveLength(1);
+  });
+
+  it('says which version a machine installed with the installer can update to, and that instead of the program that differs', async () => {
+    server([
+      machine({ machine: 'laptop', updateTo: '1.4.0', programDiffers: true }),
+      machine({ machine: 'by-hand', programDiffers: true }),
+    ]);
+    renderWithProviders(<Machines />);
+
+    expect(await screen.findByText('Update available: 1.4.0')).toBeInTheDocument();
     expect(screen.getAllByText('Another program than this Mnemarr carries')).toHaveLength(1);
   });
 });

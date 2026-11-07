@@ -89,6 +89,27 @@ The code works once, for 15 minutes, for that machine name. A machine that enrol
 
 An assistant can ask for a machine over MCP (`request_collector_enrolment`): the request waits on the page until a person approves it.
 
+## Install it on Windows, and keep it up to date (built, ADR 0032)
+
+The usual way on a workstation is the **installer**. On the Machines page, *Add a machine* offers **Download the installer for Windows**; it is the same file for every machine and holds no code.
+
+1. Open it. Windows shows its warning once (the installer is not signed yet): *More info*, then *Run anyway*. It installs for you alone, without administrator rights, in `%LocalAppData%\MnemarrCollector`.
+2. The collector starts, with its icon near the clock, and **opens a page in your browser** where you give the address of your Mnemarr. The page shows a code and opens the page of Mnemarr, where you check that the code is the one on the computer, name the machine and approve it ([ADR 0030](adr/0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md)). Nothing to copy by hand.
+3. It is now **in Windows' list of installed applications** (*Settings, Apps*), starts with your session, and `mnemarr-collector` is found by name in a new terminal.
+
+**Updating.** The collector asks each Mnemarr it sends to, ninety seconds after it starts and then every four hours, for the newest version it carries, and takes **the newest of them** (a development and a production Mnemarr carry different builds; a build that is not a release is older than every release). It downloads it in the background and, by default, **applies it between two passes** and restarts: nothing is lost, its positions are kept after each pass. It takes an update only over HTTPS, or from this very computer, never over a plain `http://` address on a network.
+
+- *Check now, or apply a downloaded update*: the icon (**Check for updates**, then **Update to X: restart now**), or `mnemarr-collector update` (`--check` only looks).
+- *Apply by hand only*: `mnemarr-collector update --auto off` (and `--auto on` to go back). The update is then downloaded and waits.
+- `mnemarr-collector status` says the version and where the update is at. The machines page says **Update available: X** for a collector installed this way that is older than the Mnemarr's.
+- A collector that was **not** installed with the installer (run by hand, from a build, from a downloaded program that carries a code) is not touched: `update` says so.
+
+**Removing it.** *Settings, Apps, Mnemarr collector, Uninstall*. It stops, no longer starts with your session and leaves the PATH. **The machine stays joined**: its keys and positions are in `%AppData%\mnemarr-collector`, which is not removed, so installing again finds them. To remove them as well, revoke the machine in Mnemarr and delete that folder.
+
+## Install it another way (ADR 0025, ADR 0027)
+
+The installer above is for Windows. **On Linux and macOS**, and on a machine with no screen, the line the page shows downloads the program and installs it as a user service; on a machine with no screen the download that carries a code joins it by itself. Linux and macOS installers that update themselves are in the [roadmap](ROADMAP.md).
+
 ## Install it (designed, ADR 0025)
 
 **On a server or a virtual machine**: the container, from a Compose file that mounts the folders of conversations read-only.

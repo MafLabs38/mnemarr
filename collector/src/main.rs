@@ -19,9 +19,11 @@ use mnemarr_collector::service::{self, Installed, Started};
 use mnemarr_collector::setup;
 use mnemarr_collector::state::State;
 use mnemarr_collector::status::{self, Condition};
+use mnemarr_collector::update::{self, UpdateState, Updater};
 use mnemarr_collector::upload::{Heartbeat, HttpUploader, UploadError, Uploader};
 use mnemarr_collector::{
-    Command, EnrollOptions, LinkOptions, Options, UnlinkOptions, VERSION, parse, usage,
+    Command, EnrollOptions, LinkOptions, Options, UnlinkOptions, UpdateOptions, VERSION, parse,
+    usage,
 };
 
 /// Writes to standard output. A closed pipe (`--help | head`) is how a reader says it has enough, not a failure.
@@ -39,6 +41,22 @@ fn write_stdout(text: &str) -> ExitCode {
         }
     }
 }
+
+/// Whether this program was installed with the installer, and where an update is at: found out once.
+fn updater() -> &'static Updater {
+    static UPDATER: OnceLock<Updater> = OnceLock::new();
+    UPDATER.get_or_init(Updater::detect)
+}
+
+/// The version this program says it is: the one the installer knows when it was installed with it, otherwise the one it was built with.
+fn version_text() -> String {
+    updater().version().unwrap_or_else(|| VERSION.to_string())
+}
+
+/// How often an installed collector asks the Mnemarr it sends to for a newer version, and how long after it starts it first does (a minute and a half
+/// lets the first pass go through, and lets a computer that has just woken find its network).
+const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(4 * 3600);
+const FIRST_CHECK: std::time::Duration = std::time::Duration::from_secs(90);
 
 /// The file that what is said is also written to, for a collector started in the background.
 static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
@@ -99,8 +117,10 @@ fn heartbeat(
     interval_seconds: u64,
 ) -> Result<(), UploadError> {
     let error = trouble(report);
+    let version = version_text();
     let beat = Heartbeat {
-        version: VERSION,
+        version: &version,
+        can_update: updater().installed(),
         pending_lines: report.pending_lines,
         error: error.as_deref(),
         paused,
@@ -230,6 +250,7 @@ fn collect_loop(
     let mut told_none = false;
     let mut last_problem = String::new();
     let mut told_problems: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut next_check = std::time::Instant::now() + FIRST_CHECK;
     loop {
         let paused = dir
             .as_deref()
@@ -261,6 +282,9 @@ fn collect_loop(
                 ExitCode::from(1)
             };
         }
+        if let Some(dir) = &dir {
+            keep_up_to_date(dir, &mut next_check);
+        }
         thread::sleep(
             configs
                 .first()
@@ -290,13 +314,61 @@ fn collect_loop(
     }
 }
 
+/// Between two passes, for a collector that was installed with the installer: an update that is ready is applied (unless the person chose to apply them by
+/// hand), and, now and then, each Mnemarr is asked for a newer version, apart from the passes. Positions are kept after each pass, so nothing is lost when the
+/// collector restarts to apply it.
+fn keep_up_to_date(dir: &std::path::Path, next_check: &mut std::time::Instant) {
+    let updater = updater();
+    if !updater.installed() {
+        return;
+    }
+    if updater.ready() && update::load_settings(dir).auto {
+        say("applying the update: the collector restarts");
+        if let Err(error) = updater.apply() {
+            say(&format!("the update could not be applied: {error}"));
+        }
+        return;
+    }
+    if std::time::Instant::now() >= *next_check {
+        *next_check = std::time::Instant::now() + CHECK_EVERY;
+        let checker = updater.clone();
+        let listed = destinations::load(dir);
+        thread::spawn(move || match checker.check(&listed) {
+            UpdateState::Ready(version) => say(&format!("version {version} is downloaded")),
+            UpdateState::Failed(reason) => say(&format!("no update: {reason}")),
+            _ => {}
+        });
+    }
+}
+
+/// Whether the folder of the collector holds no destination, and nothing was given on the command line or in the environment to send to.
+fn nothing_linked(options: &Options) -> bool {
+    let get = |name: &str| std::env::var(name).ok();
+    let given = options.server.is_some()
+        || options.key_file.is_some()
+        || get("MNEMARR_SERVER").is_some()
+        || get("MNEMARR_COLLECTOR_KEY").is_some();
+    !given
+        && config_dir(options.config_dir.as_deref(), &get)
+            .is_some_and(|dir| destinations::load(&dir).is_empty())
+}
+
 fn collect(options: &Options, forever: bool) -> ExitCode {
     if let Some(path) = &options.log_file {
         let _ = LOG_FILE.set(PathBuf::from(path));
     }
-    let configs = match configurations(options) {
-        Ok(configs) => configs,
-        Err(code) => return code,
+    // A collector that was just installed is linked to nothing yet: it runs all the same, with its icon, which is where a person links it (a command that is
+    // run once has nothing to do, and says so).
+    let configs = if forever && nothing_linked(options) {
+        say(
+            "this machine is not linked to any Mnemarr yet: link one from the icon, or with: mnemarr-collector link",
+        );
+        Vec::new()
+    } else {
+        match configurations(options) {
+            Ok(configs) => configs,
+            Err(code) => return code,
+        }
     };
     // One collector at a time for a machine: a second one, started by the session while one runs by hand, leaves it be.
     let _instance = if forever {
@@ -387,7 +459,7 @@ fn collect_with_icon(
     let worker = thread::spawn(move || collect_loop(&worker_options, configs, dir, true, shared));
     if let Some(folder) = shown_dir {
         // The icon never returns: *Quit* ends the program from inside. It only gives back an error, when it could not be made.
-        let Err(error) = mnemarr_collector::tray::run(folder, known, condition);
+        let Err(error) = mnemarr_collector::tray::run(folder, known, condition, updater().clone());
         say(&format!("no icon in the notification area: {error}"));
     }
     worker.join().unwrap_or(ExitCode::from(1))
@@ -726,6 +798,86 @@ fn uninstall(options: &Options) -> ExitCode {
     }
 }
 
+/// What happens when the installed program is opened with nothing to say (the installer starts it so when it is done, the updater after an update): the
+/// entry that starts it with the session is made right (it points at the program that an update does not change), and the collector starts in the
+/// background. A person who clicks it again finds it running and nothing else happens.
+fn launch_installed() -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let (Some(dir), Ok(running)) = (config_dir(None, &get), std::env::current_exe()) else {
+        return ExitCode::from(1);
+    };
+    let exe = update::stable_exe(&running);
+    if cfg!(windows) {
+        let _ = service::register(&exe, None);
+    }
+    match service::start(&dir, &exe, None) {
+        Ok(Started::Started | Started::AlreadyRunning) => ExitCode::SUCCESS,
+        _ => ExitCode::from(1),
+    }
+}
+
+/// `update`: look for a newer version at the Mnemarr this machine sends to, and apply it; or, with `--auto`, say whether the collector applies updates itself.
+fn update_command(options: &UpdateOptions) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    if let Some(auto) = options.auto {
+        return match update::save_settings(&dir, &update::Settings { auto }) {
+            Ok(()) => {
+                say(if auto {
+                    "updates are applied by the collector itself, between two passes"
+                } else {
+                    "updates are downloaded and wait: apply them with `mnemarr-collector update` or from the icon"
+                });
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                say(&format!("the choice could not be kept: {error}"));
+                ExitCode::from(1)
+            }
+        };
+    }
+    let updater = updater();
+    if !updater.installed() {
+        say(&UpdateState::NotInstalled.text());
+        return ExitCode::from(1);
+    }
+    say(&format!(
+        "version {}: asking the Mnemarr this machine sends to...",
+        version_text()
+    ));
+    match updater.check(&destinations::load(&dir)) {
+        UpdateState::Ready(version) if options.check_only => {
+            say(&format!(
+                "version {version} is downloaded: apply it with `mnemarr-collector update`"
+            ));
+            ExitCode::SUCCESS
+        }
+        UpdateState::Ready(version) => {
+            say(&format!(
+                "applying version {version}: the collector restarts"
+            ));
+            match updater.apply() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    say(&format!("it could not be applied: {error}"));
+                    ExitCode::from(1)
+                }
+            }
+        }
+        UpdateState::Failed(reason) => {
+            say(&format!("no update: {reason}"));
+            ExitCode::from(1)
+        }
+        _ => {
+            say(&format!("up to date: version {}", version_text()));
+            ExitCode::SUCCESS
+        }
+    }
+}
+
 /// Asks the collector to be quiet: for a while (`--minutes`), or until `resume`. It also stops the icon from showing "online": the running collector reads
 /// the same file.
 fn pause(options: &Options) -> ExitCode {
@@ -804,7 +956,9 @@ fn status(options: &Options) -> ExitCode {
     };
     let _ = writeln!(
         io::stdout(),
-        "machine: {machines}\nserver: {servers}\nrunning: {}\nstarts with your session: {}\npaused: {}\nlog: {}",
+        "machine: {machines}\nserver: {servers}\nversion: {}\nupdates: {}\nrunning: {}\nstarts with your session: {}\npaused: {}\nlog: {}",
+        version_text(),
+        updater().state().text(),
         state
             .running
             .map_or("no".to_string(), |pid| format!("yes (process {pid})")),
@@ -891,11 +1045,19 @@ fn carried() -> Option<(Embedded, Vec<u8>)> {
 }
 
 fn main() -> ExitCode {
+    // Started by the installer or the updater to do one of its tasks, it does it here and ends; otherwise this returns at once. The arguments of those tasks
+    // are always plain text: one that is not is left to the usage error below (the updater reads them as text and would panic).
+    if std::env::args_os().all(|argument| argument.to_str().is_some()) {
+        update::startup();
+    }
     // Arguments that are not valid UTF-8 are kept readable and end up as a usage error, never as a panic.
     let args: Vec<String> = std::env::args_os()
         .skip(1)
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect();
+    if args.is_empty() && updater().installed() {
+        return launch_installed();
+    }
     if args.is_empty()
         && let Some((setting, program)) = carried()
     {
@@ -917,6 +1079,7 @@ fn main() -> ExitCode {
         Ok(Command::Status(options)) => status(&options),
         Ok(Command::Pause(options)) => pause(&options),
         Ok(Command::Resume(options)) => resume(&options),
+        Ok(Command::Update(options)) => update_command(&options),
         Err(error) => {
             // If even standard error is closed there is nobody left to tell.
             let _ = writeln!(io::stderr(), "{error}\n\n{}", usage());

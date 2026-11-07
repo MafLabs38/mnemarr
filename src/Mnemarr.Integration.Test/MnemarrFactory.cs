@@ -47,6 +47,9 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
     /// <summary>The folder of programs the host serves to machines that join (none by default).</summary>
     protected virtual string? DownloadFolder => null;
 
+    /// <summary>The folder of the feed of updates of the collector, when it is not <c>updates</c> in the folder of the programs.</summary>
+    protected virtual string? UpdateFolder => null;
+
     /// <summary>The address machines are told to reach the host at, when it is not the one of the request.</summary>
     protected virtual string? PublicUrl => null;
 
@@ -103,6 +106,7 @@ public abstract class MnemarrFactoryBase : WebApplicationFactory<Program>
             services.PostConfigure<Mnemarr.Core.Collectors.CollectorOptions>(options =>
             {
                 options.DownloadFolder = DownloadFolder;
+                options.UpdateFolder = UpdateFolder;
                 options.PublicUrl = PublicUrl;
             });
             services.PostConfigure<AuthOptions>(options =>
@@ -423,6 +427,33 @@ public sealed class FrontendFactory : MnemarrFactoryBase
         if (disposing && Directory.Exists(_webRoot))
         {
             Directory.Delete(_webRoot, recursive: true);
+        }
+    }
+}
+
+/// <summary>A host that carries the updates of the collector (ADR 0032): a feed of two versions, their packages and an installer, and files that are not any of those.</summary>
+public sealed class UpdatesFactory : DownloadsFactory
+{
+    public const string Latest = "1.4.0";
+    private readonly string _updates;
+
+    public UpdatesFactory()
+    {
+        _updates = Path.Combine(DownloadFolder!, Mnemarr.Core.Collectors.CollectorUpdates.FolderName);
+        Directory.CreateDirectory(_updates);
+        File.WriteAllText(Path.Combine(_updates, "releases.win.json"), """{"Assets":[{"PackageId":"MnemarrCollector","Version":"1.3.0","Type":"Full","FileName":"MnemarrCollector-1.3.0-full.nupkg","SHA1":"A","SHA256":"B","Size":10},{"PackageId":"MnemarrCollector","Version":"1.4.0","Type":"Full","FileName":"MnemarrCollector-1.4.0-full.nupkg","SHA1":"C","SHA256":"D","Size":12},{"PackageId":"MnemarrCollector","Version":"1.4.0","Type":"Delta","FileName":"MnemarrCollector-1.4.0-delta.nupkg","SHA1":"E","SHA256":"F","Size":3}]}""");
+        File.WriteAllText(Path.Combine(_updates, "MnemarrCollector-1.4.0-full.nupkg"), "the package of 1.4.0");
+        File.WriteAllText(Path.Combine(_updates, "MnemarrCollector-win-Setup.exe"), "the installer");
+        File.WriteAllText(Path.Combine(_updates, "notes.txt"), "a file that is not one of those the installer makes");
+        File.WriteAllText(Path.Combine(_updates, "secrets.json"), "{}");
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing && Directory.Exists(_updates))
+        {
+            Directory.Delete(_updates, recursive: true);
         }
     }
 }

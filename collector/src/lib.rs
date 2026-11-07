@@ -20,6 +20,7 @@ pub mod state;
 pub mod status;
 #[cfg(windows)]
 pub mod tray;
+pub mod update;
 pub mod upload;
 
 /// Version of this build, from the package metadata.
@@ -44,6 +45,14 @@ pub struct Options {
     pub log_file: Option<String>,
     /// Accept an address of Mnemarr that is plain `http://`: the key is then sent without encryption. For a network the person trusts (a sandbox at home).
     pub allow_insecure_http: bool,
+}
+
+/// What was given to `update`: only look (`--check`), or choose whether the collector applies updates by itself (`--auto on` or `--auto off`).
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct UpdateOptions {
+    pub config_dir: Option<String>,
+    pub check_only: bool,
+    pub auto: Option<bool>,
 }
 
 /// What was given to `enroll`: where Mnemarr is, the code a person approved, and, if it is not the host name, what this machine is called.
@@ -104,6 +113,8 @@ pub enum Command {
     Start(Options),
     /// Stop it now. It starts again with the next session if it is installed.
     Stop(Options),
+    /// Look for a newer version at the Mnemarr it sends to and apply it, or say how updates are set (ADR 0032).
+    Update(UpdateOptions),
     /// Say whether it runs, and whether it starts with the session.
     Status(Options),
     /// Be quiet for a while (`--minutes`), or until resumed.
@@ -147,6 +158,7 @@ mnemarr-collector status            whether it runs, and whether it starts with 
 mnemarr-collector pause [--minutes N]  be quiet for N minutes (default: until resumed)\n    \
 mnemarr-collector resume            stop being quiet\n    \
 mnemarr-collector uninstall         stop it and stop it starting with your session (the machine stays joined)\n    \
+mnemarr-collector update [--check] [--auto on|off]\n                                        look for a newer version at the Mnemarr it sends to and apply it (--check: only\n                                        look); --auto says whether it applies updates by itself (installed with the installer)\n    \
 mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
 mnemarr-collector once [OPTIONS]    one pass, then stop\n    \
 mnemarr-collector [--version | --help]\n\n\
@@ -194,6 +206,7 @@ where
         "status" => return Ok(Command::Status(options(args)?)),
         "pause" => return Ok(Command::Pause(options(args)?)),
         "resume" => return Ok(Command::Resume(options(args)?)),
+        "update" => return Ok(Command::Update(update_options(args)?)),
         other => return Err(unexpected(other)),
     };
     match args.next() {
@@ -232,6 +245,40 @@ where
             "--name" => options.name = Some(value),
             "--machine" => options.machine = Some(value),
             "--config-dir" => options.config_dir = Some(value),
+            other => return Err(unexpected(other)),
+        }
+    }
+    Ok(options)
+}
+
+/// The options that follow `update`.
+fn update_options<I, S>(mut args: I) -> Result<UpdateOptions, UsageError>
+where
+    I: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut options = UpdateOptions::default();
+    while let Some(flag) = args.next() {
+        let flag = flag.as_ref();
+        match flag {
+            "--check" => options.check_only = true,
+            "--auto" | "--config-dir" => {
+                let Some(value) = args.next() else {
+                    return Err(UsageError(format!("{flag} needs a value")));
+                };
+                let value = value.as_ref();
+                if flag == "--config-dir" {
+                    options.config_dir = Some(value.to_string());
+                } else {
+                    options.auto = Some(match value {
+                        "on" => true,
+                        "off" => false,
+                        other => {
+                            return Err(UsageError(format!("--auto is on or off, not '{other}'")));
+                        }
+                    });
+                }
+            }
             other => return Err(unexpected(other)),
         }
     }
@@ -590,5 +637,34 @@ mod tests {
             panic!("run was expected");
         };
         assert!(options.no_tray);
+    }
+
+    #[test]
+    fn should_read_the_options_of_update() {
+        assert!(matches!(
+            parse(["update"]),
+            Ok(Command::Update(UpdateOptions {
+                check_only: false,
+                auto: None,
+                ..
+            }))
+        ));
+        let Ok(Command::Update(options)) = parse(["update", "--check", "--config-dir", "/c"])
+        else {
+            panic!("update --check")
+        };
+        assert!(options.check_only);
+        assert_eq!(options.config_dir.as_deref(), Some("/c"));
+        let Ok(Command::Update(on)) = parse(["update", "--auto", "on"]) else {
+            panic!("update --auto on")
+        };
+        assert_eq!(on.auto, Some(true));
+        let Ok(Command::Update(off)) = parse(["update", "--auto", "off"]) else {
+            panic!("update --auto off")
+        };
+        assert_eq!(off.auto, Some(false));
+        assert!(parse(["update", "--auto", "sometimes"]).is_err());
+        assert!(parse(["update", "--auto"]).is_err());
+        assert!(parse(["update", "now"]).is_err());
     }
 }

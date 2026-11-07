@@ -641,3 +641,31 @@ fn should_read_the_folder_of_an_earlier_collector_as_one_destination() {
     assert!(listed.contains("cli-test"), "{listed}");
     assert!(listed.contains("127.0.0.1:9"), "{listed}");
 }
+
+#[test]
+fn should_keep_running_with_nothing_linked_so_that_a_person_can_link_it_from_the_icon() {
+    let dir = std::env::temp_dir().join(format!("mnemarr-unlinked-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_mnemarr-collector"))
+        .args(["run", "--no-tray", "--config-dir"])
+        .arg(&dir)
+        .env_remove("MNEMARR_SERVER")
+        .env_remove("MNEMARR_COLLECTOR_KEY")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+
+    let still_running = child.try_wait().unwrap().is_none();
+    child.kill().unwrap();
+    let mut said = String::new();
+    std::io::Read::read_to_string(child.stderr.as_mut().unwrap(), &mut said).unwrap();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(still_running, "it ended: {said}");
+    assert!(said.contains("not linked to any Mnemarr yet"), "{said}");
+}

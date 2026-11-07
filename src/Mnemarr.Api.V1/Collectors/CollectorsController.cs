@@ -13,10 +13,10 @@ namespace Mnemarr.Api.V1.Collectors;
 /// name that conversations came from and that never joined; the state is <c>unenrolled</c>, <c>refused</c>, <c>waiting</c>, <c>failing</c>,
 /// <c>online</c>, <c>away</c> or <c>silent</c> (ADR 0027 §7).
 /// </summary>
-public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool ProgramDiffers)
+public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool ProgramDiffers, string? UpdateTo)
 {
-    /// <summary><paramref name="programDiffers"/>: this Mnemarr carries a program for the system of the machine, and it is not the program the machine runs.</summary>
-    public static MachineResource From(MachineStatus status, bool programDiffers) => new(
+    /// <summary><paramref name="updateTo"/>: the version a machine that was installed with the installer could update to (ADR 0032). <paramref name="programDiffers"/>: this Mnemarr carries a program for the system of the machine, and it is not the program the machine runs.</summary>
+    public static MachineResource From(MachineStatus status, bool programDiffers, string? updateTo) => new(
         status.Name,
         status.Kind is { } kind ? MachineKinds.Name(kind) : null,
         status.State.ToString().ToLowerInvariant(),
@@ -27,7 +27,8 @@ public sealed record MachineResource(string Machine, string? Kind, string State,
         status.Version,
         status.PendingLines,
         status.Error,
-        programDiffers);
+        programDiffers,
+        updateTo);
 }
 
 public sealed record RenameMachineRequest(string? Name);
@@ -50,16 +51,18 @@ public sealed class CollectorsController : ControllerBase
 {
     private readonly CollectorService _collectors;
     private readonly CollectorDownloads _downloads;
+    private readonly CollectorUpdates _updates;
 
-    public CollectorsController(CollectorService collectors, CollectorDownloads downloads)
+    public CollectorsController(CollectorService collectors, CollectorDownloads downloads, CollectorUpdates updates)
     {
+        _updates = updates;
         _collectors = collectors;
         _downloads = downloads;
     }
 
     [HttpGet]
     [Authorize(Policy = Permissions.ConversationsRead)]
-    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, ProgramDiffers(status)))];
+    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, ProgramDiffers(status), _updates.NewerThan(status.Version, status.CanUpdate)))];
 
     private bool ProgramDiffers(MachineStatus status) =>
         status.Program is { } running && status.Platform is { } platform && _downloads.Find(platform) is { } carried && !string.Equals(carried.Sha256, running, StringComparison.Ordinal);
