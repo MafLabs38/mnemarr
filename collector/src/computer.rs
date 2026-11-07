@@ -24,7 +24,7 @@ pub fn program_hash() -> Option<&'static str> {
     static HASH: OnceLock<Option<String>> = OnceLock::new();
     HASH.get_or_init(|| {
         let path = std::env::current_exe().ok()?;
-        std::fs::read(path).ok().map(|bytes| sha256_hex(&bytes))
+        std::fs::File::open(path).and_then(sha256_of_reader).ok()
     })
     .as_deref()
 }
@@ -107,19 +107,54 @@ const ROUNDS: [u32; 64] = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-/// SHA-256 of `data` as 64 lower-case hexadecimal digits. Written here and not taken from a crate: the collector adds no dependency for one hash of one short text.
-pub fn sha256_hex(data: &[u8]) -> String {
-    let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-    let mut message = data.to_vec();
-    message.push(0x80);
-    while message.len() % 64 != 56 {
-        message.push(0);
+/// SHA-256, fed in pieces: nothing is held whole, so that a program can be hashed as it is read. Written here and not taken from a crate: the collector adds no
+/// dependency for one hash of one short text and one program (a direct dependency is the maintainer's decision, ADR 0014).
+struct Sha256 {
+    h: [u32; 8],
+    block: [u8; 64],
+    filled: usize,
+    length: u64,
+}
+
+impl Sha256 {
+    fn new() -> Self {
+        Self {
+            h: [
+                0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+                0x5be0cd19,
+            ],
+            block: [0; 64],
+            filled: 0,
+            length: 0,
+        }
     }
-    message.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
-    for block in message.as_chunks::<64>().0 {
+
+    fn update(&mut self, mut data: &[u8]) {
+        self.length += data.len() as u64;
+        while !data.is_empty() {
+            let take = (64 - self.filled).min(data.len());
+            self.block[self.filled..self.filled + take].copy_from_slice(&data[..take]);
+            self.filled += take;
+            data = &data[take..];
+            if self.filled == 64 {
+                let block = self.block;
+                self.compress(&block);
+                self.filled = 0;
+            }
+        }
+    }
+
+    fn finish(mut self) -> String {
+        let bits = self.length * 8;
+        self.update(&[0x80]);
+        while self.filled != 56 {
+            self.update(&[0]);
+        }
+        self.update(&bits.to_be_bytes());
+        self.h.iter().map(|word| format!("{word:08x}")).collect()
+    }
+
+    fn compress(&mut self, block: &[u8; 64]) {
         let mut w = [0u32; 64];
         for (slot, word) in w.iter_mut().zip(block.as_chunks::<4>().0) {
             *slot = u32::from_be_bytes(*word);
@@ -132,7 +167,7 @@ pub fn sha256_hex(data: &[u8]) -> String {
                 .wrapping_add(w[i - 7])
                 .wrapping_add(s1);
         }
-        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = self.h;
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ (!e & g);
@@ -153,11 +188,30 @@ pub fn sha256_hex(data: &[u8]) -> String {
             b = a;
             a = t1.wrapping_add(t2);
         }
-        for (slot, value) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
+        for (slot, value) in self.h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
             *slot = slot.wrapping_add(value);
         }
     }
-    h.iter().map(|word| format!("{word:08x}")).collect()
+}
+
+/// SHA-256 of `data` as 64 lower-case hexadecimal digits.
+pub fn sha256_hex(data: &[u8]) -> String {
+    let mut hash = Sha256::new();
+    hash.update(data);
+    hash.finish()
+}
+
+/// SHA-256 of what a reader gives, read in pieces of 64 KiB.
+fn sha256_of_reader(mut reader: impl std::io::Read) -> std::io::Result<String> {
+    let mut hash = Sha256::new();
+    let mut chunk = vec![0u8; 64 * 1024];
+    loop {
+        let read = reader.read(&mut chunk)?;
+        if read == 0 {
+            return Ok(hash.finish());
+        }
+        hash.update(&chunk[..read]);
+    }
 }
 
 #[cfg(test)]
@@ -174,6 +228,11 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+        // A million "a", fed in pieces that do not line up with the blocks, and the same as a whole.
+        let million = vec![b'a'; 1_000_000];
+        let expected = "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0";
+        assert_eq!(sha256_hex(&million), expected);
+        assert_eq!(sha256_of_reader(&million[..]).unwrap(), expected);
         // Longer than one block, and across the padding boundary.
         assert_eq!(
             sha256_hex(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),

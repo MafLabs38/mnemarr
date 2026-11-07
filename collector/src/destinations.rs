@@ -181,10 +181,8 @@ pub fn key_of(dir: &Path, destination: &Destination) -> Option<String> {
         .filter(|text| !text.is_empty())
 }
 
-/// Links a destination: its key is kept where only this user reads it, and the list is written. A Mnemarr that is already in the list (the same address)
-/// is replaced, keeping its name and its positions: it is the same destination with a new key. Another one with the same name gets a number.
 /// The list as it is, or an error when the file is there and cannot be read as a list: a change must never write over a list that only needs mending by hand.
-fn load_for_change(dir: &Path) -> io::Result<Vec<Destination>> {
+pub fn load_for_change(dir: &Path) -> io::Result<Vec<Destination>> {
     match fs::read_to_string(dir.join(FILE)) {
         Ok(text) if serde_json::from_str::<Value>(&text).is_err() => Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -196,6 +194,8 @@ fn load_for_change(dir: &Path) -> io::Result<Vec<Destination>> {
     }
 }
 
+/// Links a destination: its key is kept where only this user reads it, and the list is written. A Mnemarr that is already in the list (the same address)
+/// is replaced, keeping its name and its positions: it is the same destination with a new key. Another one with the same name gets a number.
 pub fn add(
     dir: &Path,
     server: &str,

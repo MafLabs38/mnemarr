@@ -123,6 +123,12 @@ public sealed class PairingService
             }
 
             _joining.Check(machine!, pairing.ComputerId);
+            if (_joining.BelongsToAnotherComputer(machine!, pairing.ComputerId))
+            {
+                // A request that anybody can make, with any host name, must not take the key of a machine that runs on another computer.
+                throw new RejectedException(Problem.Conflict, $"A machine named '{machine}' is enrolled already, on another computer: choose another name, or remove it first.");
+            }
+
             _pairings.Approve(id, machine!, parsedKind, actor);
             _audit.Append(actor, "collector.pairing-approved", machine!, MachineKinds.Name(parsedKind));
             return Known(_pairings.Get(pairing.Id)!);

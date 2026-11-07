@@ -30,6 +30,10 @@ public sealed class MachineJoining
         _audit = audit;
     }
 
+    /// <summary>Whether a machine of this name is enrolled on a computer that is not this one (the machine has an identifier, and it is not the one given).</summary>
+    public bool BelongsToAnotherComputer(string machine, string? computerId) =>
+        _machines.Get(machine) is { RevokedAt: null, ComputerId: { } held } && !string.Equals(held, computerId, StringComparison.Ordinal);
+
     /// <summary>The name a computer has here, when it has joined before.</summary>
     public string? NameOf(string computerId) => _machines.GetByComputer(computerId)?.Name;
 

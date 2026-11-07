@@ -401,4 +401,28 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         midway.StatusCode.Should().Be(HttpStatusCode.Conflict, "a collector that passes every five minutes was heard of less than three passes ago");
         later.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    [Fact]
+    public async Task should_not_approve_a_request_under_the_name_of_a_machine_that_runs_on_another_computer()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("server");
+        var computer = ComputerId("server");
+        await JoinAsComputerAsync(callers.Admin, machine, computer);
+
+        async Task<(Guid Id, string Code)> RequestAsync(string? computerId)
+        {
+            _factory.Clock.Advance(TimeSpan.FromSeconds(61));
+            var started = await (await _factory.CreateBrowserClient().PostAsJsonAsync("/api/v1/ingest/pair", new { hostname = machine, computerId }, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+            var code = started.GetProperty("userCode").GetString()!;
+            var found = await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code }, Token);
+            return ((await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid(), code);
+        }
+
+        var stranger = await RequestAsync(null);
+        var same = await RequestAsync(computer);
+
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{stranger.Id}/approve", new { code = stranger.Code, machine, kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict, "the name is a machine on another computer");
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{same.Id}/approve", new { code = same.Code, machine, kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the same computer links again under its own name");
+    }
 }

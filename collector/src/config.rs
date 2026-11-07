@@ -218,7 +218,9 @@ pub fn resolve_all(
             "the folder of the collector cannot be found: give --config-dir".to_string(),
         ));
     };
-    let listed = destinations::load(&dir);
+    // A list that cannot be read is said as that, not as "not linked": the person is sent to the right cause.
+    let listed =
+        destinations::load_for_change(&dir).map_err(|error| UsageError(error.to_string()))?;
     if listed.is_empty() {
         return Err(UsageError(
             "this machine is not linked to a Mnemarr: run `mnemarr-collector link`".to_string(),
