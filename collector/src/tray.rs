@@ -146,7 +146,7 @@ fn current(dir: &std::path::Path, known: &[(String, String)]) -> Vec<(String, St
 }
 
 /// Opens the page on this computer where a person links the collector to another Mnemarr.
-fn open_link_page(dir: &std::path::Path) -> Option<LinkPage> {
+fn open_link_page(dir: &std::path::Path, reason: Option<link_page::Reason>) -> Option<LinkPage> {
     let get = |name: &str| std::env::var(name).ok();
     let read = |path: &str| std::fs::read_to_string(path).ok();
     let page = link_page::start(link_page::Environment {
@@ -156,6 +156,7 @@ fn open_link_page(dir: &std::path::Path) -> Option<LinkPage> {
             browser::open(address);
         }),
         wait: Arc::new(std::thread::sleep),
+        reason,
     })
     .ok()?;
     browser::open(&page.address);
@@ -185,13 +186,15 @@ pub fn run(
     // The first time the collector runs and is linked to nothing, the page where a person links it opens by itself, once: nobody has to know where to look.
     let welcomed = dir.join("welcomed");
     if destinations::load(&dir).is_empty() && !welcomed.exists() {
-        page = open_link_page(&dir);
+        page = open_link_page(&dir, None);
         // Only when the page did open: a person whose browser could not be reached is offered it again at the next start.
         if page.is_some() {
             let _ = std::fs::write(&welcomed, "1");
         }
     }
     let mut shown_update = String::new();
+    // A Mnemarr that no longer accepts this computer is told once per refusal, not at every look: the page where it is linked again opens by itself.
+    let mut refusal_told = false;
     EventLoop::new().run(move |_event, _target, control_flow| {
         *control_flow = ControlFlow::WaitUntil(Instant::now() + REFRESH);
         while let Ok(event) = MenuEvent::receiver().try_recv() {
@@ -205,7 +208,7 @@ pub fn run(
                 if let Some(previous) = page.take() {
                     previous.stop();
                 }
-                page = open_link_page(&dir);
+                page = open_link_page(&dir, None);
             } else if items
                 .update
                 .as_ref()
@@ -265,6 +268,26 @@ pub fn run(
         } else {
             status::get(&condition)
         };
+        if now == Condition::Refused {
+            if !refusal_told && page.is_none() {
+                refusal_told = true;
+                let server = shown_destinations
+                    .first()
+                    .map(|(_, server)| server.clone())
+                    .unwrap_or_default();
+                page = open_link_page(
+                    &dir,
+                    Some(link_page::Reason {
+                        text: format!(
+                            "The Mnemarr at {server} no longer accepts this computer: it was removed there or its key was revoked. Link this computer again to go on sending."
+                        ),
+                        server,
+                    }),
+                );
+            }
+        } else {
+            refusal_told = false;
+        }
         let lines = if paused {
             Vec::new()
         } else {

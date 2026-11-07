@@ -46,6 +46,15 @@ pub struct Environment {
     pub hostname: String,
     pub open: Arc<dyn Fn(&str) + Send + Sync>,
     pub wait: Arc<dyn Fn(Duration) + Send + Sync>,
+    /// What the page says before the form, and the address it puts in it: when it is opened because a Mnemarr no longer accepts this computer, it says so and
+    /// proposes the same Mnemarr again.
+    pub reason: Option<Reason>,
+}
+
+/// Why the page was opened by the collector rather than by a person.
+pub struct Reason {
+    pub text: String,
+    pub server: String,
 }
 
 /// A page that is being served.
@@ -241,16 +250,19 @@ input[type=text]{{width:100%;padding:.5rem;margin:.3rem 0 1rem;font-size:1rem}}b
     )
 }
 
-fn form(problem: Option<&str>) -> String {
+fn form(problem: Option<&str>, proposed: Option<&str>) -> String {
     let error = problem.map_or_else(String::new, |text| {
         format!("<p class=\"error\" role=\"alert\">{}</p>", escape(text))
+    });
+    let value = proposed.map_or_else(String::new, |server| {
+        format!(" value=\"{}\"", escape(server))
     });
     document(
         false,
         &format!(
             "<p>Type the address of the Mnemarr to send this computer's conversations to. You will then approve this computer in that Mnemarr.</p><p>A Mnemarr you link can also update this program: link only a Mnemarr you run or trust.</p>{error}\
 <form method=\"post\" action=\"link\"><label for=\"server\">Address of Mnemarr</label>\
-<input id=\"server\" name=\"server\" type=\"text\" placeholder=\"https://mnemarr.example\" required autofocus>\
+<input id=\"server\" name=\"server\" type=\"text\" placeholder=\"https://mnemarr.example\" required autofocus{value}>\
 <p><label><input name=\"insecure\" type=\"checkbox\" value=\"1\"> This address is plain http:// on my own network (the key will travel without encryption)</label></p>\
 <button type=\"submit\">Link</button></form>"
         ),
@@ -293,7 +305,18 @@ impl Page {
             return;
         };
         match (request.method.as_str(), route) {
-            ("GET", "") => respond(&mut stream, "200 OK", "", &form(None)),
+            ("GET", "") => {
+                let reason = self.environment.reason.as_ref();
+                respond(
+                    &mut stream,
+                    "200 OK",
+                    "",
+                    &form(
+                        reason.map(|reason| reason.text.as_str()),
+                        reason.map(|reason| reason.server.as_str()),
+                    ),
+                );
+            }
             ("GET", "status") => {
                 let body = self.status_page();
                 let refresh = matches!(self.state(), Progress::Asking | Progress::Waiting { .. });
@@ -352,7 +375,7 @@ impl Page {
             } else {
                 error.to_string()
             };
-            respond(stream, "200 OK", "", &form(Some(&text)));
+            respond(stream, "200 OK", "", &form(Some(&text), None));
             return;
         }
         if matches!(self.state(), Progress::Asking | Progress::Waiting { .. }) {
@@ -487,6 +510,10 @@ mod tests {
     }
 
     fn serve(name: &str) -> Served {
+        serve_because(name, None)
+    }
+
+    fn serve_because(name: &str, reason: Option<Reason>) -> Served {
         let dir = std::env::temp_dir().join(format!("mnemarr-page-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let opened = Arc::new(StdMutex::new(Vec::new()));
@@ -494,6 +521,7 @@ mod tests {
         let page = start(Environment {
             dir: dir.clone(),
             hostname: "Gaming PC".to_string(),
+            reason,
             open: Arc::new(move |address| seen.lock().unwrap().push(address.to_string())),
             wait: Arc::new(|_| thread::sleep(Duration::from_millis(5))),
         })
@@ -530,6 +558,22 @@ mod tests {
 
     fn form_for(server: &str) -> String {
         format!("server={}", server.replace(':', "%3A").replace('/', "%2F"))
+    }
+
+    #[test]
+    fn should_say_why_it_opened_and_propose_the_mnemarr_that_refuses_this_computer() {
+        let served = serve_because(
+            "reason",
+            Some(Reason {
+                text: "no longer accepts this computer".to_string(),
+                server: "https://mnemarr.example".to_string(),
+            }),
+        );
+        let (_, text) = send(&served.page.address, "", "GET", None, "");
+        assert!(text.contains("no longer accepts this computer"));
+        assert!(text.contains("autofocus value=\"https://mnemarr.example\""));
+        let (_, plain) = send(&serve("plain").page.address, "", "GET", None, "");
+        assert!(!plain.contains("autofocus value="));
     }
 
     #[test]

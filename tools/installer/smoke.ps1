@@ -48,6 +48,15 @@ if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a co
 $said = (& $real --version) -join ' '
 if ($said -notmatch 'mnemarr-collector') { throw "The program does not answer: '$said'" }
 Write-Host "installed: $said"
+# The application the installer starts is a program of windows, not of a console (no window to close that would close the collector); the one for the
+# terminal is a console program. The subsystem is a field of the header of the file: 2 = windows, 3 = console.
+function Subsystem([string]$Path) {
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    return [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 24 + 68)
+}
+$application = Join-Path $app 'current\mnemarr-collector-app.exe'
+if ((Subsystem $application) -ne 2) { throw 'The application the installer starts opens a console' }
+if ((Subsystem $real) -ne 3) { throw 'The program for the terminal is not a console program' }
 
 Write-Host '--- a Mnemarr that carries 0.0.2 (this computer)'
 $config = Join-Path $work 'config'

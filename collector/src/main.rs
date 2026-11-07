@@ -439,7 +439,8 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
             ));
         }
         say(&format!(
-            "{VERSION}: {} -> {} ({}) as {}",
+            "{}: {} -> {} ({}) as {}",
+            version_text(),
             config.projects.display(),
             config.name,
             config.server,
@@ -853,7 +854,9 @@ fn launch_installed() -> ExitCode {
         // It was not set to start with the session: an update does not start it.
         return ExitCode::SUCCESS;
     }
-    match service::start(&dir, &exe, None) {
+    // The program that runs is the one the installer packs as the application: it is a program of windows, not of a console (tools/installer/pack.sh), so that
+    // starting it never opens a console that a person could close. The commands typed in a terminal are the other one, `mnemarr-collector.exe`, beside it.
+    match service::start(&dir, &running, None) {
         Ok(Started::Started | Started::AlreadyRunning) => ExitCode::SUCCESS,
         _ => ExitCode::from(1),
     }
