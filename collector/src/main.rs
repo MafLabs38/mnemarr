@@ -251,7 +251,7 @@ fn collect_loop(
     let mut told_none = false;
     let mut last_problem = String::new();
     let mut told_problems: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut next_check = std::time::Instant::now() + FIRST_CHECK;
+    let mut clock = UpdateClock::new();
     loop {
         let paused = dir
             .as_deref()
@@ -284,7 +284,7 @@ fn collect_loop(
             };
         }
         if let Some(dir) = &dir {
-            keep_up_to_date(dir, &mut next_check);
+            keep_up_to_date(dir, &mut clock);
         }
         thread::sleep(
             configs
@@ -315,28 +315,44 @@ fn collect_loop(
     }
 }
 
+/// When an installed collector next asks for an update, and when it may next try to apply one that is ready (a failure to apply is not tried again at every pass).
+struct UpdateClock {
+    next_check: std::time::Instant,
+    apply_after: std::time::Instant,
+}
+
+impl UpdateClock {
+    fn new() -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            next_check: now + FIRST_CHECK,
+            apply_after: now,
+        }
+    }
+}
+
 /// Between two passes, for a collector that was installed with the installer: an update that is ready is applied (unless the person chose to apply them by
 /// hand), and, now and then, each Mnemarr is asked for a newer version, apart from the passes. Positions are kept after each pass, so nothing is lost when the
 /// collector restarts to apply it. An update that waits is neither asked for again nor downloaded again; one that could not be applied is tried again later,
 /// not at every pass.
-fn keep_up_to_date(dir: &std::path::Path, next_check: &mut std::time::Instant) {
+fn keep_up_to_date(dir: &std::path::Path, clock: &mut UpdateClock) {
     let updater = updater();
     if !updater.installed() {
         return;
     }
     let now = std::time::Instant::now();
     if updater.ready() {
-        if update::load_settings(dir).auto && now >= *next_check {
+        if update::load_settings(dir).auto && now >= clock.apply_after {
             say("applying the update: the collector restarts");
             if let Err(error) = updater.apply() {
                 say(&format!("the update could not be applied: {error}"));
-                *next_check = now + CHECK_EVERY;
+                clock.apply_after = now + CHECK_EVERY;
             }
         }
         return;
     }
-    if now >= *next_check {
-        *next_check = now + CHECK_EVERY;
+    if now >= clock.next_check {
+        clock.next_check = now + CHECK_EVERY;
         let checker = updater.clone();
         let listed = destinations::load(dir);
         thread::spawn(move || match checker.check(&listed) {
@@ -821,6 +837,9 @@ fn launch_installed() -> ExitCode {
     let exe = update::stable_exe(&running);
     if cfg!(windows) {
         let _ = service::register(&exe, None);
+        if let Some(root) = exe.parent() {
+            let _ = update::write_shim(root);
+        }
     }
     match service::start(&dir, &exe, None) {
         Ok(Started::Started | Started::AlreadyRunning) => ExitCode::SUCCESS,

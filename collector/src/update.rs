@@ -118,6 +118,17 @@ impl UpdateState {
     }
 }
 
+/// The part of a failure that may be said to a Mnemarr: this program's own sentences about why nothing can be done, and for anything else a general one.
+pub fn public_note(reason: &str) -> String {
+    if reason.starts_with("none of the Mnemarr it sends to")
+        || reason == "it is not linked to any Mnemarr"
+    {
+        reason.to_string()
+    } else {
+        "the last check could not reach a Mnemarr or take its update".to_string()
+    }
+}
+
 /// What the person chose about updates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
@@ -186,6 +197,20 @@ pub fn stable_exe_named(running: &Path, title: Option<&str>) -> PathBuf {
         .unwrap_or_else(|| root.join(file))
 }
 
+/// The name of the file at the root of the installed folder that makes `mnemarr-collector` a command in a terminal: the program at the root is a launcher with
+/// no console and a name of the application, and the real program is in `current`, which is not on the PATH (it is replaced at each update).
+pub const SHIM_FILE: &str = "mnemarr-collector.cmd";
+
+/// What the shim says: run the program in `current`, with the arguments it was given.
+pub fn shim_text() -> &'static str {
+    "@echo off\r\n\"%~dp0current\\mnemarr-collector.exe\" %*\r\n"
+}
+
+/// Writes the shim at the root of the installed folder.
+pub fn write_shim(root: &Path) -> std::io::Result<()> {
+    std::fs::write(root.join(SHIM_FILE), shim_text())
+}
+
 /// The folder, as the scripts below read it: it is given to PowerShell as data (an environment variable), never written into the text of the script, so that a
 /// name with a quote of any kind in it cannot end up as a command.
 pub const FOLDER_VARIABLE: &str = "MNEMARR_FOLDER";
@@ -241,6 +266,7 @@ fn after_install() {
     let stable = stable_exe(&running);
     let _ = service::register(&stable, None);
     if let Some(root) = stable.parent() {
+        let _ = write_shim(root);
         run_script(&add_to_path_script(), root);
     }
 }
@@ -421,6 +447,13 @@ impl Updater {
         if !self.installed() {
             return UpdateState::NotInstalled;
         }
+        // Nothing is done, and nothing is overwritten, while a check is under way or an update waits to be applied.
+        if matches!(
+            self.state(),
+            UpdateState::Checking | UpdateState::Downloading(_) | UpdateState::Ready(_)
+        ) {
+            return self.state();
+        }
         let allowed: Vec<&Destination> = destinations
             .iter()
             .filter(|destination| may_carry_updates(&destination.server))
@@ -452,10 +485,11 @@ impl Updater {
         state
     }
 
-    /// The reason the last check failed, short enough to be said to a Mnemarr; nothing when it did not.
+    /// What is said to a Mnemarr of why the last check failed; nothing when it did not. Only sentences of this program's own: what the updater or the network said
+    /// may hold the address of another Mnemarr this computer sends to, and each Mnemarr is told nothing of the others (ADR 0030).
     pub fn note(&self) -> Option<String> {
         match self.state() {
-            UpdateState::Failed(reason) => Some(reason.chars().take(120).collect()),
+            UpdateState::Failed(reason) => Some(public_note(&reason)),
             _ => None,
         }
     }
@@ -663,5 +697,40 @@ mod tests {
         assert!(!may_carry_updates("http://localhost:80@evil.example/"));
         assert!(!may_carry_updates("http://127.0.0.1@evil.example"));
         assert!(!may_carry_updates("http://user:pass@localhost:8383"));
+    }
+
+    #[test]
+    fn should_make_a_command_of_the_program_at_the_root_by_running_the_one_in_current_with_the_same_arguments()
+     {
+        let text = shim_text();
+
+        assert!(text.contains("%~dp0current\\mnemarr-collector.exe"));
+        assert!(text.contains(" %*"), "the arguments are passed on");
+        let dir = std::env::temp_dir().join(format!("mnemarr-shim-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        write_shim(&dir).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join(SHIM_FILE)).unwrap(), text);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn should_say_to_a_mnemarr_only_the_sentences_of_this_program_and_never_what_the_network_said()
+    {
+        assert_eq!(
+            public_note("it is not linked to any Mnemarr"),
+            "it is not linked to any Mnemarr"
+        );
+        assert!(
+            public_note(
+                "none of the Mnemarr it sends to is reached over HTTPS (an update is code)"
+            )
+            .starts_with("none of the Mnemarr")
+        );
+        let leaked = public_note(
+            "other-mnemarr: error sending request for url (https://other.example/api/v1/ingest/updates/releases.win.json)",
+        );
+        assert!(!leaked.contains("other"), "{leaked}");
+        assert!(!leaked.contains("https"), "{leaked}");
     }
 }

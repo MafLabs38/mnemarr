@@ -21,12 +21,14 @@ again for each machine. The maintainer already ships his other Windows applicati
    running with its icon and **opens the page where a person links it** (ADR 0030: the machine asks, a person approves in Mnemarr and names it). The program
    that carries a code (ADR 0027 §15) stays for a machine with no screen.
 3. **What the installer asks of the program** (Velopack calls it with a task, thirty seconds at most, no window): after the install, the entry that starts it
-   with the session of the user points at the stable program and its folder is added to the PATH of the user; before the uninstall it stops, and the entry
+   with the session of the user points at the stable program, and a small file at the root of its folder (`mnemarr-collector.cmd`, which runs the program in
+   `current` with the same arguments) makes `mnemarr-collector` a command: the folder is added to the PATH of the user (the program at the root is a launcher with
+   no console, and `current` is replaced at each update); before the uninstall it stops, and the entry
    and the PATH are taken away; before an update it stops, and the updater starts the new version. **The machine stays joined** after an uninstall: its keys
    and positions are in the folder of the collector, which is not the one that is removed (a hook cannot ask a question, so the choice to delete them is a
    command, in the runbook), and installing again finds them.
 4. **Each Mnemarr serves the updates it was built with**, from the folder the installer made: Velopack's feed (`releases.win.json`) and its packages, under
-   `/api/v1/ingest/updates/`, and the installer at `/api/v1/ingest/installer/windows`. Anonymous like the programs (the same for everybody, no secret), limited
+   `/api/v1/ingest/updates/`, and the installer at `/api/v1/ingest/installer/windows-x86_64`. Anonymous like the programs (the same for everybody, no secret), limited
    like them (four at a time), and **only the files the installer makes are served** (by name, no folder, no link followed). The image carries the folder;
    the CI makes it.
 5. **The collector asks all the Mnemarr it sends to, and takes the newest version** (the update source is not one chosen Mnemarr: a development and a
@@ -36,7 +38,7 @@ again for each machine. The maintainer already ships his other Windows applicati
 6. **An update is code that will run**: it is taken only over **HTTPS, or from this very computer**, never over a plain `http://` address on a network, even
    one the person allowed for sending conversations. The trust is the one in the Mnemarr that the person linked, over TLS. The package is checked against the
    checksum of the feed. The program is **not signed** (Windows shows its warning at the first run; signing is for later and changes nothing here).
-7. **Versions are semantic versions**: a release is `X.Y.Z`; any other build is `0.0.1-<branch>.<run>` (Velopack refuses anything below 0.0.1), older than
+7. **Versions are semantic versions**: a release is `X.Y.Z`; any other build is `0.0.1-dev.<run>` (Velopack refuses anything below 0.0.1), older than
    every release. The collector reports the version the installer knows, and whether it can replace itself; the machines page says **Update available: X**
    for a machine that can and is older, and keeps "another program than this Mnemarr carries" (the hash of ADR 0031 §7) for the others.
 8. **The CI makes and tries it.** The job `installer` packages the Windows program that the `collector` job built and tested, at the version of the build,

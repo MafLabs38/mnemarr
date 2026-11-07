@@ -32,6 +32,8 @@ public sealed class CollectorUpdatesFixture : IDisposable
     [InlineData("a/b-Setup.exe", false)]
     [InlineData("a\\b-Setup.exe", false)]
     [InlineData("-full.nupkg", false)]
+    [InlineData("x-Setup.exe.txt", false)]
+    [InlineData(".hidden-Setup.exe", false)]
     [InlineData("", false)]
     public void should_serve_only_the_files_the_installer_makes(string name, bool served) => CollectorUpdates.IsServed(name).Should().Be(served);
 
@@ -113,5 +115,27 @@ public sealed class CollectorUpdatesFixture : IDisposable
         Feed("""{"Assets":[{"Version":"1.4.0","Type":"Full"}]}""");
 
         Carrying().NewerThan(version, can, platform).Should().Be(expected);
+    }
+
+    [Fact]
+    public void should_read_the_feed_again_when_it_changes_and_not_when_it_does_not()
+    {
+        Feed("""{"Assets":[{"Version":"1.0.0","Type":"Full"}]}""");
+        var updates = Carrying();
+
+        updates.LatestVersion("windows-x86_64").Should().Be("1.0.0");
+        Feed("""{"Assets":[{"Version":"1.1.0","Type":"Full"},{"Version":"1.0.0","Type":"Full"}]}""");
+        File.SetLastWriteTimeUtc(Path.Combine(_folder, "releases.win.json"), DateTime.UtcNow.AddMinutes(1));
+
+        updates.LatestVersion("windows-x86_64").Should().Be("1.1.0", "a feed that was replaced is read again, not kept");
+    }
+
+    [Fact]
+    public void should_serve_a_name_of_the_longest_length_and_not_a_longer_one()
+    {
+        var longest = new string('a', 150 - "-Setup.exe".Length) + "-Setup.exe";
+
+        CollectorUpdates.IsServed(longest).Should().BeTrue();
+        CollectorUpdates.IsServed("a" + longest).Should().BeFalse();
     }
 }

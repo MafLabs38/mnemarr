@@ -203,3 +203,13 @@ test('the guard on the seed tag', async (t) => {
     assert.doesNotMatch(result.stdout, /No release tag/);
   });
 });
+
+test('the SDK in the collector and the tool that packages it are the same version of Velopack', () => {
+  // Velopack expects the library in the program and `vpk` to agree on the format of the packages and the feed: a bump of one alone (Dependabot does that for the
+  // crate) would ship a collector whose updater does not match what the image serves.
+  const root = path.join(here, '..', '..', '..');
+  const crate = readFileSync(path.join(root, 'collector', 'Cargo.toml'), 'utf8').match(/^velopack = "([^"]+)"$/m)?.[1];
+  const tool = readFileSync(path.join(root, 'tools', 'installer', 'pack.sh'), 'utf8').match(/^vpk_version="([^"]+)"$/m)?.[1];
+  assert.ok(crate && tool, 'both versions must be found');
+  assert.equal(crate, tool);
+});

@@ -95,7 +95,7 @@ The usual way on a workstation is the **installer**. On the Machines page, *Add 
 
 1. Open it. Windows shows its warning once (the installer is not signed yet): *More info*, then *Run anyway*. It installs for you alone, without administrator rights, in `%LocalAppData%\MnemarrCollector`.
 2. The collector starts, with its icon near the clock, and **opens a page in your browser** where you give the address of your Mnemarr. The page shows a code and opens the page of Mnemarr, where you check that the code is the one on the computer, name the machine and approve it ([ADR 0030](adr/0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md)). Nothing to copy by hand.
-3. It is now **in Windows' list of installed applications** (*Settings, Apps*), starts with your session, and `mnemarr-collector` is found by name in a new terminal.
+3. It is now **in Windows' list of installed applications** (*Settings, Apps*), starts with your session, and `mnemarr-collector` is a command in a new terminal (a small `mnemarr-collector.cmd` at the root of its folder runs the program).
 
 **Updating.** The collector asks each Mnemarr it sends to, ninety seconds after it starts and then every four hours, for the newest version it carries, and takes **the newest of them** (a development and a production Mnemarr carry different builds; a build that is not a release is older than every release). It downloads it in the background and, by default, **applies it between two passes** and restarts: nothing is lost, its positions are kept after each pass. It takes an update only over HTTPS, or from this very computer, never over a plain `http://` address on a network.
 

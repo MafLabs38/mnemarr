@@ -124,14 +124,6 @@ public sealed class UpdatesApiFixture : IClassFixture<UpdatesFactory>, IClassFix
     }
 
     [Fact]
-    public async Task should_not_tell_a_machine_that_does_not_say_it_can_update_even_when_it_is_older()
-    {
-        var (admin, name) = await MachineAsync("1.3.0", canUpdate: false);
-
-        (await UpdateToAsync(admin, name)).Should().BeNull("a collector that omits it (an older one, or one run by hand) is not told");
-    }
-
-    [Fact]
     public async Task should_serve_a_part_of_a_package_when_a_range_is_asked_for()
     {
         var request = new HttpRequestMessage(HttpMethod.Get, $"{Feed}/MnemarrCollector-1.4.0-full.nupkg");

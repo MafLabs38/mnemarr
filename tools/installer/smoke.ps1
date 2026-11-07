@@ -5,6 +5,9 @@
 #   smoke.ps1 -Program <mnemarr-collector.exe>
 param([Parameter(Mandatory = $true)][string]$Program)
 $ErrorActionPreference = 'Stop'
+$server = $null
+# Whatever fails, the little web server of the feed does not stay behind.
+trap { if ($server) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }; throw $_ }
 
 function Wait-Until([scriptblock]$Condition, [string]$What, [int]$Seconds = 90) {
     for ($i = 0; $i -lt $Seconds; $i++) {
@@ -38,6 +41,10 @@ Wait-Until { Test-Path (Join-Path $app 'current\mnemarr-collector.exe') } 'the p
 Wait-Until { Test-Path $stub } 'the program at the root, which an update does not change'
 Wait-Until { (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session'
 Wait-Until { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $app } 'the folder on the PATH of the user'
+# A new terminal reads the PATH of the user: this one is given it, as a person would find it.
+$env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
+$typed = (cmd /c 'mnemarr-collector --version 2>&1') -join ' '
+if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a command in a terminal: '$typed'" }
 $said = (& $real --version) -join ' '
 if ($said -notmatch 'mnemarr-collector') { throw "The program does not answer: '$said'" }
 Write-Host "installed: $said"
