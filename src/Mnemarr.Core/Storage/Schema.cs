@@ -192,6 +192,12 @@ public static class Schema
             approved_by TEXT
         );
         """,
+        // 10: a machine is a computer (ADR 0031): the hash of the identifier the system made for itself, kept with the machine, and sent with a request to be linked.
+        """
+        ALTER TABLE machines ADD COLUMN computer_id TEXT;
+        CREATE UNIQUE INDEX machines_by_computer ON machines (computer_id) WHERE computer_id IS NOT NULL;
+        ALTER TABLE pairings ADD COLUMN computer_id TEXT;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

@@ -11,12 +11,15 @@ const pairing: PairingItem = {
   hostname: 'Gaming PC',
   requestedAt: '2026-11-06T10:00:00Z',
   expiresAt: '2026-11-06T10:10:00Z',
+  knownAs: null,
 };
 
-function server(options: { found?: boolean; list?: PairingItem[] } = {}) {
+function server(options: { found?: boolean; list?: PairingItem[]; knownAs?: string } = {}) {
   return stubApi((method, path) => {
     if (method === 'POST' && path === '/pairings/lookup') {
-      return options.found === false ? { status: 404, body: { title: 'No such request' } } : { body: pairing };
+      return options.found === false
+        ? { status: 404, body: { title: 'No such request' } }
+        : { body: { ...pairing, knownAs: options.knownAs ?? null } };
     }
     if (method === 'GET' && path === '/pairings') {
       return { body: options.list ?? [] };
@@ -57,6 +60,14 @@ describe('LinkMachine', () => {
       kind: 'always-on',
     });
     expect(screen.getByRole('link', { name: 'See the machines' })).toHaveAttribute('href', '/machines');
+  });
+
+  it('says when the computer is already a machine here, and starts from that name', async () => {
+    server({ knownAs: 'quimper-gaming' });
+    renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
+
+    expect(await screen.findByText(/already the machine quimper-gaming here/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Name in this Mnemarr')).toHaveValue('quimper-gaming');
   });
 
   it('refuses the computer when the person says it is not theirs, and says so', async () => {

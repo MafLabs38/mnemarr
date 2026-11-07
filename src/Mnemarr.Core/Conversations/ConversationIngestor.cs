@@ -34,10 +34,12 @@ public sealed partial class ConversationIngestor
     private readonly SourceIndexer _indexer;
     private readonly RawConversations _raw;
     private readonly IConversationStore _store;
+    private readonly ConversationRelocator _relocator;
     private readonly TimeProvider _clock;
 
-    public ConversationIngestor(SourceCatalog catalog, SourceLocks locks, SourceIndexer indexer, RawConversations raw, IConversationStore store, TimeProvider clock)
+    public ConversationIngestor(SourceCatalog catalog, SourceLocks locks, SourceIndexer indexer, RawConversations raw, IConversationStore store, ConversationRelocator relocator, TimeProvider clock)
     {
+        _relocator = relocator;
         _catalog = catalog;
         _locks = locks;
         _indexer = indexer;
@@ -84,7 +86,7 @@ public sealed partial class ConversationIngestor
 
     private async Task<IngestResult> TakeAsync(Source source, IngestBatch batch, IReadOnlyList<string> masked, CancellationToken cancellationToken)
     {
-        var known = _store.Find(batch.Machine, batch.Session);
+        var known = await FindKnownAsync(source, batch, cancellationToken);
         if (known is not null && !string.Equals(known.Format, batch.Format, StringComparison.Ordinal))
         {
             // Two assistants never share a session: lines of another format would be read by the wrong parser.
@@ -141,6 +143,18 @@ public sealed partial class ConversationIngestor
 
         _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account, title, known?.TitleSource ?? TitleSources.FirstSentence, known?.Summary));
         return new IngestResult(total, fresh.Count);
+    }
+
+    /// <summary>The conversation as the server holds it, taking over one that was held under a name that is not a machine (ADR 0031) rather than making it twice.</summary>
+    private async Task<ConversationRecord?> FindKnownAsync(Source source, IngestBatch batch, CancellationToken cancellationToken)
+    {
+        var known = _store.Find(batch.Machine, batch.Session);
+        if (known is null && await _relocator.AdoptAsync(source, batch.Session, batch.Machine, cancellationToken))
+        {
+            known = _store.Find(batch.Machine, batch.Session);
+        }
+
+        return known;
     }
 
     private static string MaskedLine(string line)

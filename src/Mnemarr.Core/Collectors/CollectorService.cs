@@ -10,22 +10,23 @@ namespace Mnemarr.Core.Collectors;
 /// </summary>
 public sealed class CollectorService
 {
+    private const string NoSuchMachine = "There is no such machine.";
     private const string NoMachine = "This key belongs to no machine: enrol the machine with a code (mnemarr-collector enroll).";
     private const int MaxVersion = 40;
     private const int MaxError = 200;
     private readonly IMachineStore _machines;
     private readonly MachineAccounts _accounts;
-    private readonly IConversationStore _conversations;
+    private readonly ConversationRelocator _relocator;
     private readonly IAuditLog _audit;
     private readonly TimeProvider _clock;
     private readonly IOptions<CollectorOptions> _options;
     private readonly IOptions<IngestOptions> _ingest;
 
-    public CollectorService(IMachineStore machines, MachineAccounts accounts, IConversationStore conversations, IAuditLog audit, TimeProvider clock, IOptions<CollectorOptions> options, IOptions<IngestOptions> ingest)
+    public CollectorService(IMachineStore machines, MachineAccounts accounts, ConversationRelocator relocator, IAuditLog audit, TimeProvider clock, IOptions<CollectorOptions> options, IOptions<IngestOptions> ingest)
     {
         _machines = machines;
         _accounts = accounts;
-        _conversations = conversations;
+        _relocator = relocator;
         _audit = audit;
         _clock = clock;
         _options = options;
@@ -57,7 +58,7 @@ public sealed class CollectorService
     {
         lock (_accounts.Gate)
         {
-            var found = _machines.Get(machine) ?? throw new RejectedException(Problem.NotFound, "There is no such machine.");
+            var found = _machines.Get(machine) ?? throw new RejectedException(Problem.NotFound, NoSuchMachine);
             if (found.RevokedAt is null)
             {
                 throw new RejectedException(Problem.Conflict, "Revoke the machine first: only a machine that was revoked is taken out of the list.");
@@ -67,6 +68,128 @@ public sealed class CollectorService
             _accounts.Delete(found.AccountId, actor);
             _audit.Append(actor, "collector.forgotten", machine);
         }
+    }
+
+    /// <summary>
+    /// Takes a machine out of the list whether or not it was revoked (ADR 0031): its keys stop working, its account goes, its name is free. What it sent stays,
+    /// filed under its name and shown as no longer enrolled, where a person can rename it, merge it into another machine or delete it.
+    /// </summary>
+    public void Remove(string machine, string actor)
+    {
+        lock (_accounts.Gate)
+        {
+            RemoveRow(machine, actor);
+        }
+    }
+
+    /// <summary>Gives a machine, or the name that conversations were sent under, another name: what it sent is filed under the new one. The new name must be free.</summary>
+    public async Task RenameAsync(string machine, string newName, string actor, CancellationToken cancellationToken)
+    {
+        if (!MachineNames.IsValid(newName))
+        {
+            throw new RejectedException(Problem.Invalid, $"The name of a machine is 1 to {MachineNames.MaxLength} letters, digits, dots, hyphens or underscores, and starts with a letter or a digit.");
+        }
+
+        lock (_accounts.Gate)
+        {
+            var exists = _machines.Get(machine) is not null;
+            if (!exists && !_relocator.Holds(machine))
+            {
+                throw new RejectedException(Problem.NotFound, NoSuchMachine);
+            }
+
+            if (string.Equals(machine, newName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            if (_machines.Get(newName) is not null || _relocator.Holds(newName))
+            {
+                throw new RejectedException(Problem.Conflict, $"The name '{newName}' is taken: merge the machine into it instead.");
+            }
+
+            if (exists)
+            {
+                _machines.Rename(machine, newName);
+            }
+
+            _audit.Append(actor, "collector.renamed", machine, newName);
+        }
+
+        await _relocator.MoveAllAsync(machine, newName, cancellationToken);
+    }
+
+    /// <summary>Files what a machine sent under another machine that is enrolled, without making a conversation twice, and takes the first out of the list.</summary>
+    public async Task<Relocation> MergeAsync(string machine, string into, string actor, CancellationToken cancellationToken)
+    {
+        if (string.Equals(machine, into, StringComparison.Ordinal))
+        {
+            throw new RejectedException(Problem.Invalid, "A machine cannot be merged into itself.");
+        }
+
+        lock (_accounts.Gate)
+        {
+            if (_machines.Get(into) is null)
+            {
+                throw new RejectedException(Problem.NotFound, "There is no such machine to merge into: only a machine that is enrolled can receive.");
+            }
+
+            if (_machines.Get(machine) is null && !_relocator.Holds(machine))
+            {
+                throw new RejectedException(Problem.NotFound, NoSuchMachine);
+            }
+        }
+
+        var report = await _relocator.MoveAllAsync(machine, into, cancellationToken);
+        lock (_accounts.Gate)
+        {
+            if (_machines.Get(machine) is not null)
+            {
+                RemoveRow(machine, actor);
+            }
+
+            _audit.Append(actor, "collector.merged", machine, into);
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// Deletes a machine and everything it sent: its keys, its row, its raw lines, its conversation notes and what the search knew of them. What is
+    /// computed from conversations is not here to delete (ADR 0031). Returns how many conversations went.
+    /// </summary>
+    public async Task<int> EraseAsync(string machine, string actor, CancellationToken cancellationToken)
+    {
+        lock (_accounts.Gate)
+        {
+            if (_machines.Get(machine) is null && !_relocator.Holds(machine))
+            {
+                throw new RejectedException(Problem.NotFound, NoSuchMachine);
+            }
+
+            if (_machines.Get(machine) is not null)
+            {
+                RemoveRow(machine, actor);
+            }
+        }
+
+        var count = await _relocator.EraseAsync(machine, cancellationToken);
+        _audit.Append(actor, "collector.erased", machine, count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return count;
+    }
+
+    private void RemoveRow(string machine, string actor)
+    {
+        var found = _machines.Get(machine) ?? throw new RejectedException(Problem.NotFound, NoSuchMachine);
+        if (found.RevokedAt is null)
+        {
+            _accounts.Disable(found.AccountId, actor);
+            _machines.Revoke(machine, _clock.GetUtcNow());
+        }
+
+        _machines.Remove(machine);
+        _accounts.Delete(found.AccountId, actor);
+        _audit.Append(actor, "collector.forgotten", machine);
     }
 
     /// <summary>
@@ -107,7 +230,7 @@ public sealed class CollectorService
     public IReadOnlyList<MachineStatus> Machines()
     {
         var now = _clock.GetUtcNow();
-        var activity = _conversations.Machines().ToDictionary(item => item.Machine, StringComparer.Ordinal);
+        var activity = _relocator.Machines().ToDictionary(item => item.Machine, StringComparer.Ordinal);
         var list = new List<MachineStatus>();
         foreach (var machine in _machines.List())
         {

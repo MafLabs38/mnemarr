@@ -33,6 +33,15 @@ public sealed record MachineResource(string Machine, string? Kind, string State,
 /// conversations (who held some, how many lines), so it needs the right to read them, like the conversations themselves. It is not under the
 /// ingest prefix, which is the one a proxy may publish without a single sign-on for the collectors alone (Q-28).
 /// </summary>
+public sealed record RenameMachineRequest(string? Name);
+
+public sealed record MergeMachineRequest(string? Into);
+
+/// <summary>How many conversations were filed under the other machine, and how many it held already (not made twice).</summary>
+public sealed record MergeResult(int Moved, int AlreadyThere);
+
+public sealed record EraseResult(int Conversations);
+
 [ApiController]
 [Route("api/v1/collectors")]
 public sealed class CollectorsController : ControllerBase
@@ -57,6 +66,41 @@ public sealed class CollectorsController : ControllerBase
         _collectors.Forget(machine, User.ActorName());
         return NoContent();
     }
+
+    /// <summary>Takes a machine out of the list, revoked or not. What it sent stays, filed under its name.</summary>
+    [HttpPost("{machine}/remove")]
+    [Authorize(Policy = Permissions.CollectorsManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult Remove(string machine)
+    {
+        _collectors.Remove(machine, User.ActorName());
+        return NoContent();
+    }
+
+    /// <summary>Gives a machine (or a name that conversations came from) another name; what it sent is filed under the new one.</summary>
+    [HttpPost("{machine}/rename")]
+    [Authorize(Policy = Permissions.CollectorsManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Rename(string machine, RenameMachineRequest request, CancellationToken cancellationToken)
+    {
+        await _collectors.RenameAsync(machine, request.Name ?? string.Empty, User.ActorName(), cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Files what a machine sent under another enrolled machine, without doubling a conversation both have, and takes it out of the list.</summary>
+    [HttpPost("{machine}/merge")]
+    [Authorize(Policy = Permissions.CollectorsManage)]
+    public async Task<MergeResult> Merge(string machine, MergeMachineRequest request, CancellationToken cancellationToken)
+    {
+        var report = await _collectors.MergeAsync(machine, request.Into ?? string.Empty, User.ActorName(), cancellationToken);
+        return new MergeResult(report.Moved, report.AlreadyThere);
+    }
+
+    /// <summary>Deletes a machine and every conversation it sent. It cannot be undone.</summary>
+    [HttpPost("{machine}/erase")]
+    [Authorize(Policy = Permissions.CollectorsManage)]
+    public async Task<EraseResult> Erase(string machine, CancellationToken cancellationToken) =>
+        new(await _collectors.EraseAsync(machine, User.ActorName(), cancellationToken));
 
     /// <summary>Revokes a machine: its keys stop working and its account is disabled. It can join again with a new code.</summary>
     [HttpDelete("{machine}")]

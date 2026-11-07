@@ -27,7 +27,9 @@ public sealed record Pairing(
     MachineKind? Kind,
     DateTimeOffset RequestedAt,
     DateTimeOffset ExpiresAt,
-    string? ApprovedBy)
+    string? ApprovedBy,
+    string? ComputerId = null,
+    string? KnownAs = null)
 {
     /// <summary>Whether the time is over for a request that nobody took (a used or rejected one is over for another reason).</summary>
     public bool IsExpired(DateTimeOffset now) => State is PairingState.Pending or PairingState.Approved && ExpiresAt <= now;

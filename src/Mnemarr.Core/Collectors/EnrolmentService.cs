@@ -141,7 +141,7 @@ public sealed class EnrolmentService
     /// Exchanges a code for the key of a machine. Anonymous: the code is all that is needed, so a wrong one is counted and the count is
     /// limited for the whole server, and every failure gets the same words.
     /// </summary>
-    public EnrolledMachine Exchange(string? code, string? machine)
+    public EnrolledMachine Exchange(string? code, string? machine, string? computerId = null)
     {
         lock (_accounts.Gate)
         {
@@ -156,7 +156,7 @@ public sealed class EnrolmentService
                 throw new RejectedException(Problem.Invalid, NotValid);
             }
 
-            return _joining.Join(enrolment.Machine, enrolment.Kind, enrolment.RequestedBy, now);
+            return _joining.Join(enrolment.Machine, enrolment.Kind, enrolment.RequestedBy, now, computerId);
         }
     }
 

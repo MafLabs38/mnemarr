@@ -83,7 +83,8 @@ public sealed record Machine(
     long PendingLines,
     string? Error,
     DateTimeOffset? RevokedAt,
-    bool Paused = false);
+    bool Paused = false,
+    string? ComputerId = null);
 
 /// <summary>What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet.</summary>
 public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false);
@@ -122,7 +123,8 @@ public sealed record Enrolment(
 public sealed record NewEnrolment(Enrolment Enrolment, string Code);
 
 /// <summary>What a machine is given when it joins: its key, shown once.</summary>
-public sealed record EnrolledMachine(string Key, string Machine, MachineKind Kind);
+/// <summary><paramref name="RenamedFrom"/>: the computer was known under another name, which it now has: its conversations are to be filed under the new one.</summary>
+public sealed record EnrolledMachine(string Key, string Machine, MachineKind Kind, string? RenamedFrom = null);
 
 /// <summary>A machine as the page tells it: what it is, the state computed from the facts, and what it sent.</summary>
 public sealed record MachineStatus(

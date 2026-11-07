@@ -11,6 +11,8 @@ export interface PairingItem {
   hostname: string;
   requestedAt: string;
   expiresAt: string;
+  /** The name this computer already has in this Mnemarr, when it joined before (ADR 0031). */
+  knownAs: string | null;
 }
 
 /** A person answers while a computer waits: the page looks again now and then. */

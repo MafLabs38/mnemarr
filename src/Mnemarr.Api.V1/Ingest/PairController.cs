@@ -4,11 +4,12 @@ using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Api.V1.Collectors;
 using Mnemarr.Core;
 using Mnemarr.Core.Collectors;
+using Mnemarr.Core.Conversations;
 
 namespace Mnemarr.Api.V1.Ingest;
 
 /// <summary>What a machine says when it asks to be linked: its host name, which a person is shown (and does not have to keep).</summary>
-public sealed record PairStartRequest(string? Hostname);
+public sealed record PairStartRequest(string? Hostname, string? ComputerId = null);
 
 /// <summary>What the machine is given: the short code to show, the secret to ask with, the page where a person answers, and how long and how often.</summary>
 public sealed record PairStartResult(string UserCode, string DeviceCode, string VerificationUrl, int ExpiresInSeconds, int IntervalSeconds);
@@ -32,9 +33,11 @@ public sealed class PairController : ControllerBase
 
     private readonly PairingService _pairings;
     private readonly InstallCommands _commands;
+    private readonly ConversationRelocator _relocator;
 
-    public PairController(PairingService pairings, InstallCommands commands)
+    public PairController(PairingService pairings, InstallCommands commands, ConversationRelocator relocator)
     {
+        _relocator = relocator;
         _pairings = pairings;
         _commands = commands;
     }
@@ -50,7 +53,7 @@ public sealed class PairController : ControllerBase
             throw new RejectedException(Mnemarr.Core.Problem.Invalid, "The address of this Mnemarr cannot be written in a link: set Collectors:PublicUrl.");
         }
 
-        var started = _pairings.Start(request.Hostname);
+        var started = _pairings.Start(request.Hostname, request.ComputerId);
         return StatusCode(StatusCodes.Status201Created, new PairStartResult(
             started.UserCode,
             started.DeviceCode,
@@ -61,9 +64,15 @@ public sealed class PairController : ControllerBase
 
     [HttpPost("poll")]
     [RequestSizeLimit(MaxRequestBytes)]
-    public PairPollResult Poll(PairPollRequest request)
+    public async Task<PairPollResult> Poll(PairPollRequest request, CancellationToken cancellationToken)
     {
         var answer = _pairings.Poll(request.DeviceCode);
+        if (answer.Machine is { RenamedFrom: { } renamedFrom } renamed)
+        {
+            // A computer that was known under another name: what it sent is filed under the name it has now, before it sends more.
+            await _relocator.MoveAllAsync(renamedFrom, renamed.Machine, cancellationToken);
+        }
+
         return answer.Machine is { } machine
             ? new PairPollResult(answer.State, machine.Key, machine.Machine, MachineKinds.Name(machine.Kind))
             : new PairPollResult(answer.State, null, null, null);

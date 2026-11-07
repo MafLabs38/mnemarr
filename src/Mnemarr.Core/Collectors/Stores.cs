@@ -9,7 +9,13 @@ public interface IMachineStore
 
     Machine? GetByAccount(Guid accountId);
 
+    /// <summary>The machine that a computer is, whatever it is called now.</summary>
+    Machine? GetByComputer(string computerId);
+
     IReadOnlyList<Machine> List();
+
+    /// <summary>Gives a machine another name. False when there is no such machine.</summary>
+    bool Rename(string name, string newName);
 
     /// <summary>Adds the machine, or puts a machine that enrols again back as it was just enrolled (a new account, no past, not revoked).</summary>
     void Enrol(Machine machine);
@@ -54,15 +60,27 @@ public sealed class SqliteMachineStore : IMachineStore
         _database = database;
     }
 
-    public Machine? Get(string name) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines WHERE name = $key", name);
+    public Machine? Get(string name) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id FROM machines WHERE name = $key", name);
 
-    public Machine? GetByAccount(Guid accountId) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines WHERE account_id = $key", accountId.ToString());
+    public Machine? GetByAccount(Guid accountId) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id FROM machines WHERE account_id = $key", accountId.ToString());
+
+    public Machine? GetByComputer(string computerId) => One("SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id FROM machines WHERE computer_id = $key", computerId);
+
+    public bool Rename(string name, string newName)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE machines SET name = $new WHERE name = $name";
+        command.Parameters.AddWithValue(NameParameter, name);
+        command.Parameters.AddWithValue("$new", newName);
+        return command.ExecuteNonQuery() > 0;
+    }
 
     public IReadOnlyList<Machine> List()
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused FROM machines ORDER BY name";
+        command.CommandText = "SELECT name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id FROM machines ORDER BY name";
         using var reader = command.ExecuteReader();
         var machines = new List<Machine>();
         while (reader.Read())
@@ -78,10 +96,11 @@ public sealed class SqliteMachineStore : IMachineStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO machines (name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused)
-            VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL, 0)
-            ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL, paused = 0
+            INSERT INTO machines (name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id)
+            VALUES ($name, $kind, $account, $enrolled, NULL, NULL, 0, NULL, NULL, 0, $computer)
+            ON CONFLICT (name) DO UPDATE SET kind = $kind, account_id = $account, enrolled_at = $enrolled, last_seen_at = NULL, version = NULL, pending_lines = 0, error = NULL, revoked_at = NULL, paused = 0, computer_id = coalesce($computer, computer_id)
             """;
+        command.Parameters.AddWithValue("$computer", (object?)machine.ComputerId ?? DBNull.Value);
         command.Parameters.AddWithValue(NameParameter, machine.Name);
         command.Parameters.AddWithValue("$kind", MachineKinds.Name(machine.Kind));
         command.Parameters.AddWithValue("$account", machine.AccountId.ToString());
@@ -148,7 +167,8 @@ public sealed class SqliteMachineStore : IMachineStore
         reader.GetInt64(6),
         reader.IsDBNull(7) ? null : reader.GetString(7),
         reader.IsDBNull(8) ? null : StorageText.Parse(reader.GetString(8)),
-        reader.GetInt32(9) != 0);
+        reader.GetInt32(9) != 0,
+        reader.IsDBNull(10) ? null : reader.GetString(10));
 }
 
 public sealed class SqliteEnrolmentStore : IEnrolmentStore

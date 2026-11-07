@@ -30,7 +30,7 @@ public interface IPairingStore
 
 public sealed class SqlitePairingStore : IPairingStore
 {
-    private const string Columns = "id, hostname, state, machine, kind, requested_at, expires_at, approved_by";
+    private const string Columns = "id, hostname, state, machine, kind, requested_at, expires_at, approved_by, computer_id";
     private readonly IDatabase _database;
 
     public SqlitePairingStore(IDatabase database)
@@ -43,8 +43,8 @@ public sealed class SqlitePairingStore : IPairingStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO pairings (id, hostname, state, user_code_hash, device_hash, requested_at, expires_at)
-            VALUES ($id, $hostname, $state, $user, $device, $requested, $expires)
+            INSERT INTO pairings (id, hostname, state, user_code_hash, device_hash, requested_at, expires_at, computer_id)
+            VALUES ($id, $hostname, $state, $user, $device, $requested, $expires, $computer)
             """;
         command.Parameters.AddWithValue("$id", pairing.Id.ToString());
         command.Parameters.AddWithValue("$hostname", pairing.Hostname);
@@ -53,6 +53,7 @@ public sealed class SqlitePairingStore : IPairingStore
         command.Parameters.AddWithValue("$device", deviceHash);
         command.Parameters.AddWithValue("$requested", StorageText.Format(pairing.RequestedAt));
         command.Parameters.AddWithValue("$expires", StorageText.Format(pairing.ExpiresAt));
+        command.Parameters.AddWithValue("$computer", (object?)pairing.ComputerId ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 
@@ -148,6 +149,7 @@ public sealed class SqlitePairingStore : IPairingStore
             kind,
             StorageText.Parse(reader.GetString(5)),
             StorageText.Parse(reader.GetString(6)),
-            reader.IsDBNull(7) ? null : reader.GetString(7));
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8));
     }
 }

@@ -20,7 +20,7 @@ type Outcome = { kind: 'linked'; name: string } | { kind: 'rejected' };
 
 /** The person says who the computer is for this Mnemarr: the name it will have here and whether it is always on, or refuses it. */
 function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (outcome: Outcome) => void }>) {
-  const [typed, setTyped] = useState(() => machineNameFor(pairing.hostname));
+  const [typed, setTyped] = useState(() => pairing.knownAs ?? machineNameFor(pairing.hostname));
   const [kind, setKind] = useState<MachineKindName>('intermittent');
   const approve = useApprovePairing();
   const reject = useRejectPairing();
@@ -38,6 +38,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
       <p>
         {translate('LinkHostname')}: <strong>{pairing.hostname}</strong>
       </p>
+      {pairing.knownAs && <Alert>{translate('LinkKnownAs', { name: pairing.knownAs })}</Alert>}
       <p className={styles.hint}>{translate('PairingExpires', { time: formatDateTime(pairing.expiresAt) })}</p>
       {(approve.error ?? reject.error) && <Alert>{(approve.error ?? reject.error)?.message}</Alert>}
       <TextField

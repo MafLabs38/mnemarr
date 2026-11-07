@@ -24,7 +24,7 @@ public sealed class ConversationIngestorFixture : IDisposable
         _store = new SqliteConversationStore(_workspace.Database);
         _catalog = new SourceCatalog(new SqliteSourceStore(_workspace.Database), new SqliteAuditLog(_workspace.Database, _clock), paths, _clock);
         var indexer = new SourceIndexer(_index, paths, new ScanOutcomes(), _clock, _locks);
-        _ingestor = new ConversationIngestor(_catalog, _locks, indexer, new RawConversations(_workspace.Options), _store, _clock);
+        _ingestor = new ConversationIngestor(_catalog, _locks, indexer, new RawConversations(_workspace.Options), _store, new ConversationRelocator(_catalog, _locks, indexer, new RawConversations(_workspace.Options), _store, new Mnemarr.Core.Collectors.SqliteMachineStore(_workspace.Database)), _clock);
     }
 
     public void Dispose() => _workspace.Dispose();
@@ -371,7 +371,7 @@ public sealed class ConversationIngestorFixture : IDisposable
     {
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z"), Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
         await _ingestor.IngestAsync(Batch(0, Line("user", "three", "2026-11-04T14:05:00Z")) with { Session = "second-session" }, Token);
-        await _ingestor.IngestAsync(Batch(0, Line("user", "four", "2026-11-04T14:06:00Z")) with { Machine = "laptop" }, Token);
+        await _ingestor.IngestAsync(Batch(0, Line("user", "four", "2026-11-04T14:06:00Z")) with { Machine = "laptop", Session = "laptop-session" }, Token);
 
         var machines = _store.Machines();
 

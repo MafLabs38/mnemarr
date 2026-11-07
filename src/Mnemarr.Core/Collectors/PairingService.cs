@@ -54,8 +54,13 @@ public sealed class PairingService
     }
 
     /// <summary>A machine asks to be linked. Anonymous: it is counted, and limited for the whole server.</summary>
-    public NewPairing Start(string? hostname)
+    public NewPairing Start(string? hostname, string? computerId = null)
     {
+        if (computerId is not null && !MachineJoining.IsComputerId(computerId))
+        {
+            throw new RejectedException(Problem.Invalid, "The identifier of the computer is not valid.");
+        }
+
         lock (_accounts.Gate)
         {
             var now = _clock.GetUtcNow();
@@ -69,7 +74,7 @@ public sealed class PairingService
             var userCode = EnrolmentCodes.New();
             var deviceCode = DeviceCodePrefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             var clean = CleanHostname(hostname);
-            var pairing = new Pairing(Guid.NewGuid(), clean, PairingState.Pending, null, null, now, now + Life, null);
+            var pairing = new Pairing(Guid.NewGuid(), clean, PairingState.Pending, null, null, now, now + Life, null, computerId);
             _pairings.Add(pairing, EnrolmentCodes.Hash(EnrolmentCodes.Normalise(userCode)!), EnrolmentCodes.Hash(deviceCode));
             _audit.Append(AuditActors.Unknown, "collector.pairing-started", clean);
             return new NewPairing(userCode, deviceCode, Life, Interval);
@@ -77,7 +82,10 @@ public sealed class PairingService
     }
 
     /// <summary>The requests that wait for a person, newest first.</summary>
-    public IReadOnlyList<Pairing> Open() => _pairings.Open(_clock.GetUtcNow(), OpenListed);
+    public IReadOnlyList<Pairing> Open() => [.. _pairings.Open(_clock.GetUtcNow(), OpenListed).Select(Known)];
+
+    /// <summary>The name this computer has in this Mnemarr, when it has joined before (ADR 0031): the person is told, and the name is already the one to give.</summary>
+    private Pairing Known(Pairing pairing) => pairing.ComputerId is { } id && _joining.NameOf(id) is { } name ? pairing with { KnownAs = name } : pairing;
 
     /// <summary>The request a person is looking at, by the code the machine shows.</summary>
     public Pairing Lookup(string? userCode)
@@ -85,7 +93,7 @@ public sealed class PairingService
         var normalised = EnrolmentCodes.Normalise(userCode);
         var pairing = normalised is null ? null : _pairings.FindByUserCodeHash(EnrolmentCodes.Hash(normalised));
         return pairing is { State: PairingState.Pending } && !pairing.IsExpired(_clock.GetUtcNow())
-            ? pairing
+            ? Known(pairing)
             : throw new RejectedException(Problem.NotFound, "There is no such request waiting: it may be over or already answered. Start again on the machine.");
     }
 
@@ -107,7 +115,7 @@ public sealed class PairingService
             var pairing = Waiting(id);
             _pairings.Approve(id, machine!, parsedKind, actor);
             _audit.Append(actor, "collector.pairing-approved", machine!, MachineKinds.Name(parsedKind));
-            return _pairings.Get(pairing.Id)!;
+            return Known(_pairings.Get(pairing.Id)!);
         }
     }
 
@@ -150,7 +158,7 @@ public sealed class PairingService
                 case PairingState.Rejected:
                     return new PairingAnswer("rejected", null);
                 case PairingState.Approved when _pairings.Use(pairing.Id):
-                    return new PairingAnswer("approved", _joining.Join(pairing.Machine!, pairing.Kind ?? MachineKind.Intermittent, pairing.ApprovedBy ?? AuditActors.Unknown, now));
+                    return new PairingAnswer("approved", _joining.Join(pairing.Machine!, pairing.Kind ?? MachineKind.Intermittent, pairing.ApprovedBy ?? AuditActors.Unknown, now, pairing.ComputerId));
                 default:
                     // Already collected: the key is shown once.
                     throw new RejectedException(Problem.Invalid, NotValid);

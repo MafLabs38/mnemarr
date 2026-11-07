@@ -47,6 +47,18 @@ public interface IConversationStore
 
     IReadOnlyList<MachineActivity> Machines();
 
+    /// <summary>Every conversation held for a machine.</summary>
+    IReadOnlyList<ConversationRecord> OfMachine(string machine);
+
+    /// <summary>The conversations of this session, on whichever machine they are held.</summary>
+    IReadOnlyList<ConversationRecord> OfSession(string session);
+
+    /// <summary>Files a conversation under another machine, with the note it now has. The row is the same: its lines, its title and its tries stay.</summary>
+    void Move(string machine, string session, string toMachine, string notePath, long noteBytes);
+
+    /// <summary>Forgets a conversation (its raw lines and its note are the caller's to remove).</summary>
+    void Delete(string machine, string session);
+
     /// <summary>The conversation that is written in the note at this path.</summary>
     ConversationRecord? FindByNote(string notePath);
 
@@ -203,6 +215,49 @@ public sealed class SqliteConversationStore : IConversationStore
         command.Parameters.AddWithValue("$title", (object?)record.Title ?? DBNull.Value);
         command.Parameters.AddWithValue("$titleSource", record.TitleSource);
         command.Parameters.AddWithValue("$summary", (object?)record.Summary ?? DBNull.Value);
+        command.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<ConversationRecord> OfMachine(string machine) => Many("SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE machine = $key ORDER BY started_at", machine);
+
+    public IReadOnlyList<ConversationRecord> OfSession(string session) => Many("SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE session = $key", session);
+
+    private List<ConversationRecord> Many(string query, string key)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = query;
+        command.Parameters.AddWithValue("$key", key);
+        using var reader = command.ExecuteReader();
+        var found = new List<ConversationRecord>();
+        while (reader.Read())
+        {
+            found.Add(Read(reader));
+        }
+
+        return found;
+    }
+
+    public void Move(string machine, string session, string toMachine, string notePath, long noteBytes)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE conversations SET machine = $to, note_path = $path, note_bytes = $bytes WHERE machine = $machine AND session = $session";
+        command.Parameters.AddWithValue(MachineParameter, machine);
+        command.Parameters.AddWithValue(SessionParameter, session);
+        command.Parameters.AddWithValue("$to", toMachine);
+        command.Parameters.AddWithValue("$path", notePath);
+        command.Parameters.AddWithValue("$bytes", noteBytes);
+        command.ExecuteNonQuery();
+    }
+
+    public void Delete(string machine, string session)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM conversations WHERE machine = $machine AND session = $session";
+        command.Parameters.AddWithValue(MachineParameter, machine);
+        command.Parameters.AddWithValue(SessionParameter, session);
         command.ExecuteNonQuery();
     }
 

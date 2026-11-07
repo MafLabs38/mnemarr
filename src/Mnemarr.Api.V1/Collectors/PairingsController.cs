@@ -7,9 +7,10 @@ using Mnemarr.Core.Collectors;
 
 namespace Mnemarr.Api.V1.Collectors;
 
-public sealed record PairingResource(Guid Id, string Hostname, DateTimeOffset RequestedAt, DateTimeOffset ExpiresAt)
+/// <summary><paramref name="KnownAs"/>: the name this computer already has here, when it has joined before.</summary>
+public sealed record PairingResource(Guid Id, string Hostname, DateTimeOffset RequestedAt, DateTimeOffset ExpiresAt, string? KnownAs)
 {
-    public static PairingResource From(Pairing pairing) => new(pairing.Id, pairing.Hostname, pairing.RequestedAt, pairing.ExpiresAt);
+    public static PairingResource From(Pairing pairing) => new(pairing.Id, pairing.Hostname, pairing.RequestedAt, pairing.ExpiresAt, pairing.KnownAs);
 }
 
 public sealed record LookupPairingRequest(string? Code);

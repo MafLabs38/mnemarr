@@ -107,6 +107,7 @@ public static class CoreServiceCollectionExtensions
         services.AddHostedService<TitleService>();
         services.AddSingleton<IConversationStore, SqliteConversationStore>();
         services.AddSingleton<RawConversations>();
+        services.AddSingleton<ConversationRelocator>();
         services.AddSingleton<ConversationIngestor>();
         services.AddHostedService<SourceSyncService>();
         services.AddSingleton<SourceIndexingService>();
