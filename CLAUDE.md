@@ -58,6 +58,7 @@ Defects that a person finds by hand are defects the agent could have found first
 - **Open the sandbox in a real browser** (Playwright, or any browser you can drive) and use what was built as a person would: click through the journey, read the page, watch the console for errors and Content-Security-Policy violations, look at the screenshot (then delete it). A passing unit test says the code does what it was written to do, not that the screen is right.
 - **Try it on real material, not on a toy.** An example written for the demo shows only what its author thought of; a real vault (Mermaid diagrams, relative wikilinks, foldable callouts, `<br>` in tables) finds what the example hides. Keep such material out of the repository: use it in the sandbox only (rule 2).
 - A defect found this way is fixed with a test that fails without the fix, like any other.
+- **A vertical is validated by feedback the agent got itself, on the real target, before the maintainer is asked to try it.** Automated tests against a fake are not enough when the journey touches a real machine (his PC, the installed collector, a second instance): run that exact journey end to end first (the Windows PC is reachable by SSH, see the global instructions), and hand over only what already worked. Never ask the maintainer to perform a step the agent can trigger itself. If the real run fails, that is a finding to fix, not a demo to give.
 
 ## The constellation
 

@@ -57,6 +57,12 @@
 
 - A **static Linux program** (musl), so that any distribution runs it, and **aarch64** programs for Linux and macOS (the image carries x86_64 only); the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
 
+#### Follow-ups found by trying it on a real computer (2026-11-07, important): decided in [ADR 0031](adr/0031-a-machine-is-a-computer-not-a-name-it-is-deleted-in-two-ways-and-installed-once-for-everyone.md)
+
+- **A real uninstall.** Today the collector is a program in the user's own folder, started with their session, and absent from the system's list of installed applications: removing it takes `mnemarr-collector uninstall`, which most people will not find. It needs an entry in that list (Windows) with a working *Uninstall* that stops the collector, removes the program and its start-up entry, and asks whether to keep or delete the keys and the positions.
+- **A real, user-friendly update.** An installed collector has no way to learn that a newer program exists and no way to replace itself: an old one stays old (the maintainer's computer had no brain icon, so it ran the first build). To design: the collector says its version at each heartbeat (the release version must first be passed into the build), the machines page shows *update available*, and the update is one click or automatic (the collector downloads the program from the Mnemarr it sends to, checks its checksum, replaces itself and restarts), without revoking or re-adding the machine and without losing its destinations. The ADR will decide manual or automatic, and from which Mnemarr.
+- **Reinstall a machine that exists.** Until the update above exists, the machines page needs a *Reinstall* action on a machine row (a new one-time code for the same name, replacing its key on that Mnemarr only, with the download and the command), instead of revoking, removing and adding the machine again, which cuts it off meanwhile.
+
 #### 2c. Configuration from the server
 
 *Demo: switch a reader off for a machine in the interface and see the collector obey at its next pass.*
