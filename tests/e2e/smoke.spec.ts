@@ -315,14 +315,18 @@ test.describe('smoke @smoke', () => {
   test('a question asked in other words finds a note by its meaning, once the model has read it', async ({ page }) => {
     test.setTimeout(150_000);
     await signIn(page, '/notes');
+    const question = 'how is a container template assembled from stacked parts';
     const search = page.getByRole('region', { name: 'Search' });
-    await search.getByLabel('Search the notes').fill('how is a container template assembled from stacked parts');
-    // The model reads the notes of the stack in the background, a few seconds after the start: the question is asked once it has, and a model that never does says why.
+    await search.getByLabel('Search the notes').fill(question);
+    // The notes of the stack are indexed and read by the model in the background, a few seconds after the start, and other journeys add their own meanwhile: the question
+    // is asked of the API until the note comes back by its meaning, and a model that never reads it says where it is.
     await expect(async () => {
+      const hits = await (await page.request.get(`/api/v1/search?q=${encodeURIComponent(question)}`)).json();
       const status = await (await page.request.get('/api/v1/search/status')).json();
-      expect(status, 'the search by meaning is ready and has read every passage').toMatchObject({ state: 'ready' });
-      expect(status.computed).toBe(status.passages);
-      expect(status.passages).toBeGreaterThan(0);
+      expect(
+        hits.some((hit: { path: string; match: string }) => hit.path === 'docker.md' && hit.match !== 'keywords'),
+        JSON.stringify(status),
+      ).toBe(true);
     }).toPass({ timeout: 120_000 });
     await search.getByRole('button', { name: 'Search' }).click();
     // Other journeys of the stack declare the same note under their own names: the note is found in whichever source, not in the first ten by luck.
