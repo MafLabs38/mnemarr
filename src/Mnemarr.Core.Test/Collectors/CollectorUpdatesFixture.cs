@@ -56,6 +56,9 @@ public sealed class CollectorUpdatesFixture : IDisposable
     [InlineData("{ this is not json")]
     [InlineData("""{"Assets":"nothing"}""")]
     [InlineData("""{"Assets":[{"Version":"1.0.0","Type":"Delta"}]}""")]
+    [InlineData("""{"Assets":[1,"x",null,[]]}""")]
+    [InlineData("""{"Assets":[{"Type":5,"Version":6}]}""")]
+    [InlineData("""{"Assets":[{"Type":"Full","Version":{"a":1}}]}""")]
     public void should_carry_nothing_when_the_feed_cannot_be_read_or_has_no_full_version(string text)
     {
         Feed(text);
@@ -141,5 +144,18 @@ public sealed class CollectorUpdatesFixture : IDisposable
 
         CollectorUpdates.IsServed(longest).Should().BeTrue();
         CollectorUpdates.IsServed("a" + longest).Should().BeFalse();
+    }
+
+    [Fact]
+    public void should_serve_nothing_when_an_operator_turned_updates_off_even_if_the_folder_is_there()
+    {
+        File.WriteAllText(Path.Combine(_folder, "MnemarrCollector-win-Setup.exe"), "setup");
+        Feed("""{"Assets":[{"Version":"1.4.0","Type":"Full"}]}""");
+        var off = new CollectorUpdates(Options.Create(new CollectorOptions { UpdateFolder = _folder, ServeUpdates = false }));
+
+        off.Folder.Should().BeNull();
+        off.LatestVersion("windows-x86_64").Should().BeNull();
+        off.InstallerName("windows-x86_64").Should().BeNull();
+        off.Open("releases.win.json").Should().BeNull();
     }
 }

@@ -39,6 +39,11 @@ public sealed partial class CollectorUpdates
         get
         {
             var options = _options.Value;
+            if (!options.ServeUpdates)
+            {
+                return null;
+            }
+
             if (!string.IsNullOrWhiteSpace(options.UpdateFolder))
             {
                 return Path.GetFullPath(options.UpdateFolder);
@@ -134,7 +139,7 @@ public sealed partial class CollectorUpdates
 
             string? newest = null;
             SemanticVersion best = default;
-            foreach (var asset in assets.EnumerateArray())
+            foreach (var asset in assets.EnumerateArray().Where(asset => asset.ValueKind == JsonValueKind.Object))
             {
                 if (asset.TryGetProperty("Type", out var type) && type.GetString() == "Full"
                     && asset.TryGetProperty("Version", out var text) && text.GetString() is { } version
@@ -147,7 +152,7 @@ public sealed partial class CollectorUpdates
 
             return newest;
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             // A feed that cannot be read is no feed: nothing is offered.
             return null;

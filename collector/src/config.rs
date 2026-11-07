@@ -197,10 +197,6 @@ pub fn problems(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> Vec<
         .collect()
 }
 
-/// Everything the passes need, for each Mnemarr this machine sends to (ADR 0030). When an address or a key is given (on the command line or in the
-/// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
-/// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
-/// not allowed, or whose key is gone, is left out and the others go on.
 /// Whether an address or a key was given, on the command line or in the environment: then it is one destination of its own and the list is left alone.
 pub fn sending_is_given(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> bool {
     options.server.is_some()
@@ -209,6 +205,10 @@ pub fn sending_is_given(options: &Options, get: &dyn Fn(&str) -> Option<String>)
         || get("MNEMARR_COLLECTOR_KEY").is_some()
 }
 
+/// Everything the passes need, for each Mnemarr this machine sends to (ADR 0030). When an address or a key is given (on the command line or in the
+/// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
+/// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
+/// not allowed, or whose key is gone, is left out and the others go on.
 pub fn resolve_all(
     options: &Options,
     get: &dyn Fn(&str) -> Option<String>,
