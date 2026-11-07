@@ -54,33 +54,33 @@ public sealed class ConversationRelocatorFixture : IDisposable
     [Fact]
     public async Task should_file_what_a_machine_sent_under_its_new_name_the_note_the_lines_the_row_and_the_search()
     {
-        await _ingestor.IngestAsync(Batch("qimper-gaming", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Batch("gamng-pc", "aaaa1111", 0, Talk), Token);
 
-        var moved = await _relocator.MoveAllAsync("qimper-gaming", "quimper-gaming", Token);
+        var moved = await _relocator.MoveAllAsync("gamng-pc", "gaming-pc", Token);
 
         moved.Should().Be(new Relocation(1, 0));
-        Directory.Exists(NotesOf("qimper-gaming")).Should().BeFalse("the folder of the old name is gone with its last note");
-        Directory.Exists(RawOf("qimper-gaming")).Should().BeFalse();
-        var note = Directory.EnumerateFiles(NotesOf("quimper-gaming"), "*.md", SearchOption.AllDirectories).Single();
-        File.ReadAllText(note).Should().Contain("quimper-gaming").And.NotContain("qimper-gaming").And.Contain("revoke the old key");
-        Hits("revoke").Should().ContainSingle().Which.Should().StartWith("quimper-gaming/");
-        _store.OfMachine("qimper-gaming").Should().BeEmpty();
-        _store.OfMachine("quimper-gaming").Should().ContainSingle();
+        Directory.Exists(NotesOf("gamng-pc")).Should().BeFalse("the folder of the old name is gone with its last note");
+        Directory.Exists(RawOf("gamng-pc")).Should().BeFalse();
+        var note = Directory.EnumerateFiles(NotesOf("gaming-pc"), "*.md", SearchOption.AllDirectories).Single();
+        File.ReadAllText(note).Should().Contain("gaming-pc").And.NotContain("gamng-pc").And.Contain("revoke the old key");
+        Hits("revoke").Should().ContainSingle().Which.Should().StartWith("gaming-pc/");
+        _store.OfMachine("gamng-pc").Should().BeEmpty();
+        _store.OfMachine("gaming-pc").Should().ContainSingle();
     }
 
     [Fact]
     public async Task should_not_make_a_conversation_twice_when_the_other_machine_holds_it_already()
     {
-        Enrol("qimper-gaming");
-        Enrol("quimper-gaming");
-        await _ingestor.IngestAsync(Batch("qimper-gaming", "aaaa1111", 0, Talk), Token);
-        await _ingestor.IngestAsync(Batch("quimper-gaming", "aaaa1111", 0, Talk), Token);
-        await _ingestor.IngestAsync(Batch("qimper-gaming", "bbbb2222", 0, Talk), Token);
+        Enrol("gamng-pc");
+        Enrol("gaming-pc");
+        await _ingestor.IngestAsync(Batch("gamng-pc", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Batch("gaming-pc", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Batch("gamng-pc", "bbbb2222", 0, Talk), Token);
 
-        var moved = await _relocator.MoveAllAsync("qimper-gaming", "quimper-gaming", Token);
+        var moved = await _relocator.MoveAllAsync("gamng-pc", "gaming-pc", Token);
 
         moved.Should().Be(new Relocation(1, 1), "the one both had is kept once, the other is filed under the new name");
-        _store.OfMachine("quimper-gaming").Select(c => c.Session).Should().BeEquivalentTo(["aaaa1111", "bbbb2222"]);
+        _store.OfMachine("gaming-pc").Select(c => c.Session).Should().BeEquivalentTo(["aaaa1111", "bbbb2222"]);
         Hits("revoke").Should().HaveCount(2, "two conversations, each in the index once");
     }
 
@@ -103,16 +103,16 @@ public sealed class ConversationRelocatorFixture : IDisposable
     [Fact]
     public async Task should_take_over_a_conversation_held_under_a_name_that_is_not_a_machine_and_go_on_from_where_it_was()
     {
-        await _ingestor.IngestAsync(Batch("qimper-gaming", "aaaa1111", 0, Talk), Token);
-        Enrol("quimper-gaming");
+        await _ingestor.IngestAsync(Batch("gamng-pc", "aaaa1111", 0, Talk), Token);
+        Enrol("gaming-pc");
 
-        var result = await _ingestor.IngestAsync(Batch("quimper-gaming", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
+        var result = await _ingestor.IngestAsync(Batch("gaming-pc", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
 
         result.Should().Be(new IngestResult(3, 1), "the two lines it had are not taken again");
-        _store.OfMachine("qimper-gaming").Should().BeEmpty();
-        _store.OfMachine("quimper-gaming").Should().ContainSingle().Which.Lines.Should().Be(3);
-        Directory.Exists(NotesOf("qimper-gaming")).Should().BeFalse();
-        Hits("third").Should().ContainSingle().Which.Should().StartWith("quimper-gaming/");
+        _store.OfMachine("gamng-pc").Should().BeEmpty();
+        _store.OfMachine("gaming-pc").Should().ContainSingle().Which.Lines.Should().Be(3);
+        Directory.Exists(NotesOf("gamng-pc")).Should().BeFalse();
+        Hits("third").Should().ContainSingle().Which.Should().StartWith("gaming-pc/");
     }
 
     [Fact]
@@ -120,53 +120,53 @@ public sealed class ConversationRelocatorFixture : IDisposable
     {
         Enrol("server-1");
         await _ingestor.IngestAsync(Batch("server-1", "aaaa1111", 0, Talk), Token);
-        Enrol("quimper-gaming");
+        Enrol("gaming-pc");
 
-        await _ingestor.IngestAsync(Batch("quimper-gaming", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Batch("gaming-pc", "aaaa1111", 0, Talk), Token);
 
         _store.OfMachine("server-1").Should().ContainSingle("a machine that exists keeps what it sent");
-        _store.OfMachine("quimper-gaming").Should().ContainSingle();
+        _store.OfMachine("gaming-pc").Should().ContainSingle();
     }
 
     [Fact]
     public async Task should_take_over_the_longest_copy_and_drop_the_other_copies_held_under_names_that_are_not_machines()
     {
-        await _ingestor.IngestAsync(Batch("qimper-gaming", "aaaa1111", 0, Talk[0]), Token);
-        await _ingestor.IngestAsync(Batch("quimper-gaming", "aaaa1111", 0, Talk), Token);
-        Enrol("quimper-gaming3");
+        await _ingestor.IngestAsync(Batch("gamng-pc", "aaaa1111", 0, Talk[0]), Token);
+        await _ingestor.IngestAsync(Batch("gaming-pc", "aaaa1111", 0, Talk), Token);
+        Enrol("gaming-pc-3");
 
-        var result = await _ingestor.IngestAsync(Batch("quimper-gaming3", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
+        var result = await _ingestor.IngestAsync(Batch("gaming-pc-3", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
 
         result.Should().Be(new IngestResult(3, 1), "it went on from the longest copy, which had two lines");
-        _store.OfSession("aaaa1111").Select(c => c.Machine).Should().Equal("quimper-gaming3");
-        Directory.Exists(NotesOf("qimper-gaming")).Should().BeFalse();
-        Directory.Exists(NotesOf("quimper-gaming")).Should().BeFalse();
-        Directory.Exists(RawOf("qimper-gaming")).Should().BeFalse();
-        Hits("revoke").Should().ContainSingle().Which.Should().StartWith("quimper-gaming3/");
+        _store.OfSession("aaaa1111").Select(c => c.Machine).Should().Equal("gaming-pc-3");
+        Directory.Exists(NotesOf("gamng-pc")).Should().BeFalse();
+        Directory.Exists(NotesOf("gaming-pc")).Should().BeFalse();
+        Directory.Exists(RawOf("gamng-pc")).Should().BeFalse();
+        Hits("revoke").Should().ContainSingle().Which.Should().StartWith("gaming-pc-3/");
     }
 
     [Fact]
     public async Task should_keep_the_longer_copy_when_both_machines_hold_the_conversation_and_lose_no_line()
     {
-        Enrol("quimper-gaming3");
-        await _ingestor.IngestAsync(Batch("quimper-gaming3", "aaaa1111", 0, Talk[0]), Token);
+        Enrol("gaming-pc-3");
+        await _ingestor.IngestAsync(Batch("gaming-pc-3", "aaaa1111", 0, Talk[0]), Token);
         await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, [.. Talk, Line("user", "And the third one?", "2026-11-04T14:05:00Z")]), Token);
 
-        var moved = await _relocator.MoveAllAsync("old-name", "quimper-gaming3", Token);
+        var moved = await _relocator.MoveAllAsync("old-name", "gaming-pc-3", Token);
 
         moved.Should().Be(new Relocation(1, 0), "the copy of the source was longer, so it is the one that is filed");
-        _store.OfSession("aaaa1111").Should().ContainSingle().Which.Should().Match<ConversationRecord>(c => c.Machine == "quimper-gaming3" && c.Lines == 3);
-        Hits("third").Should().ContainSingle().Which.Should().StartWith("quimper-gaming3/");
+        _store.OfSession("aaaa1111").Should().ContainSingle().Which.Should().Match<ConversationRecord>(c => c.Machine == "gaming-pc-3" && c.Lines == 3);
+        Hits("third").Should().ContainSingle().Which.Should().StartWith("gaming-pc-3/");
     }
 
     [Fact]
     public async Task should_keep_the_copy_of_the_target_when_it_is_the_longer()
     {
-        Enrol("quimper-gaming3");
-        await _ingestor.IngestAsync(Batch("quimper-gaming3", "aaaa1111", 0, Talk), Token);
+        Enrol("gaming-pc-3");
+        await _ingestor.IngestAsync(Batch("gaming-pc-3", "aaaa1111", 0, Talk), Token);
         await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, Talk[0]), Token);
 
-        var moved = await _relocator.MoveAllAsync("old-name", "quimper-gaming3", Token);
+        var moved = await _relocator.MoveAllAsync("old-name", "gaming-pc-3", Token);
 
         moved.Should().Be(new Relocation(0, 1));
         _store.OfSession("aaaa1111").Should().ContainSingle().Which.Lines.Should().Be(2);

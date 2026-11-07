@@ -49,25 +49,25 @@ describe('LinkMachine', () => {
     const name = screen.getByLabelText('Name in this Mnemarr');
     expect(name).toHaveValue('gaming-pc');
     await userEvent.clear(name);
-    await userEvent.type(name, 'Quimper Gaming');
-    expect(screen.getByText('It will be named: quimper-gaming')).toBeInTheDocument();
+    await userEvent.type(name, 'Gaming PC');
+    expect(screen.getByText('It will be named: gaming-pc')).toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Kind'), 'always-on');
     await userEvent.click(screen.getByRole('button', { name: 'Link this computer' }));
 
-    expect(await screen.findByText(/Linked as quimper-gaming/)).toBeInTheDocument();
+    expect(await screen.findByText(/Linked as gaming-pc/)).toBeInTheDocument();
     expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/p1/approve')))).toEqual({
-      machine: 'quimper-gaming',
+      machine: 'gaming-pc',
       kind: 'always-on',
     });
     expect(screen.getByRole('link', { name: 'See the machines' })).toHaveAttribute('href', '/machines');
   });
 
   it('says when the computer is already a machine here, and starts from that name', async () => {
-    server({ knownAs: 'quimper-gaming' });
+    server({ knownAs: 'gaming-pc' });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
 
-    expect(await screen.findByText(/already the machine quimper-gaming here/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Name in this Mnemarr')).toHaveValue('quimper-gaming');
+    expect(await screen.findByText(/already the machine gaming-pc here/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Name in this Mnemarr')).toHaveValue('gaming-pc');
   });
 
   it('refuses the computer when the person says it is not theirs, and says so', async () => {

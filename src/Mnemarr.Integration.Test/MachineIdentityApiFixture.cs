@@ -35,8 +35,8 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
     public async Task should_keep_one_machine_when_the_same_computer_joins_again_under_another_name_and_file_what_it_sent_under_the_new_name()
     {
         var callers = await Callers.ForAsync(_factory);
-        var typo = Callers.Unique("qimper");
-        var right = Callers.Unique("quimper");
+        var typo = Callers.Unique("gamng");
+        var right = Callers.Unique("gaming");
         var computer = ComputerId("pc");
         using (var first = _factory.CreateKeyClient(await JoinAsComputerAsync(callers.Admin, typo, computer)))
         {

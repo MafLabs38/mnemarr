@@ -281,7 +281,7 @@ mod tests {
         let prod = add(
             &dir,
             "https://prod.example/",
-            "quimper-gaming",
+            "gaming-pc",
             false,
             None,
             "mnm_prod",
@@ -290,7 +290,7 @@ mod tests {
         let dev = add(
             &dir,
             "http://dev.lan:8384",
-            "qimper-gaming",
+            "gamng-pc",
             true,
             Some("dev"),
             "mnm_dev",

@@ -70,17 +70,17 @@ const panelOf = (name: string) => within(screen.getByRole('region', { name: `Man
 
 describe('Managing a machine', () => {
   it('renames a machine, and says the name it will have', async () => {
-    const fetchMock = server([machine({ machine: 'qimper-gaming' })]);
+    const fetchMock = server([machine({ machine: 'gamng-pc' })]);
     renderWithProviders(<Machines />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Manage qimper-gaming' }));
-    const name = panelOf('qimper-gaming').getByLabelText('Name of the machine');
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage gamng-pc' }));
+    const name = panelOf('gamng-pc').getByLabelText('Name of the machine');
     await userEvent.clear(name);
-    await userEvent.type(name, 'Quimper Gaming');
-    expect(screen.getByText('It will be named: quimper-gaming')).toBeInTheDocument();
+    await userEvent.type(name, 'Gaming PC');
+    expect(screen.getByText('It will be named: gaming-pc')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Rename' }));
 
-    expect(sentBody(called(fetchMock, '/api/v1/collectors/qimper-gaming/rename'))).toEqual({ name: 'quimper-gaming' });
+    expect(sentBody(called(fetchMock, '/api/v1/collectors/gamng-pc/rename'))).toEqual({ name: 'gaming-pc' });
   });
 
   it('merges what a name sent into a machine that is enrolled, and offers no machine that is revoked or that is itself', async () => {

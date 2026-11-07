@@ -396,7 +396,7 @@ mod tests {
             ("200 OK", r#"{"state":"pending"}"#.to_string()),
             (
                 "200 OK",
-                r#"{"state":"approved","key":"mnm_the-key","machine":"quimper-gaming","kind":"intermittent"}"#.to_string(),
+                r#"{"state":"approved","key":"mnm_the-key","machine":"gaming-pc","kind":"intermittent"}"#.to_string(),
             ),
         ]);
         let shown = std::cell::RefCell::new(Vec::new());
@@ -417,7 +417,7 @@ mod tests {
             outcome,
             LinkOutcome::Linked(Enrolled {
                 key: "mnm_the-key".to_string(),
-                machine: "quimper-gaming".to_string(),
+                machine: "gaming-pc".to_string(),
                 kind: "intermittent".to_string()
             })
         );

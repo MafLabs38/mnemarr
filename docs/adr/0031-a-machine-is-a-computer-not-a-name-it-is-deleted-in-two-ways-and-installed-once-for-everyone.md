@@ -23,7 +23,7 @@ Trying the collector on a real computer showed four defects that have one root: 
    is not used (several, changed by a VPN, a container or the system).
 2. **The name is a label.** Joining (by a code or by asking) sends the identifier. A Mnemarr that knows it does not make a second machine: the computer joins
    **the machine it already is**, gets a new key for it (the old one stops working), and the person who approves sees "this computer is already
-   `quimper-gaming`" and may rename it. Nothing is sent twice, the folder is the same. Renaming a machine renames its folder.
+   `gaming-pc`" and may rename it. Nothing is sent twice, the folder is the same. Renaming a machine renames its folder.
 3. **Cloned computers are two machines when the system tells them apart**, and are reported (not merged in silence) when two different collectors claim one
    identifier at once. This case is not solved further: a person with cloned virtual machines names them.
 4. **A conversation is stored once.** A conversation held under a name that is not a machine (a computer that was installed again under another name, or

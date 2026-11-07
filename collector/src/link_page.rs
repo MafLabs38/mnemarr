@@ -599,7 +599,7 @@ mod tests {
             ("200 OK", r#"{"state":"pending"}"#.to_string()),
             (
                 "200 OK",
-                r#"{"state":"approved","key":"mnm_the-key","machine":"quimper-gaming","kind":"intermittent"}"#.to_string(),
+                r#"{"state":"approved","key":"mnm_the-key","machine":"gaming-pc","kind":"intermittent"}"#.to_string(),
             ),
         ]);
         let served = serve("link");
@@ -622,7 +622,7 @@ mod tests {
         }
 
         assert!(
-            text.contains("Linked to") && text.contains("quimper-gaming"),
+            text.contains("Linked to") && text.contains("gaming-pc"),
             "{text}"
         );
         assert_eq!(handle.join().unwrap(), 3);
@@ -634,7 +634,7 @@ mod tests {
         assert_eq!(linked.len(), 1);
         assert_eq!(
             (linked[0].machine.as_str(), linked[0].insecure),
-            ("quimper-gaming", true)
+            ("gaming-pc", true)
         );
         assert_eq!(
             destinations::key_of(&served.dir, &linked[0]).as_deref(),
