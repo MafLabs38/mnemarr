@@ -397,3 +397,32 @@ public sealed class McpWriteFactory : MnemarrFactoryBase
         builder.UseSetting("Mcp:WriteTools", "true");
     }
 }
+
+/// <summary>A host with a built frontend: a page, and a script whose name carries a hash.</summary>
+public sealed class FrontendFactory : MnemarrFactoryBase
+{
+    private readonly string _webRoot = Path.Combine(Path.GetTempPath(), $"mnemarr-web-{Guid.NewGuid():N}");
+
+    public FrontendFactory()
+        : base(createFolder: true)
+    {
+        Directory.CreateDirectory(Path.Combine(_webRoot, "assets"));
+        File.WriteAllText(Path.Combine(_webRoot, "index.html"), "<!doctype html><title>Mnemarr</title>");
+        File.WriteAllText(Path.Combine(_webRoot, "assets", "index-AbC123.js"), "console.log(1)");
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseWebRoot(_webRoot);
+        base.ConfigureWebHost(builder);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing && Directory.Exists(_webRoot))
+        {
+            Directory.Delete(_webRoot, recursive: true);
+        }
+    }
+}
