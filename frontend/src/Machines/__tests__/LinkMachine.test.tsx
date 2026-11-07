@@ -67,6 +67,7 @@ describe('LinkMachine', () => {
       machine: 'gaming-pc',
       kind: 'always-on',
       code: 'ABCD-EFGH-JKLM',
+      takeOver: '',
     });
     expect(screen.getByRole('link', { name: 'See the machines' })).toHaveAttribute('href', '/machines');
   });

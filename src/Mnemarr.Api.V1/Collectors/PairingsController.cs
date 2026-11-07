@@ -15,7 +15,8 @@ public sealed record PairingResource(Guid Id, string Hostname, DateTimeOffset Re
 
 public sealed record LookupPairingRequest(string? Code);
 
-public sealed record ApprovePairingRequest(string? Machine, string? Kind, string? Code);
+/// <summary><paramref name="TakeOver"/>: the name of the machine that this computer says it is, written by the person when it says it is one that already joined (D-53).</summary>
+public sealed record ApprovePairingRequest(string? Machine, string? Kind, string? Code, string? TakeOver = null);
 
 /// <summary>The machines that ask to be linked (ADR 0030), seen and answered by a person who manages the collectors.</summary>
 [ApiController]
@@ -41,7 +42,7 @@ public sealed class PairingsController : ControllerBase
     public PairingResource Lookup(LookupPairingRequest request) => PairingResource.From(_pairings.Lookup(request.Code));
 
     [HttpPost("{id:guid}/approve")]
-    public PairingResource Approve(Guid id, ApprovePairingRequest request) => PairingResource.From(_pairings.Approve(id, request.Machine, request.Kind, request.Code, Actor));
+    public PairingResource Approve(Guid id, ApprovePairingRequest request) => PairingResource.From(_pairings.Approve(id, request.Machine, request.Kind, request.Code, request.TakeOver, Actor));
 
     [HttpPost("{id:guid}/reject")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

@@ -45,17 +45,6 @@ again for each machine. The maintainer already ships his other Windows applicati
    in a job of its own that cannot write anywhere (the tool is fetched at a pinned version); the job `installer (windows)` **installs it on a real Windows
    runner without a window, updates it from a feed served on that computer, and uninstalls it**, checking the entry, the PATH, the version and what is left.
 
-## Approval by the address (refines ADR 0030 §5 and ADR 0031 §3)
-
-On 2026-11-07 the maintainer asked that the page of Mnemarr that the computer opens **fills in the code** from the address, instead of asking the person to type
-it again: with the code in the address, typing it is a copy and paste that proves nothing to a person who just clicked. From the list of requests there is no
-address, so the person still types the code the computer shows. What is lost is the proof that the person looked at the computer: **an address sent by a
-stranger now shows a request that the person did not make**, with its code filled in, and one click approves it (the stranger then holds a key that writes
-conversations). The checks that remain are the name the computer gives itself, which the person reads, and the expiry of a request after ten minutes. One is
-added: **a computer that says it is a machine that already joined cannot take it over (its key stops, the new one takes its conversations) until the person
-writes the name of that machine**, which an address cannot do for them. Accepted by the maintainer as the way it should feel; to be tightened (a second code that only
-the computer shows) if the product is exposed to people who send links.
-
 ## Trust
 
 **A Mnemarr that a collector is linked to can update it, and so run code on the computer.** That is the meaning of "from the Mnemarr it sends to": the person linked

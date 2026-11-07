@@ -177,6 +177,24 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("knownAs").GetString().Should().Be(machine);
     }
 
+    [Fact]
+    public async Task should_not_let_a_computer_take_over_a_machine_that_joined_before_unless_the_person_writes_its_name()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        var computer = ComputerId("pc");
+        await JoinAsComputerAsync(callers.Admin, machine, computer);
+        _factory.Clock.Advance(TimeSpan.FromSeconds(61));
+        var started = await (await _factory.CreateBrowserClient().PostAsJsonAsync("/api/v1/ingest/pair", new { hostname = "Gaming PC", computerId = computer }, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var code = started.GetProperty("userCode").GetString();
+        var found = await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code }, Token);
+        var id = (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code, machine, kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest, "nothing says the person means to take the machine over");
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code, machine, kind = "intermittent", takeOver = "another-name" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code, machine, kind = "intermittent", takeOver = machine }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     private static Task<HttpResponseMessage> BeatAsync(HttpClient machine, string? computerId) =>
         machine.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.0.0", pendingLines = 0, computerId }, Token);
 
@@ -194,7 +212,7 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         var found = await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token);
         var id = (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
 
-        var approved = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = started.GetProperty("userCode").GetString(), machine = other, kind = "intermittent" }, Token);
+        var approved = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { code = started.GetProperty("userCode").GetString(), machine = other, kind = "intermittent", takeOver = mine }, Token);
 
         approved.StatusCode.Should().Be(HttpStatusCode.Conflict, "the computer is already another machine here, and the name asked for is a third");
         (await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the request is still waiting: the person may name it again");
@@ -423,6 +441,6 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         var same = await RequestAsync(computer);
 
         (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{stranger.Id}/approve", new { code = stranger.Code, machine, kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict, "the name is a machine on another computer");
-        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{same.Id}/approve", new { code = same.Code, machine, kind = "intermittent" }, Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the same computer links again under its own name");
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{same.Id}/approve", new { code = same.Code, machine, kind = "intermittent", takeOver = machine }, Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the same computer links again under its own name");
     }
 }

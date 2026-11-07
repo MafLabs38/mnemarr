@@ -36,3 +36,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0030](0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md) | A collector sends to several Mnemarr, and links to one by asking and being approved | D-50 |
 | [0031](0031-a-machine-is-a-computer-not-a-name-it-is-deleted-in-two-ways-and-installed-once-for-everyone.md) | A machine is a computer, not a name; it is deleted in two ways; the collector is installed once, for everyone | D-51 |
 | [0032](0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md) | The collector is installed by an installer and updates itself from the Mnemarr it sends to | D-52 |
+| [0033](0033-the-page-of-approval-fills-in-the-code-from-the-address-and-a-known-machine-is-taken-over-by-writing-its-name.md) | The page of approval fills in the code from the address, and a known machine is taken over by writing its name | D-53 |

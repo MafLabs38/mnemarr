@@ -61,7 +61,7 @@ function Answer({
   function submit(event: FormEvent) {
     event.preventDefault();
     approve.mutate(
-      { id: pairing.id, machine: name, kind, code },
+      { id: pairing.id, machine: name, kind, code, takeOver },
       { onSuccess: () => onDone({ kind: 'linked', name }) },
     );
   }

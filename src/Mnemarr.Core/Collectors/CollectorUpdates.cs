@@ -88,13 +88,12 @@ public sealed partial class CollectorUpdates
     /// <summary>The newest version that the feed of a system carries, or null when there is none.</summary>
     public string? LatestVersion(string? platform)
     {
-        if (Folder is not { } folder || !ChannelOf(platform, out var channel))
+        if (Folder is null || !ChannelOf(platform, out var channel))
         {
             return null;
         }
 
-        var feed = Path.Combine(folder, $"releases.{channel}.json");
-        return File.Exists(feed) && IsServed(Path.GetFileName(feed)) ? VersionOf(feed) : null;
+        return Open($"releases.{channel}.json") is { } feed ? VersionOf(feed) : null;
     }
 
     /// <summary>

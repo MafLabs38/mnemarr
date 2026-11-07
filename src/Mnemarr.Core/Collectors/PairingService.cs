@@ -98,8 +98,8 @@ public sealed class PairingService
             : throw new RejectedException(Problem.NotFound, "There is no such request waiting: it may be over or already answered. Start again on the machine.");
     }
 
-    /// <summary>A person says yes, with the code the computer shows, and names the machine; the machine takes its key the next time it asks.</summary>
-    public Pairing Approve(Guid id, string? machine, string? kind, string? code, string actor)
+    /// <summary>A person says yes, with the code the computer shows, and names the machine (and, for a computer that says it is a machine that joined before, writes that name); the machine takes its key the next time it asks.</summary>
+    public Pairing Approve(Guid id, string? machine, string? kind, string? code, string? takeOver, string actor)
     {
         if (!MachineNames.IsValid(machine))
         {
@@ -120,6 +120,13 @@ public sealed class PairingService
             if (normalised is null || _pairings.FindByUserCodeHash(EnrolmentCodes.Hash(normalised))?.Id != id)
             {
                 throw new RejectedException(Problem.Invalid, "The code is not the one this computer shows: look at the computer, and type the code it shows.");
+            }
+
+            // A computer that says it is a machine that already joined takes it over: its key stops and the new one takes its conversations, and nothing proves the
+            // computer is that one (D-53). The person writes the name of that machine; a client of the API cannot skip it.
+            if (Known(pairing).KnownAs is { } known && !string.Equals(takeOver?.Trim(), known, StringComparison.Ordinal))
+            {
+                throw new RejectedException(Problem.Invalid, $"This computer says it is the machine '{known}', which already joined: to take it over, write its name ('takeOver').");
             }
 
             _joining.Check(machine!, pairing.ComputerId);
