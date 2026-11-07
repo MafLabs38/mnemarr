@@ -149,14 +149,17 @@ public sealed class EnrolmentService
             _throttle.Check(now);
             var normalised = EnrolmentCodes.Normalise(code);
             var enrolment = normalised is null ? null : _enrolments.FindByCodeHash(EnrolmentCodes.Hash(normalised));
-            if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal) || !_enrolments.Use(enrolment.Id))
+            if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal))
             {
                 _throttle.Failed(now);
                 _audit.Append(AuditActors.Unknown, "collector.enrol-refused", MachineNames.IsValid(machine) ? machine! : "(not a valid name)");
                 throw new RejectedException(Problem.Invalid, NotValid);
             }
 
-            return _joining.Join(enrolment.Machine, enrolment.Kind, enrolment.RequestedBy, now, computerId);
+            // The join comes first and the code is used up after it: a join that cannot be done leaves the code as it was, so that the key is not lost.
+            var joined = _joining.Join(enrolment.Machine, enrolment.Kind, enrolment.RequestedBy, now, computerId);
+            _enrolments.Use(enrolment.Id);
+            return joined;
         }
     }
 

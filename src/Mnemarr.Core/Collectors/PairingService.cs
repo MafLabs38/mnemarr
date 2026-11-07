@@ -23,6 +23,7 @@ public sealed class PairingService
     private const string NotValid = "The request is not valid: it may be wrong, over, or already answered.";
     private const string DeviceCodePrefix = "dvc_";
     private const int MaxHostnameLength = 50;
+    private const int MaxDeviceCodeLength = 100;
     private const int OpenListed = 50;
 
     /// <summary>A request is forgotten a day after its time ended: long enough for a machine that was asleep to learn that it expired.</summary>
@@ -113,6 +114,7 @@ public sealed class PairingService
         lock (_accounts.Gate)
         {
             var pairing = Waiting(id);
+            _joining.Check(machine!, pairing.ComputerId);
             _pairings.Approve(id, machine!, parsedKind, actor);
             _audit.Append(actor, "collector.pairing-approved", machine!, MachineKinds.Name(parsedKind));
             return Known(_pairings.Get(pairing.Id)!);
@@ -139,7 +141,7 @@ public sealed class PairingService
         {
             var now = _clock.GetUtcNow();
             _throttle.Check(now);
-            var pairing = string.IsNullOrEmpty(deviceCode) || deviceCode.Length > 100 ? null : _pairings.FindByDeviceHash(EnrolmentCodes.Hash(deviceCode));
+            var pairing = string.IsNullOrEmpty(deviceCode) || deviceCode.Length > MaxDeviceCodeLength ? null : _pairings.FindByDeviceHash(EnrolmentCodes.Hash(deviceCode));
             if (pairing is null)
             {
                 _throttle.Failed(now);
@@ -157,8 +159,11 @@ public sealed class PairingService
                     return new PairingAnswer("pending", null);
                 case PairingState.Rejected:
                     return new PairingAnswer("rejected", null);
-                case PairingState.Approved when _pairings.Use(pairing.Id):
-                    return new PairingAnswer("approved", _joining.Join(pairing.Machine!, pairing.Kind ?? MachineKind.Intermittent, pairing.ApprovedBy ?? AuditActors.Unknown, now, pairing.ComputerId));
+                case PairingState.Approved:
+                    // The join comes first and the request is used up after it: a join that cannot be done leaves the request as it was, so that the key is not lost.
+                    var joined = _joining.Join(pairing.Machine!, pairing.Kind ?? MachineKind.Intermittent, pairing.ApprovedBy ?? AuditActors.Unknown, now, pairing.ComputerId);
+                    _pairings.Use(pairing.Id);
+                    return new PairingAnswer("approved", joined);
                 default:
                     // Already collected: the key is shown once.
                     throw new RejectedException(Problem.Invalid, NotValid);

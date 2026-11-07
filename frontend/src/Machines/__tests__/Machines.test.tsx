@@ -17,7 +17,7 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   version: '0.1.0',
   pendingLines: 0,
   error: null,
-  updateAvailable: false,
+  programDiffers: false,
   ...over,
 });
 

@@ -26,7 +26,7 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
 
     private async Task<int> ConversationsOfAsync(HttpClient admin, string machine) =>
         (await admin.GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token)).EnumerateArray()
-            .Where(item => item.GetProperty("machine").GetString() == machine).Select(item => item.GetProperty("conversations").GetInt32()).SingleOrDefault();
+            .Single(item => item.GetProperty("machine").GetString() == machine).GetProperty("conversations").GetInt32();
 
     private async Task<bool> ListsAsync(HttpClient admin, string machine) =>
         (await admin.GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token)).EnumerateArray().Any(item => item.GetProperty("machine").GetString() == machine);
@@ -134,7 +134,8 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         (await callers.Admin.PostAsync($"/api/v1/collectors/{machine}/remove", null, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         (await StatusOfAsync(callers.Admin, machine)).GetProperty("state").GetString().Should().Be("unenrolled");
-        (await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(machine, "s2", Line("hello there my friend")), Token)).StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+        (await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(machine, "s2", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "its key is revoked");
+        (await ConversationsOfAsync(callers.Admin, machine)).Should().Be(1, "what it sent stays");
         var again = await callers.Admin.PostAsync($"/api/v1/collectors/{machine}/remove", null, Token);
         again.StatusCode.Should().Be(HttpStatusCode.NotFound, "there is no machine to remove any more");
     }
@@ -172,5 +173,93 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         var found = await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token);
 
         (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("knownAs").GetString().Should().Be(machine);
+    }
+
+    private static Task<HttpResponseMessage> BeatAsync(HttpClient machine, string? computerId) =>
+        machine.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.0.0", pendingLines = 0, computerId }, Token);
+
+    [Fact]
+    public async Task should_tell_the_person_at_approval_that_the_name_cannot_be_given_and_leave_the_request_waiting()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var mine = Callers.Unique("mine");
+        var other = Callers.Unique("other");
+        var computer = ComputerId("pc");
+        await JoinAsComputerAsync(callers.Admin, mine, computer);
+        await JoinAsComputerAsync(callers.Admin, other, ComputerId("other-pc"));
+        _factory.Clock.Advance(TimeSpan.FromSeconds(61));
+        var started = await (await _factory.CreateBrowserClient().PostAsJsonAsync("/api/v1/ingest/pair", new { hostname = "Gaming PC", computerId = computer }, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
+        var found = await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token);
+        var id = (await found.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
+
+        var approved = await callers.Admin.PostAsJsonAsync($"/api/v1/pairings/{id}/approve", new { machine = other, kind = "intermittent" }, Token);
+
+        approved.StatusCode.Should().Be(HttpStatusCode.Conflict, "the computer is already another machine here, and the name asked for is a third");
+        (await callers.Admin.PostAsJsonAsync("/api/v1/pairings/lookup", new { code = started.GetProperty("userCode").GetString() }, Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the request is still waiting: the person may name it again");
+    }
+
+    [Fact]
+    public async Task should_not_use_up_a_code_for_a_join_that_cannot_be_done()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var mine = Callers.Unique("mine");
+        var other = Callers.Unique("other");
+        var computer = ComputerId("pc");
+        await JoinAsComputerAsync(callers.Admin, mine, computer);
+        await JoinAsComputerAsync(callers.Admin, other, ComputerId("other-pc"));
+        var code = (await AddAsync(callers.Admin, other)).GetProperty("code").GetString();
+
+        var refused = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine = other, computerId = computer }, Token);
+        var again = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine = other }, Token);
+
+        refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        again.StatusCode.Should().Be(HttpStatusCode.OK, "the code was not used up by the join that could not be done, so the key is not lost");
+    }
+
+    [Fact]
+    public async Task should_give_a_machine_that_had_no_identifier_the_one_of_its_computer_and_never_one_that_another_machine_holds()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var first = Callers.Unique("first");
+        var second = Callers.Unique("second");
+        using var one = await JoinAsync(callers.Admin, first);
+        using var two = await JoinAsync(callers.Admin, second);
+        var computer = ComputerId("pc");
+
+        await BeatAsync(one, computer);
+        await BeatAsync(two, computer);
+
+        // The first machine holds the identifier now, so a reinstall of that computer under another name finds it.
+        var renamed = Callers.Unique("renamed");
+        await JoinAsComputerAsync(callers.Admin, renamed, computer);
+        (await ListsAsync(callers.Admin, first)).Should().BeFalse("the first machine was found by the identifier its heartbeat gave");
+        (await ListsAsync(callers.Admin, second)).Should().BeTrue("the second did not take an identifier that was held");
+        (await ListsAsync(callers.Admin, renamed)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task should_let_a_computer_take_back_what_it_sent_under_a_machine_that_was_removed_and_nobody_else()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var before = Callers.Unique("before");
+        var after = Callers.Unique("after");
+        var stranger = Callers.Unique("stranger");
+        var computer = ComputerId("pc");
+        var session = $"s-{before}";
+        using (var one = _factory.CreateKeyClient(await JoinAsComputerAsync(callers.Admin, before, computer)))
+        {
+            (await one.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(before, session, Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        (await callers.Admin.PostAsync($"/api/v1/collectors/{before}/remove", null, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        using var thief = await JoinAsync(callers.Admin, stranger);
+        (await thief.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(stranger, session, Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ConversationsOfAsync(callers.Admin, before)).Should().Be(1, "a key that only knows the session id took nothing over");
+        using var back = _factory.CreateKeyClient(await JoinAsComputerAsync(callers.Admin, after, computer));
+        (await BeatAsync(back, computer)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await back.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(after, session, Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await ListsAsync(callers.Admin, before)).Should().BeFalse("the same computer took its conversation back: nothing is left under the old name");
+        (await ConversationsOfAsync(callers.Admin, after)).Should().Be(1);
     }
 }

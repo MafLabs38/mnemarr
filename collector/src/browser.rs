@@ -12,6 +12,24 @@ pub fn is_openable(address: &str) -> bool {
         && !address.chars().any(|c| c.is_control() || c == ' ')
 }
 
+/// A program of Windows by its full path: a program of the same name beside the collector must never run in its place.
+#[cfg(windows)]
+fn system32(name: &str) -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    std::path::Path::new(&root).join("System32").join(name)
+}
+
+/// Whether an address that a server gave is on the server the person typed (same scheme, host and port): only then is it opened without being asked.
+pub fn is_same_server(server: &str, address: &str) -> bool {
+    fn origin(text: &str) -> Option<(String, String)> {
+        let (scheme, rest) = text.split_once("://")?;
+        let authority = rest.split(['/', '?', '#']).next()?;
+        (!authority.is_empty() && !authority.contains('@'))
+            .then(|| (scheme.to_ascii_lowercase(), authority.to_ascii_lowercase()))
+    }
+    matches!((origin(server), origin(address)), (Some(a), Some(b)) if a == b)
+}
+
 /// Opens the address in the default browser, without a window of its own. True when the browser was asked; the person may have none.
 pub fn open(address: &str) -> bool {
     if !is_openable(address) {
@@ -21,7 +39,7 @@ pub fn open(address: &str) -> bool {
     let mut command = {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let mut command = Command::new("rundll32");
+        let mut command = Command::new(system32("rundll32.exe"));
         command
             .args(["url.dll,FileProtocolHandler", address])
             .creation_flags(CREATE_NO_WINDOW);
@@ -63,5 +81,37 @@ mod tests {
         assert!(!is_openable("https://x.example/ a"));
         assert!(!is_openable("https://x.example/\nstart calc"));
         assert!(!open("not an address"));
+    }
+
+    #[test]
+    fn should_open_an_address_only_when_it_is_on_the_server_that_was_typed() {
+        let server = "https://mnemarr.example";
+        assert!(is_same_server(
+            server,
+            "https://mnemarr.example/link?code=ABCD"
+        ));
+        assert!(is_same_server(
+            "https://Mnemarr.Example/",
+            "https://mnemarr.example/link"
+        ));
+        assert!(is_same_server(
+            "http://10.0.0.10:8384",
+            "http://10.0.0.10:8384/link?code=A"
+        ));
+        // Another host, another port, another scheme, or an address that hides its host behind a user name: shown, not opened.
+        assert!(!is_same_server(
+            server,
+            "https://evil.example/link?code=ABCD"
+        ));
+        assert!(!is_same_server(
+            "http://10.0.0.10:8384",
+            "http://10.0.0.10:9999/link"
+        ));
+        assert!(!is_same_server(server, "http://mnemarr.example/link"));
+        assert!(!is_same_server(
+            server,
+            "https://mnemarr.example@evil.example/link"
+        ));
+        assert!(!is_same_server(server, "not an address"));
     }
 }

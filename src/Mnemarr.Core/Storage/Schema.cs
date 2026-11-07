@@ -203,6 +203,10 @@ public static class Schema
         ALTER TABLE machines ADD COLUMN platform TEXT;
         ALTER TABLE machines ADD COLUMN program TEXT;
         """,
+        // 12: the computer a conversation came from (the identifier of the machine that sent it, when it had one): a conversation is only taken over by the same computer (ADR 0031 §4).
+        """
+        ALTER TABLE conversations ADD COLUMN computer_id TEXT;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

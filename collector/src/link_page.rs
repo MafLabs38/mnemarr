@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::browser;
 use crate::config::check_server;
 use crate::destinations;
 use crate::enrol::{self, LinkOutcome, PairingRequest};
@@ -375,7 +376,9 @@ impl Page {
                     code: request.user_code.clone(),
                     address: request.verification_url.clone(),
                 });
-                open(&request.verification_url);
+                if browser::is_same_server(&server, &request.verification_url) {
+                    open(&request.verification_url);
+                }
             };
             let outcome = enrol::link_by_asking(&server, &hostname, &show, &|every| wait(every));
             set(match outcome {
@@ -426,9 +429,12 @@ mod tests {
     fn serve_in_turn(answers: Vec<(&'static str, String)>) -> (String, thread::JoinHandle<usize>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = format!("http://{}", listener.local_addr().unwrap());
+        let address_for_answers = address.clone();
         let handle = thread::spawn(move || {
             let mut count = 0;
             for (status, body) in answers {
+                // "{server}" in an answer stands for the address of this fake Mnemarr: what a real one writes in the address to open.
+                let body = body.replace("{server}", &address_for_answers);
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut request = Vec::new();
                 let mut chunk = [0u8; 4096];
@@ -595,7 +601,10 @@ mod tests {
     #[test]
     fn should_ask_open_the_page_of_mnemarr_wait_and_keep_the_key_when_a_person_approves() {
         let (mnemarr, handle) = serve_in_turn(vec![
-            ("201 Created", STARTED.to_string()),
+            (
+                "201 Created",
+                STARTED.replace("https://m.example", "{server}"),
+            ),
             ("200 OK", r#"{"state":"pending"}"#.to_string()),
             (
                 "200 OK",
@@ -628,7 +637,8 @@ mod tests {
         assert_eq!(handle.join().unwrap(), 3);
         assert_eq!(
             *served.opened.lock().unwrap(),
-            vec!["https://m.example/link?code=ABCD-EFGH-JKLM".to_string()]
+            vec![format!("{mnemarr}/link?code=ABCD-EFGH-JKLM")],
+            "an address on the Mnemarr that was typed is opened"
         );
         let linked = destinations::load(&served.dir);
         assert_eq!(linked.len(), 1);
@@ -670,6 +680,10 @@ mod tests {
         }
 
         handle.join().unwrap();
+        assert!(
+            served.opened.lock().unwrap().is_empty(),
+            "an address that is not on the Mnemarr that was typed is shown, never opened"
+        );
         assert!(text.contains("&lt;b&gt;no&lt;/b&gt; thanks"), "{text}");
         assert!(!text.contains("<b>no</b>"));
         assert!(destinations::load(&served.dir).is_empty());

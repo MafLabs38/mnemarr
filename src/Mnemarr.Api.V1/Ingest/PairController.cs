@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Api.V1.Collectors;
 using Mnemarr.Core;
 using Mnemarr.Core.Collectors;
-using Mnemarr.Core.Conversations;
 
 namespace Mnemarr.Api.V1.Ingest;
 
@@ -33,11 +32,11 @@ public sealed class PairController : ControllerBase
 
     private readonly PairingService _pairings;
     private readonly InstallCommands _commands;
-    private readonly ConversationRelocator _relocator;
+    private readonly MachineJoining _joining;
 
-    public PairController(PairingService pairings, InstallCommands commands, ConversationRelocator relocator)
+    public PairController(PairingService pairings, InstallCommands commands, MachineJoining joining)
     {
-        _relocator = relocator;
+        _joining = joining;
         _pairings = pairings;
         _commands = commands;
     }
@@ -67,10 +66,10 @@ public sealed class PairController : ControllerBase
     public async Task<PairPollResult> Poll(PairPollRequest request, CancellationToken cancellationToken)
     {
         var answer = _pairings.Poll(request.DeviceCode);
-        if (answer.Machine is { RenamedFrom: { } renamedFrom } renamed)
+        if (answer.Machine is { } renamed)
         {
-            // A computer that was known under another name: what it sent is filed under the name it has now, before it sends more.
-            await _relocator.MoveAllAsync(renamedFrom, renamed.Machine, cancellationToken);
+            // A computer that was known under another name: what it sent is filed under the name it has now.
+            await _joining.FileConversationsAsync(renamed, cancellationToken);
         }
 
         return answer.Machine is { } machine

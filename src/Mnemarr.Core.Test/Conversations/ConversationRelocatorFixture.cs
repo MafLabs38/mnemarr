@@ -39,7 +39,13 @@ public sealed class ConversationRelocatorFixture : IDisposable
     private static string Line(string type, string text, string at) =>
         System.Text.Json.JsonSerializer.Serialize(new { type, timestamp = at, message = new { role = type, content = text } });
 
-    private static IngestBatch Batch(string machine, string session, long from, params string[] lines) => new(ConversationFormats.ClaudeCode, machine, "Mnemarr Core", session, from, lines);
+    private const string Computer = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    private static IngestBatch Batch(string machine, string session, long from, params string[] lines) => new(ConversationFormats.ClaudeCode, machine, "Mnemarr Core", session, from, lines, ComputerId: Computer);
+
+    private static IngestBatch Anonymous(string machine, string session, long from, params string[] lines) => Batch(machine, session, from, lines) with { ComputerId = null };
+
+    private static IngestBatch Elsewhere(string machine, string session, long from, params string[] lines) => Batch(machine, session, from, lines) with { ComputerId = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" };
 
     private static readonly string[] Talk = [Line("user", "How do I rotate the tokens?", "2026-11-04T14:03:00Z"), Line("assistant", "Use the admin page, then revoke the old key.", "2026-11-04T14:04:00Z")];
 
@@ -170,5 +176,48 @@ public sealed class ConversationRelocatorFixture : IDisposable
 
         moved.Should().Be(new Relocation(0, 1));
         _store.OfSession("aaaa1111").Should().ContainSingle().Which.Lines.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task should_not_take_over_a_conversation_for_a_key_that_is_not_the_same_computer_or_does_not_say_which()
+    {
+        await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, Talk), Token);
+        Enrol("pc");
+        Enrol("other-pc");
+
+        await _ingestor.IngestAsync(Anonymous("pc", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Elsewhere("other-pc", "aaaa1111", 0, Talk), Token);
+
+        _store.OfMachine("old-name").Should().ContainSingle("a key that merely knows the session id takes nothing over");
+        _store.OfMachine("pc").Should().ContainSingle();
+        _store.OfMachine("other-pc").Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task should_not_take_over_a_conversation_that_was_collected_in_another_format()
+    {
+        await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, Talk), Token);
+        Enrol("pc");
+
+        var batch = Batch("pc", "aaaa1111", 0, Talk) with { Format = "other-format" };
+        var act = () => _ingestor.IngestAsync(batch, Token);
+
+        await act.Should().ThrowAsync<RejectedException>("the format is not one Mnemarr reads, and nothing was moved before it was refused");
+        _store.OfMachine("old-name").Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task should_count_nothing_when_a_name_that_has_no_conversation_is_deleted_and_file_equal_copies_once()
+    {
+        (await _relocator.EraseAsync("nobody", Token)).Should().Be(0);
+        Enrol("pc");
+        Enrol("other");
+        await _ingestor.IngestAsync(Batch("pc", "aaaa1111", 0, Talk), Token);
+        await _ingestor.IngestAsync(Batch("other", "aaaa1111", 0, Talk), Token);
+
+        var moved = await _relocator.MoveAllAsync("other", "pc", Token);
+
+        moved.Should().Be(new Relocation(0, 1), "equal copies: the target's stays");
+        _store.OfSession("aaaa1111").Should().ContainSingle().Which.Machine.Should().Be("pc");
     }
 }

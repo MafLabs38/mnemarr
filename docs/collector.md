@@ -49,8 +49,8 @@ A collector of an earlier version is read as a list of one destination, with the
 The collector sends, when it joins a Mnemarr, an identifier of the computer: a SHA-256 hash of the identifier that the system made for itself at its own
 installation (`MachineGuid` on Windows, `/etc/machine-id` on Linux, the platform UUID on macOS), never the identifier itself. It survives removing the
 collector and installing it again. A Mnemarr that knows the computer keeps it as **the machine it already is**, whatever name you give: it takes the new
-name, what it sent is filed under it, and nothing is sent twice. A system that gives no identifier sends none, and the name is the identity, as before.
-Two computers cloned from one image share an identifier: name them apart on the machines page.
+name, what it sent is filed under it, and nothing is sent twice. The collector also sends it with each sign of life, so that a machine that joined before identifiers existed learns its own. A system that gives no identifier sends none, and the name is the identity, as before.
+Two computers cloned from one image share an identifier, so the second to join takes the first one's machine: remove the one that is not wanted, and name them apart.
 
 ## Join a machine (built, ADR 0027)
 

@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Logging;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Conversations;
 
 namespace Mnemarr.Core.Collectors;
 
@@ -11,9 +13,13 @@ public sealed class MachineJoining
     private readonly IMachineStore _machines;
     private readonly MachineAccounts _accounts;
     private readonly IAuditLog _audit;
+    private readonly ConversationRelocator _relocator;
+    private readonly ILogger<MachineJoining> _logger;
 
-    public MachineJoining(IMachineStore machines, MachineAccounts accounts, IAuditLog audit)
+    public MachineJoining(IMachineStore machines, MachineAccounts accounts, IAuditLog audit, ConversationRelocator relocator, ILogger<MachineJoining> logger)
     {
+        _relocator = relocator;
+        _logger = logger;
         _machines = machines;
         _accounts = accounts;
         _audit = audit;
@@ -21,6 +27,57 @@ public sealed class MachineJoining
 
     /// <summary>The name a computer has here, when it has joined before.</summary>
     public string? NameOf(string computerId) => _machines.GetByComputer(computerId)?.Name;
+
+    /// <summary>
+    /// What would stop this join, said before anything is changed (a person who approves is told at once, and a code is not used up by a join that cannot be
+    /// done): the computer is known as another machine, and the name asked for belongs to a third.
+    /// </summary>
+    public void Check(string machine, string? computerId)
+    {
+        if (computerId is not null && !IsComputerId(computerId))
+        {
+            throw new RejectedException(Problem.Invalid, "The identifier of the computer is not valid.");
+        }
+
+        KnownUnder(machine, computerId);
+    }
+
+    /// <summary>The name under which this computer is known when it is not the one asked for (null when it is not known, or is known under this name).</summary>
+    private string? KnownUnder(string machine, string? computerId)
+    {
+        if (computerId is null || _machines.GetByComputer(computerId) is not { } known || string.Equals(known.Name, machine, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (_machines.Get(machine) is not null)
+        {
+            throw new RejectedException(Problem.Conflict, $"This computer is already the machine '{known.Name}', and '{machine}' is another machine: join under the name '{known.Name}', or merge the two machines first.");
+        }
+
+        return known.Name;
+    }
+
+    /// <summary>
+    /// Files what a computer sent under the name it had before. Best effort, after the key was given: a failure (the conversations are busy) must never cost a
+    /// machine its key. What is left is filed by the next batch of the same computer, or by *Merge* on the machines page.
+    /// </summary>
+    public async Task FileConversationsAsync(EnrolledMachine enrolled, CancellationToken cancellationToken)
+    {
+        if (enrolled.RenamedFrom is not { } before)
+        {
+            return;
+        }
+
+        try
+        {
+            await _relocator.MoveAllAsync(before, enrolled.Machine, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "The conversations of {Before} could not be filed under {Machine} yet: merge them on the machines page.", before, enrolled.Machine);
+        }
+    }
 
     /// <summary>The hash of the identifier of a computer, as the collector sends it: 64 hexadecimal digits.</summary>
     public static bool IsComputerId(string? computerId) => computerId is { Length: 64 } && computerId.All(char.IsAsciiHexDigitLower);
@@ -37,16 +94,11 @@ public sealed class MachineJoining
         }
 
         string? renamedFrom = null;
-        if (computerId is not null && _machines.GetByComputer(computerId) is { } known && !string.Equals(known.Name, machine, StringComparison.Ordinal))
+        if (KnownUnder(machine, computerId) is { } known)
         {
-            if (_machines.Get(machine) is not null)
-            {
-                throw new RejectedException(Problem.Conflict, $"This computer is already the machine '{known.Name}', and '{machine}' is another machine: join under the name '{known.Name}', or merge the two machines first.");
-            }
-
-            _machines.Rename(known.Name, machine);
-            renamedFrom = known.Name;
-            _audit.Append(approvedBy, "collector.renamed", known.Name, machine);
+            _machines.Rename(known, machine);
+            renamedFrom = known;
+            _audit.Append(approvedBy, "collector.renamed", known, machine);
         }
 
         var account = _accounts.ForJoining(_machines.Get(machine), machine, approvedBy);

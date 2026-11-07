@@ -13,10 +13,10 @@ namespace Mnemarr.Api.V1.Collectors;
 /// name that conversations came from and that never joined; the state is <c>unenrolled</c>, <c>refused</c>, <c>waiting</c>, <c>failing</c>,
 /// <c>online</c>, <c>away</c> or <c>silent</c> (ADR 0027 §7).
 /// </summary>
-public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool UpdateAvailable)
+public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool ProgramDiffers)
 {
-    /// <summary><paramref name="updateAvailable"/>: this Mnemarr carries a program for the system of the machine, and it is not the program the machine runs.</summary>
-    public static MachineResource From(MachineStatus status, bool updateAvailable) => new(
+    /// <summary><paramref name="programDiffers"/>: this Mnemarr carries a program for the system of the machine, and it is not the program the machine runs.</summary>
+    public static MachineResource From(MachineStatus status, bool programDiffers) => new(
         status.Name,
         status.Kind is { } kind ? MachineKinds.Name(kind) : null,
         status.State.ToString().ToLowerInvariant(),
@@ -27,7 +27,7 @@ public sealed record MachineResource(string Machine, string? Kind, string State,
         status.Version,
         status.PendingLines,
         status.Error,
-        updateAvailable);
+        programDiffers);
 }
 
 public sealed record RenameMachineRequest(string? Name);
@@ -59,9 +59,9 @@ public sealed class CollectorsController : ControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.ConversationsRead)]
-    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, UpdateAvailable(status)))];
+    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, ProgramDiffers(status)))];
 
-    private bool UpdateAvailable(MachineStatus status) =>
+    private bool ProgramDiffers(MachineStatus status) =>
         status.Program is { } running && status.Platform is { } platform && _downloads.Find(platform) is { } carried && !string.Equals(carried.Sha256, running, StringComparison.Ordinal);
 
     /// <summary>Takes a machine that was revoked out of the list, so that its name is free again. Its conversations stay.</summary>

@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, type PlaywrightWorkerArgs, test } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 /** The administrator of the e2e stack (tests/e2e/stack/docker-compose.yml): a test-only value. */
 const ADMIN = { name: 'admin', password: 'e2e-admin-password' };
@@ -552,7 +552,7 @@ test.describe('smoke @smoke', () => {
   }) => {
     const first = unique('typo');
     const second = unique('right');
-    const computerId = (await import('node:crypto')).createHash('sha256').update(randomUUID()).digest('hex');
+    const computerId = createHash('sha256').update(randomUUID()).digest('hex');
     const admin = await signedInRequest(playwright, baseURL ?? '');
     const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
     const code = (
@@ -584,7 +584,7 @@ test.describe('smoke @smoke', () => {
       await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC', computerId } })
     ).json()) as { userCode: string; deviceCode: string };
     await signIn(page, `/link?code=${encodeURIComponent(started.userCode)}`);
-    await expect(page.getByText(new RegExp(`already the machine ${first} here`))).toBeVisible();
+    await expect(page.getByText(new RegExp(`says it is the machine ${first}`))).toBeVisible();
     await page.getByLabel('Name in this Mnemarr').fill(second);
     await page.getByRole('button', { name: 'Link this computer' }).click();
     await expect(page.getByText(`Linked as ${second}`)).toBeVisible();

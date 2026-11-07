@@ -487,7 +487,11 @@ fn link(options: &LinkOptions) -> ExitCode {
             "to link this computer, open {} and check that the code is {}",
             request.verification_url, request.user_code
         ));
-        if !options.no_browser && !browser::open(&request.verification_url) {
+        if !options.no_browser && !browser::is_same_server(&server, &request.verification_url) {
+            say(
+                "(the address is not on the Mnemarr you typed, so it was not opened: check it before you open it)",
+            );
+        } else if !options.no_browser && !browser::open(&request.verification_url) {
             say("(the browser could not be opened: open the address by hand)");
         }
         say("waiting for you to approve it in Mnemarr...");

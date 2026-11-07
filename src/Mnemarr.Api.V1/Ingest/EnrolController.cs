@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Core.Collectors;
-using Mnemarr.Core.Conversations;
 
 namespace Mnemarr.Api.V1.Ingest;
 
@@ -20,11 +19,11 @@ public sealed class EnrolController : ControllerBase
     public const int MaxRequestBytes = 4096;
 
     private readonly EnrolmentService _enrolments;
-    private readonly ConversationRelocator _relocator;
+    private readonly MachineJoining _joining;
 
-    public EnrolController(EnrolmentService enrolments, ConversationRelocator relocator)
+    public EnrolController(EnrolmentService enrolments, MachineJoining joining)
     {
-        _relocator = relocator;
+        _joining = joining;
         _enrolments = enrolments;
     }
 
@@ -38,10 +37,7 @@ public sealed class EnrolController : ControllerBase
     public async Task<EnrolResult> Enrol(EnrolRequest request, CancellationToken cancellationToken)
     {
         var enrolled = _enrolments.Exchange(request.Code, request.Machine, request.ComputerId);
-        if (enrolled.RenamedFrom is { } renamedFrom)
-        {
-            await _relocator.MoveAllAsync(renamedFrom, enrolled.Machine, cancellationToken);
-        }
+        await _joining.FileConversationsAsync(enrolled, cancellationToken);
 
         return new EnrolResult(enrolled.Key, enrolled.Machine, MachineKinds.Name(enrolled.Kind));
     }

@@ -21,7 +21,7 @@ export interface MachineItem {
   pendingLines: number;
   error: string | null;
   /** This Mnemarr carries a program for the system of the machine, and it is not the one the machine runs (ADR 0031). */
-  updateAvailable: boolean;
+  programDiffers: boolean;
 }
 
 /** A code that joins a machine, and where it stands. */

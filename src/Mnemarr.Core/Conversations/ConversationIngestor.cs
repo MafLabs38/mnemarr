@@ -9,7 +9,7 @@ namespace Mnemarr.Core.Conversations;
 /// A batch of new lines of one conversation, as a collector sends it: where the first line is in the file, and the lines. The account is the one of the
 /// key that sent it: it is kept with the conversation, so that what a key wrote can be found when it is revoked.
 /// </summary>
-public sealed record IngestBatch(string Format, string Machine, string Application, string Session, long From, IReadOnlyList<string> Lines, string Account = "");
+public sealed record IngestBatch(string Format, string Machine, string Application, string Session, long From, IReadOnlyList<string> Lines, string Account = "", string? ComputerId = null);
 
 /// <summary>What was taken of a batch: how many lines, and the position of the next line the server wants (what the collector resumes from).</summary>
 public sealed record IngestResult(long Next, int Accepted);
@@ -141,7 +141,7 @@ public sealed partial class ConversationIngestor
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
         }
 
-        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account, title, known?.TitleSource ?? TitleSources.FirstSentence, known?.Summary));
+        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account, title, known?.TitleSource ?? TitleSources.FirstSentence, known?.Summary, 0, batch.ComputerId ?? known?.ComputerId));
         return new IngestResult(total, fresh.Count);
     }
 
@@ -149,7 +149,7 @@ public sealed partial class ConversationIngestor
     private async Task<ConversationRecord?> FindKnownAsync(Source source, IngestBatch batch, CancellationToken cancellationToken)
     {
         var known = _store.Find(batch.Machine, batch.Session);
-        if (known is null && await _relocator.AdoptAsync(source, batch.Session, batch.Machine, cancellationToken))
+        if (known is null && await _relocator.AdoptAsync(source, batch, cancellationToken))
         {
             known = _store.Find(batch.Machine, batch.Session);
         }

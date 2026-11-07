@@ -5,11 +5,11 @@ using System.Text.Json;
 namespace Mnemarr.Integration.Test;
 
 /// <summary>A machine says which program it runs; this Mnemarr says whether it carries another one for that system (ADR 0031 §7).</summary>
-public sealed class UpdateAvailableApiFixture : IClassFixture<DownloadsFactory>
+public sealed class ProgramDiffersApiFixture : IClassFixture<DownloadsFactory>
 {
     private readonly DownloadsFactory _factory;
 
-    public UpdateAvailableApiFixture(DownloadsFactory factory)
+    public ProgramDiffersApiFixture(DownloadsFactory factory)
     {
         _factory = factory;
     }
@@ -27,32 +27,32 @@ public sealed class UpdateAvailableApiFixture : IClassFixture<DownloadsFactory>
         return (callers.Admin, _factory.CreateKeyClient(key), name);
     }
 
-    private static async Task<bool> UpdateAvailableAsync(HttpClient admin, string name) =>
-        (await admin.GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token)).EnumerateArray().Single(item => item.GetProperty("machine").GetString() == name).GetProperty("updateAvailable").GetBoolean();
+    private static async Task<bool> ProgramDiffersAsync(HttpClient admin, string name) =>
+        (await admin.GetFromJsonAsync<JsonElement>("/api/v1/collectors", Token)).EnumerateArray().Single(item => item.GetProperty("machine").GetString() == name).GetProperty("programDiffers").GetBoolean();
 
     private static Task<HttpResponseMessage> BeatAsync(HttpClient machine, string? platform, string? program) =>
         machine.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.0.0", pendingLines = 0, platform, program }, Token);
 
     [Fact]
-    public async Task should_say_nothing_of_an_update_for_a_machine_that_runs_the_program_this_mnemarr_carries()
+    public async Task should_say_nothing_of_a_different_program_for_a_machine_that_runs_the_program_this_mnemarr_carries()
     {
         var (admin, machine, name) = await JoinAsync();
 
         (await BeatAsync(machine, "windows-x86_64", DownloadsFactory.Sha256Of("the windows program"))).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        (await UpdateAvailableAsync(admin, name)).Should().BeFalse();
+        (await ProgramDiffersAsync(admin, name)).Should().BeFalse();
     }
 
     [Fact]
-    public async Task should_say_an_update_is_available_for_a_machine_that_runs_another_program_than_the_one_this_mnemarr_carries()
+    public async Task should_say_the_program_differs_for_a_machine_that_runs_another_program_than_the_one_this_mnemarr_carries()
     {
         var (admin, machine, name) = await JoinAsync();
 
         await BeatAsync(machine, "windows-x86_64", DownloadsFactory.Sha256Of("an older program"));
 
-        (await UpdateAvailableAsync(admin, name)).Should().BeTrue();
+        (await ProgramDiffersAsync(admin, name)).Should().BeTrue();
         await BeatAsync(machine, "windows-x86_64", DownloadsFactory.Sha256Of("the windows program"));
-        (await UpdateAvailableAsync(admin, name)).Should().BeFalse("once it runs the program this Mnemarr carries, there is nothing to update");
+        (await ProgramDiffersAsync(admin, name)).Should().BeFalse("once it runs the program this Mnemarr carries, there is nothing that differs");
     }
 
     [Fact]
@@ -64,17 +64,21 @@ public sealed class UpdateAvailableApiFixture : IClassFixture<DownloadsFactory>
         await BeatAsync(machine, null, null);
         await BeatAsync(other, "macos-aarch64", DownloadsFactory.Sha256Of("an older program"));
 
-        (await UpdateAvailableAsync(admin, name)).Should().BeFalse("an older collector does not say, and nobody is told something that is not known");
-        (await UpdateAvailableAsync(admin, otherName)).Should().BeFalse("this Mnemarr has no program for that system");
+        (await ProgramDiffersAsync(admin, name)).Should().BeFalse("an older collector does not say, and nobody is told something that is not known");
+        (await ProgramDiffersAsync(admin, otherName)).Should().BeFalse("this Mnemarr has no program for that system");
     }
 
-    [Fact]
-    public async Task should_ignore_a_program_that_is_not_a_hash()
+    [Theory]
+    [InlineData("not-a-hash")]
+    [InlineData("")]
+    [InlineData("ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789")]
+    [InlineData("abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345678")]
+    public async Task should_ignore_a_program_that_is_not_a_hash(string program)
     {
         var (admin, machine, name) = await JoinAsync();
 
-        (await BeatAsync(machine, "windows-x86_64", "not-a-hash")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await BeatAsync(machine, "windows-x86_64", program)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        (await UpdateAvailableAsync(admin, name)).Should().BeFalse();
+        (await ProgramDiffersAsync(admin, name)).Should().BeFalse();
     }
 }

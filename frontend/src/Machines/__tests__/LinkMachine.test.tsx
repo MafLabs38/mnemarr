@@ -14,7 +14,7 @@ const pairing: PairingItem = {
   knownAs: null,
 };
 
-function server(options: { found?: boolean; list?: PairingItem[]; knownAs?: string } = {}) {
+function server(options: { found?: boolean; list?: PairingItem[]; knownAs?: string; approveFails?: boolean } = {}) {
   return stubApi((method, path) => {
     if (method === 'POST' && path === '/pairings/lookup') {
       return options.found === false
@@ -28,7 +28,9 @@ function server(options: { found?: boolean; list?: PairingItem[]; knownAs?: stri
       return { body: [] };
     }
     if (method === 'POST' && path === '/pairings/p1/approve') {
-      return { body: pairing };
+      return options.approveFails
+        ? { status: 409, body: { title: 'This computer is already the machine other-pc.' } }
+        : { body: pairing };
     }
     if (method === 'POST' && path === '/pairings/p1/reject') {
       return { status: 204 };
@@ -66,8 +68,19 @@ describe('LinkMachine', () => {
     server({ knownAs: 'gaming-pc' });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
 
-    expect(await screen.findByText(/already the machine gaming-pc here/)).toBeInTheDocument();
+    expect(await screen.findByText(/says it is the machine gaming-pc/)).toBeInTheDocument();
     expect(screen.getByLabelText('Name in this Mnemarr')).toHaveValue('gaming-pc');
+  });
+
+  it('says what the server said when the name cannot be given, and keeps the form so that the person can name it again', async () => {
+    server({ approveFails: true });
+    renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Link this computer' }));
+
+    expect(await screen.findByText('This computer is already the machine other-pc.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name in this Mnemarr')).toBeInTheDocument();
+    expect(screen.queryByText(/Linked as/)).not.toBeInTheDocument();
   });
 
   it('refuses the computer when the person says it is not theirs, and says so', async () => {
@@ -77,7 +90,7 @@ describe('LinkMachine', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'This is not my computer' }));
 
     expect(await screen.findByText(/Refused/)).toBeInTheDocument();
-    findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/p1/reject'));
+    expect(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/p1/reject'))).toBeDefined();
   });
 
   it('says there is no such request waiting, and how to start again, when the code is over or wrong', async () => {

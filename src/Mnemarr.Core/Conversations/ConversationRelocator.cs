@@ -40,21 +40,30 @@ public sealed class ConversationRelocator
     public bool Holds(string machine) => _store.OfMachine(machine).Count > 0;
 
     /// <summary>
-    /// A conversation held under names that are not machines (a computer that was installed again under another name) goes to the machine that sends it
-    /// now, and goes on from where it was, instead of being made a second time; the other copies of it under such names are dropped. The caller holds the
-    /// lock of the source. True when one was taken over.
+    /// A conversation that the same computer held under names that are not machines (it was installed again under another name) goes to the machine that
+    /// sends it now, and goes on from where it was, instead of being made a second time; the other copies of it under such names are dropped. The caller
+    /// holds the lock of the source. True when one was taken over.
     /// </summary>
-    internal async Task<bool> AdoptAsync(Source source, string session, string machine, CancellationToken cancellationToken)
+    internal async Task<bool> AdoptAsync(Source source, IngestBatch batch, CancellationToken cancellationToken)
     {
-        var orphans = _store.OfSession(session).Where(held => !string.Equals(held.Machine, machine, StringComparison.Ordinal) && _machines.Get(held.Machine) is null).OrderByDescending(held => held.Lines).ToList();
+        // Only the same computer takes a conversation over (a key that merely knows a session id does not), and only in the format it was collected in.
+        if (batch.ComputerId is not { } computer)
+        {
+            return false;
+        }
+
+        var orphans = _store.OfSession(batch.Session)
+            .Where(held => !string.Equals(held.Machine, batch.Machine, StringComparison.Ordinal) && string.Equals(held.ComputerId, computer, StringComparison.Ordinal) && string.Equals(held.Format, batch.Format, StringComparison.Ordinal) && _machines.Get(held.Machine) is null)
+            .OrderByDescending(held => held.Lines)
+            .ToList();
         if (orphans.Count == 0)
         {
             return false;
         }
 
-        // The longest copy is taken over. The others are the same conversation, with the same lines or fewer, under names that are not machines: a
-        // conversation is stored once, so they go (nothing that was in them is lost).
-        var taken = await MoveHeldAsync(source, orphans[0], machine, cancellationToken);
+        // The longest copy is taken over. The others are the same conversation, with the same lines or fewer, from the same computer, under names that are
+        // not machines: a conversation is stored once, so they go (nothing that was in them is lost).
+        var taken = await MoveHeldAsync(source, orphans[0], batch.Machine, cancellationToken);
         foreach (var copy in orphans.Skip(1))
         {
             Drop(source, copy);

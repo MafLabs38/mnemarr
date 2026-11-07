@@ -46,8 +46,8 @@ public sealed class IngestController : ControllerBase
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<IngestResultResource> Conversations(IngestConversationRequest request, CancellationToken cancellationToken)
     {
-        _collectors.Authorize(User.AccountId(), request.Machine);
-        var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines, User.ActorName()), cancellationToken);
+        var computer = _collectors.Authorize(User.AccountId(), request.Machine);
+        var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines, User.ActorName(), computer), cancellationToken);
         return new IngestResultResource(result.Next, result.Accepted);
     }
 }

@@ -25,6 +25,9 @@ public interface IMachineStore
 
     bool Revoke(string name, DateTimeOffset at);
 
+    /// <summary>Gives a machine that has no identifier the one of its computer. False when it has one, or when another machine holds it.</summary>
+    bool SetComputer(string name, string computerId);
+
     /// <summary>Takes a revoked machine out of the list. False when there is none, or it is not revoked.</summary>
     bool Remove(string name);
 }
@@ -138,6 +141,16 @@ public sealed class SqliteMachineStore : IMachineStore
         command.CommandText = "UPDATE machines SET revoked_at = $at WHERE name = $name AND revoked_at IS NULL";
         command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public bool SetComputer(string name, string computerId)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE machines SET computer_id = $computer WHERE name = $name AND computer_id IS NULL AND NOT EXISTS (SELECT 1 FROM machines WHERE computer_id = $computer)";
+        command.Parameters.AddWithValue(NameParameter, name);
+        command.Parameters.AddWithValue("$computer", computerId);
         return command.ExecuteNonQuery() > 0;
     }
 

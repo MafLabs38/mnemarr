@@ -16,7 +16,7 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   version: '0.1.0',
   pendingLines: 0,
   error: null,
-  updateAvailable: false,
+  programDiffers: false,
   ...over,
 });
 
@@ -165,10 +165,10 @@ describe('Managing a machine', () => {
   });
 
   it('says when this Mnemarr carries another program than the one a machine runs, and says nothing for a machine that is up to date', async () => {
-    server([machine({ machine: 'laptop', updateAvailable: true }), machine({ machine: 'server-1' })]);
+    server([machine({ machine: 'laptop', programDiffers: true }), machine({ machine: 'server-1' })]);
     renderWithProviders(<Machines />);
 
-    expect(await screen.findByText('Update available')).toBeInTheDocument();
-    expect(screen.getAllByText('Update available')).toHaveLength(1);
+    expect(await screen.findByText('Another program than this Mnemarr carries')).toBeInTheDocument();
+    expect(screen.getAllByText('Another program than this Mnemarr carries')).toHaveLength(1);
   });
 });

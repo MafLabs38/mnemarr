@@ -24,12 +24,17 @@ Trying the collector on a real computer showed four defects that have one root: 
 2. **The name is a label.** Joining (by a code or by asking) sends the identifier. A Mnemarr that knows it does not make a second machine: the computer joins
    **the machine it already is**, gets a new key for it (the old one stops working), and the person who approves sees "this computer is already
    `gaming-pc`" and may rename it. Nothing is sent twice, the folder is the same. Renaming a machine renames its folder.
-3. **Cloned computers are two machines when the system tells them apart**, and are reported (not merged in silence) when two different collectors claim one
-   identifier at once. This case is not solved further: a person with cloned virtual machines names them.
-4. **A conversation is stored once.** A conversation held under a name that is not a machine (a computer that was installed again under another name, or
-   a machine that was removed) is taken over by the machine that sends it now: it goes on from the lines it has, and its note and raw lines are filed under
-   the new machine. One held by a machine that exists is left to it. This is the net under rule 2 for what was already duplicated; *Merge* is what a person
-   uses for the rest, and it drops the copy of a conversation that the target holds already.
+3. **The identifier names a computer, it does not prove one.** It is a hash of something the system made and that is not secret (a local user can read it,
+   a cloned image carries it). So a join never rests on it alone: a person made the code, or approved the request, and the page that approves says what the
+   computer *claims* ("says it is the machine X: approve only if that is right"). A computer that takes over a machine this way revokes the key of the previous
+   holder, which then reports a refused key and stops sending: it is loud and in the audit trail, never silent. **Cloned computers share an identifier**: the
+   second to join takes the first one's machine, and the first stops. This case is not solved further: a person with cloned virtual machines names them apart
+   and removes the machine that is not wanted.
+4. **A conversation is stored once.** A conversation is recorded with the identifier of the computer that sent it. One held under a name that is **not a
+   machine** (a computer that was installed again under another name, or a machine that was removed) is taken over by the machine that sends the **same
+   computer's** identifier: it goes on from the lines it has, its note and raw lines are filed under the new machine, and the other copies from that computer
+   are dropped. A key that only knows a session id takes nothing over, and what was recorded before identifiers existed is never taken over: *Merge* is what a
+   person uses for that, and it keeps the longer copy of a conversation that both hold.
 5. **Two ways to remove a machine**, both asking to confirm:
    - **Remove the machine**: its keys stop working and it leaves the list; its conversations stay, filed under its name, shown as "no longer enrolled", **with
      actions** (rename, merge into another machine, delete).
@@ -44,10 +49,11 @@ Trying the collector on a real computer showed four defects that have one root: 
    the conversation files of the user. On first launch it asks which Mnemarr to link to, with the linking of ADR 0030 (a person approves, names the machine);
    a code stays a way to link without a screen.
 7. **Updating is part of it.** The collector says at each pass which system it is for and the SHA-256 of the program it runs; Mnemarr compares it with the
-   program it carries for that system, and the machines page shows *Update available* when they differ. The hash is used, not a version number: it works for
-   a build that is not a release, and it cannot be wrong about what runs. (Built.) The update itself, **not built**, replaces the program from the Mnemarr it
-   sends to, after checking its checksum, without losing the destinations; whether it is one click or automatic is the person's choice, off by default for a
-   server, and is decided with the installer (Q-40).
+   program it carries for that system, and the machines page says when they **differ** ("another program than this Mnemarr carries"). The hash is used, not a
+   version number: it works for a build that is not a release, and it cannot be wrong about what runs. It says "different", never "newer": a collector that
+   sends to a development and a production Mnemarr, which carry different builds, differs from one of them. **Which Mnemarr is the source of updates** (one
+   marked as such, or the newest build) is decided before the update itself, which is not built: it replaces the program after checking its checksum, without
+   losing the destinations, one click or automatic as the person chooses, and is decided with the installer (Q-40).
 8. **Reinstall is not a revoke.** Until updating exists, a machine row offers *Reinstall* (a one-time code for the same machine, replacing its key on that
    Mnemarr only).
 
@@ -55,7 +61,7 @@ Trying the collector on a real computer showed four defects that have one root: 
 
 - The model of the download changes: the programs in the image stay generic; the per-machine setting appended to the program (ADR 0027 §15) stays for a
   link by code and is no longer the way a person installs.
-- A migration gives each existing machine its identifier at its next heartbeat; two machines that turn out to share one are shown to a person to merge.
+- A machine that joined before identifiers existed gets its identifier from its next heartbeat (the first machine to say one holds it; a second that says the same keeps none, and stays as it is). Until then a reinstall under another name makes a second machine, which *Merge* repairs.
 - Merging two machines (the duplicates that exist) moves the conversations of one under the other and drops the copies by conversation identifier.
 - The collector gains the installer, the identifier, the update and the real uninstall; the server gains the identifier on a machine, rename, merge and the two
   removals; the interface gains their actions and confirmations.

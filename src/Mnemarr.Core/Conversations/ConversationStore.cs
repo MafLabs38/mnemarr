@@ -31,7 +31,8 @@ public sealed record ConversationRecord(
     string? Title = null,
     string TitleSource = TitleSources.FirstSentence,
     string? Summary = null,
-    int TitleTries = 0);
+    int TitleTries = 0,
+    string? ComputerId = null);
 
 /// <summary>How many conversations have a title of each origin.</summary>
 public sealed record TitleCounts(int FirstSentence, int Summary, int Person);
@@ -79,6 +80,7 @@ public interface IConversationStore
 
 public sealed class SqliteConversationStore : IConversationStore
 {
+    private const string Columns = "machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries, computer_id";
     private const string MachineParameter = "$machine";
     private const string SessionParameter = "$session";
     private readonly IDatabase _database;
@@ -92,7 +94,7 @@ public sealed class SqliteConversationStore : IConversationStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE machine = $machine AND session = $session";
+        command.CommandText = $"SELECT {Columns} FROM conversations WHERE machine = $machine AND session = $session";
         command.Parameters.AddWithValue(MachineParameter, machine);
         command.Parameters.AddWithValue(SessionParameter, session);
         using var reader = command.ExecuteReader();
@@ -102,13 +104,13 @@ public sealed class SqliteConversationStore : IConversationStore
     private static ConversationRecord Read(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4),
         StorageText.Parse(reader.GetString(5)), StorageText.Parse(reader.GetString(6)), reader.GetString(7), reader.GetInt64(8), reader.GetString(9),
-        reader.IsDBNull(10) ? null : reader.GetString(10), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.GetInt32(13));
+        reader.IsDBNull(10) ? null : reader.GetString(10), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.GetInt32(13), reader.IsDBNull(14) ? null : reader.GetString(14));
 
     public ConversationRecord? FindByNote(string notePath)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE note_path = $path";
+        command.CommandText = $"SELECT {Columns} FROM conversations WHERE note_path = $path";
         command.Parameters.AddWithValue("$path", notePath);
         using var reader = command.ExecuteReader();
         return reader.Read() ? Read(reader) : null;
@@ -142,7 +144,7 @@ public sealed class SqliteConversationStore : IConversationStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE title_source = 'first-sentence' AND title_tries < $tries AND updated_at <= $idle ORDER BY updated_at LIMIT $limit";
+        command.CommandText = $"SELECT {Columns} FROM conversations WHERE title_source = 'first-sentence' AND title_tries < $tries AND updated_at <= $idle ORDER BY updated_at LIMIT $limit";
         command.Parameters.AddWithValue("$tries", maxTries);
         command.Parameters.AddWithValue("$idle", StorageText.Format(idleBefore));
         command.Parameters.AddWithValue("$limit", limit);
@@ -198,9 +200,9 @@ public sealed class SqliteConversationStore : IConversationStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary)
-            VALUES ($machine, $session, $application, $format, $lines, $started, $updated, $path, $bytes, $account, $title, $titleSource, $summary)
-            ON CONFLICT (machine, session) DO UPDATE SET lines = $lines, updated_at = $updated, started_at = $started, note_path = $path, note_bytes = $bytes, account = $account
+            INSERT INTO conversations (machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, computer_id)
+            VALUES ($machine, $session, $application, $format, $lines, $started, $updated, $path, $bytes, $account, $title, $titleSource, $summary, $computer)
+            ON CONFLICT (machine, session) DO UPDATE SET lines = $lines, updated_at = $updated, started_at = $started, note_path = $path, note_bytes = $bytes, account = $account, computer_id = coalesce($computer, computer_id)
             """;
         command.Parameters.AddWithValue(MachineParameter, record.Machine);
         command.Parameters.AddWithValue(SessionParameter, record.Session);
@@ -215,12 +217,13 @@ public sealed class SqliteConversationStore : IConversationStore
         command.Parameters.AddWithValue("$title", (object?)record.Title ?? DBNull.Value);
         command.Parameters.AddWithValue("$titleSource", record.TitleSource);
         command.Parameters.AddWithValue("$summary", (object?)record.Summary ?? DBNull.Value);
+        command.Parameters.AddWithValue("$computer", (object?)record.ComputerId ?? DBNull.Value);
         command.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<ConversationRecord> OfMachine(string machine) => Many("SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE machine = $key ORDER BY started_at", machine);
+    public IReadOnlyList<ConversationRecord> OfMachine(string machine) => Many($"SELECT {Columns} FROM conversations WHERE machine = $key ORDER BY started_at", machine);
 
-    public IReadOnlyList<ConversationRecord> OfSession(string session) => Many("SELECT machine, session, application, format, lines, started_at, updated_at, note_path, note_bytes, account, title, title_source, summary, title_tries FROM conversations WHERE session = $key", session);
+    public IReadOnlyList<ConversationRecord> OfSession(string session) => Many($"SELECT {Columns} FROM conversations WHERE session = $key", session);
 
     private List<ConversationRecord> Many(string query, string key)
     {

@@ -195,9 +195,9 @@ public sealed class CollectorService
 
     /// <summary>
     /// Whether a key may send for a machine: the one it was given to, and no other. A key of no machine is refused unless the setting says
-    /// that hand-made collector accounts are still allowed. A batch is also a sign of life.
+    /// that hand-made collector accounts are still allowed. A batch is also a sign of life. The answer is the identifier of the computer, when the machine has one.
     /// </summary>
-    public void Authorize(Guid? accountId, string claimedMachine)
+    public string? Authorize(Guid? accountId, string claimedMachine)
     {
         var machine = accountId is { } id ? _machines.GetByAccount(id) : null;
         if (machine is null)
@@ -207,7 +207,7 @@ public sealed class CollectorService
                 throw new RejectedException(Problem.Forbidden, NoMachine);
             }
 
-            return;
+            return null;
         }
 
         CheckNotRevoked(machine);
@@ -217,6 +217,7 @@ public sealed class CollectorService
         }
 
         _machines.Seen(machine.Name, _clock.GetUtcNow(), null);
+        return machine.ComputerId;
     }
 
     /// <summary>The sign of life at the end of a pass. The machine is the one the key belongs to.</summary>
@@ -224,7 +225,13 @@ public sealed class CollectorService
     {
         var machine = (accountId is { } id ? _machines.GetByAccount(id) : null) ?? throw new RejectedException(Problem.Forbidden, NoMachine);
         CheckNotRevoked(machine);
-        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null));
+        if (machine.ComputerId is null && MachineJoining.IsComputerId(beat.ComputerId))
+        {
+            // A machine that joined before computers were known learns its own: from now on a reinstall finds it, whatever the name.
+            _machines.SetComputer(machine.Name, beat.ComputerId!);
+        }
+
+        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null));
     }
 
     /// <summary>Every machine that joined, and every name conversations came from that never joined, each with its state.</summary>

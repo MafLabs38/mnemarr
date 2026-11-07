@@ -299,7 +299,7 @@ const en = {
   LastSeen: 'Last seen',
   NeverSeen: 'Never',
   ConversationsCount: 'Conversations',
-  UpdateAvailable: 'Update available',
+  ProgramDiffers: 'Another program than this Mnemarr carries',
   Manage: 'Manage',
   ManageMachine: 'Manage {name}',
   RenameTitle: 'Rename',
@@ -313,7 +313,7 @@ const en = {
   Merge: 'Merge',
   ReinstallTitle: 'Install the collector again',
   ReinstallHelp:
-    'A new code for {name}, to install again or to update the collector on that computer (this Mnemarr says Update available when it carries a newer program). The machine keeps its name and what it sent; its old key stops working here.',
+    'A new code for {name}, to install again or to update the collector on that computer (this Mnemarr says when a machine runs another program than the one it carries). The machine keeps its name and what it sent; its old key stops working here.',
   Reinstall: 'Reinstall',
   RemovalTitle: 'Remove or delete',
   RemoveHelp:
@@ -328,7 +328,8 @@ const en = {
     'Delete {name} and its {count} conversations? This cannot be undone. Copies in the snapshots of the database remain until they are rotated out; what is computed from conversations is not deleted.',
   EraseYes: 'Yes, delete it all',
   EraseNow: 'Delete {name} and its conversations now',
-  LinkKnownAs: 'This computer is already the machine {name} here: it keeps what it sent, whatever name you give it.',
+  LinkKnownAs:
+    'This computer says it is the machine {name}, which already joined here. Mnemarr cannot prove it: approve only if that is right. It then takes over that machine, keeps what it sent, and the key {name} had stops working.',
   RevokeMachine: 'Revoke the machine {name}',
   StateOnline: 'Online',
   StatePaused: 'Paused by its user',

@@ -167,6 +167,7 @@ impl Uploader for HttpUploader {
                 "paused": beat.paused,
                 "platform": crate::computer::platform(),
                 "program": crate::computer::program_hash(),
+                "computerId": crate::computer::id(),
             }),
         )?;
         if status == 200 || status == 204 {
@@ -414,6 +415,7 @@ mod tests {
                 // What this program is, so that a Mnemarr can tell whether it carries another one (ADR 0031 §7).
                 "platform": crate::computer::platform(),
                 "program": crate::computer::program_hash(),
+                "computerId": crate::computer::id(),
             })
         );
     }
