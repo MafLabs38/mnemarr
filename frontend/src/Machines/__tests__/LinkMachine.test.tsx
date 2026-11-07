@@ -1,9 +1,10 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { findCall, readerSession, renderWithProviders, sentBody, stubApi } from '__tests__/render';
+import { type ApiAnswer, findCall, readerSession, renderWithProviders, sentBody, stubApi } from '__tests__/render';
 import LinkMachine from 'Machines/LinkMachine';
 import Machines from 'Machines/Machines';
+import type { MachineItem } from 'Machines/machines';
 import type { PairingItem } from 'Machines/pairings';
 
 const pairing: PairingItem = {
@@ -14,29 +15,33 @@ const pairing: PairingItem = {
   knownAs: null,
 };
 
-function server(options: { found?: boolean; list?: PairingItem[]; knownAs?: string; approveFails?: boolean } = {}) {
-  return stubApi((method, path) => {
-    if (method === 'POST' && path === '/pairings/lookup') {
-      return options.found === false
+interface Options {
+  found?: boolean;
+  list?: PairingItem[];
+  knownAs?: string;
+  approveFails?: boolean;
+  machines?: MachineItem[];
+}
+
+/** What the API answers to each call this page makes; any other call is a success with no body. */
+function answers(options: Options): Record<string, ApiAnswer> {
+  return {
+    'POST /pairings/lookup':
+      options.found === false
         ? { status: 404, body: { title: 'No such request' } }
-        : { body: { ...pairing, knownAs: options.knownAs ?? null } };
-    }
-    if (method === 'GET' && path === '/pairings') {
-      return { body: options.list ?? [] };
-    }
-    if (method === 'GET' && (path === '/collectors' || path === '/enrolments')) {
-      return { body: [] };
-    }
-    if (method === 'POST' && path === '/pairings/p1/approve') {
-      return options.approveFails
-        ? { status: 409, body: { title: 'This computer is already the machine other-pc.' } }
-        : { body: pairing };
-    }
-    if (method === 'POST' && path === '/pairings/p1/reject') {
-      return { status: 204 };
-    }
-    return { status: 204 };
-  });
+        : { body: { ...pairing, knownAs: options.knownAs ?? null } },
+    'GET /pairings': { body: options.list ?? [] },
+    'GET /collectors': { body: options.machines ?? [] },
+    'GET /enrolments': { body: [] },
+    'POST /pairings/p1/approve': options.approveFails
+      ? { status: 409, body: { title: 'This computer is already the machine other-pc.' } }
+      : { body: pairing },
+  };
+}
+
+function server(options: Options = {}) {
+  const known = answers(options);
+  return stubApi((method, path) => known[`${method} ${path}`] ?? { status: 204 });
 }
 
 describe('LinkMachine', () => {
@@ -100,6 +105,29 @@ describe('LinkMachine', () => {
     expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/p1/approve')))).toMatchObject({
       code: 'abcd efgh jklm',
     });
+  });
+
+  it('warns when the name chosen is a machine that exists already, because approving replaces its key', async () => {
+    const existing: MachineItem = {
+      machine: 'gaming-pc',
+      kind: 'intermittent',
+      state: 'online',
+      conversations: 3,
+      lines: 10,
+      lastSeen: '2026-11-06T09:00:00Z',
+      enrolledAt: '2026-11-01T09:00:00Z',
+      version: '0.0.0',
+      pendingLines: 0,
+      error: null,
+      programDiffers: false,
+    };
+    server({ machines: [existing] });
+    renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
+
+    expect(await screen.findByText(/A machine named gaming-pc exists already/)).toBeInTheDocument();
+    await userEvent.clear(screen.getByLabelText('Name in this Mnemarr'));
+    await userEvent.type(screen.getByLabelText('Name in this Mnemarr'), 'another-pc');
+    expect(screen.queryByText(/A machine named .* exists already/)).not.toBeInTheDocument();
   });
 
   it('refuses the computer when the person says it is not theirs, and says so', async () => {

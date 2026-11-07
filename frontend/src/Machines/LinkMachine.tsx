@@ -12,11 +12,30 @@ import PageHeading from 'Components/Page/PageHeading';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
-import { type MachineKindName, machineNameFor } from './machines';
+import { type MachineKindName, machineNameFor, useMachines } from './machines';
 import styles from './Machines.module.css';
 import { type PairingItem, useApprovePairing, useLookupPairing, usePairings, useRejectPairing } from './pairings';
 
 type Outcome = { kind: 'linked'; name: string } | { kind: 'rejected' };
+
+/** What is said under the name field: the name that will be used when it is not what was typed, and a warning when it is a machine that exists already. */
+function NameNotes({ name, typed, knownAs }: Readonly<{ name: string; typed: string; knownAs: string | null }>) {
+  return (
+    <>
+      {name !== '' && name !== typed && <p className={styles.hint}>{translate('MachineNameUsed', { name })}</p>}
+      <NameTaken knownAs={knownAs} name={name} />
+    </>
+  );
+}
+
+/** Says when the name chosen is a machine that exists already: approving under it replaces its key, and the collector that runs with the old key stops. */
+function NameTaken({ name, knownAs }: Readonly<{ name: string; knownAs: string | null }>) {
+  const machines = useMachines();
+  const taken = machines.data?.some(
+    (machine) => machine.machine === name && machine.kind !== null && machine.state !== 'refused',
+  );
+  return taken && name !== knownAs ? <Alert>{translate('LinkNameExists', { name })}</Alert> : null;
+}
 
 /** The person says who the computer is for this Mnemarr: the name it will have here and whether it is always on, or refuses it. */
 function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (outcome: Outcome) => void }>) {
@@ -29,6 +48,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
   const reject = useRejectPairing();
   const name = machineNameFor(typed);
   const busy = approve.isPending || reject.isPending;
+  const failure = approve.error ?? reject.error;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -46,7 +66,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
       </p>
       {pairing.knownAs && <Alert>{translate('LinkKnownAs', { name: pairing.knownAs })}</Alert>}
       <p className={styles.hint}>{translate('PairingExpires', { time: formatDateTime(pairing.expiresAt) })}</p>
-      {(approve.error ?? reject.error) && <Alert>{(approve.error ?? reject.error)?.message}</Alert>}
+      {failure && <Alert>{failure.message}</Alert>}
       <TextField
         label={translate('LinkCodeOnComputer')}
         onChange={(event) => setCode(event.target.value)}
@@ -59,7 +79,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
         required
         value={typed}
       />
-      {name !== '' && name !== typed && <p className={styles.hint}>{translate('MachineNameUsed', { name })}</p>}
+      <NameNotes knownAs={pairing.knownAs} name={name} typed={typed} />
       <p className={styles.hint}>{translate('LinkNameHelp')}</p>
       <SelectField
         label={translate('Kind')}

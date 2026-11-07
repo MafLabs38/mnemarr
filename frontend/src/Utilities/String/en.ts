@@ -351,6 +351,8 @@ const en = {
   LinkIntro:
     'A computer that has the collector asked to be linked to this Mnemarr. Check that you started it just now, on your own computer, and that the name below is its name.',
   LinkCodeLabel: 'Code shown on the computer',
+  LinkNameExists:
+    'A machine named {name} exists already. Approving under that name replaces its key: the collector that runs with the old key stops. Choose another name unless this computer is that machine.',
   LinkCodeOnComputer: 'Type the code that your computer shows (so that this request is the one in front of you)',
   LinkFind: 'Find the request',
   LinkNotFound:
