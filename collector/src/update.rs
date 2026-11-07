@@ -44,12 +44,16 @@ pub fn may_carry_updates(server: &str) -> bool {
     let Some(rest) = lower.strip_prefix("http://") else {
         return false;
     };
-    let host = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    let host = host
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    // A user name before the host (`localhost:80@evil.example`) is how an address says one host and means another: it carries nothing.
+    if authority.contains('@') {
+        return false;
+    }
+    let host = authority
         .strip_prefix('[')
         .and_then(|inner| inner.split_once(']'))
         .map_or_else(
-            || host.split(':').next().unwrap_or_default(),
+            || authority.split(':').next().unwrap_or_default(),
             |(inside, _)| inside,
         );
     matches!(host, "localhost" | "127.0.0.1" | "::1")
@@ -65,10 +69,18 @@ pub struct Offer {
 /// The newest of the offers: the Mnemarr a collector takes its update from when it sends to several, which carry different builds (a development one and a
 /// production one). When two carry the same version, the first one listed.
 pub fn newest(offers: &[Offer]) -> Option<&Offer> {
-    offers.iter().fold(None, |best, offer| match best {
-        Some(found) if found.version >= offer.version => Some(found),
-        _ => Some(offer),
-    })
+    newest_index(offers).map(|index| &offers[index])
+}
+
+/// The place of the newest offer in the list (the first one when two carry the same version).
+pub fn newest_index(offers: &[Offer]) -> Option<usize> {
+    offers
+        .iter()
+        .enumerate()
+        .fold(None, |best: Option<usize>, (index, offer)| match best {
+            Some(found) if offers[found].version >= offer.version => Some(found),
+            _ => Some(index),
+        })
 }
 
 /// Where the collector is at, for the icon and for `status`.
@@ -174,28 +186,28 @@ pub fn stable_exe_named(running: &Path, title: Option<&str>) -> PathBuf {
         .unwrap_or_else(|| root.join(file))
 }
 
-/// The script (PowerShell) that adds a folder to the PATH of the user, once, and tells Windows. Pure text, so that it is tried anywhere.
-pub fn add_to_path_script(folder: &Path) -> String {
-    let folder = folder.to_string_lossy().replace('\'', "''");
-    format!(
-        "$d = '{folder}'; $p = [Environment]::GetEnvironmentVariable('Path', 'User'); \
-$parts = @(($p -split ';') | Where-Object {{ $_ -and ($_ -ne $d) }}); \
+/// The folder, as the scripts below read it: it is given to PowerShell as data (an environment variable), never written into the text of the script, so that a
+/// name with a quote of any kind in it cannot end up as a command.
+pub const FOLDER_VARIABLE: &str = "MNEMARR_FOLDER";
+
+/// The script (PowerShell) that adds the folder named by `MNEMARR_FOLDER` to the PATH of the user, once, and tells Windows. Pure text, so that it is tried anywhere.
+pub fn add_to_path_script() -> String {
+    "$d = $env:MNEMARR_FOLDER; $p = [Environment]::GetEnvironmentVariable('Path', 'User'); \
+$parts = @(($p -split ';') | Where-Object { $_ -and ($_ -ne $d) }); \
 [Environment]::SetEnvironmentVariable('Path', (($parts + $d) -join ';'), 'User')"
-    )
+        .to_string()
 }
 
-/// The script that takes a folder out of the PATH of the user.
-pub fn remove_from_path_script(folder: &Path) -> String {
-    let folder = folder.to_string_lossy().replace('\'', "''");
-    format!(
-        "$d = '{folder}'; $p = [Environment]::GetEnvironmentVariable('Path', 'User'); \
-$parts = @(($p -split ';') | Where-Object {{ $_ -and ($_ -ne $d) }}); \
+/// The script that takes the folder named by `MNEMARR_FOLDER` out of the PATH of the user.
+pub fn remove_from_path_script() -> String {
+    "$d = $env:MNEMARR_FOLDER; $p = [Environment]::GetEnvironmentVariable('Path', 'User'); \
+$parts = @(($p -split ';') | Where-Object { $_ -and ($_ -ne $d) }); \
 [Environment]::SetEnvironmentVariable('Path', ($parts -join ';'), 'User')"
-    )
+        .to_string()
 }
 
 #[cfg(windows)]
-fn run_script(script: &str) {
+fn run_script(script: &str, folder: &Path) {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
@@ -214,6 +226,7 @@ fn run_script(script: &str) {
         "-Command",
         script,
     ])
+    .env(FOLDER_VARIABLE, folder)
     .creation_flags(CREATE_NO_WINDOW)
     .output();
 }
@@ -228,7 +241,7 @@ fn after_install() {
     let stable = stable_exe(&running);
     let _ = service::register(&stable, None);
     if let Some(root) = stable.parent() {
-        run_script(&add_to_path_script(root));
+        run_script(&add_to_path_script(), root);
     }
 }
 
@@ -243,7 +256,7 @@ fn before_uninstall() {
     if let Ok(running) = std::env::current_exe()
         && let Some(root) = stable_exe(&running).parent()
     {
-        run_script(&remove_from_path_script(root));
+        run_script(&remove_from_path_script(), root);
     }
 }
 
@@ -339,17 +352,74 @@ impl Updater {
         matches!(self.state(), UpdateState::Ready(_))
     }
 
+    /// Says that a check begins, unless one is under way or an update is already waiting: only one at a time, and the state is looked at and set together.
+    fn begin(&self) -> bool {
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        if matches!(
+            *state,
+            UpdateState::Checking | UpdateState::Downloading(_) | UpdateState::Ready(_)
+        ) {
+            return false;
+        }
+        *state = UpdateState::Checking;
+        true
+    }
+
+    /// Asks each Mnemarr of the list what it carries, and gives back what is newer than the installed version, with the last thing that went wrong.
+    fn look(destinations: &[&Destination]) -> (Vec<(Offer, Pending)>, Option<String>) {
+        let mut found = Vec::new();
+        let mut failure = None;
+        for destination in destinations {
+            let manager = match UpdateManager::new(source_of(&destination.server), None, None) {
+                Ok(manager) => manager,
+                Err(error) => {
+                    failure = Some(error.to_string());
+                    continue;
+                }
+            };
+            match manager.check_for_updates() {
+                Ok(UpdateCheck::UpdateAvailable(info)) => {
+                    if let Ok(version) = Version::parse(&info.TargetFullRelease.Version) {
+                        let offer = Offer {
+                            destination: destination.name.clone(),
+                            version,
+                        };
+                        found.push((
+                            offer,
+                            Pending {
+                                manager,
+                                info: *info,
+                            },
+                        ));
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => failure = Some(format!("{}: {error}", destination.name)),
+            }
+        }
+        (found, failure)
+    }
+
+    /// Takes the version of the winning offer and keeps it, ready to be applied.
+    fn take(&self, offer: &Offer, pending: Pending) -> UpdateState {
+        self.set(UpdateState::Downloading(offer.version.to_string()));
+        if let Err(error) = pending.manager.download_updates(&pending.info, None) {
+            return UpdateState::Failed(format!("{}: {error}", offer.destination));
+        }
+        if let Ok(mut slot) = self.pending.lock() {
+            *slot = Some(Arc::new(pending));
+        }
+        UpdateState::Ready(offer.version.to_string())
+    }
+
     /// Asks each Mnemarr in the list what it carries, takes the newest version of those that are newer than the installed one, and downloads it. Blocks for as
-    /// long as that takes: it is run apart from the passes. A Mnemarr that cannot be reached or whose address may not carry updates is passed over.
+    /// long as that takes: it is run apart from the passes. A Mnemarr that cannot be reached or whose address may not carry updates is passed over; when
+    /// none may, it says so. Nothing is done again while an update waits.
     pub fn check(&self, destinations: &[Destination]) -> UpdateState {
         if !self.installed() {
             return UpdateState::NotInstalled;
-        }
-        if matches!(
-            self.state(),
-            UpdateState::Checking | UpdateState::Downloading(_)
-        ) {
-            return self.state();
         }
         let allowed: Vec<&Destination> = destinations
             .iter()
@@ -366,62 +436,28 @@ impl Updater {
             self.set(state.clone());
             return state;
         }
-        self.set(UpdateState::Checking);
-        let mut offers = Vec::new();
-        let mut candidates: Vec<(Offer, Pending)> = Vec::new();
-        let mut last_failure = None;
-        for destination in allowed {
-            let manager = match UpdateManager::new(source_of(&destination.server), None, None) {
-                Ok(manager) => manager,
-                Err(error) => {
-                    last_failure = Some(error.to_string());
-                    continue;
-                }
-            };
-            match manager.check_for_updates() {
-                Ok(UpdateCheck::UpdateAvailable(info)) => {
-                    let Ok(version) = Version::parse(&info.TargetFullRelease.Version) else {
-                        continue;
-                    };
-                    let offer = Offer {
-                        destination: destination.name.clone(),
-                        version,
-                    };
-                    offers.push(offer.clone());
-                    candidates.push((
-                        offer,
-                        Pending {
-                            manager,
-                            info: *info,
-                        },
-                    ));
-                }
-                Ok(_) => {}
-                Err(error) => last_failure = Some(format!("{}: {error}", destination.name)),
+        if !self.begin() {
+            return self.state();
+        }
+        let (mut found, failure) = Self::look(&allowed);
+        let offers: Vec<Offer> = found.iter().map(|(offer, _)| offer.clone()).collect();
+        let state = match newest_index(&offers) {
+            Some(index) => {
+                let (offer, pending) = found.swap_remove(index);
+                self.take(&offer, pending)
             }
-        }
-        let Some(best) = newest(&offers).cloned() else {
-            let state = last_failure.map_or(UpdateState::UpToDate, UpdateState::Failed);
-            self.set(state.clone());
-            return state;
+            None => failure.map_or(UpdateState::UpToDate, UpdateState::Failed),
         };
-        let Some(position) = candidates.iter().position(|(offer, _)| *offer == best) else {
-            self.set(UpdateState::UpToDate);
-            return UpdateState::UpToDate;
-        };
-        let (_, pending) = candidates.swap_remove(position);
-        self.set(UpdateState::Downloading(best.version.to_string()));
-        if let Err(error) = pending.manager.download_updates(&pending.info, None) {
-            let state = UpdateState::Failed(format!("{}: {error}", best.destination));
-            self.set(state.clone());
-            return state;
-        }
-        if let Ok(mut slot) = self.pending.lock() {
-            *slot = Some(Arc::new(pending));
-        }
-        let state = UpdateState::Ready(best.version.to_string());
         self.set(state.clone());
         state
+    }
+
+    /// The reason the last check failed, short enough to be said to a Mnemarr; nothing when it did not.
+    pub fn note(&self) -> Option<String> {
+        match self.state() {
+            UpdateState::Failed(reason) => Some(reason.chars().take(120).collect()),
+            _ => None,
+        }
     }
 
     /// Applies the update that is ready, and restarts the collector: the process ends and the updater starts the new version. Positions are kept after each
@@ -593,12 +629,12 @@ mod tests {
     }
 
     #[test]
-    fn should_write_scripts_that_add_a_folder_to_the_path_once_and_take_it_away() {
-        let add = add_to_path_script(Path::new(r"C:\Users\me\AppData\Local\MnemarrCollector"));
-        let remove =
-            remove_from_path_script(Path::new(r"C:\Users\me\AppData\Local\MnemarrCollector"));
+    fn should_write_scripts_that_add_a_folder_to_the_path_once_and_take_it_away_without_the_folder_in_their_text()
+     {
+        let add = add_to_path_script();
+        let remove = remove_from_path_script();
 
-        assert!(add.contains(r"$d = 'C:\Users\me\AppData\Local\MnemarrCollector'"));
+        assert!(add.contains("$env:MNEMARR_FOLDER"));
         assert!(
             add.contains("'Path', 'User'"),
             "the PATH of the user, never the machine's"
@@ -609,8 +645,16 @@ mod tests {
         );
         assert!(remove.contains("($parts -join ';')") && !remove.contains("+ $d"));
         assert!(
-            add_to_path_script(Path::new("C:\\it's")).contains("'C:\\it''s'"),
-            "a quote in the folder cannot end the string"
+            !add.contains('\\') && !remove.contains('\\'),
+            "no folder is written in them: the name of a folder cannot become a command"
         );
+    }
+
+    #[test]
+    fn should_take_a_program_only_from_the_computer_itself_and_not_from_an_address_that_hides_its_host()
+     {
+        assert!(!may_carry_updates("http://localhost:80@evil.example/"));
+        assert!(!may_carry_updates("http://127.0.0.1@evil.example"));
+        assert!(!may_carry_updates("http://user:pass@localhost:8383"));
     }
 }

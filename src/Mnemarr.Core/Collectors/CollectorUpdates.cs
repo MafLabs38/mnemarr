@@ -15,6 +15,12 @@ public sealed partial class CollectorUpdates
     public const string FolderName = "updates";
 
     private const int MaxName = 150;
+
+    /// <summary>The system of a machine (as its collector names it) and the channel of the installer's feed for it: one feed for each.</summary>
+    private static readonly IReadOnlyDictionary<string, string> Channels = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["windows-x86_64"] = "win",
+    };
     private readonly IOptions<CollectorOptions> _options;
     private readonly Lock _gate = new();
     private readonly Dictionary<string, (long Length, DateTime Written, string? Version)> _feeds = [];
@@ -57,46 +63,42 @@ public sealed partial class CollectorUpdates
         return info.Exists && info.LinkTarget is null ? info.FullName : null;
     }
 
-    /// <summary>The installer, when the folder has one: the file a person without a collector downloads.</summary>
-    public string? InstallerName()
+    /// <summary>The installer for a system, when the folder has one: the file a person without a collector downloads.</summary>
+    public string? InstallerName(string? platform)
     {
-        if (Folder is not { } folder || !Directory.Exists(folder))
+        if (Folder is not { } folder || !Directory.Exists(folder) || !ChannelOf(platform, out var channel))
         {
             return null;
         }
 
-        return Directory.EnumerateFiles(folder, "*-Setup.exe").Select(Path.GetFileName).OfType<string>().Where(IsServed).Order(StringComparer.Ordinal).FirstOrDefault();
+        return Directory.EnumerateFiles(folder, $"*-{channel}-Setup.exe").Select(Path.GetFileName).OfType<string>().Where(IsServed).Order(StringComparer.Ordinal).FirstOrDefault();
     }
 
-    /// <summary>The newest version that the feed carries, or null when there is none.</summary>
-    public string? LatestVersion()
+    private static bool ChannelOf(string? platform, out string channel)
     {
-        if (Folder is not { } folder || !Directory.Exists(folder))
+        channel = string.Empty;
+        return platform is not null && Channels.TryGetValue(platform, out channel!);
+    }
+
+    /// <summary>The newest version that the feed of a system carries, or null when there is none.</summary>
+    public string? LatestVersion(string? platform)
+    {
+        if (Folder is not { } folder || !ChannelOf(platform, out var channel))
         {
             return null;
         }
 
-        string? latest = null;
-        SemanticVersion best = default;
-        foreach (var feed in Directory.EnumerateFiles(folder, "releases.*.json").Where(path => IsServed(Path.GetFileName(path))))
-        {
-            if (VersionOf(feed) is { } version && ProgramVersions.TryParse(version, out var parsed) && (latest is null || ProgramVersions.Compare(parsed, best) > 0))
-            {
-                latest = version;
-                best = parsed;
-            }
-        }
-
-        return latest;
+        var feed = Path.Combine(folder, $"releases.{channel}.json");
+        return File.Exists(feed) && IsServed(Path.GetFileName(feed)) ? VersionOf(feed) : null;
     }
 
     /// <summary>
-    /// The version a machine could update to: the newest the feed carries, when the machine was installed with the installer (so it can replace itself),
+    /// The version a machine could update to: the newest the feed of its system carries, when the machine was installed with the installer (so it can replace itself),
     /// says a version that is one, and that version is older. Null otherwise: nobody is told something that is not known.
     /// </summary>
-    public string? NewerThan(string? machineVersion, bool canUpdate)
+    public string? NewerThan(string? machineVersion, bool canUpdate, string? platform)
     {
-        if (!canUpdate || !ProgramVersions.TryParse(machineVersion, out var machine) || LatestVersion() is not { } latest || !ProgramVersions.TryParse(latest, out var offered))
+        if (!canUpdate || !ProgramVersions.TryParse(machineVersion, out var machine) || LatestVersion(platform) is not { } latest || !ProgramVersions.TryParse(latest, out var offered))
         {
             return null;
         }

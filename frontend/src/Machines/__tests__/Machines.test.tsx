@@ -19,6 +19,7 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   error: null,
   programDiffers: false,
   updateTo: null,
+  updateNote: null,
   ...over,
 });
 

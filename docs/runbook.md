@@ -29,6 +29,11 @@ The page offers a line per system **that this image carries a program for** (Win
 
 A collector installed with the installer **updates itself** from the Mnemarr it sends to (see [the collector](collector.md)). Updating Mnemarr updates what it carries: the new image has the installer and the packages of the version it was built with, and collectors that send to it take the newer version within four hours. The machines page says **Update available: X** for those that are older. Nothing is to be done on the machines. To see what a Mnemarr carries: `GET /api/v1/ingest/updates/releases.win.json`.
 
+The folder it serves is `updates` in the folder of the programs (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`, `/collector-programs` in the image), or the folder
+`MNEMARR__COLLECTORS__UPDATEFOLDER` when it is somewhere else. It holds what the installer makes for the build: `releases.win.json` (the feed), the packages
+`MnemarrCollector-<version>-full.nupkg` and the installer `MnemarrCollector-win-Setup.exe`. The image carries it; a Mnemarr built without it serves no installer and the
+page offers none. A machine that sends over plain `http://` is told on its row why it cannot update (an update is code, so it is only taken over HTTPS).
+
 If an update does not happen: `mnemarr-collector status` on the machine says where it is at (`updates:`), and `mnemarr-collector update` asks now and says why it cannot (not installed with the installer, no Mnemarr reachable over HTTPS, nothing newer).
 
 ## Take a machine away, or change its key

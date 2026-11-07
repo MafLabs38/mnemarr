@@ -46,6 +46,9 @@ function MachineRow({
           ) : (
             machine.programDiffers && <StatusLabel kind={kinds.WARNING}>{translate('ProgramDiffers')}</StatusLabel>
           )}
+          {machine.updateNote && (
+            <p className={styles.hint}>{translate('UpdateFailed', { reason: machine.updateNote })}</p>
+          )}
         </td>
         <td>
           {canManage && (

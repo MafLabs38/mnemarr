@@ -304,6 +304,7 @@ const en = {
   ConversationsCount: 'Conversations',
   ProgramDiffers: 'Another program than this Mnemarr carries',
   UpdateAvailableTo: 'Update available: {version}',
+  UpdateFailed: 'It cannot update: {reason}',
   Manage: 'Manage',
   ManageMachine: 'Manage {name}',
   RenameTitle: 'Rename',

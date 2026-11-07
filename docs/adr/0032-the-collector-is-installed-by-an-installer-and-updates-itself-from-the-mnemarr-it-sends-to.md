@@ -43,6 +43,15 @@ again for each machine. The maintainer already ships his other Windows applicati
    in a job of its own that cannot write anywhere (the tool is fetched at a pinned version); the job `installer (windows)` **installs it on a real Windows
    runner without a window, updates it from a feed served on that computer, and uninstalls it**, checking the entry, the PATH, the version and what is left.
 
+## Trust
+
+**A Mnemarr that a collector is linked to can update it, and so run code on the computer.** That is the meaning of "from the Mnemarr it sends to": the person linked
+it, and the link page says so. The protection is the person's choice of what to link, TLS to it, and that an update never goes back to an older version; it is not a
+signature (the checksum of the feed comes from the same server as the package: it proves the file arrived whole, not who made it). A stricter rule, such as
+**marking which destinations may update the collector** (by default the one it was installed from), or signing the packages with a key that the collector pins,
+is possible and costs a choice at each link; it is the maintainer's to ask for. The requests for the feed and the packages are made by Velopack's own client,
+which follows redirects like the rest of the system's tools: a Mnemarr that is trusted to run code is trusted not to redirect it, and no key is sent on them.
+
 ## Not here
 
 The Linux AppImage and macOS, delta packages (they need the previous packages), the icon of the installer, signing, the heartbeat answering with the current

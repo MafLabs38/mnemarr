@@ -346,9 +346,10 @@ jobs:
           REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # X.Y.Z for a release, 0.0.1-<ref>.<run> for any other build: semantic versions, which the collector compares (Velopack refuses a version
-          # below 0.0.1, and a build that is not a release is older than every release, which is what it should be).
-          if [ -n "$RELEASE" ]; then version="$RELEASE"; else version="$(RELEASE='' bash tools/release/scripts/version.sh | sed 's/^0\.0\.0-/0.0.1-/')"; fi
+          # X.Y.Z for a release, 0.0.1-dev.<run> for any other build: semantic versions, which the collector compares (Velopack refuses a version below
+          # 0.0.1; a build that is not a release is older than every release, which is what it should be; and one label for all of them, so that the run
+          # number alone says which is newer, whatever the branch).
+          if [ -n "$RELEASE" ]; then version="$RELEASE"; else version="0.0.1-dev.$RUN"; fi
           echo "packaging version $version"
           bash tools/installer/pack.sh collector-windows/mnemarr-collector.exe "$version" installer
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

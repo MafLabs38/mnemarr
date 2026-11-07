@@ -35,12 +35,12 @@ public sealed class UpdatesController : ControllerBase
         return PhysicalFile(path, name.EndsWith(".json", StringComparison.Ordinal) ? "application/json" : "application/octet-stream", enableRangeProcessing: true);
     }
 
-    /// <summary>The installer for Windows, as a file: the same for every machine, with no secret in it. It asks which Mnemarr to link to when it starts.</summary>
-    [HttpGet("installer/windows")]
+    /// <summary>The installer for a system (<c>windows-x86_64</c>), as a file: the same for every machine, with no secret in it. It asks which Mnemarr to link to when it starts.</summary>
+    [HttpGet("installer/{platform}")]
     [EnableRateLimiting(RateLimits.ProgramDownload)]
-    public IActionResult Installer()
+    public IActionResult Installer(string platform)
     {
-        var name = _updates.InstallerName();
+        var name = _updates.InstallerName(platform);
         var path = _updates.Open(name) ?? throw new RejectedException(Mnemarr.Core.Problem.NotFound, "This Mnemarr carries no installer for the collector.");
         Response.Headers.CacheControl = "no-store";
         return PhysicalFile(path, "application/octet-stream", name);

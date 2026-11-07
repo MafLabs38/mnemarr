@@ -24,6 +24,8 @@ export interface MachineItem {
   programDiffers: boolean;
   /** The version a machine that was installed with the installer can update to, when this Mnemarr carries a newer one (ADR 0032). */
   updateTo: string | null;
+  /** Why the last attempt of the collector to update failed, when it did (ADR 0032). */
+  updateNote: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */

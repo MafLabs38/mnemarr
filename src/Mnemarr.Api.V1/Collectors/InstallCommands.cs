@@ -41,7 +41,7 @@ public sealed class InstallCommands
         var query = $"code={Uri.EscapeDataString(code)}&machine={Uri.EscapeDataString(machine)}";
         var have = _downloads.Available().Select(download => download.Platform).ToHashSet(StringComparer.Ordinal);
         var commands = new List<InstallCommand>();
-        var setup = _updates.InstallerName() is null ? null : $"{server}/api/v1/ingest/installer/windows";
+        var setup = _updates.InstallerName("windows-x86_64") is null ? null : $"{server}/api/v1/ingest/installer/windows-x86_64";
         if (have.Contains("windows-x86_64") || setup is not null)
         {
             commands.Add(new InstallCommand("windows", "Windows", $"irm '{server}/api/v1/ingest/install.ps1?{query}' | iex", have.Contains("windows-x86_64") ? $"{server}/api/v1/ingest/download/windows-x86_64?{query}" : null, setup));

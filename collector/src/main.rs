@@ -121,6 +121,7 @@ fn heartbeat(
     let beat = Heartbeat {
         version: &version,
         can_update: updater().installed(),
+        update_note: updater().note(),
         pending_lines: report.pending_lines,
         error: error.as_deref(),
         paused,
@@ -316,21 +317,26 @@ fn collect_loop(
 
 /// Between two passes, for a collector that was installed with the installer: an update that is ready is applied (unless the person chose to apply them by
 /// hand), and, now and then, each Mnemarr is asked for a newer version, apart from the passes. Positions are kept after each pass, so nothing is lost when the
-/// collector restarts to apply it.
+/// collector restarts to apply it. An update that waits is neither asked for again nor downloaded again; one that could not be applied is tried again later,
+/// not at every pass.
 fn keep_up_to_date(dir: &std::path::Path, next_check: &mut std::time::Instant) {
     let updater = updater();
     if !updater.installed() {
         return;
     }
-    if updater.ready() && update::load_settings(dir).auto {
-        say("applying the update: the collector restarts");
-        if let Err(error) = updater.apply() {
-            say(&format!("the update could not be applied: {error}"));
+    let now = std::time::Instant::now();
+    if updater.ready() {
+        if update::load_settings(dir).auto && now >= *next_check {
+            say("applying the update: the collector restarts");
+            if let Err(error) = updater.apply() {
+                say(&format!("the update could not be applied: {error}"));
+                *next_check = now + CHECK_EVERY;
+            }
         }
         return;
     }
-    if std::time::Instant::now() >= *next_check {
-        *next_check = std::time::Instant::now() + CHECK_EVERY;
+    if now >= *next_check {
+        *next_check = now + CHECK_EVERY;
         let checker = updater.clone();
         let listed = destinations::load(dir);
         thread::spawn(move || match checker.check(&listed) {
@@ -339,6 +345,12 @@ fn keep_up_to_date(dir: &std::path::Path, next_check: &mut std::time::Instant) {
             _ => {}
         });
     }
+}
+
+/// Whether this collector can be linked while it runs: it has an icon where a person does it, or it was installed with the installer (which opens the page
+/// that links it). A collector with neither, run as a service on a machine with no screen, that is linked to nothing is wrongly set up: it says so and ends.
+fn can_wait_to_be_linked(options: &Options) -> bool {
+    (cfg!(windows) && !options.no_tray) || updater().installed()
 }
 
 /// Whether the folder of the collector holds no destination, and nothing was given on the command line or in the environment to send to.
@@ -359,7 +371,7 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
     }
     // A collector that was just installed is linked to nothing yet: it runs all the same, with its icon, which is where a person links it (a command that is
     // run once has nothing to do, and says so).
-    let configs = if forever && nothing_linked(options) {
+    let configs = if forever && nothing_linked(options) && can_wait_to_be_linked(options) {
         say(
             "this machine is not linked to any Mnemarr yet: link one from the icon, or with: mnemarr-collector link",
         );

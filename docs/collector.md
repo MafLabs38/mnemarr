@@ -101,6 +101,7 @@ The usual way on a workstation is the **installer**. On the Machines page, *Add 
 
 - *Check now, or apply a downloaded update*: the icon (**Check for updates**, then **Update to X: restart now**), or `mnemarr-collector update` (`--check` only looks).
 - *Apply by hand only*: `mnemarr-collector update --auto off` (and `--auto on` to go back). The update is then downloaded and waits.
+- When a collector cannot update (for example, every Mnemarr it sends to is reached over plain `http://`), the machines page says why under its version.
 - `mnemarr-collector status` says the version and where the update is at. The machines page says **Update available: X** for a collector installed this way that is older than the Mnemarr's.
 - A collector that was **not** installed with the installer (run by hand, from a build, from a downloaded program that carries a code) is not touched: `update` says so.
 

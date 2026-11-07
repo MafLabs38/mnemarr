@@ -55,6 +55,8 @@ pub struct Heartbeat<'a> {
     pub interval_seconds: u64,
     /// The program was installed with the installer and can replace itself.
     pub can_update: bool,
+    /// Why the last attempt to update failed, when it did: a short sentence for the machines page.
+    pub update_note: Option<String>,
 }
 
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
@@ -174,6 +176,7 @@ impl Uploader for HttpUploader {
                 "computerId": crate::computer::id(),
                 "intervalSeconds": beat.interval_seconds,
                 "canUpdate": beat.can_update,
+                "updateNote": beat.update_note,
             }),
         )?;
         if status == 200 || status == 204 {
@@ -406,6 +409,7 @@ mod tests {
                 paused: true,
                 interval_seconds: 30,
                 can_update: false,
+                update_note: None,
             })
             .unwrap();
 
@@ -426,6 +430,7 @@ mod tests {
                 "computerId": crate::computer::id(),
                 "intervalSeconds": 30,
                 "canUpdate": false,
+                "updateNote": null,
             })
         );
     }
@@ -440,6 +445,7 @@ mod tests {
             paused: false,
             interval_seconds: 30,
             can_update: false,
+            update_note: None,
         };
         let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
         assert!(matches!(

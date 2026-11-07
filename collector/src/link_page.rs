@@ -248,7 +248,7 @@ fn form(problem: Option<&str>) -> String {
     document(
         false,
         &format!(
-            "<p>Type the address of the Mnemarr to send this computer's conversations to. You will then approve this computer in that Mnemarr.</p>{error}\
+            "<p>Type the address of the Mnemarr to send this computer's conversations to. You will then approve this computer in that Mnemarr.</p><p>A Mnemarr you link can also update this program: link only a Mnemarr you run or trust.</p>{error}\
 <form method=\"post\" action=\"link\"><label for=\"server\">Address of Mnemarr</label>\
 <input id=\"server\" name=\"server\" type=\"text\" placeholder=\"https://mnemarr.example\" required autofocus>\
 <p><label><input name=\"insecure\" type=\"checkbox\" value=\"1\"> This address is plain http:// on my own network (the key will travel without encryption)</label></p>\

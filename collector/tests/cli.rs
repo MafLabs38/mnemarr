@@ -643,29 +643,24 @@ fn should_read_the_folder_of_an_earlier_collector_as_one_destination() {
 }
 
 #[test]
-fn should_keep_running_with_nothing_linked_so_that_a_person_can_link_it_from_the_icon() {
+fn should_say_that_it_is_not_linked_and_end_when_it_runs_with_nothing_linked_and_nobody_to_link_it()
+{
+    // Neither an icon nor the installer: a service on a machine with no screen that is linked to nothing is wrongly set up, and says so. (Installed, or with its
+    // icon, it keeps running so that a person can link it: the installer test of the CI covers that.)
     let dir = std::env::temp_dir().join(format!("mnemarr-unlinked-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_mnemarr-collector"))
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_mnemarr-collector"))
         .args(["run", "--no-tray", "--config-dir"])
         .arg(&dir)
         .env_remove("MNEMARR_SERVER")
         .env_remove("MNEMARR_COLLECTOR_KEY")
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .output()
         .unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(1500));
-
-    let still_running = child.try_wait().unwrap().is_none();
-    child.kill().unwrap();
-    let mut said = String::new();
-    std::io::Read::read_to_string(child.stderr.as_mut().unwrap(), &mut said).unwrap();
-    let _ = child.wait();
     let _ = std::fs::remove_dir_all(&dir);
 
-    assert!(still_running, "it ended: {said}");
-    assert!(said.contains("not linked to any Mnemarr yet"), "{said}");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not linked to a Mnemarr"));
 }

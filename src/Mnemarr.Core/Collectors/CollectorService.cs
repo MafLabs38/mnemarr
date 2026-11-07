@@ -16,6 +16,7 @@ public sealed class CollectorService
     private const int MaxError = 200;
     private const int MaxPlatform = 40;
     private const int MaxInterval = 3600;
+    private const int MaxNote = 120;
     private readonly IMachineStore _machines;
     private readonly MachineAccounts _accounts;
     private readonly ConversationRelocator _relocator;
@@ -256,7 +257,7 @@ public sealed class CollectorService
             _machines.SetComputer(machine.Name, beat.ComputerId!);
         }
 
-        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null, beat.IntervalSeconds is > 0 and <= MaxInterval ? beat.IntervalSeconds : null, beat.CanUpdate));
+        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null, beat.IntervalSeconds is > 0 and <= MaxInterval ? beat.IntervalSeconds : null, beat.CanUpdate, beat.CanUpdate ? Short(beat.UpdateNote, MaxNote) : null));
     }
 
     /// <summary>Every machine that joined, and every name conversations came from that never joined, each with its state.</summary>
@@ -269,7 +270,7 @@ public sealed class CollectorService
         {
             activity.Remove(machine.Name, out var sent);
             var seen = Latest(machine.LastSeenAt, sent?.LastSeen);
-            list.Add(new MachineStatus(machine.Name, machine.Kind, MachineStates.Of(machine, now, _options.Value), sent?.Conversations ?? 0, sent?.Lines ?? 0, seen, machine.EnrolledAt, machine.Version, machine.PendingLines, machine.Error, machine.Platform, machine.Program, machine.CanUpdate));
+            list.Add(new MachineStatus(machine.Name, machine.Kind, MachineStates.Of(machine, now, _options.Value), sent?.Conversations ?? 0, sent?.Lines ?? 0, seen, machine.EnrolledAt, machine.Version, machine.PendingLines, machine.Error, machine.Platform, machine.Program, machine.CanUpdate, machine.UpdateNote));
         }
 
         list.AddRange(activity.Values.Select(sent => new MachineStatus(sent.Machine, null, MachineState.Unenrolled, sent.Conversations, sent.Lines, sent.LastSeen, null, null, 0, null)));
