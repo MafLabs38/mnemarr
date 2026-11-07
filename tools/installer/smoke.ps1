@@ -28,6 +28,8 @@ bash (Slashes $pack) (Slashes $Program) 0.0.2 (Slashes $second)
 $app = Join-Path $env:LOCALAPPDATA 'MnemarrCollector'
 # The program at the root of the folder, which an update does not change, is named after the application (Velopack's title).
 $stub = Join-Path $app 'Mnemarr collector.exe'
+# The program at the root is a launcher with no console of its own: what the program says is read from the one in `current`, which an update replaces.
+$real = Join-Path $app 'current\mnemarr-collector.exe'
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 
 Write-Host '--- install 0.0.1 without a window'
@@ -36,8 +38,8 @@ Wait-Until { Test-Path (Join-Path $app 'current\mnemarr-collector.exe') } 'the p
 Wait-Until { Test-Path $stub } 'the program at the root, which an update does not change'
 Wait-Until { (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session'
 Wait-Until { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains $app } 'the folder on the PATH of the user'
-$said = & $stub --version
-if ($said -notmatch 'mnemarr-collector') { throw "The program does not answer: $said" }
+$said = (& $real --version) -join ' '
+if ($said -notmatch 'mnemarr-collector') { throw "The program does not answer: '$said'" }
 Write-Host "installed: $said"
 
 Write-Host '--- a Mnemarr that carries 0.0.2 (this computer)'
@@ -52,13 +54,14 @@ $server = Start-Process python -ArgumentList '-m', 'http.server', '8099', '--bin
 Start-Sleep -Seconds 2
 
 Write-Host '--- update from it'
-$before = & $stub status --config-dir $config
+$before = (& $real status --config-dir $config) -join "`n"
 Write-Host $before
+if ($before -notmatch 'version: 0\.0\.1') { throw "It does not say it is 0.0.1: '$before'" }
 & $stub update --config-dir $config
 Wait-Until { (Get-Content (Join-Path $app 'current\sq.version') -Raw) -match '0\.0\.2' } 'version 0.0.2 in place'
-$after = & $stub status --config-dir $config
+$after = (& $real status --config-dir $config) -join "`n"
 Write-Host $after
-if ($after -notmatch 'version: 0\.0\.2') { throw "It did not become 0.0.2: $after" }
+if ($after -notmatch 'version: 0\.0\.2') { throw "It did not become 0.0.2: '$after'" }
 Wait-Until { (Get-ItemProperty $run).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session, still right after the update'
 
 Write-Host '--- uninstall'

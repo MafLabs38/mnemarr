@@ -351,14 +351,26 @@ impl Updater {
         ) {
             return self.state();
         }
+        let allowed: Vec<&Destination> = destinations
+            .iter()
+            .filter(|destination| may_carry_updates(&destination.server))
+            .collect();
+        if allowed.is_empty() {
+            // Said, not skipped in silence: a person who linked this computer to a Mnemarr over plain http wonders why nothing ever updates.
+            let state = UpdateState::Failed(if destinations.is_empty() {
+                "it is not linked to any Mnemarr".to_string()
+            } else {
+                "none of the Mnemarr it sends to is reached over HTTPS (an update is code: it is never taken over plain http)"
+                    .to_string()
+            });
+            self.set(state.clone());
+            return state;
+        }
         self.set(UpdateState::Checking);
         let mut offers = Vec::new();
         let mut candidates: Vec<(Offer, Pending)> = Vec::new();
         let mut last_failure = None;
-        for destination in destinations
-            .iter()
-            .filter(|destination| may_carry_updates(&destination.server))
-        {
+        for destination in allowed {
             let manager = match UpdateManager::new(source_of(&destination.server), None, None) {
                 Ok(manager) => manager,
                 Err(error) => {
