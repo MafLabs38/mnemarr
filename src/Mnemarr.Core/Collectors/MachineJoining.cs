@@ -10,7 +10,7 @@ namespace Mnemarr.Core.Collectors;
 /// </summary>
 public sealed class MachineJoining
 {
-    /// <summary>How long after its last sign of life a machine is taken to be sending: three passes of the collector.</summary>
+    /// <summary>How long after its last sign of life a machine is taken to be sending: three passes of its collector, and at least this much (the pass of the default is thirty seconds).</summary>
     public static readonly TimeSpan LiveWindow = TimeSpan.FromSeconds(90);
 
     private readonly IMachineStore _machines;
@@ -62,13 +62,16 @@ public sealed class MachineJoining
 
         // The identifier names a computer, it does not prove one (ADR 0031 §3): a machine that is sending right now is not taken over by whoever says its
         // identifier. Stop its collector (a minute and a half), or remove it, and join again.
-        if (known.RevokedAt is null && known.LastSeenAt is { } seen && now - seen < LiveWindow)
+        if (known.RevokedAt is null && known.LastSeenAt is { } seen && now - seen < WindowOf(known))
         {
             throw new RejectedException(Problem.Conflict, $"This computer says it is the machine '{known.Name}', which is sending right now. Stop its collector and try again in a minute and a half, or remove '{known.Name}' first.");
         }
 
         return known.Name;
     }
+
+    private static TimeSpan WindowOf(Machine machine) =>
+        machine.IntervalSeconds is { } seconds ? TimeSpan.FromSeconds(Math.Max(LiveWindow.TotalSeconds, 3.0 * seconds)) : LiveWindow;
 
     /// <summary>
     /// Files what a computer sent under the name it had before. Best effort, after the key was given: a failure (the conversations are busy) must never cost a

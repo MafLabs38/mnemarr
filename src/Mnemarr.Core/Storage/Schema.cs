@@ -215,6 +215,10 @@ public static class Schema
         );
         CREATE INDEX conversations_by_session ON conversations (session);
         """,
+        // 14: how often a collector makes a pass, as it says it: a machine is taken to be sending while its last sign of life is younger than three passes (ADR 0031 §3).
+        """
+        ALTER TABLE machines ADD COLUMN interval_seconds INTEGER;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

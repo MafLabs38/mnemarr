@@ -360,4 +360,45 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         renamed.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await ListsAsync(callers.Admin, machine)).Should().BeTrue("the machine kept its name");
     }
+
+    [Fact]
+    public async Task should_let_a_new_machine_have_the_name_that_a_machine_had_before_it_was_renamed()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var before = Callers.Unique("typo");
+        var after = Callers.Unique("right");
+        await JoinAsync(callers.Admin, before);
+        (await callers.Admin.PostAsJsonAsync($"/api/v1/collectors/{before}/rename", new { name = after }, Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var again = await callers.Admin.PostAsJsonAsync("/api/v1/enrolments", new { machine = before, kind = "intermittent" }, Token);
+        var code = (await again.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("code").GetString();
+        var joined = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine = before }, Token);
+
+        joined.StatusCode.Should().Be(HttpStatusCode.OK, "the old name is free: the account of the renamed machine does not keep it");
+        (await ListsAsync(callers.Admin, before)).Should().BeTrue();
+        (await ListsAsync(callers.Admin, after)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task should_take_a_machine_to_be_sending_for_three_passes_of_its_own_collector_and_not_for_thirty_seconds_only()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var first = Callers.Unique("first");
+        var second = Callers.Unique("second");
+        var computer = ComputerId("pc");
+        using (var slow = _factory.CreateKeyClient(await JoinAsComputerAsync(callers.Admin, first, computer)))
+        {
+            await slow.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.0.0", pendingLines = 0, computerId = computer, intervalSeconds = 300 }, Token);
+        }
+
+        var code = (await AddAsync(callers.Admin, second)).GetProperty("code").GetString();
+        _factory.Clock.Advance(TimeSpan.FromSeconds(400));
+        var midway = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine = second, computerId = computer }, Token);
+        _factory.Clock.Advance(TimeSpan.FromSeconds(600));
+        var fresh = (await AddAsync(callers.Admin, second)).GetProperty("code").GetString();
+        var later = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code = fresh, machine = second, computerId = computer }, Token);
+
+        midway.StatusCode.Should().Be(HttpStatusCode.Conflict, "a collector that passes every five minutes was heard of less than three passes ago");
+        later.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 }

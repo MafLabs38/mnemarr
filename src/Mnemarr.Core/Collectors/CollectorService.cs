@@ -15,6 +15,7 @@ public sealed class CollectorService
     private const int MaxVersion = 40;
     private const int MaxError = 200;
     private const int MaxPlatform = 40;
+    private const int MaxInterval = 3600;
     private readonly IMachineStore _machines;
     private readonly MachineAccounts _accounts;
     private readonly ConversationRelocator _relocator;
@@ -152,6 +153,12 @@ public sealed class CollectorService
         var report = await _relocator.MoveAllAsync(machine, into, cancellationToken);
         lock (_accounts.Gate)
         {
+            if (_machines.Get(into) is not { RevokedAt: null })
+            {
+                // The machine that received was revoked, removed or renamed while the conversations moved: the source stays, and merging again finishes it.
+                throw new RejectedException(Problem.Conflict, "The machine that was merged into changed in the meantime: what moved is filed under its name, merge again to finish.");
+            }
+
             if (_machines.Get(machine) is not null)
             {
                 RemoveRow(machine, actor);
@@ -182,9 +189,18 @@ public sealed class CollectorService
             }
         }
 
-        var count = await _relocator.EraseAsync(machine, cancellationToken);
-        _audit.Append(actor, "collector.erased", machine, count.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        return count;
+        try
+        {
+            var count = await _relocator.EraseAsync(machine, cancellationToken);
+            _audit.Append(actor, "collector.erased", machine, count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return count;
+        }
+        catch (RejectedException ex) when (ex.Problem == Problem.Busy)
+        {
+            // The machine is gone and what it sent is still there, as a name that is no longer a machine: erasing that name again finishes it.
+            _audit.Append(actor, "collector.erase-incomplete", machine);
+            throw;
+        }
     }
 
     private void RemoveRow(string machine, string actor)
@@ -240,7 +256,7 @@ public sealed class CollectorService
             _machines.SetComputer(machine.Name, beat.ComputerId!);
         }
 
-        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null));
+        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null, beat.IntervalSeconds is > 0 and <= MaxInterval ? beat.IntervalSeconds : null));
     }
 
     /// <summary>Every machine that joined, and every name conversations came from that never joined, each with its state.</summary>

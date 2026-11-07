@@ -96,6 +96,7 @@ fn heartbeat(
     collector: &Collector<HttpUploader>,
     report: &Report,
     paused: bool,
+    interval_seconds: u64,
 ) -> Result<(), UploadError> {
     let error = trouble(report);
     let beat = Heartbeat {
@@ -103,6 +104,7 @@ fn heartbeat(
         pending_lines: report.pending_lines,
         error: error.as_deref(),
         paused,
+        interval_seconds,
     };
     let result = collector.uploader.heartbeat(&beat);
     if let Err(UploadError::Refused(status, reason)) = &result {
@@ -143,7 +145,7 @@ fn pass(
     } else {
         collector.pass(state)
     };
-    let beat = heartbeat(collector, &report, paused);
+    let beat = heartbeat(collector, &report, paused, config.interval.as_secs());
     let condition = condition_after(&report, &beat, paused);
     if paused {
         return (true, condition);
