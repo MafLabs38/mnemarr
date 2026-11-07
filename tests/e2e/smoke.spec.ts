@@ -325,7 +325,8 @@ test.describe('smoke @smoke', () => {
       expect(status.passages).toBeGreaterThan(0);
     }).toPass({ timeout: 120_000 });
     await search.getByRole('button', { name: 'Search' }).click();
-    await expect(search.getByText('seeded · docker.md · Docker > Images')).toBeVisible();
+    // Other journeys of the stack declare the same note under their own names: the note is found in whichever source, not in the first ten by luck.
+    await expect(search.getByText(/· docker\.md · Docker > Images/).first()).toBeVisible();
     await expect(search.getByText(/matched by its (words and its )?meaning/).first()).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
