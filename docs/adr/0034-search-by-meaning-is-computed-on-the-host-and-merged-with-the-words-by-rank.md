@@ -35,7 +35,7 @@ them. What was left open: how the model is run in .NET, how the vectors follow t
    see, or the filters, do not empty the list; the scope of the caller applies to it as to the words.
 5. **One owner for the bookkeeping, and a bound on the work.** Only the vector store reads and writes which chunk has a vector of which model (`chunk_embeddings`); its `Nearest`
    returns only current chunks, and the index gives a hit for a chunk without knowing models. The model reads at most four questions at a time and a question that does not get its
-   turn in 300 ms is answered by its words, so that a flood of searches cannot hold the threads of the host. A passage that the model cannot read is skipped (its id in the log)
+   turn in 300 ms, or does not get the model within two seconds (a batch of the indexer takes about one), is answered by its words, so that a flood of searches cannot hold the threads of the host. A passage that the model cannot read is skipped (its id in the log)
    after it was tried alone, until the next start, so that it does not stop the passages after it. The counts of the status are those of the sources the caller may see.
 6. **It can be off, and it can fail, and search goes on.** Without `Embeddings:ModelFolder` the feature is off and nothing is computed. A model whose files do not match their
    pinned SHA-256 is not loaded; a library that cannot be loaded, or a pass that fails, makes Mnemarr *degraded* with the reason (health check `embeddings`), and the answer

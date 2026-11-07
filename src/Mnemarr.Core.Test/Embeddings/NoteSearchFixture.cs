@@ -85,8 +85,51 @@ public sealed class NoteSearchFixture
         Search(index, new StubProvider(), store).Search(new SearchRequest("sauvegarde"), SourceScope.All).Should().BeEmpty("0.5 is beyond the distance measured for the model");
     }
 
+    [Fact]
+    public async Task should_answer_by_its_words_a_question_that_does_not_get_its_turn_and_give_the_turn_back()
+    {
+        var gate = new ManualResetEventSlim();
+        var provider = new StubProvider { Hold = gate };
+        var index = new StubIndex { Keywords = [Hit(1)] };
+        var search = Search(index, provider, new StubStore());
+        // Four questions fill the turns and wait for the model.
+        var held = Enumerable.Range(0, 4).Select(_ => Task.Run(() => search.Search(new SearchRequest("sauvegarde"), SourceScope.All), TestContext.Current.CancellationToken)).ToList();
+        while (provider.Waiting < 4)
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
+
+        var fifth = search.Search(new SearchRequest("sauvegarde"), SourceScope.All);
+
+        fifth.Should().ContainSingle().Which.Match.Should().Be(SearchMatch.Keywords, "no turn in 300 ms: answered by its words, and not held");
+        gate.Set();
+        await Task.WhenAll(held);
+        provider.Hold = null;
+        // The turns were given back (also by a question that failed): the next one is read by the model again.
+        provider.Fails = new EmbeddingException("on purpose");
+        search.Search(new SearchRequest("sauvegarde"), SourceScope.All);
+        provider.Fails = null;
+        provider.Waiting = 0;
+        var again = Enumerable.Range(0, 4).Select(_ => Task.Run(() => search.Search(new SearchRequest("sauvegarde"), SourceScope.All), TestContext.Current.CancellationToken)).ToList();
+        await Task.WhenAll(again);
+        provider.Reads.Should().BeGreaterThanOrEqualTo(8);
+    }
+
     private sealed class StubProvider : IEmbeddingProvider
     {
+        private int _waiting;
+        private int _reads;
+
+        public ManualResetEventSlim? Hold { get; set; }
+
+        public int Waiting
+        {
+            get => _waiting;
+            set => _waiting = value;
+        }
+
+        public int Reads => _reads;
+
         public int LastQueryLength { get; private set; }
 
         public Exception? Fails { get; set; }
@@ -104,6 +147,13 @@ public sealed class NoteSearchFixture
         public float[] EmbedQuery(string text)
         {
             LastQueryLength = text.Length;
+            Interlocked.Increment(ref _reads);
+            if (Hold is { } gate)
+            {
+                Interlocked.Increment(ref _waiting);
+                gate.Wait();
+            }
+
             return Fails is { } failure ? throw failure : [1f, 0f];
         }
 

@@ -98,14 +98,15 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         return computed;
     }
 
-    // A batch that fails is computed again one chunk at a time, and a chunk that still fails is left out until the next start: one passage that the model cannot read (and its
-    // id only is logged) must not stop the reading of every passage after it.
+    // A batch that the model cannot read is computed again one chunk at a time, and a chunk that still cannot be read is left out until the next start (its id only is logged):
+    // one passage that the model fails on must not stop the reading of every passage after it. Only the reading is judged so: keeping the vectors is the store's, and a store that
+    // fails (a database that is busy, a full disk) is a failure of the pass, kept as its reason and tried again, not a reason to leave passages out.
     private int Compute(IReadOnlyList<ChunkToEmbed> chunks)
     {
+        IReadOnlyList<float[]> vectors;
         try
         {
-            Embed(chunks);
-            return chunks.Count;
+            vectors = _provider.EmbedPassages([.. chunks.Select(chunk => chunk.Text)]);
         }
         catch (Exception ex) when (ex is not OperationCanceledException && chunks.Count > 1)
         {
@@ -118,12 +119,9 @@ public sealed partial class EmbeddingIndexer : BackgroundService
             LogSkipped(chunks[0].ChunkId, ex);
             return 0;
         }
-    }
 
-    private void Embed(IReadOnlyList<ChunkToEmbed> chunks)
-    {
-        var vectors = _provider.EmbedPassages([.. chunks.Select(chunk => chunk.Text)]);
         _store.Save(_provider.ModelId, _provider.Dimension, [.. chunks.Select((chunk, index) => (chunk.ChunkId, vectors[index]))]);
+        return chunks.Count;
     }
 
     /// <summary>Forgets the vectors of chunks that are gone (a note that was changed or removed) and the tables of models that nothing uses. Public so that a test can run it.</summary>

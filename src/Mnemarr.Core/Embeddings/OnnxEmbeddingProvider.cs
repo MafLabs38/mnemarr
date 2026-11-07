@@ -17,6 +17,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     private readonly ILogger<OnnxEmbeddingProvider> _logger;
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
 
+    // A question waits at most this long for the model's turn: a batch of the indexer takes about a second, and a question that cannot have its turn is answered by its words.
+    private static readonly TimeSpan QuestionWaits = TimeSpan.FromSeconds(2);
+
     private readonly Lock _gate = new();
     private readonly Lock _run = new();
     private readonly TimeProvider _clock;
@@ -67,9 +70,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     /// <summary>What <see cref="Status"/> answered, without loading anything and without waiting for a load that is going on.</summary>
     public EmbeddingStatus? Known() => _options.Wanted ? _status : new EmbeddingStatus(EmbeddingState.Off);
 
-    public float[] EmbedQuery(string text) => Embed([text])[0];
+    public float[] EmbedQuery(string text) => Embed([text], QuestionWaits)[0];
 
-    public IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts) => Embed(texts);
+    public IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts) => Embed(texts, null);
 
     public void Dispose() => _session?.Dispose();
 
@@ -140,7 +143,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     private static EmbeddingStatus Failed(string reason) => new(EmbeddingState.Failed, reason);
 
-    private float[][] Embed(IReadOnlyList<string> texts)
+    private float[][] Embed(IReadOnlyList<string> texts, TimeSpan? waits)
     {
         if (Status().State != EmbeddingState.Ready)
         {
@@ -149,7 +152,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
         try
         {
-            return Compute(texts);
+            return Compute(texts, waits);
         }
         catch (Exception ex) when (ex is OnnxRuntimeException or System.Text.RegularExpressions.RegexMatchTimeoutException or ArgumentException or KeyNotFoundException)
         {
@@ -158,7 +161,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
         }
     }
 
-    private float[][] Compute(IReadOnlyList<string> texts)
+    private float[][] Compute(IReadOnlyList<string> texts, TimeSpan? waits)
     {
         var results = new float[texts.Count][];
         // Longest last, so that a batch pads little; the answers go back in the order of the texts.
@@ -166,7 +169,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
         for (var from = 0; from < order.Count; from += _options.BatchSize)
         {
             var batch = order.Skip(from).Take(_options.BatchSize).ToList();
-            var vectors = Run(batch.Select(item => item.Ids).ToList());
+            var vectors = Run(batch.Select(item => item.Ids).ToList(), waits);
             for (var index = 0; index < batch.Count; index++)
             {
                 results[batch[index].Index] = vectors[index];
@@ -176,7 +179,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
         return results;
     }
 
-    private float[][] Run(IReadOnlyList<int[]> batch)
+    private float[][] Run(IReadOnlyList<int[]> batch, TimeSpan? waits)
     {
         var width = batch.Max(ids => ids.Length);
         var inputIds = new DenseTensor<long>([batch.Count, width]);
@@ -196,8 +199,14 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             NamedOnnxValue.CreateFromTensor("input_ids", inputIds),
             NamedOnnxValue.CreateFromTensor("attention_mask", mask),
         };
-        // One run at a time: the threads of the model are the budget, and a question must not wait behind many batches.
-        lock (_run)
+        // One run at a time: the threads of the model are the budget. The indexer waits for its turn; a question waits a little, and then is answered without the model.
+        var entered = waits is { } wait ? _run.TryEnter(wait) : EnterAlways();
+        if (!entered)
+        {
+            throw new EmbeddingException("The model is busy.");
+        }
+
+        try
         {
             using var outputs = _session!.Run(inputs);
             var hidden = outputs[0].AsTensor<float>();
@@ -216,6 +225,16 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
             return vectors;
         }
+        finally
+        {
+            _run.Exit();
+        }
+    }
+
+    private bool EnterAlways()
+    {
+        _run.Enter();
+        return true;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The model {Model} is loaded, on {Threads} threads.")]

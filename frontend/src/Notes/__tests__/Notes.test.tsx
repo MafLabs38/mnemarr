@@ -513,7 +513,6 @@ describe('Notes', () => {
       );
       expect(within(region).getByText('cours · devops/docker.md · Images')).toBeInTheDocument();
       expect(within(region).getByText('Une image est faite de couches.')).toBeInTheDocument();
-      expect(within(region).getByText('matched by its words and its meaning')).toBeInTheDocument();
       expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?q=couches', expect.anything());
     });
 

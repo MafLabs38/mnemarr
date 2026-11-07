@@ -102,6 +102,22 @@ public sealed class EmbeddingReportFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_not_leave_passages_out_because_the_store_failed_and_try_them_again_at_the_next_pass()
+    {
+        var provider = new FakeProvider(new EmbeddingStatus(EmbeddingState.Ready));
+        var store = new FakeStore { Pending = [new ChunkToEmbed(1, "a"), new ChunkToEmbed(2, "b")], SaveFails = new InvalidOperationException("database is locked") };
+        var indexer = Indexer(provider, store);
+
+        await indexer.PassAsync(tidy: false, TestContext.Current.CancellationToken);
+        indexer.Report().State.Should().Be(EmbeddingState.Failed, "a store that fails is a failure of the pass");
+        store.SaveFails = null;
+        await indexer.PassAsync(tidy: false, TestContext.Current.CancellationToken);
+
+        store.Saved.Should().BeEquivalentTo([1L, 2L], "nothing was left out for good");
+        indexer.Report().State.Should().Be(EmbeddingState.Ready);
+    }
+
+    [Fact]
     public async Task should_leave_out_a_passage_that_the_model_cannot_read_and_read_the_others()
     {
         var provider = new FakeProvider(new EmbeddingStatus(EmbeddingState.Ready)) { Unreadable = "bad" };
@@ -210,6 +226,8 @@ public sealed class EmbeddingReportFixture : IDisposable
 
         public Exception? NearestFails { get; set; }
 
+        public Exception? SaveFails { get; set; }
+
         public bool TryPrepare(out string? reason)
         {
             reason = null;
@@ -221,6 +239,11 @@ public sealed class EmbeddingReportFixture : IDisposable
 
         public void Save(string model, int dimension, IReadOnlyList<(long ChunkId, float[] Vector)> items)
         {
+            if (SaveFails is { } failure)
+            {
+                throw failure;
+            }
+
             foreach (var (chunkId, _) in items)
             {
                 _done.Add(chunkId);
