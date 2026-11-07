@@ -813,7 +813,8 @@ mod tests {
 
     #[test]
     fn should_leave_where_the_update_is_at_for_status_to_read_and_know_when_none_was_left() {
-        let dir = std::env::temp_dir().join(format!("mnemarr-state-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("mnemarr-update-recorded-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
