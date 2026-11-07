@@ -14,7 +14,11 @@ namespace Mnemarr.Core.Indexing;
 public sealed partial class NoteSearch
 {
     private const int RankConstant = 60;
-    private const int MinimumDepth = 50;
+    // The keyword list is at most this long (SqliteNoteIndex): the list by meaning is as long, and the two are merged and cut to the limit asked.
+    private const int Depth = 50;
+
+    // A question is read by the model up to this many characters: the rest of a very long one is not a question, and the model's work is bounded.
+    private const int MaxQuestionLength = 1000;
 
     // A question of several words matches, by any one of its words, notes that are not about it: the words weigh less beside the meaning, which reads the whole question.
     private const int LongQuestion = 4;
@@ -40,13 +44,12 @@ public sealed partial class NoteSearch
     /// <summary>What is indexed of a source.</summary>
     public IndexCounts Counts(Guid sourceId) => _index.Counts(sourceId);
 
-    /// <summary>The best chunks first, among the sources the caller may touch.</summary>
+    /// <summary>The best chunks first, among the sources the caller may touch. The score is an order and nothing more: its scale is not the same when the search by meaning answers and when it does not.</summary>
     public IReadOnlyList<SearchHit> Search(SearchRequest request, SourceScope scope)
     {
         var limit = Math.Clamp(request.Limit, 1, 50);
-        var depth = Math.Max(limit * 3, MinimumDepth);
-        var keywords = _index.Search(request with { Limit = depth }, scope);
-        var meaning = ByMeaning(request, scope, depth);
+        var keywords = _index.Search(request with { Limit = Depth }, scope);
+        var meaning = ByMeaning(request, scope);
         if (meaning.Count == 0)
         {
             return [.. keywords.Take(limit)];
@@ -84,22 +87,30 @@ public sealed partial class NoteSearch
         ];
     }
 
-    private List<SearchHit> ByMeaning(SearchRequest request, SourceScope scope, int depth)
+    private List<SearchHit> ByMeaning(SearchRequest request, SourceScope scope)
     {
-        if (!_options.Wanted || string.IsNullOrWhiteSpace(request.Query) || _embeddings.Status().State != EmbeddingState.Ready || !_vectors.TryPrepare(out _))
+        // The model is loaded by the indexer, never on a request: until it is, the answer is by words.
+        if (!_options.Wanted || string.IsNullOrWhiteSpace(request.Query) || _embeddings.Known()?.State != EmbeddingState.Ready)
         {
             return [];
         }
 
         try
         {
-            var query = _embeddings.EmbedQuery(request.Query);
+            if (!_vectors.TryPrepare(out _))
+            {
+                return [];
+            }
+
+            var question = request.Query.Length > MaxQuestionLength ? request.Query[..MaxQuestionLength] : request.Query;
+            var query = _embeddings.EmbedQuery(question);
+            var maxDistance = _options.MaxDistance ?? _embeddings.DefaultMaxDistance;
             // The nearest are asked for wider than the answer: some are not the caller's to see, or are outside the filters, and the rest must still fill the list.
-            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, depth * 4).Where(match => match.Distance <= _options.MaxDistance).ToList();
+            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, Depth * 4).Where(match => match.Distance <= maxDistance).ToList();
             var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope, _embeddings.ModelId).ToDictionary(hit => hit.ChunkId);
-            return [.. near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]).Take(depth)];
+            return [.. near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]).Take(Depth)];
         }
-        catch (Exception ex) when (ex is InvalidOperationException or SqliteException or IOException)
+        catch (Exception ex) when (ex is EmbeddingException or InvalidOperationException or SqliteException or IOException)
         {
             // The words still answer: a model or a library that fails is a reason on the health page and in the log, not an error for the person who asked.
             LogMeaningFailed(ex);

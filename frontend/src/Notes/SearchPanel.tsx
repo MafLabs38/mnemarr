@@ -24,7 +24,7 @@ function MeaningState() {
     return <Alert>{translate('MeaningFailed', { reason: data.reason ?? '' })}</Alert>;
   }
   return data.computed < data.passages ? (
-    <p className={styles.hitWhere}>
+    <p className={styles.meaningState}>
       {translate('MeaningCatchingUp', { computed: data.computed, passages: data.passages })}
     </p>
   ) : null;

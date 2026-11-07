@@ -53,7 +53,6 @@ public sealed class ModelReferenceFixture
     [Fact]
     public void should_not_load_the_model_to_say_where_it_is_and_say_why_it_cannot_be_loaded_when_a_file_is_not_the_pinned_one()
     {
-        Assert.SkipUnless(Model is not null, "No model folder given.");
         var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
         try
         {
@@ -65,8 +64,26 @@ public sealed class ModelReferenceFixture
             var status = provider.Status();
 
             status.State.Should().Be(EmbeddingState.Failed);
-            status.Reason.Should().Contain("not the one pinned");
+            status.Reason.Should().Contain("not the one pinned").And.NotContain(folder, "the host's paths are not said to the people who ask");
             provider.Known().Should().Be(status);
+            var embed = () => provider.EmbedQuery("hello");
+            embed.Should().Throw<EmbeddingException>();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Fact]
+    public void should_refuse_a_model_folder_where_a_file_is_missing()
+    {
+        var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
+        try
+        {
+            using var provider = new OnnxEmbeddingProvider(Options.Create(new EmbeddingOptions { ModelFolder = folder, ExtensionPath = "unused" }), NullLogger<OnnxEmbeddingProvider>.Instance);
+
+            provider.Status().Should().Match<EmbeddingStatus>(status => status.State == EmbeddingState.Failed && status.Reason!.Contains("is not in the model folder", StringComparison.Ordinal));
         }
         finally
         {

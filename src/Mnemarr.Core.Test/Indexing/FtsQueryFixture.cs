@@ -10,12 +10,25 @@ public sealed class FtsQueryFixture
         FtsQuery.From("kubernetes ingress").Should().Be("\"kubernetes\" OR \"ingress\"");
     }
 
-    [Fact]
-    public void should_leave_out_the_small_words_of_a_question_unless_it_is_made_only_of_them()
+    [Theory]
+    [InlineData("comment sauvegarder la base de données ?", "\"sauvegarder\" OR \"base\" OR \"données\"")]
+    [InlineData("how do I back up the database", "\"back\" OR \"up\" OR \"database\"")]
+    [InlineData("what is it", "\"what\" OR \"is\" OR \"it\"")]
+    [InlineData("La SAUVEGARDE DE Nuit", "\"SAUVEGARDE\" OR \"Nuit\"")]
+    public void should_leave_out_the_small_words_of_a_question_unless_it_is_made_only_of_them(string question, string expected)
     {
-        FtsQuery.From("comment sauvegarder la base de données ?").Should().Be("\"sauvegarder\" OR \"base\" OR \"données\"");
-        FtsQuery.From("how do I back up the database").Should().Be("\"back\" OR \"up\" OR \"database\"");
-        FtsQuery.From("what is it").Should().Be("\"what\" OR \"is\" OR \"it\"");
+        FtsQuery.From(question).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("", 0)]
+    [InlineData("le la de", 0)]
+    [InlineData("backup nuit", 2)]
+    [InlineData("comment sauvegarder la base de données ?", 3)]
+    [InlineData("quelle protection contre la perte de mes données dimanche", 5)]
+    public void should_count_the_words_that_are_not_small_ones(string question, int expected)
+    {
+        FtsQuery.Meaningful(question).Should().Be(expected);
     }
 
     [Theory]

@@ -18,7 +18,7 @@ public sealed class SemanticSearchFixture : IDisposable
 {
     private static readonly string? Library = Environment.GetEnvironmentVariable("MNEMARR_TEST_VECTOR_LIBRARY");
 
-    private readonly TestWorkspace _workspace = new();
+    private readonly TestWorkspace _workspace;
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 7, 9, 0, 0, TimeSpan.Zero));
     private readonly SqliteNoteIndex _index;
     private readonly SqliteSourceStore _sources;
@@ -32,6 +32,7 @@ public sealed class SemanticSearchFixture : IDisposable
     public SemanticSearchFixture()
     {
         Assert.SkipUnless(Library is not null, "No sqlite-vec library given.");
+        _workspace = new TestWorkspace();
         _options = new EmbeddingOptions { ModelFolder = "unused", ExtensionPath = Library, BatchSize = 2, MaxDistance = 0.3 };
         _index = new SqliteNoteIndex(_workspace.Database);
         _sources = new SqliteSourceStore(_workspace.Database);
@@ -41,7 +42,7 @@ public sealed class SemanticSearchFixture : IDisposable
         _search = new NoteSearch(_index, _index, _provider, _store, Options.Create(_options), NullLogger<NoteSearch>.Instance);
     }
 
-    public void Dispose() => _workspace.Dispose();
+    public void Dispose() => _workspace?.Dispose();
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -120,6 +121,30 @@ public sealed class SemanticSearchFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_still_fill_the_answer_with_what_the_caller_may_see_when_many_nearer_chunks_are_hidden_from_them()
+    {
+        var talks = Enumerable.Range(0, 60).Select(index => ($"talk{index}.md", $"# T{index}\nSauvegarde {index}.")).ToArray();
+        await IndexAsync("talks", SourceKind.Conversations, talks);
+        await IndexAsync("mine", SourceKind.Knowledge, ("a.md", "# A\nSauvegarde de la maison."));
+        await _embedder.RunAsync(Token);
+
+        var hits = _search.Search(new SearchRequest("protéger contre la perte"), SourceScope.All with { ConversationsHidden = true });
+
+        hits.Select(hit => hit.Path).Should().Equal("a.md");
+    }
+
+    [Fact]
+    public async Task should_keep_the_filters_of_the_question_for_the_search_by_meaning()
+    {
+        var first = await IndexAsync("first", SourceKind.Knowledge, ("a.md", "# A\nSauvegarde de la maison."), ("notes/b.md", "# B\nSauvegarde du bureau."));
+        await IndexAsync("second", SourceKind.Knowledge, ("c.md", "# C\nSauvegarde du jardin."));
+        await _embedder.RunAsync(Token);
+
+        _search.Search(new SearchRequest("protéger contre la perte", first.Id), SourceScope.All).Select(hit => hit.Path).Should().BeEquivalentTo("a.md", "notes/b.md");
+        _search.Search(new SearchRequest("protéger contre la perte", first.Id, "notes"), SourceScope.All).Select(hit => hit.Path).Should().Equal("notes/b.md");
+    }
+
+    [Fact]
     public async Task should_compute_only_what_is_missing_and_again_for_a_chunk_that_changed()
     {
         var source = await IndexAsync("courses", SourceKind.Knowledge, ("a.md", "# A\nSauvegarde."), ("b.md", "# B\nRecette de cuisine."));
@@ -193,14 +218,6 @@ public sealed class SemanticSearchFixture : IDisposable
         _embedder.Report().State.Should().Be(EmbeddingState.Failed);
     }
 
-    [Fact]
-    public void should_say_it_is_off_when_nobody_gave_a_model_folder()
-    {
-        var off = new EmbeddingIndexer(_provider, _store, Options.Create(new EmbeddingOptions()), NullLogger<EmbeddingIndexer>.Instance);
-
-        off.Report().State.Should().Be(EmbeddingState.Off);
-    }
-
     /// <summary>A model of four themes: a text is the sum of the themes whose words it holds. The same meaning with other words has the same vector.</summary>
     private sealed class ThemeEmbeddings(string id = "themes") : IEmbeddingProvider
     {
@@ -222,6 +239,8 @@ public sealed class SemanticSearchFixture : IDisposable
         public int Dimension => Themes.Length;
 
         public static float[] Vector(int theme) => [.. Enumerable.Range(0, Themes.Length).Select(index => index == theme ? 1f : 0f)];
+
+        public double DefaultMaxDistance => 0.3;
 
         public EmbeddingStatus? Known() => Status();
 

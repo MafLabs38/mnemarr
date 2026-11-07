@@ -48,7 +48,8 @@ public sealed class ByteLevelBpeTokenizerFixture : IDisposable
     {
         var subject = Tiny(["h e", "l l", "he ll", "hell o"]);
 
-        subject.Encode("hello", 512).Should().Equal(900, 258 + 1, 901).And.NotBeEmpty("'hell' then 'o' is the 'hello' merge, the last of the file");
+        const int Hello = 259;
+        subject.Encode("hello", 512).Should().Equal(900, Hello, 901);
     }
 
     [Fact]
@@ -65,8 +66,8 @@ public sealed class ByteLevelBpeTokenizerFixture : IDisposable
     {
         var subject = Tiny([]);
 
-        // "é" is two bytes in UTF-8: two tokens, plus the start and the end.
-        subject.Encode("é", 512).Should().HaveCount(4);
+        // "é" is the two bytes 0xC3 0xA9 in UTF-8: the two tokens of those bytes, between the start and the end.
+        subject.Encode("é", 512).Should().Equal(900, 0xC3, 0xA9, 901);
     }
 
     [Fact]
@@ -87,6 +88,46 @@ public sealed class ByteLevelBpeTokenizerFixture : IDisposable
         ids.Should().HaveCount(10);
         ids[0].Should().Be(900);
         ids[^1].Should().Be(901);
+    }
+
+    [Fact]
+    public void should_wrap_an_empty_text_and_give_nothing_but_the_wrapping_when_there_is_no_room()
+    {
+        var subject = Tiny([]);
+
+        subject.Encode(string.Empty, 512).Should().Equal(900, 901);
+        subject.Encode("hello", 2).Should().Equal(900, 901);
+        subject.Encode("hello", 0).Should().Equal(900, 901);
+    }
+
+    [Fact]
+    public void should_read_a_character_outside_the_basic_plane_as_the_four_bytes_it_is()
+    {
+        var subject = Tiny([]);
+
+        // U+1F642 is F0 9F 99 82 in UTF-8.
+        subject.Encode("🙂", 512).Should().Equal(900, 0xF0, 0x9F, 0x99, 0x82, 901);
+    }
+
+    [Fact]
+    public void should_merge_the_pair_that_comes_first_in_the_file_when_two_pairs_compete()
+    {
+        var subject = Tiny(["a b", "b c"]);
+
+        // 'a b' wins over 'b c': 'ab' (256) and the byte of 'c', not 'a' and 'bc' (257).
+        subject.Encode("abc", 512).Should().Equal(900, 256, 'c', 901);
+    }
+
+    [Fact]
+    public void should_do_a_bounded_amount_of_work_for_a_text_that_is_not_a_text_of_words()
+    {
+        var subject = Tiny([]);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var ids = subject.Encode(new string('a', 4_000_000), 512);
+
+        ids.Length.Should().BeLessThanOrEqualTo(512);
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "a query of any length must not hold a core (the pieces are cut and the text is read as far as the model reads)");
     }
 
     [Fact]

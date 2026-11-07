@@ -54,7 +54,7 @@ The notes and the conversations are also searched by meaning, with a model that 
 | `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together (1 to 64). |
 | `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |
 | `MNEMARR__EMBEDDINGS__IDLESECONDS` | `15` | How long it waits when everything is computed before it looks again (1 to 3600). |
-| `MNEMARR__EMBEDDINGS__MAXDISTANCE` | `0.2` | The cosine distance beyond which a passage is not an answer by meaning. Measured for the default model: change it only with another model, and measure. |
+| `MNEMARR__EMBEDDINGS__MAXDISTANCE` | the model's (`0.2` for the default one) | The cosine distance beyond which a passage is not an answer by meaning. Empty: the one measured for the model. Set it only to override, and measure. |
 
 ## Git sources (`Git`)
 

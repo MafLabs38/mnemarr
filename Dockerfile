@@ -19,7 +19,11 @@ FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077
 ARG TARGETARCH
 RUN apk add --no-cache bash curl
 COPY tools/native /tools/native
-RUN case "${TARGETARCH}" in amd64) system=linux-x86_64 ;; arm64) system=linux-aarch64 ;; *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; esac \
+RUN case "${TARGETARCH}" in \
+      amd64) system=linux-x86_64 ;; \
+      arm64) system=linux-aarch64 ;; \
+      *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
     && /tools/native/fetch-vector-library.sh "$system" /out/sqlite-vec \
     && /tools/native/fetch-model.sh /out/models/granite-embedding-97m-multilingual-r2
 

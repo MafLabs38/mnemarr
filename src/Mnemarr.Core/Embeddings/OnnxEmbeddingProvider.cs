@@ -15,21 +15,28 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 {
     private readonly EmbeddingOptions _options;
     private readonly ILogger<OnnxEmbeddingProvider> _logger;
+    private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
+
     private readonly Lock _gate = new();
     private readonly Lock _run = new();
-    private EmbeddingStatus? _status;
+    private readonly TimeProvider _clock;
+    private volatile EmbeddingStatus? _status;
+    private DateTimeOffset _failedAt;
     private InferenceSession? _session;
     private ByteLevelBpeTokenizer? _tokenizer;
 
-    public OnnxEmbeddingProvider(IOptions<EmbeddingOptions> options, ILogger<OnnxEmbeddingProvider> logger)
+    public OnnxEmbeddingProvider(IOptions<EmbeddingOptions> options, ILogger<OnnxEmbeddingProvider> logger, TimeProvider? clock = null)
     {
         _options = options.Value;
         _logger = logger;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public string ModelId => _options.Model;
 
     public int Dimension => KnownModels.TryGet(_options.Model, out var model) ? model.Dimension : 0;
+
+    public double DefaultMaxDistance => KnownModels.TryGet(_options.Model, out var model) ? model.MaxDistance : 0;
 
     public EmbeddingStatus Status()
     {
@@ -38,19 +45,27 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             return new EmbeddingStatus(EmbeddingState.Off);
         }
 
-        lock (_gate)
+        if (_status is { } known && !RetryDue(known))
         {
-            return _status ??= Load();
+            return known;
         }
-    }
 
-    public EmbeddingStatus? Known()
-    {
+        // One load at a time, and the others wait for its answer: only a pass of the indexer calls this, so that no request and no probe waits for the model.
         lock (_gate)
         {
+            if (_status is not { } current || RetryDue(current))
+            {
+                var loaded = Load();
+                _failedAt = _clock.GetUtcNow();
+                _status = loaded;
+            }
+
             return _status;
         }
     }
+
+    /// <summary>What <see cref="Status"/> answered, without loading anything and without waiting for a load that is going on.</summary>
+    public EmbeddingStatus? Known() => _options.Wanted ? _status : new EmbeddingStatus(EmbeddingState.Off);
 
     public float[] EmbedQuery(string text) => Embed([text])[0];
 
@@ -82,6 +97,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
         }
     }
 
+    // A model that could not be loaded is tried again after a while: a volume that was mounted late, a file that was put back.
+    private bool RetryDue(EmbeddingStatus status) => status.State == EmbeddingState.Failed && _clock.GetUtcNow() - _failedAt >= RetryAfter;
+
     private EmbeddingStatus Load()
     {
         try
@@ -111,10 +129,12 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             LogLoaded(model.Id, _options.Threads);
             return new EmbeddingStatus(EmbeddingState.Ready);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or OnnxRuntimeException or System.Text.Json.JsonException or KeyNotFoundException or DllNotFoundException or BadImageFormatException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Whatever goes wrong loading an engine that is native code (a library that is missing, a file that is damaged) is a reason the feature is down, not a crash.
+            // The detail is for the log: the people who ask where the search is at are not told paths of the host.
             LogLoadFailed(ex);
-            return Failed($"The model could not be loaded: {ex.Message}");
+            return Failed("The model could not be loaded: see the log of Mnemarr.");
         }
     }
 
@@ -124,9 +144,21 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     {
         if (Status().State != EmbeddingState.Ready)
         {
-            throw new InvalidOperationException("The model is not loaded.");
+            throw new EmbeddingException("The model is not loaded.");
         }
 
+        try
+        {
+            return Compute(texts);
+        }
+        catch (OnnxRuntimeException ex)
+        {
+            throw new EmbeddingException("The model failed to read a passage.", ex);
+        }
+    }
+
+    private float[][] Compute(IReadOnlyList<string> texts)
+    {
         var results = new float[texts.Count][];
         // Longest last, so that a batch pads little; the answers go back in the order of the texts.
         var order = Enumerable.Range(0, texts.Count).Select(index => (Index: index, Ids: _tokenizer!.Encode(texts[index], _options.MaxTokens))).OrderBy(item => item.Ids.Length).ToList();

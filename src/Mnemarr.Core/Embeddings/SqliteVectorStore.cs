@@ -20,21 +20,28 @@ public sealed class SqliteVectorStore : IVectorStore
     private readonly IDatabase _database;
     private readonly EmbeddingOptions _options;
     private readonly Lock _gate = new();
+    private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
+
+    private readonly TimeProvider _clock;
     private bool? _available;
     private string? _reason;
+    private DateTimeOffset _checkedAt;
 
-    public SqliteVectorStore(IDatabase database, IOptions<EmbeddingOptions> options)
+    public SqliteVectorStore(IDatabase database, IOptions<EmbeddingOptions> options, TimeProvider? clock = null)
     {
         _database = database;
         _options = options.Value;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public bool TryPrepare(out string? reason)
     {
         lock (_gate)
         {
-            if (_available is null)
+            // A library that could not be loaded is tried again after a while: a file that was put back, a volume that was mounted late.
+            if (_available is null || (_available == false && _clock.GetUtcNow() - _checkedAt >= RetryAfter))
             {
+                _checkedAt = _clock.GetUtcNow();
                 try
                 {
                     using var connection = OpenWithVectors();
@@ -42,11 +49,13 @@ public sealed class SqliteVectorStore : IVectorStore
                     command.CommandText = "SELECT vec_version()";
                     _ = command.ExecuteScalar();
                     _available = true;
+                    _reason = null;
                 }
                 catch (Exception ex) when (ex is SqliteException or ArgumentException or InvalidOperationException or IOException)
                 {
                     _available = false;
-                    _reason = $"The vector library could not be loaded: {ex.Message}";
+                    // The detail (the path, the loader's words) is not given to the people who ask where the search is at.
+                    _reason = "The vector library could not be loaded: its path or its file is wrong.";
                 }
             }
 
@@ -232,10 +241,14 @@ public sealed class SqliteVectorStore : IVectorStore
             }
         }
 
+        // One transaction: after a model change or a big re-index they are thousands, and one commit for each is one write for each on the only writer.
+        using var transaction = connection.BeginTransaction();
         foreach (var id in stale)
         {
-            Execute(connection, null, $"DELETE FROM {table} WHERE rowid = $id", ("$id", id));
+            Execute(connection, transaction, $"DELETE FROM {table} WHERE rowid = $id", ("$id", id));
         }
+
+        transaction.Commit();
     }
 
     private static void Execute(SqliteConnection connection, SqliteTransaction? transaction, string sql, params (string Name, object Value)[] parameters)

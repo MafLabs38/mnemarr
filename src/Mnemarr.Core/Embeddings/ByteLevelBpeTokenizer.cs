@@ -15,6 +15,13 @@ public sealed class ByteLevelBpeTokenizer
 {
     private const int CacheLimit = 100_000;
 
+    // The work of a text is bounded, whoever wrote it: a piece is cut at this many characters before it is merged (the merging of a piece is quadratic in its length),
+    // a text is read only as far as the model can read (a token covers a few characters, rarely more than eight, so a limit of tokens is a limit of characters),
+    // and only short pieces are kept for next time.
+    private const int MaxPieceLength = 256;
+    private const int CachedPieceLength = 32;
+    private const int CharactersPerToken = 8;
+
     private static readonly string[] ByteLetters = BuildByteLetters();
 
     private readonly Dictionary<string, int> _vocabulary;
@@ -73,6 +80,11 @@ public sealed class ByteLevelBpeTokenizer
     {
         var body = new List<int>();
         var room = Math.Max(0, maxTokens - 2);
+        if (text.Length > maxTokens * CharactersPerToken)
+        {
+            text = text[..(maxTokens * CharactersPerToken)];
+        }
+
         foreach (var piece in Pieces(text))
         {
             if (body.Count >= room)
@@ -80,7 +92,10 @@ public sealed class ByteLevelBpeTokenizer
                 break;
             }
 
-            body.AddRange(Merged(piece));
+            for (var at = 0; at < piece.Length && body.Count < room; at += MaxPieceLength)
+            {
+                body.AddRange(Merged(piece.Length <= MaxPieceLength ? piece : piece.Substring(at, Math.Min(MaxPieceLength, piece.Length - at))));
+            }
         }
 
         if (body.Count > room)
@@ -181,7 +196,7 @@ public sealed class ByteLevelBpeTokenizer
         }
 
         var ids = MergeBytes(Encoding.UTF8.GetBytes(piece));
-        if (_cache.Count < CacheLimit)
+        if (piece.Length <= CachedPieceLength && _cache.Count < CacheLimit)
         {
             _cache[piece] = ids;
         }

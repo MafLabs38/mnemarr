@@ -16,15 +16,12 @@ texts = [
  "",
 ]
 sess = ort.InferenceSession('model.onnx', providers=['CPUExecutionProvider'])
-print([i.name for i in sess.get_inputs()], [o.name for o in sess.get_outputs()])
 out = []
 for t in texts:
     enc = tok.encode(t)
     ids = enc.ids
     r = sess.run(None, {'input_ids': np.array([ids], dtype=np.int64), 'attention_mask': np.ones((1, len(ids)), dtype=np.int64)})
-    shapes=[x.shape for x in r]
     h = r[0][0]            # [seq, 384]
     v = h[0]; v = v / np.linalg.norm(v)
     out.append({'text': t, 'ids': ids, 'embedding': [float(x) for x in v]})
-    print(len(ids), shapes)
-json.dump(out, open('ref.json', 'w'))
+json.dump(out, open('reference.json', 'w'))

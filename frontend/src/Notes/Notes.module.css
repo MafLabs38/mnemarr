@@ -398,3 +398,8 @@
   font-size: var(--fontSizeMeta);
   font-style: italic;
 }
+
+.meaningState {
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}

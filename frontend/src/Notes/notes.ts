@@ -179,9 +179,14 @@ export interface SemanticSearchState {
 
 const SEMANTIC_REFRESH_MS = 5000;
 
-/** Where the search by meaning is at: while the passages are computed, the page asks again. */
+/** Where the search by meaning is at: while the model starts or the passages are computed, the page asks again, and when there is nothing more to wait for it stops. */
 export function useSemanticSearchState() {
-  return useApiQuery<SemanticSearchState>('/search/status', { refetchInterval: SEMANTIC_REFRESH_MS });
+  return useApiQuery<SemanticSearchState>('/search/status', {
+    refetchInterval: (state) =>
+      state && (state.state === 'starting' || (state.state === 'ready' && state.computed < state.passages))
+        ? SEMANTIC_REFRESH_MS
+        : false,
+  });
 }
 
 /** The best matching chunks of the notes. Nothing is asked while there is nothing to look for. */

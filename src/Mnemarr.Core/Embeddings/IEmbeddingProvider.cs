@@ -1,5 +1,19 @@
 namespace Mnemarr.Core.Embeddings;
 
+/// <summary>The engine of a provider failed on a text. Whatever the engine, this is what the callers catch.</summary>
+public sealed class EmbeddingException : Exception
+{
+    public EmbeddingException(string message)
+        : base(message)
+    {
+    }
+
+    public EmbeddingException(string message, Exception inner)
+        : base(message, inner)
+    {
+    }
+}
+
 /// <summary>Whether the search by meaning can work: off (nobody asked), ready, or failed with a reason an operator can act on.</summary>
 public enum EmbeddingState
 {
@@ -28,6 +42,9 @@ public interface IEmbeddingProvider
 
     /// <summary>What <see cref="Status"/> answered, or null while the model has not been loaded: it never loads, so that a health probe never waits for the model.</summary>
     EmbeddingStatus? Known();
+
+    /// <summary>The cosine distance beyond which a passage is not an answer, for this model: measured, and different from a model to another.</summary>
+    double DefaultMaxDistance { get; }
 
     float[] EmbedQuery(string text);
 

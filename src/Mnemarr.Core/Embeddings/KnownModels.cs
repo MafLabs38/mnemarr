@@ -3,11 +3,13 @@ using System.Diagnostics.CodeAnalysis;
 namespace Mnemarr.Core.Embeddings;
 
 /// <summary>A model Mnemarr can compute embeddings with: the size of its vectors and the files it is made of, each with the SHA-256 it must have.</summary>
-public sealed record KnownModel(string Id, int Dimension, string Revision, IReadOnlyDictionary<string, string> Files);
+public sealed record KnownModel(string Id, int Dimension, string Revision, double MaxDistance, IReadOnlyDictionary<string, string> Files);
 
 /// <summary>
 /// The models that are supported (ADR 0012, ADR 0034). The model is pinned like the vector library: a fixed upstream revision and the SHA-256 of each file,
-/// verified before the model is loaded, wherever the files come from. A file that differs is not loaded.
+/// verified before the model is loaded, wherever the files come from. A file that differs is not loaded. <see cref="KnownModel.MaxDistance"/> is measured for the
+/// model: on real notes the best passage of a question that the notes answer is at 0.10 to 0.16 from it, and the best passage of a question that nothing answers is at
+/// 0.23 to 0.26 (ADR 0034), so 0.2. Another model has other distances and needs its own measure.
 /// </summary>
 public static class KnownModels
 {
@@ -19,6 +21,7 @@ public static class KnownModels
             Default,
             384,
             "835ad14087e140460703cf0fae09f97d469d65c2",
+            0.2,
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["model.onnx"] = "68e592b160673d30250824c1116bc6ab33f70efb22b97c9e1d7ce1e69c1c9d70",

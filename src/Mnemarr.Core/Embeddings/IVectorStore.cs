@@ -10,8 +10,9 @@ public sealed record VectorMatch(long ChunkId, double Distance);
 public sealed record EmbeddingProgress(int Chunks, int Embedded);
 
 /// <summary>
-/// Keeps the vectors of the chunks and finds the nearest ones (D-25, ADR 0009). The store is keyed by (model, dimension): one table per model, so that a change of
-/// model fills the next while the old one still answers. The implementation is <c>sqlite-vec</c> inside the database.
+/// Keeps the vectors of the chunks and finds the nearest ones (D-25, ADR 0009). The store is keyed by (model, dimension): one table per model. A chunk has the vector
+/// of one model: after a change of model, search by meaning covers the chunks that the new model has computed so far (the progress says how many), and the table of the
+/// old model is dropped when nothing is left in it. The implementation is <c>sqlite-vec</c> inside the database.
 /// </summary>
 public interface IVectorStore
 {

@@ -30,11 +30,10 @@ public sealed class EmbeddingOptions
     public int IdleSeconds { get; set; } = 15;
 
     /// <summary>
-    /// The cosine distance beyond which a passage is not a match by meaning (0 is the same, 2 is opposite): the nearest passages of a question that nothing answers
-    /// are not shown as answers. The default is measured for the default model, whose distances are close together: on real notes the best passage of a question
-    /// that the notes answer is at 0.10 to 0.16 and the best passage of a question that nothing answers is at 0.23 to 0.26. Another model needs its own measure.
+    /// The cosine distance beyond which a passage is not a match by meaning (0 is the same, 2 is opposite): the nearest passages of a question that nothing answers are
+    /// not shown as answers. Empty: the one measured for the model (<see cref="KnownModel.MaxDistance"/>).
     /// </summary>
-    public double MaxDistance { get; set; } = 0.2;
+    public double? MaxDistance { get; set; }
 
     /// <summary>Whether the feature is wanted at all: a model folder is given.</summary>
     public bool Wanted => !string.IsNullOrWhiteSpace(ModelFolder);
@@ -59,7 +58,7 @@ public sealed class EmbeddingOptionsValidator : IValidateOptions<EmbeddingOption
             return ValidateOptionsResult.Fail("Embeddings: Threads is 1 to 64, BatchSize 1 to 64, MaxTokens 16 to 8192 and IdleSeconds 1 to 3600.");
         }
 
-        return options.MaxDistance is > 0 and <= 2
+        return options.MaxDistance is null or (> 0 and <= 2)
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail("Embeddings:MaxDistance must be above 0 and at most 2.");
     }

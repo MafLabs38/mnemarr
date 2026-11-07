@@ -317,11 +317,15 @@ test.describe('smoke @smoke', () => {
     await signIn(page, '/notes');
     const search = page.getByRole('region', { name: 'Search' });
     await search.getByLabel('Search the notes').fill('how is a container template assembled from stacked parts');
-    // The model reads the notes of the stack in the background, a few seconds after the start: the question is asked again until it has.
+    // The model reads the notes of the stack in the background, a few seconds after the start: the question is asked once it has, and a model that never does says why.
     await expect(async () => {
-      await search.getByRole('button', { name: 'Search' }).click();
-      await expect(search.getByText('seeded · docker.md · Docker > Images')).toBeVisible({ timeout: 3000 });
+      const status = await (await page.request.get('/api/v1/search/status')).json();
+      expect(status, 'the search by meaning is ready and has read every passage').toMatchObject({ state: 'ready' });
+      expect(status.computed).toBe(status.passages);
+      expect(status.passages).toBeGreaterThan(0);
     }).toPass({ timeout: 120_000 });
+    await search.getByRole('button', { name: 'Search' }).click();
+    await expect(search.getByText('seeded · docker.md · Docker > Images')).toBeVisible();
     await expect(search.getByText(/matched by its (words and its )?meaning/).first()).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });

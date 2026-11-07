@@ -42,7 +42,8 @@ Mnemarr also searches by meaning, with a model that runs on this host (the image
 
 - **Is it working?** The notes page says nothing when it is up to date, *The search by meaning is catching up: X of Y passages are read* while it reads, and why when it does not work. `GET /api/v1/search/status` says the same (`off`, `ready` or `failed`).
 - **The first start over a long history is slow** (about ten passages a second on two threads): the search works by words meanwhile, and by meaning for the passages that are read. It resumes after a restart; it does not start over.
-- **`degraded` with `embeddings-failing`**: the reason is in the log and on the notes page: the model files do not match what is pinned (an image that was altered, a folder that was swapped), the library cannot be loaded, or the data folder is full. The search goes on by words.
+- **`degraded` with `embeddings-failing`**: the notes page says in a sentence what, and the log of Mnemarr has the detail: the model files do not match what is pinned (an image that was altered, a folder that was swapped), the library cannot be loaded, or a pass failed. The search goes on by words. A model or a library that could not be loaded is tried again every five minutes: no restart is needed once the cause is fixed.
+- **`starting`**: the model is being loaded (a few seconds); until then the answer is by words.
 - **To change the model or its settings**, set the variables of the configuration; a change of model reads every passage again in the background.
 - It uses about 1 GB of memory and two CPU threads while it reads. Lower `MNEMARR__EMBEDDINGS__THREADS` on a small host, or leave `MNEMARR__EMBEDDINGS__MODELFOLDER` empty to turn it off.
 

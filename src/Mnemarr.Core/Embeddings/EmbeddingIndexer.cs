@@ -121,9 +121,11 @@ public sealed partial class EmbeddingIndexer : BackgroundService
 
                 _failure = null;
             }
-            catch (Exception ex) when (ex is SqliteException or InvalidOperationException or IOException or Microsoft.ML.OnnxRuntime.OnnxRuntimeException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _failure = $"The last pass failed: {ex.Message}";
+                // The loop of a background service is where everything stops: an optional feature must not take the host down, whatever went wrong.
+                // The detail is in the log; what is said to the people who ask where the search is at is not a path of the host.
+                _failure = "The last pass failed: see the log of Mnemarr.";
                 LogFailed(ex);
             }
         }
