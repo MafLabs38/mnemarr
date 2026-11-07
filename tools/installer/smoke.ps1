@@ -71,7 +71,12 @@ try {
 } catch {
     Write-Host 'What is left, and who holds it:'
     Get-ChildItem $app -Recurse -ErrorAction SilentlyContinue | Select-Object -First 40 -ExpandProperty FullName | Write-Host
-    Get-Process | Where-Object { $_.Path -like "$app*" } | ForEach-Object { Write-Host "process $($_.Id) $($_.Path)" }
+    Get-Process | Where-Object { $_.Path -like "$app*" } | ForEach-Object {
+        $details = Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)"
+        Write-Host "process $($_.Id) started $($_.StartTime) parent $($details.ParentProcessId): $($details.CommandLine)"
+    }
+    Write-Host "now: $(Get-Date)"
+    Get-Content (Join-Path $env:LOCALAPPDATA 'velopack\velopack_MnemarrCollector.log') -Tail 25 -ErrorAction SilentlyContinue | Write-Host
     throw
 }
 Wait-Until { -not (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector } 'the entry that starts it with the session taken away'
