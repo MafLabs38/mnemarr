@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
@@ -14,8 +13,16 @@ namespace Mnemarr.Core.Indexing;
 public sealed partial class NoteSearch
 {
     private const int RankConstant = 60;
-    // The keyword list is at most this long (SqliteNoteIndex): the list by meaning is as long, and the two are merged and cut to the limit asked.
-    private const int Depth = 50;
+    // The keyword list is at most this long: the list by meaning is as long, and the two are merged and cut to the limit asked.
+    private const int Depth = SearchRequest.MaxLimit;
+
+    // The nearest are asked for wider than the list: some are not the caller's to see, or are outside the filters, and the rest must still fill it.
+    private const int MeaningWiderBy = 4;
+
+    // How many questions the model reads at once, and how long a question waits for its turn: a flood of searches must not hold every thread of the host. A question that
+    // does not get its turn is answered by its words.
+    private const int ConcurrentQuestions = 4;
+    private static readonly TimeSpan QuestionWaits = TimeSpan.FromMilliseconds(300);
 
     // A question is read by the model up to this many characters: the rest of a very long one is not a question, and the model's work is bounded.
     private const int MaxQuestionLength = 1000;
@@ -30,6 +37,7 @@ public sealed partial class NoteSearch
     private readonly IVectorStore _vectors;
     private readonly EmbeddingOptions _options;
     private readonly ILogger<NoteSearch> _logger;
+    private readonly SemaphoreSlim _turns = new(ConcurrentQuestions);
 
     public NoteSearch(INoteIndex index, IChunkHits chunks, IEmbeddingProvider embeddings, IVectorStore vectors, IOptions<EmbeddingOptions> options, ILogger<NoteSearch> logger)
     {
@@ -95,6 +103,11 @@ public sealed partial class NoteSearch
             return [];
         }
 
+        if (!_turns.Wait(QuestionWaits))
+        {
+            return [];
+        }
+
         try
         {
             if (!_vectors.TryPrepare(out _))
@@ -106,15 +119,20 @@ public sealed partial class NoteSearch
             var query = _embeddings.EmbedQuery(question);
             var maxDistance = _options.MaxDistance ?? _embeddings.DefaultMaxDistance;
             // The nearest are asked for wider than the answer: some are not the caller's to see, or are outside the filters, and the rest must still fill the list.
-            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, Depth * 4).Where(match => match.Distance <= maxDistance).ToList();
-            var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope, _embeddings.ModelId).ToDictionary(hit => hit.ChunkId);
+            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, Depth * MeaningWiderBy).Where(match => match.Distance <= maxDistance).ToList();
+            var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope).ToDictionary(hit => hit.ChunkId);
             return [.. near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]).Take(Depth)];
         }
-        catch (Exception ex) when (ex is EmbeddingException or InvalidOperationException or SqliteException or IOException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The words still answer: a model or a library that fails is a reason on the health page and in the log, not an error for the person who asked.
+            // The words still answer: whatever fails in an optional feature (a model, a library, a text that the tokenizer cannot take) is a line in the log, not an error for
+            // the person who asked.
             LogMeaningFailed(ex);
             return [];
+        }
+        finally
+        {
+            _turns.Release();
         }
     }
 

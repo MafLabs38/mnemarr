@@ -121,7 +121,10 @@ public sealed class RealModelSearchFixture : IClassFixture<RealNotes>
 
         foreach (var question in nonsense)
         {
-            _notes.Search.Search(new SearchRequest(question), SourceScope.All).Where(hit => hit.Match == SearchMatch.Meaning).Should().BeEmpty($"nothing answers '{question}'");
+            _notes.Search.Search(new SearchRequest(question), SourceScope.All).Where(hit => hit.Match != SearchMatch.Keywords).Should().BeEmpty($"nothing answers '{question}'");
         }
+
+        // The control: the same chain does find a note by its meaning for a question that the notes answer, so that "nothing" above is not a store that finds nothing.
+        _notes.Search.Search(new SearchRequest("how do I publish a new version of the container image"), SourceScope.All).Should().Contain(hit => hit.Match != SearchMatch.Keywords);
     }
 }

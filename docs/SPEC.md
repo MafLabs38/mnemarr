@@ -205,7 +205,7 @@ All 🟡 until validated. Identifiers are provisional.
 | F-COL-07 | Readers per assistant behind one contract: Claude Code (built), Codex CLI, Copilot CLI, Copilot in VS Code, Gemini CLI; [the formats](conversation-formats.md) (D-45) |
 | F-COL-03 | Server: ingest API with per-agent ingest-only credentials, revocable. Built (D-44), with the list of machines and when they last sent |
 | F-SEA-01 | Hybrid search with filters; results show their source. Built: keywords and meaning merged by rank, each hit says how it matched, with the filters and the scope of the caller (D-54). |
-| F-SEA-02 | Re-embedding when the embedding model changes |
+| F-SEA-02 | Re-embedding when the embedding model changes. Built (D-54): a chunk with no vector of the active model is computed again in the background; only one model is supported today |
 | F-MCP-01 | MCP tools: search, read, add, update; write tools enabled separately and audited. Built (D-43): `list_sources`, `search`, `list_notes`, `read_note`, `list_tags`, and, when the operator turns them on, `create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note` |
 | F-MCP-02 | Start-of-session context injection (D-12) |
 | F-CON-01 | Consolidation job: raw conversations into durable notes per application (D-17) |

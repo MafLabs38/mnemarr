@@ -18,10 +18,10 @@ public sealed record IndexedNote(string Title, string ContentHash, int Chunker, 
 public interface IChunkHits
 {
     /// <summary>
-    /// The chunks of the list that have a vector of the model and that pass the scope and the filters of the request, with the start of their text as the snippet.
-    /// The order is not the one of the list: the caller keeps its own.
+    /// The chunks of the list that pass the scope and the filters of the request, with the start of their text as the snippet. The order is not the one of the list:
+    /// the caller keeps its own. Which chunks have a vector, and of which model, is the vector store's to say, not this index's.
     /// </summary>
-    IReadOnlyList<SearchHit> Chunks(IReadOnlyCollection<long> chunkIds, SearchRequest request, SourceScope scope, string model);
+    IReadOnlyList<SearchHit> Chunks(IReadOnlyCollection<long> chunkIds, SearchRequest request, SourceScope scope);
 }
 
 /// <summary>The notes of the sources, cut into chunks, with their full-text index.</summary>

@@ -179,13 +179,22 @@ export interface SemanticSearchState {
 
 const SEMANTIC_REFRESH_MS = 5000;
 
-/** Where the search by meaning is at: while the model starts or the passages are computed, the page asks again, and when there is nothing more to wait for it stops. */
+const SEMANTIC_RETRY_MS = 60_000;
+
+/**
+ * Where the search by meaning is at. While the model starts or the passages are read the page asks again soon; when it failed it asks now and then, because the server
+ * tries again by itself after a while; when there is nothing more to wait for it stops.
+ */
 export function useSemanticSearchState() {
   return useApiQuery<SemanticSearchState>('/search/status', {
-    refetchInterval: (state) =>
-      state && (state.state === 'starting' || (state.state === 'ready' && state.computed < state.passages))
+    refetchInterval: (state) => {
+      if (state?.state === 'failed') {
+        return SEMANTIC_RETRY_MS;
+      }
+      return state && (state.state === 'starting' || (state.state === 'ready' && state.computed < state.passages))
         ? SEMANTIC_REFRESH_MS
-        : false,
+        : false;
+    },
   });
 }
 

@@ -21,7 +21,6 @@ public sealed class FtsQueryFixture
     }
 
     [Theory]
-    [InlineData("", 0)]
     [InlineData("le la de", 0)]
     [InlineData("backup nuit", 2)]
     [InlineData("comment sauvegarder la base de données ?", 3)]

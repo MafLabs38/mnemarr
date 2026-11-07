@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Embeddings;
 
@@ -19,5 +20,5 @@ public sealed class SearchStatusController : ControllerBase
     }
 
     [HttpGet]
-    public SemanticSearchResource Status() => SemanticSearchResource.From(_embeddings.Report());
+    public SemanticSearchResource Status() => SemanticSearchResource.From(_embeddings.Report(User.Scope()));
 }

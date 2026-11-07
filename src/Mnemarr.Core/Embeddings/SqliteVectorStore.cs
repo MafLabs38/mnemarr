@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Embeddings;
@@ -64,7 +65,7 @@ public sealed class SqliteVectorStore : IVectorStore
         }
     }
 
-    public IReadOnlyList<ChunkToEmbed> Missing(string model, int limit)
+    public IReadOnlyList<ChunkToEmbed> Missing(string model, int limit, IReadOnlySet<long> skipped)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
@@ -73,10 +74,11 @@ public sealed class SqliteVectorStore : IVectorStore
             FROM chunks c
             JOIN notes n ON n.id = c.note_id
             LEFT JOIN chunk_embeddings e ON e.chunk_id = c.id
-            WHERE e.chunk_id IS NULL OR e.model <> $model
+            WHERE (e.chunk_id IS NULL OR e.model <> $model) AND c.id NOT IN (SELECT value FROM json_each($skipped))
             ORDER BY c.id
             LIMIT $limit
             """;
+        command.Parameters.AddWithValue("$skipped", System.Text.Json.JsonSerializer.Serialize(skipped));
         command.Parameters.AddWithValue(ModelParameter, model);
         command.Parameters.AddWithValue("$limit", limit);
         using var reader = command.ExecuteReader();
@@ -135,15 +137,49 @@ public sealed class SqliteVectorStore : IVectorStore
             matches.Add(new VectorMatch(reader.GetInt64(0), reader.GetDouble(1)));
         }
 
-        return matches;
+        return CurrentOnly(connection, matches, model);
     }
 
-    public EmbeddingProgress Progress(string model)
+    // A row of the table can outlive its chunk (a chunk is replaced when its note changes, and the cleanup comes after) and an id can be given again to another chunk:
+    // only the ones that the bookkeeping says are current for the model are matches.
+    private static List<VectorMatch> CurrentOnly(SqliteConnection connection, List<VectorMatch> matches, string model)
+    {
+        if (matches.Count == 0)
+        {
+            return matches;
+        }
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT chunk_id FROM chunk_embeddings WHERE model = $model AND chunk_id IN (SELECT value FROM json_each($ids))";
+        command.Parameters.AddWithValue(ModelParameter, model);
+        command.Parameters.AddWithValue("$ids", System.Text.Json.JsonSerializer.Serialize(matches.Select(match => match.ChunkId)));
+        using var reader = command.ExecuteReader();
+        var current = new HashSet<long>();
+        while (reader.Read())
+        {
+            current.Add(reader.GetInt64(0));
+        }
+
+        return [.. matches.Where(match => current.Contains(match.ChunkId))];
+    }
+
+    public EmbeddingProgress Progress(string model, SourceScope? scope = null)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT (SELECT COUNT(*) FROM chunks), (SELECT COUNT(*) FROM chunk_embeddings WHERE model = $model)";
+        // Counted among the chunks of the sources the caller may see: the totals of the whole database tell a caller how much the others are doing.
+        command.CommandText = """
+            SELECT COUNT(*), COUNT(e.chunk_id)
+            FROM chunks c
+            JOIN notes n ON n.id = c.note_id
+            JOIN sources s ON s.id = n.source_id
+            LEFT JOIN chunk_embeddings e ON e.chunk_id = c.id AND e.model = $model
+            WHERE ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
+            """;
         command.Parameters.AddWithValue(ModelParameter, model);
+        command.Parameters.AddWithValue("$sources", scope?.Sources is { } allowed ? System.Text.Json.JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
+        command.Parameters.AddWithValue("$hideConversations", scope?.ConversationsHidden == true ? 1 : 0);
+        command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
         using var reader = command.ExecuteReader();
         reader.Read();
         return new EmbeddingProgress(reader.GetInt32(0), reader.GetInt32(1));

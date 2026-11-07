@@ -13,7 +13,6 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
     private const string NoteParameter = "$note";
 
     /// <summary>The most hits one search returns, whatever is asked.</summary>
-    private const int MaxLimit = 50;
 
     /// <summary>How many words of a chunk the snippet of a hit shows around the match.</summary>
     private const int SnippetWords = 32;
@@ -249,7 +248,7 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         // What was said to the assistants is seen only by those who hold conversations.read.
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
         command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
-        command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, MaxLimit));
+        command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, SearchRequest.MaxLimit));
         command.Parameters.AddWithValue("$snippetWords", SnippetWords);
 
         using var reader = command.ExecuteReader();
@@ -265,7 +264,7 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<SearchHit> Chunks(IReadOnlyCollection<long> chunkIds, SearchRequest request, SourceScope scope, string model)
+    public IReadOnlyList<SearchHit> Chunks(IReadOnlyCollection<long> chunkIds, SearchRequest request, SourceScope scope)
     {
         if (chunkIds.Count == 0)
         {
@@ -277,7 +276,6 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         command.CommandText = """
             SELECT s.id, s.name, n.path, n.topic, n.title, c.heading, substr(c.text, 1, $snippetLength), c.id
             FROM chunks c
-            JOIN chunk_embeddings e ON e.chunk_id = c.id AND e.model = $model
             JOIN notes n ON n.id = c.note_id
             JOIN sources s ON s.id = n.source_id
             WHERE c.id IN (SELECT value FROM json_each($ids))
@@ -286,7 +284,6 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
               AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
             """;
         command.Parameters.AddWithValue("$ids", JsonSerializer.Serialize(chunkIds));
-        command.Parameters.AddWithValue("$model", model);
         command.Parameters.AddWithValue(SourceParameter, request.SourceId?.ToString() ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$topic", request.Topic ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);

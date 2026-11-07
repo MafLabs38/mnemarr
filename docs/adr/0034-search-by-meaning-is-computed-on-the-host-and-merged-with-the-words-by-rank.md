@@ -33,18 +33,22 @@ them. What was left open: how the model is run in .NET, how the vectors follow t
    notes (the documentation of the project, 470 passages), the best passage of a question the notes answer is at 0.10 to 0.16 and the best passage of a question that
    nothing answers is at 0.23 to 0.26. Another model needs its own measure. The search by meaning widens its depth (four times the answer) so that what the caller may not
    see, or the filters, do not empty the list; the scope of the caller applies to it as to the words.
-5. **It can be off, and it can fail, and search goes on.** Without `Embeddings:ModelFolder` the feature is off and nothing is computed. A model whose files do not match their
+5. **One owner for the bookkeeping, and a bound on the work.** Only the vector store reads and writes which chunk has a vector of which model (`chunk_embeddings`); its `Nearest`
+   returns only current chunks, and the index gives a hit for a chunk without knowing models. The model reads at most four questions at a time and a question that does not get its
+   turn in 300 ms is answered by its words, so that a flood of searches cannot hold the threads of the host. A passage that the model cannot read is skipped (its id in the log)
+   after it was tried alone, until the next start, so that it does not stop the passages after it. The counts of the status are those of the sources the caller may see.
+6. **It can be off, and it can fail, and search goes on.** Without `Embeddings:ModelFolder` the feature is off and nothing is computed. A model whose files do not match their
    pinned SHA-256 is not loaded; a library that cannot be loaded, or a pass that fails, makes Mnemarr *degraded* with the reason (health check `embeddings`), and the answer
    of the search is by words. **The model is loaded by the indexer, never on a request or a probe**: until it is, the state is `starting` and the answer is by words. A failure
    is tried again after five minutes (a volume mounted late, a file put back). The reason that is shown to the people who ask is a fixed sentence; the detail (paths, the loader's
    words) is in the log only. `GET /api/v1/search/status` says where it is (`off`, `starting`, `ready` with the passages computed of those that exist, `failed` with why) and the notes page shows it.
    The work of a question is bounded: it is read up to 1000 characters, and the tokenizer cuts a text to what the model can read and a piece at 256 characters, so that a long
    query cannot hold a core.
-6. **The library and the model are in the image**, fetched at pinned versions and verified (`tools/native`): `sqlite-vec` 0.1.9 per architecture (amd64, arm64), and
+7. **The library and the model are in the image**, fetched at pinned versions and verified (`tools/native`): `sqlite-vec` 0.1.9 per architecture (amd64, arm64), and
    the model at its upstream revision (390 MB). The library is checked by its SHA-256 when the image is built, and its path is trusted operator configuration (an
    operator who can swap the file can run code anyway); it is loaded by Mnemarr's code from that path, and loading is switched off on the connection straight after. The model's
    files are checked again, by SHA-256, before they are loaded, wherever they come from.
-7. **Privacy.** Nothing leaves the host: the model is on disk and runs here (D-26). An external embeddings API stays an opt-in for later.
+8. **Privacy.** Nothing leaves the host: the model is on disk and runs here (D-26). An external embeddings API stays an opt-in for later.
 
 ## Consequences
 

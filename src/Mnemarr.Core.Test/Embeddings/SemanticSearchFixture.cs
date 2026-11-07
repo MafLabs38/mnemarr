@@ -42,7 +42,7 @@ public sealed class SemanticSearchFixture : IDisposable
         _search = new NoteSearch(_index, _index, _provider, _store, Options.Create(_options), NullLogger<NoteSearch>.Instance);
     }
 
-    public void Dispose() => _workspace?.Dispose();
+    public void Dispose() => _workspace.Dispose();
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
@@ -145,6 +145,18 @@ public sealed class SemanticSearchFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_count_the_progress_among_the_sources_the_caller_may_see()
+    {
+        var mine = await IndexAsync("mine", SourceKind.Knowledge, ("a.md", "# A\nSauvegarde."));
+        await IndexAsync("talks", SourceKind.Conversations, ("c.md", "# C\nSauvegarde discutée."));
+        await _embedder.RunAsync(Token);
+
+        _store.Progress(_provider.ModelId).Should().Be(new EmbeddingProgress(2, 2));
+        _store.Progress(_provider.ModelId, new SourceScope([mine.Id])).Should().Be(new EmbeddingProgress(1, 1), "the other source is not the caller's");
+        _store.Progress(_provider.ModelId, SourceScope.All with { ConversationsHidden = true }).Should().Be(new EmbeddingProgress(1, 1), "conversations are hidden");
+    }
+
+    [Fact]
     public async Task should_compute_only_what_is_missing_and_again_for_a_chunk_that_changed()
     {
         var source = await IndexAsync("courses", SourceKind.Knowledge, ("a.md", "# A\nSauvegarde."), ("b.md", "# B\nRecette de cuisine."));
@@ -166,6 +178,8 @@ public sealed class SemanticSearchFixture : IDisposable
         File.Delete(Path.Combine(_workspace.Folder("courses"), "a.md"));
         await _indexer.IndexAsync(source, Token);
 
+        // Before the cleanup the table still holds the row of the removed note: it is not a match, whatever its place in the table.
+        _store.Nearest(_provider.ModelId, _provider.Dimension, ThemeEmbeddings.Vector(ThemeEmbeddings.Protection), 10).Should().HaveCount(1);
         await _embedder.TidyAsync(Token);
 
         _store.Progress(_provider.ModelId).Should().Be(new EmbeddingProgress(1, 1));
@@ -222,7 +236,6 @@ public sealed class SemanticSearchFixture : IDisposable
     private sealed class ThemeEmbeddings(string id = "themes") : IEmbeddingProvider
     {
         public const int Protection = 0;
-        public const int Cooking = 1;
 
         private static readonly string[][] Themes =
         [

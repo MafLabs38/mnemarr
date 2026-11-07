@@ -49,7 +49,7 @@ The notes and the conversations are also searched by meaning, with a model that 
 |---|---|---|
 | `MNEMARR__EMBEDDINGS__MODELFOLDER` | the image sets it | The folder with `model.onnx` and `tokenizer.json`. Empty: the search by meaning is off and nothing is computed. The files are checked against pinned SHA-256 before they are loaded. |
 | `MNEMARR__EMBEDDINGS__EXTENSIONPATH` | the image sets it | The `sqlite-vec` library (`vec0.so`). Required when a model folder is given. |
-| `MNEMARR__EMBEDDINGS__MODEL` | `granite-embedding-97m-multilingual-r2` | The model; only the listed ones are supported. A change computes every passage again in the background. |
+| `MNEMARR__EMBEDDINGS__MODEL` | `granite-embedding-97m-multilingual-r2` | The model; only the listed ones are supported, and today there is one. Another one needs its files in `MODELFOLDER`. A change computes every passage again in the background. |
 | `MNEMARR__EMBEDDINGS__THREADS` | `2` | CPU threads of the model (1 to 64). The first run over a long history takes about a second per ten passages on two threads. |
 | `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together (1 to 64). |
 | `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |

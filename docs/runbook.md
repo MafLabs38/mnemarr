@@ -40,7 +40,7 @@ If an update does not happen: `mnemarr-collector status` on the machine says whe
 
 Mnemarr also searches by meaning, with a model that runs on this host (the image carries it; [configuration](configuration.md)). Nothing leaves the host.
 
-- **Is it working?** The notes page says nothing when it is up to date, *The search by meaning is catching up: X of Y passages are read* while it reads, and why when it does not work. `GET /api/v1/search/status` says the same (`off`, `ready` or `failed`).
+- **Is it working?** The notes page says nothing when it is up to date, *The search by meaning is catching up: X of Y passages are read* while it reads, and why when it does not work. `GET /api/v1/search/status` says the same (`off`, `starting`, `ready` or `failed`), with the counts of the sources the caller may see.
 - **The first start over a long history is slow** (about ten passages a second on two threads): the search works by words meanwhile, and by meaning for the passages that are read. It resumes after a restart; it does not start over.
 - **`degraded` with `embeddings-failing`**: the notes page says in a sentence what, and the log of Mnemarr has the detail: the model files do not match what is pinned (an image that was altered, a folder that was swapped), the library cannot be loaded, or a pass failed. The search goes on by words. A model or a library that could not be loaded is tried again every five minutes: no restart is needed once the cause is fixed.
 - **`starting`**: the model is being loaded (a few seconds); until then the answer is by words.

@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Core.Embeddings;
 
@@ -17,11 +18,18 @@ public sealed partial class EmbeddingIndexer : BackgroundService
 {
     private const int Tidyings = 20;
 
+    // How many batches of passages are looked up at once, and how long the progress is kept for the probes (a count over every chunk is not for each probe).
+    private const int Lookahead = 4;
+    private static readonly long ProgressKeptTicks = 5 * TimeSpan.TicksPerSecond;
+
     private readonly IEmbeddingProvider _provider;
     private readonly IVectorStore _store;
     private readonly EmbeddingOptions _options;
     private readonly ILogger<EmbeddingIndexer> _logger;
+    private readonly HashSet<long> _skipped = [];
     private volatile string? _failure;
+    private EmbeddingProgress? _progress;
+    private long _progressAt;
 
     public EmbeddingIndexer(IEmbeddingProvider provider, IVectorStore store, IOptions<EmbeddingOptions> options, ILogger<EmbeddingIndexer> logger)
     {
@@ -32,7 +40,7 @@ public sealed partial class EmbeddingIndexer : BackgroundService
     }
 
     /// <summary>Where the search by meaning is at: off, failed (with the reason) or ready (with the progress).</summary>
-    public EmbeddingReport Report()
+    public EmbeddingReport Report(SourceScope? scope = null)
     {
         if (!_options.Wanted)
         {
@@ -56,8 +64,8 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
 
         return _failure is { } failure
-            ? new EmbeddingReport(EmbeddingState.Failed, failure, Progress(), _provider.ModelId)
-            : new EmbeddingReport(EmbeddingState.Ready, null, Progress(), _provider.ModelId);
+            ? new EmbeddingReport(EmbeddingState.Failed, failure, Progress(scope), _provider.ModelId)
+            : new EmbeddingReport(EmbeddingState.Ready, null, Progress(scope), _provider.ModelId);
     }
 
     /// <summary>One pass: computes every chunk that is missing, a batch at a time. Public so that a test can run it. Returns how many were computed.</summary>
@@ -69,19 +77,17 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
 
         var computed = 0;
-        for (var batch = await Task.Run(() => _store.Missing(_provider.ModelId, _options.BatchSize * 4), cancellationToken); batch.Count > 0; batch = _store.Missing(_provider.ModelId, _options.BatchSize * 4))
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var chunks = batch;
+            var batch = await Task.Run(() => _store.Missing(_provider.ModelId, _options.BatchSize * Lookahead, _skipped), cancellationToken);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
             // The model is the CPU's work: it runs on a thread of the pool, not on the one that serves requests.
-            await Task.Run(
-                () =>
-                {
-                    var vectors = _provider.EmbedPassages([.. chunks.Select(chunk => chunk.Text)]);
-                    _store.Save(_provider.ModelId, _provider.Dimension, [.. chunks.Select((chunk, index) => (chunk.ChunkId, vectors[index]))]);
-                },
-                cancellationToken);
-            computed += chunks.Count;
+            computed += await Task.Run(() => Compute(batch), cancellationToken);
         }
 
         if (computed > 0)
@@ -90,6 +96,34 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
 
         return computed;
+    }
+
+    // A batch that fails is computed again one chunk at a time, and a chunk that still fails is left out until the next start: one passage that the model cannot read (and its
+    // id only is logged) must not stop the reading of every passage after it.
+    private int Compute(IReadOnlyList<ChunkToEmbed> chunks)
+    {
+        try
+        {
+            Embed(chunks);
+            return chunks.Count;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && chunks.Count > 1)
+        {
+            LogBatchFailed(ex);
+            return chunks.Sum(chunk => Compute([chunk]));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _skipped.Add(chunks[0].ChunkId);
+            LogSkipped(chunks[0].ChunkId, ex);
+            return 0;
+        }
+    }
+
+    private void Embed(IReadOnlyList<ChunkToEmbed> chunks)
+    {
+        var vectors = _provider.EmbedPassages([.. chunks.Select(chunk => chunk.Text)]);
+        _store.Save(_provider.ModelId, _provider.Dimension, [.. chunks.Select((chunk, index) => (chunk.ChunkId, vectors[index]))]);
     }
 
     /// <summary>Forgets the vectors of chunks that are gone (a note that was changed or removed) and the tables of models that nothing uses. Public so that a test can run it.</summary>
@@ -111,25 +145,32 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         var passes = 0;
         do
         {
-            try
-            {
-                // The chunks of a note that changed are gone and have no use for their vectors: they are forgotten after a pass that computed, and now and then.
-                if (await RunAsync(stoppingToken) > 0 || ++passes % Tidyings == 0)
-                {
-                    await TidyAsync(stoppingToken);
-                }
-
-                _failure = null;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // The loop of a background service is where everything stops: an optional feature must not take the host down, whatever went wrong.
-                // The detail is in the log; what is said to the people who ask where the search is at is not a path of the host.
-                _failure = "The last pass failed: see the log of Mnemarr.";
-                LogFailed(ex);
-            }
+            await PassAsync(++passes % Tidyings == 0, stoppingToken);
         }
         while (await WaitAsync(timer, stoppingToken));
+    }
+
+    /// <summary>
+    /// One pass of the loop: what is missing is computed, and what is gone is forgotten (after a pass that computed, and now and then). A failure of any kind is kept as the reason
+    /// and the loop goes on: it is where everything stops, and an optional feature must not take the host down. The detail is in the log; what is said to the people who ask where
+    /// the search is at is not a path of the host. Public so that a test can run it.
+    /// </summary>
+    public async Task PassAsync(bool tidy, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (await RunAsync(cancellationToken) > 0 || tidy)
+            {
+                await TidyAsync(cancellationToken);
+            }
+
+            _failure = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _failure = "The last pass failed: see the log of Mnemarr.";
+            LogFailed(ex);
+        }
     }
 
     private static async Task<bool> WaitAsync(PeriodicTimer timer, CancellationToken cancellationToken)
@@ -144,13 +185,25 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
     }
 
-    private EmbeddingProgress? Progress()
+    private EmbeddingProgress? Progress(SourceScope? scope)
     {
         try
         {
-            return _store.Progress(_provider.ModelId);
+            // A caller sees the counts of its own sources, computed for it; the probes of the host share one count, kept for a few seconds.
+            if (scope is not null)
+            {
+                return _store.Progress(_provider.ModelId, scope);
+            }
+
+            if (_progress is null || Environment.TickCount64 - _progressAt > ProgressKeptTicks / TimeSpan.TicksPerMillisecond)
+            {
+                _progress = _store.Progress(_provider.ModelId);
+                _progressAt = Environment.TickCount64;
+            }
+
+            return _progress;
         }
-        catch (Exception ex) when (ex is SqliteException or IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return null;
         }
@@ -161,4 +214,10 @@ public sealed partial class EmbeddingIndexer : BackgroundService
 
     [LoggerMessage(Level = LogLevel.Error, Message = "A pass of the search by meaning failed; it is tried again.")]
     private partial void LogFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A batch of passages could not be read; they are read one by one.")]
+    private partial void LogBatchFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The passage {ChunkId} cannot be read by the model and is left out until the next start.")]
+    private partial void LogSkipped(long chunkId, Exception exception);
 }

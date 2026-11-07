@@ -63,12 +63,7 @@ public sealed class EmbeddingReportFixture : IDisposable
     [InlineData(EmbeddingState.Off, null, HealthStatus.Healthy)]
     public async Task should_map_what_the_indexer_says_to_a_health_status(EmbeddingState state, string? reason, HealthStatus expected)
     {
-        var provider = state switch
-        {
-            EmbeddingState.Failed => new FakeProvider(new EmbeddingStatus(EmbeddingState.Failed, "no model")),
-            EmbeddingState.Starting => new FakeProvider(null),
-            _ => new FakeProvider(null),
-        };
+        var provider = new FakeProvider(state == EmbeddingState.Failed ? new EmbeddingStatus(EmbeddingState.Failed, "no model") : null);
         var options = state == EmbeddingState.Off ? Options.Create(new EmbeddingOptions()) : Wanted();
 
         var result = await new EmbeddingsHealthCheck(Indexer(provider, new FakeStore(), options)).CheckHealthAsync(new HealthCheckContext(), TestContext.Current.CancellationToken);
@@ -95,19 +90,29 @@ public sealed class EmbeddingReportFixture : IDisposable
     public async Task should_go_on_after_a_pass_that_failed_for_any_reason_and_say_it_without_a_path()
     {
         var provider = new FakeProvider(new EmbeddingStatus(EmbeddingState.Ready));
-        var store = new FakeStore { Missing = [new ChunkToEmbed(1, "a")], FailWith = new IndexOutOfRangeException("/secret/path") };
-        var indexer = Indexer(provider, store, Options.Create(new EmbeddingOptions { ModelFolder = "/model", ExtensionPath = "x", IdleSeconds = 1 }));
-        using var stop = new CancellationTokenSource();
+        var store = new FakeStore { Pending = [new ChunkToEmbed(1, "a")], FailWith = new IndexOutOfRangeException("/secret/path") };
+        var indexer = Indexer(provider, store);
 
-        await indexer.StartAsync(stop.Token);
-        for (var waited = 0; waited < 100 && indexer.Report().State != EmbeddingState.Failed; waited++)
-        {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-        }
+        await indexer.PassAsync(tidy: false, TestContext.Current.CancellationToken);
 
         indexer.Report().Should().Match<EmbeddingReport>(report => report.State == EmbeddingState.Failed && !report.Reason!.Contains("secret", StringComparison.Ordinal));
-        await stop.CancelAsync();
-        await indexer.StopAsync(TestContext.Current.CancellationToken);
+        store.FailWith = null;
+        await indexer.PassAsync(tidy: false, TestContext.Current.CancellationToken);
+        indexer.Report().State.Should().Be(EmbeddingState.Ready, "the next pass that works clears the reason");
+    }
+
+    [Fact]
+    public async Task should_leave_out_a_passage_that_the_model_cannot_read_and_read_the_others()
+    {
+        var provider = new FakeProvider(new EmbeddingStatus(EmbeddingState.Ready)) { Unreadable = "bad" };
+        var store = new FakeStore { Pending = [new ChunkToEmbed(1, "good"), new ChunkToEmbed(2, "bad"), new ChunkToEmbed(3, "also good")] };
+        var indexer = Indexer(provider, store);
+
+        var computed = await indexer.RunAsync(TestContext.Current.CancellationToken);
+
+        computed.Should().Be(2);
+        store.Saved.Should().BeEquivalentTo([1L, 3L]);
+        (await indexer.RunAsync(TestContext.Current.CancellationToken)).Should().Be(0, "the passage that failed is not tried at every pass");
     }
 
     [Theory]
@@ -161,6 +166,10 @@ public sealed class EmbeddingReportFixture : IDisposable
 
         public bool QueryFails { get; set; }
 
+        public string? Unreadable { get; set; }
+
+        public int LastQueryLength { get; private set; }
+
         public string ModelId => "fake";
 
         public int Dimension => 2;
@@ -175,18 +184,31 @@ public sealed class EmbeddingReportFixture : IDisposable
             return known ?? new EmbeddingStatus(EmbeddingState.Ready);
         }
 
-        public float[] EmbedQuery(string text) => QueryFails ? throw new EmbeddingException("on purpose") : [1f, 0f];
+        public float[] EmbedQuery(string text)
+        {
+            LastQueryLength = text.Length;
+            return QueryFails ? throw new EmbeddingException("on purpose") : [1f, 0f];
+        }
 
-        public IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts) => [.. texts.Select(_ => new[] { 1f, 0f })];
+        public IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts) =>
+            texts.Contains(Unreadable) ? throw new EmbeddingException("cannot read") : [.. texts.Select(_ => new[] { 1f, 0f })];
     }
 
     private sealed class FakeStore : IVectorStore
     {
+        private readonly HashSet<long> _done = [];
+
         public EmbeddingProgress Progress { get; set; } = new(0, 0);
 
-        public IReadOnlyList<ChunkToEmbed> Missing { get; set; } = [];
+        public IReadOnlyList<ChunkToEmbed> Pending { get; set; } = [];
+
+        public IReadOnlyList<VectorMatch> Matches { get; set; } = [];
+
+        public List<long> Saved { get; } = [];
 
         public Exception? FailWith { get; set; }
+
+        public Exception? NearestFails { get; set; }
 
         public bool TryPrepare(out string? reason)
         {
@@ -194,15 +216,21 @@ public sealed class EmbeddingReportFixture : IDisposable
             return true;
         }
 
-        IReadOnlyList<ChunkToEmbed> IVectorStore.Missing(string model, int limit) => FailWith is { } failure ? throw failure : Missing;
+        public IReadOnlyList<ChunkToEmbed> Missing(string model, int limit, IReadOnlySet<long> skipped) =>
+            FailWith is { } failure ? throw failure : [.. Pending.Where(chunk => !_done.Contains(chunk.ChunkId) && !skipped.Contains(chunk.ChunkId)).Take(limit)];
 
         public void Save(string model, int dimension, IReadOnlyList<(long ChunkId, float[] Vector)> items)
         {
+            foreach (var (chunkId, _) in items)
+            {
+                _done.Add(chunkId);
+                Saved.Add(chunkId);
+            }
         }
 
-        public IReadOnlyList<VectorMatch> Nearest(string model, int dimension, float[] query, int k) => [];
+        public IReadOnlyList<VectorMatch> Nearest(string model, int dimension, float[] query, int k) => NearestFails is { } failure ? throw failure : Matches;
 
-        EmbeddingProgress IVectorStore.Progress(string model) => Progress;
+        EmbeddingProgress IVectorStore.Progress(string model, SourceScope? scope) => Progress;
 
         public void Tidy(string model, int dimension)
         {

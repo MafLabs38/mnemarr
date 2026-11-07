@@ -21,7 +21,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     private readonly Lock _run = new();
     private readonly TimeProvider _clock;
     private volatile EmbeddingStatus? _status;
-    private DateTimeOffset _failedAt;
+    private DateTimeOffset _checkedAt;
     private InferenceSession? _session;
     private ByteLevelBpeTokenizer? _tokenizer;
 
@@ -56,7 +56,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             if (_status is not { } current || RetryDue(current))
             {
                 var loaded = Load();
-                _failedAt = _clock.GetUtcNow();
+                _checkedAt = _clock.GetUtcNow();
                 _status = loaded;
             }
 
@@ -98,7 +98,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     }
 
     // A model that could not be loaded is tried again after a while: a volume that was mounted late, a file that was put back.
-    private bool RetryDue(EmbeddingStatus status) => status.State == EmbeddingState.Failed && _clock.GetUtcNow() - _failedAt >= RetryAfter;
+    private bool RetryDue(EmbeddingStatus status) => status.State == EmbeddingState.Failed && _clock.GetUtcNow() - _checkedAt >= RetryAfter;
 
     private EmbeddingStatus Load()
     {
@@ -151,8 +151,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
         {
             return Compute(texts);
         }
-        catch (OnnxRuntimeException ex)
+        catch (Exception ex) when (ex is OnnxRuntimeException or System.Text.RegularExpressions.RegexMatchTimeoutException or ArgumentException or KeyNotFoundException)
         {
+            // The engine and the tokenizer fail in their own ways; the callers know one.
             throw new EmbeddingException("The model failed to read a passage.", ex);
         }
     }

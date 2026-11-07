@@ -14,7 +14,7 @@ interface ApiQueryOptions<T> {
 /** Server data goes through here, never through a direct `fetch` in a component. */
 export function useApiQuery<T>(path: string, options: ApiQueryOptions<T> = {}) {
   const { refetchInterval, ...rest } = options;
-  return useQuery({
+  return useQuery<T>({
     queryKey: ['api', path],
     queryFn: ({ signal }) => apiGet<T>(path, signal),
     ...rest,

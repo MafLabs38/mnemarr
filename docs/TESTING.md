@@ -58,3 +58,5 @@ MNEMARR_TEST_MODEL=$PWD/.cache/model MNEMARR_TEST_VECTOR_LIBRARY=$PWD/.cache/vec
 ```
 
 The CI fetches them (the model is cached between runs). `reference.json` holds what the tools of the model's authors give for a few texts; `reference.py` makes it again.
+
+On a default `dotnet test` without those files these tests are skipped, and only the CI runs them: look for them in the list of tests that ran, not skipped, when you touch the search.

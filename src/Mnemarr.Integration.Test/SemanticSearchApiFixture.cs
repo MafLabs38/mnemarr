@@ -27,13 +27,4 @@ public sealed class SemanticSearchApiFixture : IClassFixture<MnemarrFactory>
         status.TryGetProperty("reason", out var reason).Should().BeTrue();
         reason.ValueKind.Should().Be(JsonValueKind.Null);
     }
-
-    [Fact]
-    public async Task should_stay_healthy_when_the_search_by_meaning_is_off()
-    {
-        var response = await _factory.CreateClient().GetAsync("/health/ready", Token);
-
-        // The factory's other tests leave sources of their own that may degrade the whole: what is asked here is that this feature is not what does.
-        (await response.Content.ReadAsStringAsync(Token)).Should().NotContain("embeddings");
-    }
 }

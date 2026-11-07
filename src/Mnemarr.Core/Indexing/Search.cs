@@ -3,7 +3,11 @@ using System.Text.RegularExpressions;
 namespace Mnemarr.Core.Indexing;
 
 /// <summary>What is asked of a search: words, and optionally one source and one topic (the first folder of a note).</summary>
-public sealed record SearchRequest(string Query, Guid? SourceId = null, string? Topic = null, int Limit = 10);
+public sealed record SearchRequest(string Query, Guid? SourceId = null, string? Topic = null, int Limit = 10)
+{
+    /// <summary>The most hits a search gives, and the longest list that the index gives for one question: the search by meaning merges lists of this length.</summary>
+    public const int MaxLimit = 50;
+}
 
 /// <summary>A chunk that matches, with where it comes from. A higher score is a better match.</summary>
 public sealed record SearchHit(

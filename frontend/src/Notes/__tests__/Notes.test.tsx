@@ -557,6 +557,16 @@ describe('Notes', () => {
       expect(within(region).queryByText(/catching up/)).not.toBeInTheDocument();
     });
 
+    it('shows no banner and still searches when the state of the search by meaning cannot be read', async () => {
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { status: 500 } : answerSearch(path)));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+
+      const region = await search('couches');
+
+      expect(await within(region).findByRole('link', { name: 'Docker' })).toBeInTheDocument();
+      expect(within(region).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('tells a person that the search is by words only when the model cannot be loaded', async () => {
       const status = {
         state: 'failed',

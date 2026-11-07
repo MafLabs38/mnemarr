@@ -127,7 +127,8 @@ public sealed class ByteLevelBpeTokenizerFixture : IDisposable
         var ids = subject.Encode(new string('a', 4_000_000), 512);
 
         ids.Length.Should().BeLessThanOrEqualTo(512);
-        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2), "a query of any length must not hold a core (the pieces are cut and the text is read as far as the model reads)");
+        // Without the bounds this is minutes of one core: the margin is wide on purpose, so that a loaded runner does not turn it red.
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10), "a query of any length must not hold a core (the pieces are cut and the text is read as far as the model reads)");
     }
 
     [Fact]

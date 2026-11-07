@@ -16,16 +16,17 @@ RUN yarn build
 
 # The search by meaning (ADR 0034): the vector library for the target architecture and the model, each fetched at a pinned version and verified by checksum.
 FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS native
-ARG TARGETARCH
 RUN apk add --no-cache bash curl
 COPY tools/native /tools/native
+# The model is the same for every architecture and the largest download: it comes before the architecture, so that a multi-architecture build has one layer of it.
+RUN /tools/native/fetch-model.sh /out/models/granite-embedding-97m-multilingual-r2
+ARG TARGETARCH
 RUN case "${TARGETARCH}" in \
       amd64) system=linux-x86_64 ;; \
       arm64) system=linux-aarch64 ;; \
       *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
-    && /tools/native/fetch-vector-library.sh "$system" /out/sqlite-vec \
-    && /tools/native/fetch-model.sh /out/models/granite-embedding-97m-multilingual-r2
+    && /tools/native/fetch-vector-library.sh "$system" /out/sqlite-vec
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS backend
 ARG VERSION=0.0.0-dev
