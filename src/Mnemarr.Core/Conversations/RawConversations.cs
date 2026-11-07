@@ -121,14 +121,22 @@ public sealed class RawConversations
         }
     }
 
-    /// <summary>Files the lines of a conversation under another machine. Nothing is done when there are none, or when the other machine holds this session already.</summary>
+    /// <summary>
+    /// Files the lines of a conversation under another machine. Nothing is done when there are none. Lines under both names are not for this code to choose
+    /// between (a move that was stopped half way is finished by running it again, which finds them under the new name only): it says so, and nothing moves.
+    /// </summary>
     public void Move(string machine, string session, string toMachine)
     {
         var from = FolderOf(machine, session);
         var to = FolderOf(toMachine, session);
-        if (!Directory.Exists(from) || Directory.Exists(to))
+        if (!Directory.Exists(from))
         {
             return;
+        }
+
+        if (Directory.Exists(to))
+        {
+            throw new IOException($"The lines of conversation {session} are kept under {machine} and under {toMachine}: nothing was moved.");
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(to)!);

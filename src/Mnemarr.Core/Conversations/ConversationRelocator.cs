@@ -149,12 +149,14 @@ public sealed class ConversationRelocator
             Drop(source, existing);
         }
 
-        var turns = ConversationFormats.Turns(conversation.Format, _raw.Read(conversation.Machine, conversation.Session, conversation.Lines));
+        // The lines move first (and say so when they are kept under both names, before anything is written): a move that is stopped after this is finished by
+        // running it again, which finds them under the new name, where they are read from.
+        _raw.Move(conversation.Machine, conversation.Session, to);
+        var turns = ConversationFormats.Turns(conversation.Format, _raw.Read(to, conversation.Session, conversation.Lines));
         var title = conversation.Title ?? ConversationMarkdown.Title(turns, conversation.Session);
         var path = ConversationMarkdown.NotePath(to, conversation.Application, conversation.StartedAt, conversation.Session);
         var heading = new ConversationHeading(conversation.Format, to, conversation.Application, conversation.Session, conversation.StartedAt);
         var bytes = NoteFiles.Write(source, path, ConversationMarkdown.Render(heading, turns, title, conversation.Summary));
-        _raw.Move(conversation.Machine, conversation.Session, to);
         _store.Move(conversation.Machine, conversation.Session, to, path, bytes);
         RemoveNote(source, conversation.NotePath);
         await _indexer.IndexNoteAsync(source, path, cancellationToken);

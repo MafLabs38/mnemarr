@@ -220,4 +220,35 @@ public sealed class ConversationRelocatorFixture : IDisposable
         moved.Should().Be(new Relocation(0, 1), "equal copies: the target's stays");
         _store.OfSession("aaaa1111").Should().ContainSingle().Which.Machine.Should().Be("pc");
     }
+
+    [Fact]
+    public async Task should_finish_a_move_that_was_stopped_after_the_lines_were_moved_without_losing_the_note()
+    {
+        Enrol("pc");
+        await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, Talk), Token);
+        Directory.CreateDirectory(RawOf("pc"));
+        Directory.Move(Path.Combine(RawOf("old-name"), "aaaa1111"), Path.Combine(RawOf("pc"), "aaaa1111"));
+
+        var moved = await _relocator.MoveAllAsync("old-name", "pc", Token);
+
+        moved.Should().Be(new Relocation(1, 0));
+        var note = Directory.EnumerateFiles(NotesOf("pc"), "*.md", SearchOption.AllDirectories).Single();
+        File.ReadAllText(note).Should().Contain("revoke the old key", "the note was written again from the lines, wherever they were");
+        _store.OfMachine("old-name").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task should_stop_and_move_nothing_when_the_lines_are_kept_under_both_names()
+    {
+        Enrol("pc");
+        await _ingestor.IngestAsync(Batch("old-name", "aaaa1111", 0, Talk), Token);
+        Directory.CreateDirectory(Path.Combine(RawOf("pc"), "aaaa1111"));
+
+        var act = () => _relocator.MoveAllAsync("old-name", "pc", Token);
+
+        await act.Should().ThrowAsync<IOException>();
+        _store.OfMachine("old-name").Should().ContainSingle("the row did not move to lines that are not its own");
+        Directory.Exists(NotesOf("pc")).Should().BeFalse("nothing was written before it stopped");
+        Directory.Exists(Path.Combine(RawOf("old-name"), "aaaa1111")).Should().BeTrue();
+    }
 }
