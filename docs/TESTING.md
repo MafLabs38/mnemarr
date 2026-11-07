@@ -46,3 +46,15 @@ Later levels (Testcontainers for external services, a recorded fixture of the as
 ## 5. Running the tests
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md#development-setup) for the commands, including the container-based way for a small machine.
+
+### The tests that need the model
+
+The search by meaning is also tried with the **real model, the real vector library and real notes** (`ModelReferenceFixture`, `SemanticSearchFixture`, `RealModelSearchFixture`). They need files that are not in the repository, and say that they skipped when they are not given:
+
+```sh
+tools/native/fetch-model.sh .cache/model                      # 390 MB, checked by checksum
+tools/native/fetch-vector-library.sh linux-x86_64 .cache/vec
+MNEMARR_TEST_MODEL=$PWD/.cache/model MNEMARR_TEST_VECTOR_LIBRARY=$PWD/.cache/vec/vec0.so MNEMARR_TEST_DOCS=$PWD/docs dotnet test src/Mnemarr.Core.Test
+```
+
+The CI fetches them (the model is cached between runs). `reference.json` holds what the tools of the model's authors give for a few texts; `reference.py` makes it again.

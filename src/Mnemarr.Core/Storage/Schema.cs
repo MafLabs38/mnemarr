@@ -227,6 +227,14 @@ public static class Schema
         """
         ALTER TABLE machines ADD COLUMN update_note TEXT;
         """,
+        // 17: which model computed the vector of a chunk (ADR 0034): a chunk that goes takes its row with it, and a chunk with no row, or a row of another model, is computed again.
+        """
+        CREATE TABLE chunk_embeddings (
+            chunk_id INTEGER NOT NULL PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
+            model TEXT NOT NULL
+        );
+        CREATE INDEX chunk_embeddings_by_model ON chunk_embeddings (model);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

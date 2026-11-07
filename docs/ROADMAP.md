@@ -104,7 +104,7 @@
 
 *Demo: ask with other words than the note's and still find it.*
 
-- Embeddings computed locally, vectors in `sqlite-vec`, hybrid with the keyword search (ADR 0012).
+- Embeddings computed locally, vectors in `sqlite-vec`, hybrid with the keyword search (ADR 0012). **Built** ([ADR 0034](adr/0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md)): the model and the library are in the image, the passages are computed in the background, search merges words and meaning, and the notes page says where it is. Follow-ups: another model (`multilingual-e5-small`), vectors for titles alone, a bigger evaluation on conversations, the health page of F-HLT-01.
 
 ## Not now
 

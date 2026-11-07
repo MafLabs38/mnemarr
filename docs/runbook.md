@@ -36,6 +36,16 @@ page offers none. A machine that sends over plain `http://` is told on its row w
 
 If an update does not happen: `mnemarr-collector status` on the machine says where it is at (`updates:`), and `mnemarr-collector update` asks now and says why it cannot (not installed with the installer, no Mnemarr reachable over HTTPS, nothing newer).
 
+## The search by meaning
+
+Mnemarr also searches by meaning, with a model that runs on this host (the image carries it; [configuration](configuration.md)). Nothing leaves the host.
+
+- **Is it working?** The notes page says nothing when it is up to date, *The search by meaning is catching up: X of Y passages are read* while it reads, and why when it does not work. `GET /api/v1/search/status` says the same (`off`, `ready` or `failed`).
+- **The first start over a long history is slow** (about ten passages a second on two threads): the search works by words meanwhile, and by meaning for the passages that are read. It resumes after a restart; it does not start over.
+- **`degraded` with `embeddings-failing`**: the reason is in the log and on the notes page: the model files do not match what is pinned (an image that was altered, a folder that was swapped), the library cannot be loaded, or the data folder is full. The search goes on by words.
+- **To change the model or its settings**, set the variables of the configuration; a change of model reads every passage again in the background.
+- It uses about 1 GB of memory and two CPU threads while it reads. Lower `MNEMARR__EMBEDDINGS__THREADS` on a small host, or leave `MNEMARR__EMBEDDINGS__MODELFOLDER` empty to turn it off.
+
 ## Take a machine away, or change its key
 
 **Uninstall the collector from a computer**: *Settings, Apps, Mnemarr collector, Uninstall* (it keeps its keys and positions, so that installing again finds them). To forget everything on that computer, also delete the folder `%APPDATA%\mnemarr-collector` and, in Mnemarr, revoke the machine below.

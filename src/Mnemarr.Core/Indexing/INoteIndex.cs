@@ -14,6 +14,16 @@ public sealed record NoteState(string ContentHash, int Chunker, long Length = 0,
 /// <summary>A note as it is stored: its title, the hash of the content it was cut from, the version of the chunker that cut it, its chunks, and its links and tags.</summary>
 public sealed record IndexedNote(string Title, string ContentHash, int Chunker, IReadOnlyList<Chunk> Chunks, NoteMeta Meta, int MetaVersion);
 
+/// <summary>The chunks that the vector store found, as hits: the ones the caller may see, under the filters of the question.</summary>
+public interface IChunkHits
+{
+    /// <summary>
+    /// The chunks of the list that have a vector of the model and that pass the scope and the filters of the request, with the start of their text as the snippet.
+    /// The order is not the one of the list: the caller keeps its own.
+    /// </summary>
+    IReadOnlyList<SearchHit> Chunks(IReadOnlyCollection<long> chunkIds, SearchRequest request, SourceScope scope, string model);
+}
+
 /// <summary>The notes of the sources, cut into chunks, with their full-text index.</summary>
 public interface INoteIndex
 {

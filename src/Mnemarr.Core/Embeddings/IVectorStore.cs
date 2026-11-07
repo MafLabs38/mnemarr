@@ -1,0 +1,34 @@
+namespace Mnemarr.Core.Embeddings;
+
+/// <summary>A chunk to compute: its identifier and the text the model reads.</summary>
+public sealed record ChunkToEmbed(long ChunkId, string Text);
+
+/// <summary>A chunk near the question: smaller is nearer (the cosine distance).</summary>
+public sealed record VectorMatch(long ChunkId, double Distance);
+
+/// <summary>How much of the index is computed for a model: the chunks that exist, and the ones that have a vector.</summary>
+public sealed record EmbeddingProgress(int Chunks, int Embedded);
+
+/// <summary>
+/// Keeps the vectors of the chunks and finds the nearest ones (D-25, ADR 0009). The store is keyed by (model, dimension): one table per model, so that a change of
+/// model fills the next while the old one still answers. The implementation is <c>sqlite-vec</c> inside the database.
+/// </summary>
+public interface IVectorStore
+{
+    /// <summary>Whether the vectors can be kept and searched; when they cannot, why (the library could not be loaded).</summary>
+    bool TryPrepare(out string? reason);
+
+    /// <summary>The chunks that have no vector of this model yet (or have one of another model), oldest first.</summary>
+    IReadOnlyList<ChunkToEmbed> Missing(string model, int limit);
+
+    /// <summary>Keeps the vectors. A chunk that was replaced meanwhile is skipped, not an error.</summary>
+    void Save(string model, int dimension, IReadOnlyList<(long ChunkId, float[] Vector)> items);
+
+    /// <summary>The <paramref name="k"/> nearest chunks to a vector of the model, nearest first.</summary>
+    IReadOnlyList<VectorMatch> Nearest(string model, int dimension, float[] query, int k);
+
+    EmbeddingProgress Progress(string model);
+
+    /// <summary>Forgets the vectors of chunks that are gone, and the tables of models nothing uses any more.</summary>
+    void Tidy(string model, int dimension);
+}

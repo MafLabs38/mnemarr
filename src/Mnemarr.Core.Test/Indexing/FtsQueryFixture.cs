@@ -10,6 +10,14 @@ public sealed class FtsQueryFixture
         FtsQuery.From("kubernetes ingress").Should().Be("\"kubernetes\" OR \"ingress\"");
     }
 
+    [Fact]
+    public void should_leave_out_the_small_words_of_a_question_unless_it_is_made_only_of_them()
+    {
+        FtsQuery.From("comment sauvegarder la base de données ?").Should().Be("\"sauvegarder\" OR \"base\" OR \"données\"");
+        FtsQuery.From("how do I back up the database").Should().Be("\"back\" OR \"up\" OR \"database\"");
+        FtsQuery.From("what is it").Should().Be("\"what\" OR \"is\" OR \"it\"");
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
@@ -22,7 +30,8 @@ public sealed class FtsQueryFixture
     [Fact]
     public void should_never_let_the_syntax_of_the_full_text_engine_through()
     {
-        FtsQuery.From("name:\"x\" NEAR(a b) -c* OR 1=1").Should().Be("\"name\" OR \"x\" OR \"NEAR\" OR \"a\" OR \"b\" OR \"c\" OR \"OR\" OR \"1\"");
+        // The operators and the small words are plain words, and the small ones (a, OR) are left out.
+        FtsQuery.From("name:\"x\" NEAR(a b) -c* OR 1=1").Should().Be("\"name\" OR \"x\" OR \"NEAR\" OR \"b\" OR \"c\" OR \"1\"");
     }
 
     [Fact]

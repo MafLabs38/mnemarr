@@ -165,6 +165,23 @@ export interface SearchHit {
   heading: string;
   snippet: string;
   score: number;
+  /** Why it is in the answer: it holds the words, it means what was asked, or both. */
+  match: 'keywords' | 'meaning' | 'both';
+}
+
+export interface SemanticSearchState {
+  state: 'off' | 'starting' | 'ready' | 'failed';
+  model: string;
+  passages: number;
+  computed: number;
+  reason: string | null;
+}
+
+const SEMANTIC_REFRESH_MS = 5000;
+
+/** Where the search by meaning is at: while the passages are computed, the page asks again. */
+export function useSemanticSearchState() {
+  return useApiQuery<SemanticSearchState>('/search/status', { refetchInterval: SEMANTIC_REFRESH_MS });
 }
 
 /** The best matching chunks of the notes. Nothing is asked while there is nothing to look for. */

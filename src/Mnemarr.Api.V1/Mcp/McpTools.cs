@@ -38,19 +38,19 @@ public sealed class McpTools
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly SourceCatalog _catalog;
-    private readonly INoteIndex _index;
+    private readonly NoteSearch _search;
     private readonly NoteReader _reader;
     private readonly NoteWriter _writer;
     private readonly IOptions<McpOptions> _options;
     private readonly EnrolmentService _enrolments;
     private readonly InstallCommands _installs;
 
-    public McpTools(SourceCatalog catalog, INoteIndex index, NoteReader reader, NoteWriter writer, IOptions<McpOptions> options, EnrolmentService enrolments, InstallCommands installs)
+    public McpTools(SourceCatalog catalog, NoteSearch search, NoteReader reader, NoteWriter writer, IOptions<McpOptions> options, EnrolmentService enrolments, InstallCommands installs)
     {
+        _search = search;
         _enrolments = enrolments;
         _installs = installs;
         _catalog = catalog;
-        _index = index;
         _reader = reader;
         _writer = writer;
         _options = options;
@@ -59,7 +59,7 @@ public sealed class McpTools
     private static readonly McpTool[] All =
     [
         new("list_sources", "The sources of notes you may use: their name, kind, whether notes can be written in them, and how many notes they hold.", Schema(), Permissions.NotesRead, false),
-        new("search", "Searches the notes by words (any of them; the best matches first). Optionally within one source or one topic (the first folder of a note).",
+        new("search", "Searches the notes by words and, when the host has the model, by meaning (the question may use other words than the note; the best matches first, each with how it matched: keywords, meaning or both). Optionally within one source or one topic (the first folder of a note).",
             Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note.", false), ("limit", "integer", "At most this many hits (1 to 25, default 10).", false)),
             Permissions.Search, false),
         new("list_notes", "Lists notes (source, path, title), of one source or carrying one tag.", Schema(OptionalSourceArg, ("tag", Str, "A tag, without #.", false)), Permissions.NotesRead, false),
@@ -136,14 +136,14 @@ public sealed class McpTools
     private static object DeleteResult(GitPublish? published) => new { removed = true, git = published };
 
     private object ListSources(McpCaller caller) =>
-        _catalog.List(caller.Scope).Select(source => new { name = source.Name, kind = source.Kind.ToString(), writable = NoteRights.Evaluate(source.Kind, source.Mode, caller.Has(Permissions.NotesWrite)).CanWrite, notes = _index.Counts(source.Id).Notes }).ToList();
+        _catalog.List(caller.Scope).Select(source => new { name = source.Name, kind = source.Kind.ToString(), writable = NoteRights.Evaluate(source.Kind, source.Mode, caller.Has(Permissions.NotesWrite)).CanWrite, notes = _search.Counts(source.Id).Notes }).ToList();
 
     private object Search(JsonElement arguments, SourceScope scope)
     {
         var limit = Math.Clamp(Integer(arguments, "limit") ?? 10, 1, 25);
         Guid? source = Optional(arguments, SourceKey) is null ? null : SourceId(arguments, scope);
-        return _index.Search(new SearchRequest(Text(arguments, "query"), source, Optional(arguments, "topic"), limit), scope)
-            .Select(hit => new { source = hit.SourceName, path = hit.Path, title = hit.Title, heading = hit.Heading, snippet = hit.Snippet }).ToList();
+        return _search.Search(new SearchRequest(Text(arguments, "query"), source, Optional(arguments, "topic"), limit), scope)
+            .Select(hit => new { source = hit.SourceName, path = hit.Path, title = hit.Title, heading = hit.Heading, snippet = hit.Snippet, match = hit.Match }).ToList();
     }
 
     private object ListNotes(JsonElement arguments, SourceScope scope)

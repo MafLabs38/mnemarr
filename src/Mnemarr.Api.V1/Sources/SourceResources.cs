@@ -55,8 +55,15 @@ public sealed record IndexReportResource(int Added, int Updated, int Removed, in
 }
 
 /// <summary>A chunk of a note that matches a search, with where it comes from.</summary>
-public sealed record SearchHitResource(Guid SourceId, string SourceName, string Path, string Topic, string Title, string Heading, string Snippet, double Score)
+public sealed record SearchHitResource(Guid SourceId, string SourceName, string Path, string Topic, string Title, string Heading, string Snippet, double Score, string Match)
 {
     public static SearchHitResource From(SearchHit hit) =>
-        new(hit.SourceId, hit.SourceName, hit.Path, hit.Topic, hit.Title, hit.Heading, hit.Snippet, hit.Score);
+        new(hit.SourceId, hit.SourceName, hit.Path, hit.Topic, hit.Title, hit.Heading, hit.Snippet, hit.Score, hit.Match);
+}
+
+/// <summary>The state of the search by meaning (ADR 0034): <c>off</c>, <c>ready</c> or <c>failed</c>, with the model, the passages computed of those that exist, and why it failed.</summary>
+public sealed record SemanticSearchResource(string State, string Model, int Passages, int Computed, string? Reason)
+{
+    public static SemanticSearchResource From(Mnemarr.Core.Embeddings.EmbeddingReport report) =>
+        new(report.State.ToString().ToLowerInvariant(), report.Model, report.Progress?.Chunks ?? 0, report.Progress?.Embedded ?? 0, report.Reason);
 }

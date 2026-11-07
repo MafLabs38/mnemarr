@@ -6,7 +6,7 @@ using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Indexing;
 
-public sealed class SqliteNoteIndex : INoteIndex
+public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
 {
     private const string SourceParameter = "$source";
     private const string PathParameter = "$path";
@@ -17,6 +17,7 @@ public sealed class SqliteNoteIndex : INoteIndex
 
     /// <summary>How many words of a chunk the snippet of a hit shows around the match.</summary>
     private const int SnippetWords = 32;
+    private const int MeaningSnippetLength = 240;
     private readonly IDatabase _database;
 
     public SqliteNoteIndex(IDatabase database)
@@ -228,7 +229,7 @@ public sealed class SqliteNoteIndex : INoteIndex
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT s.id, s.name, n.path, n.topic, n.title, c.heading,
-                   snippet(chunks_fts, 0, '', '', ' … ', $snippetWords), -bm25(chunks_fts)
+                   snippet(chunks_fts, 0, '', '', ' … ', $snippetWords), -bm25(chunks_fts), c.id
             FROM chunks_fts
             JOIN chunks c ON c.id = chunks_fts.rowid
             JOIN notes n ON n.id = c.note_id
@@ -257,7 +258,48 @@ public sealed class SqliteNoteIndex : INoteIndex
         {
             hits.Add(new SearchHit(
                 Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetDouble(7)));
+                reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetDouble(7), reader.GetInt64(8)));
+        }
+
+        return hits;
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<SearchHit> Chunks(IReadOnlyCollection<long> chunkIds, SearchRequest request, SourceScope scope, string model)
+    {
+        if (chunkIds.Count == 0)
+        {
+            return [];
+        }
+
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT s.id, s.name, n.path, n.topic, n.title, c.heading, substr(c.text, 1, $snippetLength), c.id
+            FROM chunks c
+            JOIN chunk_embeddings e ON e.chunk_id = c.id AND e.model = $model
+            JOIN notes n ON n.id = c.note_id
+            JOIN sources s ON s.id = n.source_id
+            WHERE c.id IN (SELECT value FROM json_each($ids))
+              AND ($source IS NULL OR s.id = $source)
+              AND ($topic IS NULL OR n.topic = $topic)
+              AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
+            """;
+        command.Parameters.AddWithValue("$ids", JsonSerializer.Serialize(chunkIds));
+        command.Parameters.AddWithValue("$model", model);
+        command.Parameters.AddWithValue(SourceParameter, request.SourceId?.ToString() ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$topic", request.Topic ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
+        command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
+        command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
+        command.Parameters.AddWithValue("$snippetLength", MeaningSnippetLength);
+        using var reader = command.ExecuteReader();
+        var hits = new List<SearchHit>();
+        while (reader.Read())
+        {
+            hits.Add(new SearchHit(
+                Guid.Parse(reader.GetString(0)), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetString(4), reader.GetString(5), reader.GetString(6), 0, reader.GetInt64(7), SearchMatch.Meaning));
         }
 
         return hits;

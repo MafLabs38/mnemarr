@@ -7,12 +7,29 @@ public sealed record SearchRequest(string Query, Guid? SourceId = null, string? 
 
 /// <summary>A chunk that matches, with where it comes from. A higher score is a better match.</summary>
 public sealed record SearchHit(
-    Guid SourceId, string SourceName, string Path, string Topic, string Title, string Heading, string Snippet, double Score);
+    Guid SourceId, string SourceName, string Path, string Topic, string Title, string Heading, string Snippet, double Score, long ChunkId = 0, string Match = SearchMatch.Keywords);
+
+/// <summary>Why a chunk is in the answer: it holds the words, it means what was asked, or both.</summary>
+public static class SearchMatch
+{
+    public const string Keywords = "keywords";
+    public const string Meaning = "meaning";
+    public const string Both = "both";
+}
 
 /// <summary>Turns what a person typed into a full-text query that cannot be anything but words.</summary>
 internal static partial class FtsQuery
 {
     private const int MaxWords = 16;
+
+    // The small words of a question (French and English) are in nearly every note: as search terms they match everything and bury the notes that answer.
+    private static readonly HashSet<string> SmallWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "le", "la", "les", "un", "une", "des", "du", "de", "d", "l", "et", "ou", "à", "a", "au", "aux", "en", "dans", "sur", "sous", "par", "pour", "avec", "sans", "ce", "cet", "cette",
+        "ces", "mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses", "qui", "que", "quoi", "dont", "où", "est", "sont", "être", "avoir", "il", "elle", "on", "je", "tu", "nous",
+        "vous", "ils", "elles", "ne", "pas", "se", "y", "comment", "pourquoi", "quand", "quel", "quelle", "quels", "quelles", "the", "an", "of", "to", "in", "on", "at", "for", "and",
+        "or", "is", "are", "was", "were", "be", "it", "this", "that", "with", "by", "from", "as", "how", "why", "what", "when", "which", "who", "do", "does", "my", "your", "i",
+    };
 
     [GeneratedRegex(@"[\p{L}\p{N}]+")]
     private static partial Regex Word();
@@ -20,7 +37,10 @@ internal static partial class FtsQuery
     /// <summary>Every word, quoted, any of them: the best matches come first. Null when there is no word to look for.</summary>
     public static string? From(string text)
     {
-        var words = Word().Matches(text).Select(match => $"\"{match.Value}\"").Distinct(StringComparer.Ordinal).Take(MaxWords).ToList();
+        var found = Word().Matches(text).Select(match => match.Value).ToList();
+        // A question made only of small words is searched as it is; otherwise the small words are left out.
+        var meaningful = found.Where(word => !SmallWords.Contains(word)).ToList();
+        var words = (meaningful.Count > 0 ? meaningful : found).Select(word => $"\"{word}\"").Distinct(StringComparer.Ordinal).Take(MaxWords).ToList();
         return words.Count == 0 ? null : string.Join(" OR ", words);
     }
 }

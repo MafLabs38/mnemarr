@@ -312,6 +312,19 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
   });
 
+  test('a question asked in other words finds a note by its meaning, once the model has read it', async ({ page }) => {
+    await signIn(page, '/notes');
+    const search = page.getByRole('region', { name: 'Search' });
+    await search.getByLabel('Search the notes').fill('how is a container template assembled from stacked parts');
+    // The model reads the notes of the stack in the background, a few seconds after the start: the question is asked again until it has.
+    await expect(async () => {
+      await search.getByRole('button', { name: 'Search' }).click();
+      await expect(search.getByText('seeded · docker.md · Docker > Images')).toBeVisible({ timeout: 3000 });
+    }).toPass({ timeout: 120_000 });
+    await expect(search.getByText('matched by its meaning')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+
   test('an operator declares a Git source, is told when the host is not allowed, and sees why a sync failed', async ({
     page,
   }) => {
