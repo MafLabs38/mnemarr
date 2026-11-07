@@ -47,7 +47,7 @@ pub fn open(address: &str) -> bool {
     };
     #[cfg(target_os = "macos")]
     let mut command = {
-        let mut command = Command::new("open");
+        let mut command = Command::new("/usr/bin/open");
         command.arg(address);
         command
     };

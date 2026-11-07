@@ -99,7 +99,7 @@ describe('Managing a machine', () => {
     expect(choices).not.toContain('gone');
     expect(choices).not.toContain('old-name');
     await userEvent.selectOptions(screen.getByLabelText('Merge into'), 'laptop');
-    await userEvent.click(panelOf('old-name').getByRole('button', { name: 'Merge', exact: true }));
+    await userEvent.click(panelOf('old-name').getByRole('button', { name: /^Merge$/ }));
 
     expect(sentBody(called(fetchMock, '/api/v1/collectors/old-name/merge'))).toEqual({ into: 'laptop' });
   });

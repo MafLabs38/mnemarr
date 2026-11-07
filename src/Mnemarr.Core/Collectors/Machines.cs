@@ -88,8 +88,10 @@ public sealed record Machine(
     string? Platform = null,
     string? Program = null);
 
-/// <summary>What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet.</summary>
-/// <summary><paramref name="Platform"/> and <paramref name="Program"/>: the system the collector is for and the hash of the program it runs.</summary>
+/// <summary>
+/// What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet. <paramref name="Platform"/> and <paramref name="Program"/>:
+/// the system the collector is for and the hash of the program it runs. <paramref name="ComputerId"/>: the identifier of its computer.
+/// </summary>
 public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null, string? ComputerId = null);
 
 public enum EnrolmentState
@@ -128,8 +130,7 @@ public sealed record NewEnrolment(Enrolment Enrolment, string Code);
 /// <summary>The machine a key belongs to, under the name it has now, and the identifier of its computer when it has one (what an ingest is filed under).</summary>
 public sealed record Sender(string Machine, string? ComputerId);
 
-/// <summary>What a machine is given when it joins: its key, shown once.</summary>
-/// <summary><paramref name="RenamedFrom"/>: the computer was known under another name, which it now has: its conversations are to be filed under the new one.</summary>
+/// <summary>What a machine is given when it joins: its key (shown once), its name and its kind. <paramref name="RenamedFrom"/>: the computer was known under another name, which it now has: its conversations are to be filed under the new one.</summary>
 public sealed record EnrolledMachine(string Key, string Machine, MachineKind Kind, string? RenamedFrom = null);
 
 /// <summary>A machine as the page tells it: what it is, the state computed from the facts, and what it sent.</summary>

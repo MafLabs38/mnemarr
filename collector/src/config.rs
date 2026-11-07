@@ -166,6 +166,41 @@ pub fn state_dir(get: &dyn Fn(&str) -> Option<String>, home: Option<&PathBuf>) -
 /// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
 /// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
 /// not allowed, or whose key is gone, is left out and the others go on.
+/// Whether a destination can be used: its address is allowed, its machine name is one the server accepts, and its key can be read. The key is given back.
+pub fn check_destination(
+    dir: &std::path::Path,
+    destination: &destinations::Destination,
+) -> Result<String, UsageError> {
+    check_server(&destination.server, destination.insecure)?;
+    if !is_machine_name(&destination.machine) {
+        return Err(UsageError(format!(
+            "'{}' is not a name of machine that the server accepts",
+            destination.machine
+        )));
+    }
+    destinations::key_of(dir, destination).ok_or_else(|| {
+        UsageError(format!(
+            "the key of {} cannot be read: link it again",
+            destination.name
+        ))
+    })
+}
+
+/// What each destination that cannot be used says is wrong with it, by name: one that is left out of the passes is never left out in silence.
+pub fn problems(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+    let Some(dir) = config_dir(options.config_dir.as_deref(), get) else {
+        return Vec::new();
+    };
+    destinations::load(&dir)
+        .iter()
+        .filter_map(|destination| {
+            check_destination(&dir, destination)
+                .err()
+                .map(|error| (destination.name.clone(), error.0))
+        })
+        .collect()
+}
+
 pub fn resolve_all(
     options: &Options,
     get: &dyn Fn(&str) -> Option<String>,
@@ -199,19 +234,7 @@ pub fn resolve_all(
     let mut first_error = None;
     for destination in listed {
         let outcome = (|| {
-            check_server(&destination.server, destination.insecure)?;
-            if !is_machine_name(&destination.machine) {
-                return Err(UsageError(format!(
-                    "'{}' is not a name of machine that the server accepts",
-                    destination.machine
-                )));
-            }
-            let key = destinations::key_of(&dir, &destination).ok_or_else(|| {
-                UsageError(format!(
-                    "the key of {} cannot be read: link it again",
-                    destination.name
-                ))
-            })?;
+            let key = check_destination(&dir, &destination)?;
             let state = match (&options.state, &states) {
                 (Some(path), _) if configs.is_empty() => PathBuf::from(path),
                 (_, Some(folder)) => folder.join(&destination.state_file),

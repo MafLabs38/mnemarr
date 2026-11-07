@@ -50,13 +50,15 @@ function Answer({
       {pairing.knownAs && <Alert>{translate('LinkKnownAs', { name: pairing.knownAs })}</Alert>}
       <p className={styles.hint}>{translate('PairingExpires', { time: formatDateTime(pairing.expiresAt) })}</p>
       {(approve.error ?? reject.error) && <Alert>{(approve.error ?? reject.error)?.message}</Alert>}
-      {shownCode === '' && (
+      {shownCode === '' ? (
         <TextField
           label={translate('LinkCodeOnComputer')}
           onChange={(event) => setCode(event.target.value)}
           required
           value={code}
         />
+      ) : (
+        <Alert>{translate('LinkCheckCode', { code: shownCode })}</Alert>
       )}
       <TextField
         label={translate('LinkName')}

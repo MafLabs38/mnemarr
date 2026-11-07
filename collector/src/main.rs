@@ -227,6 +227,7 @@ fn collect_loop(
     let mut was_paused = false;
     let mut told_none = false;
     let mut last_problem = String::new();
+    let mut told_problems: std::collections::HashSet<String> = std::collections::HashSet::new();
     loop {
         let paused = dir
             .as_deref()
@@ -268,6 +269,13 @@ fn collect_loop(
             Ok(fresh) => {
                 last_problem.clear();
                 configs = fresh;
+                // A destination that is left out while the others go on is said too, once, with the reason.
+                let get = |name: &str| std::env::var(name).ok();
+                for (name, reason) in mnemarr_collector::config::problems(options, &get) {
+                    if told_problems.insert(format!("{name}: {reason}")) {
+                        say(&format!("{name} is left out of the passes: {reason}"));
+                    }
+                }
             }
             Err(error) => {
                 if last_problem != error.0 {
@@ -598,9 +606,13 @@ fn list_destinations(options: &Options) -> ExitCode {
         );
     }
     for destination in listed {
+        let note = match mnemarr_collector::config::check_destination(&dir, &destination) {
+            Ok(_) => String::new(),
+            Err(error) => format!("  (cannot be used: {})", error.0),
+        };
         let _ = writeln!(
             io::stdout(),
-            "{}  {}  as {}",
+            "{}  {}  as {}{note}",
             destination.name,
             destination.server,
             destination.machine

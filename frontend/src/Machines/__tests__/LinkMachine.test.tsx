@@ -45,6 +45,7 @@ describe('LinkMachine', () => {
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
 
     expect(await screen.findByText('Gaming PC')).toBeInTheDocument();
+    expect(screen.getByText(/Check that your computer shows this code: ABCD-EFGH-JKLM/)).toBeInTheDocument();
     expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/lookup')))).toEqual({
       code: 'ABCD-EFGH-JKLM',
     });

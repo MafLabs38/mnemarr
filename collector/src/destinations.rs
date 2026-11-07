@@ -183,6 +183,19 @@ pub fn key_of(dir: &Path, destination: &Destination) -> Option<String> {
 
 /// Links a destination: its key is kept where only this user reads it, and the list is written. A Mnemarr that is already in the list (the same address)
 /// is replaced, keeping its name and its positions: it is the same destination with a new key. Another one with the same name gets a number.
+/// The list as it is, or an error when the file is there and cannot be read as a list: a change must never write over a list that only needs mending by hand.
+fn load_for_change(dir: &Path) -> io::Result<Vec<Destination>> {
+    match fs::read_to_string(dir.join(FILE)) {
+        Ok(text) if serde_json::from_str::<Value>(&text).is_err() => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "{FILE} cannot be read (is it edited by hand?): mend it or move it away, and nothing is written over it"
+            ),
+        )),
+        _ => Ok(load(dir)),
+    }
+}
+
 pub fn add(
     dir: &Path,
     server: &str,
@@ -192,7 +205,7 @@ pub fn add(
     key: &str,
 ) -> io::Result<Destination> {
     fs::create_dir_all(dir)?;
-    let mut list = load(dir);
+    let mut list = load_for_change(dir)?;
     let server = server.trim_end_matches('/').to_string();
     let chosen = if let Some(position) = list
         .iter()
@@ -231,7 +244,7 @@ pub fn add(
 
 /// Takes a destination away, with its key. What it already received stays there. True when there was one of that name.
 pub fn remove(dir: &Path, name: &str) -> io::Result<bool> {
-    let mut list = load(dir);
+    let mut list = load_for_change(dir)?;
     let Some(position) = list.iter().position(|existing| existing.name == name) else {
         return Ok(false);
     };
@@ -416,5 +429,23 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o077, 0);
+    }
+
+    #[test]
+    fn should_not_write_over_a_list_that_cannot_be_read() {
+        let dir = std::env::temp_dir().join(format!("mnemarr-broken-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(FILE), "{ this is not json").unwrap();
+
+        let added = add(&dir, "https://m.example", "pc", false, None, "k");
+        let removed = remove(&dir, "m.example");
+
+        assert!(added.is_err() && removed.is_err());
+        assert_eq!(
+            fs::read_to_string(dir.join(FILE)).unwrap(),
+            "{ this is not json"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }

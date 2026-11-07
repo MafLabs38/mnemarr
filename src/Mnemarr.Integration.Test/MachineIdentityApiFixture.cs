@@ -322,4 +322,42 @@ public sealed class MachineIdentityApiFixture : EnrolmentFixtureBase, IClassFixt
         (await callers.Admin.PostAsJsonAsync($"/api/v1/collectors/{ghost}/merge", new { into = revoked }, Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await ConversationsOfAsync(callers.Admin, ghost)).Should().Be(1, "nothing was moved");
     }
+
+    [Fact]
+    public async Task should_let_only_those_who_manage_the_collectors_rename_merge_remove_or_delete_a_machine()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        var other = Callers.Unique("other");
+        using var client = await JoinAsync(callers.Admin, machine);
+        await JoinAsync(callers.Admin, other);
+        (await client.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(machine, "s1", Line("hello there my friend")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        foreach (var role in new[] { "Reader", "Operator", "Assistant" })
+        {
+            (await callers[role].PostAsJsonAsync($"/api/v1/collectors/{machine}/rename", new { name = Callers.Unique("new") }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+            (await callers[role].PostAsJsonAsync($"/api/v1/collectors/{machine}/merge", new { into = other }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+            (await callers[role].PostAsync($"/api/v1/collectors/{machine}/remove", null, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+            (await callers[role].PostAsync($"/api/v1/collectors/{machine}/erase", null, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden, role);
+        }
+
+        (await ConversationsOfAsync(callers.Admin, machine)).Should().Be(1, "nothing was changed by those who may not");
+    }
+
+    [Theory]
+    [InlineData("../escape")]
+    [InlineData("a/b")]
+    [InlineData("with space")]
+    [InlineData(".hidden")]
+    public async Task should_refuse_a_new_name_that_could_be_a_path(string name)
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        using var client = await JoinAsync(callers.Admin, machine);
+
+        var renamed = await callers.Admin.PostAsJsonAsync($"/api/v1/collectors/{machine}/rename", new { name }, Token);
+
+        renamed.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ListsAsync(callers.Admin, machine)).Should().BeTrue("the machine kept its name");
+    }
 }
