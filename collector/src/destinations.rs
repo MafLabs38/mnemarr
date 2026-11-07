@@ -242,6 +242,15 @@ pub fn add(
     Ok(chosen)
 }
 
+/// What this computer was called in that Mnemarr the last time it was linked to it (the address is the same), if it ever was. Linking again, it suggests that
+/// name rather than its host name, so that it is the same machine again and not a second one.
+pub fn machine_known_at(dir: &Path, server: &str) -> Option<String> {
+    load(dir)
+        .into_iter()
+        .find(|existing| same_server(&existing.server, server))
+        .map(|existing| existing.machine)
+}
+
 /// Takes a destination away, with its key. What it already received stays there. True when there was one of that name.
 pub fn remove(dir: &Path, name: &str) -> io::Result<bool> {
     let mut list = load_for_change(dir)?;
@@ -265,6 +274,27 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn should_remember_what_this_computer_was_called_in_a_mnemarr_it_is_linked_to_again() {
+        let dir = folder("known");
+        assert_eq!(machine_known_at(&dir, "https://mnemarr.example"), None);
+        add(
+            &dir,
+            "https://mnemarr.example",
+            "gaming-pc",
+            false,
+            None,
+            "key",
+        )
+        .unwrap();
+        assert_eq!(
+            machine_known_at(&dir, "https://mnemarr.example/").as_deref(),
+            Some("gaming-pc")
+        );
+        assert_eq!(machine_known_at(&dir, "https://other.example"), None);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

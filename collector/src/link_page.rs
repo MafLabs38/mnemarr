@@ -343,7 +343,7 @@ impl Page {
             Progress::Idle => "<p>Nothing was asked. <a href=\"./\">Start</a></p>".to_string(),
             Progress::Asking => "<p>Asking Mnemarr…</p>".to_string(),
             Progress::Waiting { code, address } => format!(
-                "<p>Waiting for you to approve this computer in Mnemarr. A page was opened in your browser; if not, open <a href=\"{0}\">{0}</a>.</p><p>The code it shows: <code>{1}</code></p>",
+                "<p>Waiting for you to approve this computer in Mnemarr. A page was opened in your browser; if not, open <a href=\"{0}\">{0}</a>.</p><p>Mnemarr asks you to type this code, to be sure that the request is this computer's: <strong><code>{1}</code></strong></p>",
                 escape(&address),
                 escape(&code)
             ),
@@ -385,7 +385,9 @@ impl Page {
         self.set(Progress::Asking);
         let progress = self.progress.clone();
         let dir = self.environment.dir.clone();
-        let hostname = self.environment.hostname.clone();
+        // A computer that was linked to this Mnemarr before suggests the name it had there, so that it is the same machine again and not a second one.
+        let hostname = destinations::machine_known_at(&dir, &server)
+            .unwrap_or_else(|| self.environment.hostname.clone());
         let open = self.environment.open.clone();
         let wait = self.environment.wait.clone();
         thread::spawn(move || {

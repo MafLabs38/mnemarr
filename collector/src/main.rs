@@ -591,6 +591,7 @@ fn link(options: &LinkOptions) -> ExitCode {
         .machine
         .clone()
         .or_else(|| get("MNEMARR_MACHINE"))
+        .or_else(|| destinations::machine_known_at(&dir, &server))
         .or_else(|| default_machine(&get, &read))
         .unwrap_or_else(|| "this computer".to_string());
     let show = |request: &enrol::PairingRequest| {
