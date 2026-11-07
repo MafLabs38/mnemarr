@@ -232,16 +232,21 @@ pub enum Installed {
     RunningOnly(String),
 }
 
+/// Puts the entry that starts the collector with a Windows session in the list of the user, without starting it now. True when Windows took it.
+pub fn register(exe: &Path, custom_dir: Option<&str>) -> io::Result<bool> {
+    let value = run_key_value(exe, custom_dir);
+    let added = Command::new("reg")
+        .args([
+            "add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d", &value, "/f",
+        ])
+        .output()?;
+    Ok(added.status.success())
+}
+
 /// Has the collector start with the session of the user, and starts it now.
 pub fn install(dir: &Path, exe: &Path, custom_dir: Option<&str>) -> io::Result<Installed> {
     if cfg!(windows) {
-        let value = run_key_value(exe, custom_dir);
-        let added = Command::new("reg")
-            .args([
-                "add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d", &value, "/f",
-            ])
-            .output()?;
-        if !added.status.success() {
+        if !register(exe, custom_dir)? {
             return Ok(Installed::RunningOnly(
                 "Windows did not take the entry that starts it with your session".to_string(),
             ));

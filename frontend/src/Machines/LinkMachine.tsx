@@ -38,12 +38,20 @@ function NameTaken({ name, knownAs }: Readonly<{ name: string; knownAs: string |
 }
 
 /** The person says who the computer is for this Mnemarr: the name it will have here and whether it is always on, or refuses it. */
-function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (outcome: Outcome) => void }>) {
-  // The code is typed from the screen of the computer, always, even when the person came by the link the computer opened: a link that anybody can make carries a
-  // code too, and only reading the code on the computer proves that this request is the one in front of the person.
-  const [code, setCode] = useState('');
+function Answer({
+  pairing,
+  linkedCode,
+  onDone,
+}: Readonly<{ pairing: PairingItem; linkedCode: string; onDone: (outcome: Outcome) => void }>) {
+  // The code is in the address the computer opened, and is filled in from it. A person who comes from the list of requests types it from the screen of the
+  // computer. The person still reads the name the computer gives itself, below, and decides.
+  const [code, setCode] = useState(linkedCode);
   const [typed, setTyped] = useState(() => pairing.knownAs ?? machineNameFor(pairing.hostname));
   const [kind, setKind] = useState<MachineKindName>('intermittent');
+  // A computer that says it is a machine that already joined takes that machine over: nothing proves it, and the address that opened this page can be anybody's,
+  // so the person writes the name of that machine to say they mean it.
+  const [takeOver, setTakeOver] = useState('');
+  const takeOverConfirmed = pairing.knownAs === null || takeOver.trim() === pairing.knownAs;
   const approve = useApprovePairing();
   const reject = useRejectPairing();
   const name = machineNameFor(typed);
@@ -53,7 +61,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
   function submit(event: FormEvent) {
     event.preventDefault();
     approve.mutate(
-      { id: pairing.id, machine: name, kind, code },
+      { id: pairing.id, machine: name, kind, code, takeOver },
       { onSuccess: () => onDone({ kind: 'linked', name }) },
     );
   }
@@ -65,6 +73,14 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
         {translate('LinkHostname')}: <strong>{pairing.hostname}</strong>
       </p>
       {pairing.knownAs && <Alert>{translate('LinkKnownAs', { name: pairing.knownAs })}</Alert>}
+      {pairing.knownAs && (
+        <TextField
+          label={translate('LinkTakeOver', { name: pairing.knownAs })}
+          onChange={(event) => setTakeOver(event.target.value)}
+          required
+          value={takeOver}
+        />
+      )}
       <p className={styles.hint}>{translate('PairingExpires', { time: formatDateTime(pairing.expiresAt) })}</p>
       {failure && <Alert>{failure.message}</Alert>}
       <TextField
@@ -91,7 +107,7 @@ function Answer({ pairing, onDone }: Readonly<{ pairing: PairingItem; onDone: (o
         value={kind}
       />
       <div className={styles.inline}>
-        <Button disabled={busy || name === '' || code.trim() === ''} type="submit">
+        <Button disabled={busy || name === '' || code.trim() === '' || !takeOverConfirmed} type="submit">
           {translate('LinkApprove')}
         </Button>
         <Button
@@ -171,7 +187,7 @@ export default function LinkMachine() {
               </form>
             )}
             {wanted.notFound && <Alert>{translate('LinkNotFound')}</Alert>}
-            {wanted.pairing && <Answer onDone={setOutcome} pairing={wanted.pairing} />}
+            {wanted.pairing && <Answer linkedCode={code} onDone={setOutcome} pairing={wanted.pairing} />}
           </Card>
         )}
       </PageContentBody>

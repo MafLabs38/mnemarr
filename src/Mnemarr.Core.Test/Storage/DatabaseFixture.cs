@@ -123,7 +123,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                ALTER TABLE machines DROP COLUMN interval_seconds;
+                ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
                 PRAGMA user_version = 7;
                 """;
             back.ExecuteNonQuery();
@@ -149,7 +149,7 @@ public sealed class DatabaseFixture : IDisposable
             ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
             ALTER TABLE conversations DROP COLUMN computer_id;
             DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-            ALTER TABLE machines DROP COLUMN interval_seconds;
+            ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
             PRAGMA user_version = 7;
             """;
         back.ExecuteNonQuery();
@@ -253,7 +253,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                ALTER TABLE machines DROP COLUMN interval_seconds;
+                ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
                 PRAGMA user_version = 8;
                 """;
             back.ExecuteNonQuery();
@@ -282,7 +282,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                ALTER TABLE machines DROP COLUMN interval_seconds;
+                ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
                 PRAGMA user_version = 6;
                 """;
             back.ExecuteNonQuery();

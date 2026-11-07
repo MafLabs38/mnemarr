@@ -53,6 +53,10 @@ pub struct Heartbeat<'a> {
     pub paused: bool,
     /// How often a pass is made: a Mnemarr takes the machine to be sending while its last sign of life is younger than three passes.
     pub interval_seconds: u64,
+    /// The program was installed with the installer and can replace itself.
+    pub can_update: bool,
+    /// Why the last attempt to update failed, when it did: a short sentence for the machines page.
+    pub update_note: Option<String>,
 }
 
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
@@ -171,6 +175,8 @@ impl Uploader for HttpUploader {
                 "program": crate::computer::program_hash(),
                 "computerId": crate::computer::id(),
                 "intervalSeconds": beat.interval_seconds,
+                "canUpdate": beat.can_update,
+                "updateNote": beat.update_note,
             }),
         )?;
         if status == 200 || status == 204 {
@@ -402,6 +408,8 @@ mod tests {
                 error: Some("1 file(s) could not be read"),
                 paused: true,
                 interval_seconds: 30,
+                can_update: false,
+                update_note: None,
             })
             .unwrap();
 
@@ -421,6 +429,8 @@ mod tests {
                 "program": crate::computer::program_hash(),
                 "computerId": crate::computer::id(),
                 "intervalSeconds": 30,
+                "canUpdate": false,
+                "updateNote": null,
             })
         );
     }
@@ -434,6 +444,8 @@ mod tests {
             error: None,
             paused: false,
             interval_seconds: 30,
+            can_update: false,
+            update_note: None,
         };
         let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
         assert!(matches!(
@@ -458,5 +470,33 @@ mod tests {
         );
         assert_eq!(reason_of("a page of a proxy"), "a page of a proxy");
         assert_eq!(reason_of(&"x".repeat(1000)).len(), 300);
+    }
+
+    #[test]
+    fn should_say_in_the_sign_of_life_that_it_can_update_and_why_it_could_not() {
+        let (address, handle) = serve_once("204 No Content", "");
+
+        HttpUploader::new(&address, "k")
+            .heartbeat(&Heartbeat {
+                version: "1.2.3",
+                pending_lines: 0,
+                error: None,
+                paused: false,
+                interval_seconds: 120,
+                can_update: true,
+                update_note: Some(
+                    "none of the Mnemarr it sends to is reached over HTTPS".to_string(),
+                ),
+            })
+            .unwrap();
+
+        let request = handle.join().unwrap();
+        let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(body["canUpdate"], json!(true));
+        assert_eq!(body["intervalSeconds"], json!(120));
+        assert_eq!(
+            body["updateNote"],
+            json!("none of the Mnemarr it sends to is reached over HTTPS")
+        );
     }
 }

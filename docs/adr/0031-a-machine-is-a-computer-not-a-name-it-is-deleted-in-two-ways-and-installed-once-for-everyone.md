@@ -1,6 +1,6 @@
 # 0031 — A machine is a computer, not a name; it is deleted in two ways; the collector is installed once, for everyone
 
-- **Status**: accepted (the tool that builds the Windows installer is Q-40)
+- **Status**: accepted (§6 and §7 are realised by [ADR 0032](0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md): the installer is Velopack)
 - **Date**: 2026-11-07
 - **Spec**: D-51; refines D-47 ([0027](0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md)) and D-50 ([0030](0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md))
 

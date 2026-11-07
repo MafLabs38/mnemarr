@@ -53,7 +53,7 @@ describe('LinkMachine', () => {
     expect(sentBody(findCall(fetchMock, (call) => String(call[0]).endsWith('/pairings/lookup')))).toEqual({
       code: 'ABCD-EFGH-JKLM',
     });
-    await userEvent.type(screen.getByLabelText(/Type the code that your computer shows/), 'ABCD-EFGH-JKLM');
+    expect(screen.getByLabelText(/Code of this request/)).toHaveValue('ABCD-EFGH-JKLM');
     const name = screen.getByLabelText('Name in this Mnemarr');
     expect(name).toHaveValue('gaming-pc');
     await userEvent.clear(name);
@@ -67,6 +67,7 @@ describe('LinkMachine', () => {
       machine: 'gaming-pc',
       kind: 'always-on',
       code: 'ABCD-EFGH-JKLM',
+      takeOver: '',
     });
     expect(screen.getByRole('link', { name: 'See the machines' })).toHaveAttribute('href', '/machines');
   });
@@ -79,11 +80,21 @@ describe('LinkMachine', () => {
     expect(screen.getByLabelText('Name in this Mnemarr')).toHaveValue('gaming-pc');
   });
 
+  it('does not take over a machine that already joined until the person writes its name', async () => {
+    server({ knownAs: 'gaming-pc' });
+    renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
+
+    const approve = await screen.findByRole('button', { name: 'Link this computer' });
+    expect(approve).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('To take over the machine gaming-pc, write its name here'), 'gaming-pc');
+    expect(approve).toBeEnabled();
+  });
+
   it('says what the server said when the name cannot be given, and keeps the form so that the person can name it again', async () => {
     server({ approveFails: true });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');
 
-    await userEvent.type(await screen.findByLabelText(/Type the code that your computer shows/), 'ABCD-EFGH-JKLM');
+    expect(await screen.findByLabelText(/Code of this request/)).toHaveValue('ABCD-EFGH-JKLM');
     await userEvent.click(screen.getByRole('button', { name: 'Link this computer' }));
 
     expect(await screen.findByText('This computer is already the machine other-pc.')).toBeInTheDocument();
@@ -97,7 +108,7 @@ describe('LinkMachine', () => {
 
     const approve = await screen.findByRole('button', { name: 'Link this computer' });
     expect(approve).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/Type the code that your computer shows/), 'abcd efgh jklm');
+    await userEvent.type(screen.getByLabelText(/Code of this request/), 'abcd efgh jklm');
     expect(approve).toBeEnabled();
     await userEvent.click(approve);
 
@@ -120,6 +131,8 @@ describe('LinkMachine', () => {
       pendingLines: 0,
       error: null,
       programDiffers: false,
+      updateTo: null,
+      updateNote: null,
     };
     server({ machines: [existing] });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');

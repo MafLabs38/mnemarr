@@ -18,6 +18,8 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   pendingLines: 0,
   error: null,
   programDiffers: false,
+  updateTo: null,
+  updateNote: null,
   ...over,
 });
 
@@ -57,6 +59,7 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
                 "irm 'http://mnemarr.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=server-1' | iex",
               downloadUrl:
                 'http://mnemarr.example/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=server-1',
+              setupUrl: 'http://mnemarr.example/api/v1/ingest/installer/windows-x86_64',
             },
             {
               system: 'unix',
@@ -64,6 +67,7 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
               command:
                 "curl -fsSL 'http://mnemarr.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=server-1' | sh",
               downloadUrl: null,
+              setupUrl: null,
             },
           ],
           insecure: true,
@@ -153,6 +157,10 @@ describe('Machines', () => {
     );
     expect(sentBody(call)).toEqual({ machine: 'server-1', kind: 'always-on' });
     await userEvent.selectOptions(within(notice).getByLabelText('System'), 'windows');
+    expect(within(notice).getByRole('link', { name: 'Download the installer for Windows' })).toHaveAttribute(
+      'href',
+      'http://mnemarr.example/api/v1/ingest/installer/windows-x86_64',
+    );
     const download = within(notice).getByRole('link', { name: 'Download for Windows' });
     expect(download).toHaveAttribute(
       'href',

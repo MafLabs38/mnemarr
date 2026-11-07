@@ -284,7 +284,7 @@ jobs:
     runs-on: ubuntu-latest
     # The same list as the `image` job below: a gate added to one is added to the other (tools/release/test checks it, and reads
     # `needs` as one inline list and `if` as a folded `>-` block: that format is load-bearing).
-    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling]
+    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, installer-smoke, sonarqube, security, release-tooling]
     # The tag cannot be undone, so the gate is the strictest one: nothing failed or was cancelled, the end-to-end test ran and passed, and the
     # Sonar analysis ran and passed (a skipped analysis, because the server is not configured, does not release).
     if: >-
@@ -320,6 +320,66 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: yarn semantic-release
 
+  # The installer and the updates of the collector (ADR 0032): the Windows program that the `collector` job just built and tested is packaged with Velopack, at the
+  # version of this build, so that each Mnemarr serves the version it was built with. Its own job, with no right to write anywhere: the packaging tool is
+  # fetched from NuGet at a pinned version, and nothing here holds a secret.
+  installer:
+    name: installer
+    runs-on: ubuntu-latest
+    needs: [collector, release]
+    if: ${{ !cancelled() && needs.collector.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mnemarr-collector-windows-latest
+          path: collector-windows
+      - name: Package the collector
+        env:
+          RELEASE: ${{ needs.release.outputs.version }}
+          RUN: ${{ github.run_number }}
+          REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # X.Y.Z for a release, 0.0.1-dev.<run> for any other build: semantic versions, which the collector compares (Velopack refuses a version below
+          # 0.0.1; a build that is not a release is older than every release, which is what it should be; and one label for all of them, so that the run
+          # number alone says which is newer, whatever the branch).
+          if [ -n "$RELEASE" ]; then version="$RELEASE"; else version="0.0.1-dev.$RUN"; fi
+          echo "packaging version $version"
+          bash tools/installer/pack.sh collector-windows/mnemarr-collector.exe "$version" installer
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mnemarr-collector-installer
+          path: installer/
+          if-no-files-found: error
+          retention-days: 14
+
+  # The installer, tried for real on Windows: installed without a window, updated from a feed, removed (tools/installer/smoke.ps1).
+  installer-smoke:
+    name: installer (windows)
+    runs-on: windows-latest
+    needs: [collector]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mnemarr-collector-windows-latest
+          path: collector-windows
+      - name: Install, update and uninstall
+        shell: pwsh
+        run: ./tools/installer/smoke.ps1 -Program "$PWD/collector-windows/mnemarr-collector.exe"
+
   # Integrated code only, and only code that passed every gate: pull requests never publish an image, and neither does a push
   # whose tests, scans or Sonar analysis failed. On main the release job must have succeeded (with no version when nothing deserves
   # one); on develop it is skipped.
@@ -327,7 +387,7 @@ jobs:
     name: image
     runs-on: ubuntu-latest
     # The same gates as the `release` job above, and that job.
-    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, sonarqube, security, release-tooling, release]
+    needs: [lint, test-backend, test-frontend, e2e-smoke, collector, installer-smoke, installer, sonarqube, security, release-tooling, release]
     if: >-
       ${{ !cancelled() && github.event_name == 'push' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
       && needs.e2e-smoke.result == 'success'
@@ -349,6 +409,11 @@ jobs:
         with:
           name: mnemarr-collector-windows-latest
           path: collector-programs/windows
+      # The installer and the feed of updates that the `installer` job made, served by the Mnemarr that carries this image (ADR 0032).
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: mnemarr-collector-installer
+          path: collector-programs/updates
       - name: Put the programs in the image
         run: |
           set -euo pipefail
@@ -359,7 +424,9 @@ jobs:
           rm -rf collector-programs/linux collector-programs/windows
           test -s collector-programs/mnemarr-collector-linux-x86_64
           test -s collector-programs/mnemarr-collector-windows-x86_64.exe
-          ls -l collector-programs
+          test -s collector-programs/updates/releases.win.json
+          ls collector-programs/updates/*-Setup.exe
+          ls -l collector-programs collector-programs/updates
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:

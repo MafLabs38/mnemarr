@@ -197,6 +197,14 @@ pub fn problems(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> Vec<
         .collect()
 }
 
+/// Whether an address or a key was given, on the command line or in the environment: then it is one destination of its own and the list is left alone.
+pub fn sending_is_given(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> bool {
+    options.server.is_some()
+        || options.key_file.is_some()
+        || get("MNEMARR_SERVER").is_some()
+        || get("MNEMARR_COLLECTOR_KEY").is_some()
+}
+
 /// Everything the passes need, for each Mnemarr this machine sends to (ADR 0030). When an address or a key is given (on the command line or in the
 /// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
 /// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
@@ -206,11 +214,7 @@ pub fn resolve_all(
     get: &dyn Fn(&str) -> Option<String>,
     read: &dyn Fn(&str) -> Option<String>,
 ) -> Result<Vec<Config>, UsageError> {
-    let explicit = options.server.is_some()
-        || options.key_file.is_some()
-        || get("MNEMARR_SERVER").is_some()
-        || get("MNEMARR_COLLECTOR_KEY").is_some();
-    if explicit {
+    if sending_is_given(options, get) {
         return resolve(options, get, read).map(|config| vec![config]);
     }
     let Some(dir) = config_dir(options.config_dir.as_deref(), get) else {

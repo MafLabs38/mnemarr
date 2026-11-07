@@ -286,6 +286,9 @@ const en = {
   NewCode: 'Code of the new machine',
   PasteThisLine:
     'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and installs it. The code in it works once, for 15 minutes, and is shown only now.',
+  DownloadInstaller: 'Download the installer for {system}',
+  DownloadInstallerHelp:
+    'Recommended: it installs the collector like any program (in the list of installed applications, with an uninstaller), keeps itself up to date, and asks which Mnemarr to link to: you approve it here. It holds no code.',
   DownloadFor: 'Download for {system}',
   DownloadHelp:
     'The file already knows this Mnemarr, the machine and the code: open it, and it joins the machine and installs the collector. Windows may say the publisher is unknown, because the program is not signed yet: choose "More info", then "Run anyway".',
@@ -300,6 +303,8 @@ const en = {
   NeverSeen: 'Never',
   ConversationsCount: 'Conversations',
   ProgramDiffers: 'Another program than this Mnemarr carries',
+  UpdateAvailableTo: 'Update available: {version}',
+  UpdateFailed: 'It cannot update: {reason}',
   Manage: 'Manage',
   ManageMachine: 'Manage {name}',
   RenameTitle: 'Rename',
@@ -353,7 +358,8 @@ const en = {
   LinkCodeLabel: 'Code shown on the computer',
   LinkNameExists:
     'A machine named {name} exists already. Approving under that name replaces its key: the collector that runs with the old key stops. Choose another name unless this computer is that machine.',
-  LinkCodeOnComputer: 'Type the code that your computer shows (so that this request is the one in front of you)',
+  LinkCodeOnComputer: 'Code of this request: check that it is the one your computer shows',
+  LinkTakeOver: 'To take over the machine {name}, write its name here',
   LinkFind: 'Find the request',
   LinkNotFound:
     'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',

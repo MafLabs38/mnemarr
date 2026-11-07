@@ -103,6 +103,17 @@ pub fn get(shared: &Shared) -> Condition {
         .map_or(Condition::Starting, |current| current.condition.clone())
 }
 
+/// The name of the first destination that refuses this computer, if one does.
+pub fn refusing(shared: &Shared) -> Option<String> {
+    shared.lock().ok().and_then(|current| {
+        current
+            .destinations
+            .iter()
+            .find(|(_, condition)| *condition == Condition::Refused)
+            .map(|(name, _)| name.clone())
+    })
+}
+
 /// One line for each destination when there are several ("prod.example: online"), for the menu and the tooltip; none for a single one.
 pub fn lines(shared: &Shared) -> Vec<String> {
     shared.lock().map_or_else(
@@ -123,6 +134,27 @@ pub fn lines(shared: &Shared) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_name_the_destination_that_refuses_and_none_when_all_accept() {
+        let shared = shared();
+        assert_eq!(refusing(&shared), None);
+        set_all(
+            &shared,
+            vec![
+                ("prod".to_string(), Condition::Online),
+                ("dev".to_string(), Condition::Refused),
+            ],
+            false,
+        );
+        assert_eq!(refusing(&shared).as_deref(), Some("dev"));
+        set_all(
+            &shared,
+            vec![("prod".to_string(), Condition::Online)],
+            false,
+        );
+        assert_eq!(refusing(&shared), None);
+    }
 
     #[test]
     fn should_say_in_words_how_the_collector_is() {

@@ -641,3 +641,26 @@ fn should_read_the_folder_of_an_earlier_collector_as_one_destination() {
     assert!(listed.contains("cli-test"), "{listed}");
     assert!(listed.contains("127.0.0.1:9"), "{listed}");
 }
+
+#[test]
+fn should_say_that_it_is_not_linked_and_end_when_it_runs_with_nothing_linked_and_nobody_to_link_it()
+{
+    // Neither an icon nor the installer: a service on a machine with no screen that is linked to nothing is wrongly set up, and says so. (Installed, or with its
+    // icon, it keeps running so that a person can link it: the installer test of the CI covers that.)
+    let dir = std::env::temp_dir().join(format!("mnemarr-unlinked-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_mnemarr-collector"))
+        .args(["run", "--no-tray", "--config-dir"])
+        .arg(&dir)
+        .env_remove("MNEMARR_SERVER")
+        .env_remove("MNEMARR_COLLECTOR_KEY")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not linked to a Mnemarr"));
+}

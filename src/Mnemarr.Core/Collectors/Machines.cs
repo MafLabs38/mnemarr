@@ -87,14 +87,16 @@ public sealed record Machine(
     string? ComputerId = null,
     string? Platform = null,
     string? Program = null,
-    int? IntervalSeconds = null);
+    int? IntervalSeconds = null,
+    bool CanUpdate = false,
+    string? UpdateNote = null);
 
 /// <summary>
 /// What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet. <paramref name="Platform"/> and <paramref name="Program"/>:
 /// the system the collector is for and the hash of the program it runs. <paramref name="ComputerId"/>: the identifier of its computer.
-/// <paramref name="IntervalSeconds"/>: how often it makes a pass.
+/// <paramref name="IntervalSeconds"/>: how often it makes a pass. <paramref name="CanUpdate"/>: it was installed with the installer and can replace itself. <paramref name="UpdateNote"/>: why its last attempt to update failed.
 /// </summary>
-public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null);
+public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null, bool CanUpdate = false, string? UpdateNote = null);
 
 public enum EnrolmentState
 {
@@ -148,4 +150,6 @@ public sealed record MachineStatus(
     long PendingLines,
     string? Error,
     string? Platform = null,
-    string? Program = null);
+    string? Program = null,
+    bool CanUpdate = false,
+    string? UpdateNote = null);

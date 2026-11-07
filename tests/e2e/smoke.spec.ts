@@ -504,7 +504,7 @@ test.describe('smoke @smoke', () => {
     await signIn(page, `/link?code=${encodeURIComponent(userCode)}`);
     await expect(page.getByText('Gaming PC')).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-    await page.getByLabel(/Type the code that your computer shows/).fill(userCode);
+    await page.getByLabel(/Code of this request/).fill(userCode);
     await page.getByLabel('Name in this Mnemarr').fill(machine);
     await page.getByLabel('Kind').selectOption('always-on');
     await page.getByRole('button', { name: 'Link this computer' }).click();
@@ -584,7 +584,8 @@ test.describe('smoke @smoke', () => {
     ).json()) as { userCode: string; deviceCode: string };
     await signIn(page, `/link?code=${encodeURIComponent(started.userCode)}`);
     await expect(page.getByText(new RegExp(`says it is the machine ${first}`))).toBeVisible();
-    await page.getByLabel(/Type the code that your computer shows/).fill(started.userCode);
+    await page.getByLabel(/Code of this request/).fill(started.userCode);
+    await page.getByLabel(/To take over the machine/).fill(first);
     await page.getByLabel('Name in this Mnemarr').fill(second);
     await page.getByRole('button', { name: 'Link this computer' }).click();
     await expect(page.getByText(`Linked as ${second}`)).toBeVisible();
