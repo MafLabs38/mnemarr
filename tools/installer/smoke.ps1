@@ -26,7 +26,8 @@ bash (Slashes $pack) (Slashes $Program) 0.0.1 (Slashes $first)
 bash (Slashes $pack) (Slashes $Program) 0.0.2 (Slashes $second)
 
 $app = Join-Path $env:LOCALAPPDATA 'MnemarrCollector'
-$stub = Join-Path $app 'mnemarr-collector.exe'
+# The program at the root of the folder, which an update does not change, is named after the application (Velopack's title).
+$stub = Join-Path $app 'Mnemarr collector.exe'
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 
 Write-Host '--- install 0.0.1 without a window'

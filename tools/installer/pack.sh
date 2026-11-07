@@ -12,7 +12,7 @@ set -euo pipefail
 program="${1:?the Windows program of the collector is required}"
 version="${2:?the version is required}"
 output="${3:?the output folder is required}"
-vpk_version="1.2.161"
+vpk_version="1.3.39-g8d2844f"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

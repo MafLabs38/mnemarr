@@ -135,9 +135,21 @@ pub fn save_settings(dir: &Path, settings: &Settings) -> std::io::Result<()> {
     std::fs::write(dir.join(SETTINGS_FILE), text)
 }
 
+/// The name the installer gave the application (what the list of installed applications shows): the program at the root of its folder is named after it.
+fn installed_title() -> Option<String> {
+    velopack::locator::auto_locate_app_manifest(velopack::locator::LocationContext::FromCurrentExe)
+        .ok()
+        .map(|locator| locator.get_manifest_title())
+}
+
 /// The program that starts the installed collector, at a place that an update does not change: the program that runs is in `current`, which is replaced, and
-/// the one at the root of the folder starts it. A program that is not in an installed folder is its own.
+/// the one at the root of the folder (named after the application) starts it. A program that is not in an installed folder is its own.
 pub fn stable_exe(running: &Path) -> PathBuf {
+    stable_exe_named(running, installed_title().as_deref())
+}
+
+/// `stable_exe`, given the name the installer gave the application: the program at the root is `<name>.exe`, or else the one that runs, by its own name.
+pub fn stable_exe_named(running: &Path, title: Option<&str>) -> PathBuf {
     let Some(file) = running.file_name() else {
         return running.to_path_buf();
     };
@@ -153,7 +165,13 @@ pub fn stable_exe(running: &Path) -> PathBuf {
             })
             .exists()
         });
-    installed_root.map_or_else(|| running.to_path_buf(), |root| root.join(file))
+    let Some(root) = installed_root else {
+        return running.to_path_buf();
+    };
+    title
+        .map(|title| root.join(format!("{title}.exe")))
+        .filter(|stub| stub.exists())
+        .unwrap_or_else(|| root.join(file))
 }
 
 /// The script (PowerShell) that adds a folder to the PATH of the user, once, and tells Windows. Pure text, so that it is tried anywhere.
@@ -522,7 +540,8 @@ mod tests {
     }
 
     #[test]
-    fn should_find_the_program_at_the_root_of_an_installed_folder_and_leave_any_other_alone() {
+    fn should_find_the_program_at_the_root_of_an_installed_folder_named_after_the_application_and_leave_any_other_alone()
+     {
         let root = std::env::temp_dir().join(format!("mnemarr-root-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("current")).unwrap();
@@ -532,20 +551,30 @@ mod tests {
             "UpdateNix"
         });
         std::fs::write(&updater, "x").unwrap();
-
         let running = root.join("current").join("mnemarr-collector.exe");
-        assert_eq!(stable_exe(&running), root.join("mnemarr-collector.exe"));
+
+        assert_eq!(
+            stable_exe_named(&running, Some("Mnemarr collector")),
+            root.join("mnemarr-collector.exe"),
+            "no program of that name at the root: the running one's own name"
+        );
+        std::fs::write(root.join("Mnemarr collector.exe"), "stub").unwrap();
+        assert_eq!(
+            stable_exe_named(&running, Some("Mnemarr collector")),
+            root.join("Mnemarr collector.exe"),
+            "the program at the root is named after the application"
+        );
 
         let elsewhere = std::env::temp_dir()
             .join("current")
             .join("mnemarr-collector.exe");
         assert_eq!(
-            stable_exe(&elsewhere),
+            stable_exe_named(&elsewhere, Some("x")),
             elsewhere,
             "no updater beside it: it is not installed"
         );
         assert_eq!(
-            stable_exe(Path::new("mnemarr-collector")),
+            stable_exe_named(Path::new("mnemarr-collector"), None),
             PathBuf::from("mnemarr-collector")
         );
         let _ = std::fs::remove_dir_all(&root);
