@@ -63,15 +63,11 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        if (secret.StartsWith(ChatAccess.TokenPrefix, StringComparison.Ordinal))
-        {
-            return Task.FromResult(AuthenticateChatToken(secret));
-        }
-
         var principal = _keys.Authenticate(secret);
         if (principal is null)
         {
-            return Task.FromResult(AuthenticateResult.Fail("The key is not valid."));
+            // Not a key of Mnemarr: it may be the token that the chat's runner holds for a person, which a key never is.
+            return Task.FromResult(AuthenticateChatToken(secret));
         }
 
         var identity = MnemarrClaims.Identity(principal, ApiKeyHeader.Scheme);
@@ -86,7 +82,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
     {
         if (!Request.Path.StartsWithSegments(McpPath, StringComparison.OrdinalIgnoreCase) || _chat.Authenticate(token) is not { } identity)
         {
-            return AuthenticateResult.Fail("The token is not valid.");
+            return AuthenticateResult.Fail("The key is not valid.");
         }
 
         var claims = MnemarrClaims.Identity(identity.Principal, ApiKeyHeader.Scheme, new Claim(MnemarrClaims.Via, $"chat:{identity.ConversationId}"));
