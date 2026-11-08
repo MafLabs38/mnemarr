@@ -14,7 +14,8 @@ public static class ConsolidationPrompt
 
     public static string Build(ConversationRecord record, string memorySource, string conversationsSource, ConsolidationExcerpt excerpt, int done, DateTimeOffset today)
     {
-        var application = string.IsNullOrWhiteSpace(record.Application) ? "unknown" : record.Application;
+        var application = OneLine(record.Application, "unknown");
+        var notePath = OneLine(record.NotePath, "unknown");
         var text = new StringBuilder();
         text.AppendLine(CultureInfo.InvariantCulture, $"You are the consolidation of Mnemarr. Turn the part of a conversation below into durable notes of the memory vault (the source \"{memorySource}\"), then stop.");
         text.AppendLine();
@@ -32,7 +33,7 @@ public static class ConsolidationPrompt
         text.AppendLine("status: active");
         text.AppendLine(CultureInfo.InvariantCulture, $"updated: {today:yyyy-MM-dd}");
         text.AppendLine("sources:");
-        text.AppendLine(CultureInfo.InvariantCulture, $"  - {conversationsSource}:{record.NotePath}");
+        text.AppendLine(CultureInfo.InvariantCulture, $"  - {conversationsSource}:{notePath}");
         text.AppendLine("---");
         text.AppendLine("```");
         text.AppendLine("   Keep the `sources:` already there and add this conversation; the title is a heading `# ...` that names the subject. Sections: Decisions, Lessons, Facts, History (only those that have content), each item short and dated when the date matters.");
@@ -47,6 +48,29 @@ public static class ConsolidationPrompt
         text.AppendLine(End);
         return text.ToString();
     }
+
+    /// <summary>
+    /// A value that came from a collector, put in the instructions as one plain line: no line break or control character, no backtick, no <c>---</c> that could close the front matter, bounded.
+    /// The model is told what it does by Mnemarr, not by the name of an application.
+    /// </summary>
+    public static string OneLine(string? value, string fallback)
+    {
+        var line = new string([.. (value ?? string.Empty).Select(character => char.IsControl(character) || character == '`' ? ' ' : character)]);
+        while (line.Contains("---", StringComparison.Ordinal))
+        {
+            line = line.Replace("---", "-", StringComparison.Ordinal);
+        }
+
+        line = string.Join(' ', line.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (line.Length > MaxValueChars)
+        {
+            line = line[..MaxValueChars];
+        }
+
+        return line.Length == 0 ? fallback : line;
+    }
+
+    private const int MaxValueChars = 80;
 
     /// <summary>A folder name for an application: lower case, plain characters, never empty.</summary>
     public static string Slug(string application)

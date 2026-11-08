@@ -60,17 +60,20 @@ public sealed class ConsolidationStoreFixture : IDisposable
     }
 
     [Fact]
-    public void should_count_what_waits_what_is_done_what_fails_and_what_was_done_today()
+    public void should_count_what_waits_what_is_done_what_fails_and_the_runs_of_the_model_today()
     {
         Conversation("a", 10, Now.AddHours(-1));
         Conversation("b", 10, Now.AddHours(-1));
         Conversation("c", 10, Now.AddHours(-1));
         _store.Save(new ConsolidationRecord("pc", "a", 10, 4, 2, 0, null, Now));
         _store.Save(new ConsolidationRecord("pc", "b", 0, 0, 0, 3, "no login", Now.AddDays(-2)));
+        _store.CountRun(Now.AddDays(-1));
+        _store.CountRun(Now);
+        _store.CountRun(Now.AddHours(1));
 
         var counts = _store.Counts(Now.Date, maxTries: 3);
 
-        counts.Should().Be(new ConsolidationCounts(Waiting: 2, Done: 1, Failing: 1, Notes: 2, Today: 1));
+        counts.Should().Be(new ConsolidationCounts(Waiting: 2, Done: 1, Failing: 1, Notes: 2, Today: 2));
         _store.LastFailure()!.Error.Should().Be("no login");
     }
 }

@@ -60,6 +60,12 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
 
     private async Task<JsonElement> RunAndWaitAsync(Callers callers, Func<JsonElement, bool> done)
     {
+        // A run that an earlier test started may still be going on: one at a time.
+        for (var attempt = 0; attempt < 120 && (await StatusAsync(callers.Admin)).GetProperty("state").GetString() == "running"; attempt++)
+        {
+            await Task.Delay(250, Token);
+        }
+
         (await callers.Admin.PostAsJsonAsync("/api/v1/consolidation/run", new { }, Token)).StatusCode.Should().Be(HttpStatusCode.Accepted);
         JsonElement status = default;
         for (var attempt = 0; attempt < 120; attempt++)
@@ -177,6 +183,47 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
 
         status.GetProperty("lastFailure").GetString().Should().Contain("login of the subscription");
         status.GetProperty("waiting").GetInt32().Should().BeGreaterThan(0, "a conversation that failed is not marked done");
+    }
+
+    [Fact]
+    public async Task should_start_one_run_when_asked_twice_at_once_and_answer_that_one_is_going_on_to_the_second()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        await MemoryVaultAsync(callers);
+        var machine = Callers.Unique("pc");
+        await SendAsync(callers, machine, Callers.Unique("s"), 0, ("user", $"Keep this for {machine}."), ("assistant", "Yes."));
+        var release = new TaskCompletionSource();
+        _factory.Runner.JobBehaviour = async (_, prompt, _) =>
+        {
+            if (prompt.Contains(machine, StringComparison.Ordinal))
+            {
+                await release.Task;
+            }
+        };
+
+        var first = await callers.Admin.PostAsJsonAsync("/api/v1/consolidation/run", new { }, Token);
+        var second = await callers.Admin.PostAsJsonAsync("/api/v1/consolidation/run", new { }, Token);
+        release.SetResult();
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        await RunAndWaitAsync(callers, current => current.GetProperty("waiting").GetInt32() == 0);
+    }
+
+    [Fact]
+    public async Task should_count_the_runs_of_the_model_against_the_day()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        await MemoryVaultAsync(callers);
+        var before = (await StatusAsync(callers.Admin)).GetProperty("today").GetInt32();
+        var machine = Callers.Unique("pc");
+        await SendAsync(callers, machine, Callers.Unique("s"), 0, ("user", $"Remember {machine}."), ("assistant", "Yes."));
+        _factory.Runner.JobBehaviour = (_, _, _) => Task.CompletedTask;
+
+        var status = await RunAndWaitAsync(callers, current => current.GetProperty("today").GetInt32() > before);
+
+        status.GetProperty("today").GetInt32().Should().BeGreaterThan(before);
+        status.GetProperty("perDay").GetInt32().Should().Be(30);
     }
 
     [Fact]

@@ -53,7 +53,7 @@ public sealed class ConsolidationJob
     public async Task<int> RunAsync(string prompt, CancellationToken cancellationToken)
     {
         var options = _options.Value;
-        var created = await _runner.SendAsync(HttpMethod.Post, "v1/conversations", new { model = options.Model, title = "consolidation", policy = "job" }, cancellationToken);
+        var created = await _runner.SendAsync(HttpMethod.Post, "v1/conversations", new { agent = string.IsNullOrEmpty(options.Agent) ? null : options.Agent, model = options.Model, title = "consolidation", policy = "job" }, cancellationToken);
         if (created is not { StatusCode: StatusCodes.Status201Created, Json: { } createdJson } || JsonNode.Parse(createdJson)?["id"]?.GetValue<string>() is not { } id)
         {
             throw new ConsolidationFailureException(Refused(created.StatusCode, "start a job"));

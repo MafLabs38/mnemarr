@@ -151,7 +151,7 @@ const en = {
   ConsolidationOn:
     'A model ({model}) reads the new turns of each conversation that was left alone for a while and writes notes in the memory vault {vault}, with the link to the conversation.',
   ConsolidationCounts:
-    '{waiting} conversation(s) wait · {done} done · {notes} note(s) written or changed · {today} of {perDay} today',
+    '{waiting} conversation(s) wait · {done} done · {notes} note(s) written or changed · {today} of {perDay} runs today',
   ConsolidationNoRunner: 'The consolidation is on but there is no assistant runner: set MNEMARR__AGENT__URL.',
   ConsolidationNoMemoryVault: 'There is no memory vault to write in.',
   ConsolidationMemoryVaultReadOnly:

@@ -20,6 +20,9 @@ public interface IConsolidationStore
 
     ConsolidationCounts Counts(DateTimeOffset dayStart, int maxTries);
 
+    /// <summary>A run of the model, whatever came of it: what the day's cap counts (a conversation read in several runs, or tried again, costs each time).</summary>
+    void CountRun(DateTimeOffset at);
+
     /// <summary>The last failure, for the page: what was said of it, and when.</summary>
     ConsolidationRecord? LastFailure();
 }
@@ -100,14 +103,25 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
               (SELECT COUNT(*) FROM consolidations WHERE error IS NULL),
               (SELECT COUNT(*) FROM consolidations WHERE error IS NOT NULL AND tries >= $tries),
               (SELECT coalesce(SUM(notes), 0) FROM consolidations),
-              (SELECT COUNT(*) FROM consolidations WHERE last_at >= $day)
+              (SELECT coalesce(SUM(runs), 0) FROM consolidation_days WHERE day = $day)
             """;
         command.Parameters.AddWithValue("$tries", maxTries);
-        command.Parameters.AddWithValue("$day", StorageText.Format(dayStart));
+        command.Parameters.AddWithValue("$day", DayKey(dayStart));
         using var reader = command.ExecuteReader();
         reader.Read();
         return new ConsolidationCounts(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4));
     }
+
+    public void CountRun(DateTimeOffset at)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO consolidation_days (day, runs) VALUES ($day, 1) ON CONFLICT (day) DO UPDATE SET runs = runs + 1";
+        command.Parameters.AddWithValue("$day", DayKey(at));
+        command.ExecuteNonQuery();
+    }
+
+    private static string DayKey(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 
     public ConsolidationRecord? LastFailure()
     {

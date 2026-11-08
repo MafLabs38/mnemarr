@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Mnemarr.Core.Accounts;
 
 namespace Mnemarr.Api.V1.Consolidation;
@@ -16,12 +16,12 @@ public sealed record ConsolidationRunRequest;
 public sealed class ConsolidationController : ControllerBase
 {
     private readonly Consolidator _consolidator;
-    private readonly ILogger<ConsolidationController> _logger;
+    private readonly IHostApplicationLifetime _lifetime;
 
-    public ConsolidationController(Consolidator consolidator, ILogger<ConsolidationController> logger)
+    public ConsolidationController(Consolidator consolidator, IHostApplicationLifetime lifetime)
     {
         _consolidator = consolidator;
-        _logger = logger;
+        _lifetime = lifetime;
     }
 
     /// <summary>How the consolidation stands: on or off and why not, the memory vault it writes in, what waits, what is done, what failed.</summary>
@@ -39,22 +39,11 @@ public sealed class ConsolidationController : ControllerBase
     public IActionResult Run(ConsolidationRunRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (_consolidator.Status().State is not "ready")
+        if (!_consolidator.TryStartNow(_lifetime.ApplicationStopping))
         {
-            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "The consolidation is not ready to run: see its status." });
+            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "The consolidation cannot run now: it is off, not ready (see its status) or already running." });
         }
 
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await _consolidator.RunPassAsync(ignoreIdle: true, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "A run of the consolidation that was asked for failed.");
-            }
-        });
         return Accepted();
     }
 }

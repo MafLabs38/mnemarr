@@ -11,6 +11,9 @@ public sealed class ConsolidationOptions
     /// <summary>Whether conversations are turned into notes of the memory vault. It needs the assistant runner (<c>Agent:Url</c>) and a memory vault open for writing.</summary>
     public bool Enabled { get; set; }
 
+    /// <summary>The agent of the runner that does the job (<c>claude-code</c>, <c>openai</c>); empty: the first agent that can run. The default model is a Claude one: with another agent, set <see cref="Model"/> too.</summary>
+    public string? Agent { get; set; }
+
     /// <summary>The model of the job, a setting: a light one is enough to write notes (the subscription's usage is shared with the operator's own).</summary>
     public string Model { get; set; } = "haiku";
 
@@ -23,7 +26,7 @@ public sealed class ConsolidationOptions
     /// <summary>How many conversations one pass consolidates: the cost of a pass is bounded.</summary>
     public int PerPass { get; set; } = 3;
 
-    /// <summary>How many conversations are consolidated in a day (UTC): the cost of a day is bounded.</summary>
+    /// <summary>How many times the model is asked in a day (UTC): the cost of a day is bounded. A conversation read in several runs, or tried again, costs each time.</summary>
     public int PerDay { get; set; } = 30;
 
     /// <summary>How much of a conversation one run reads, in characters: the rest is read by the next run.</summary>
@@ -48,9 +51,14 @@ public sealed class ConsolidationOptionsValidator : IValidateOptions<Consolidati
             return ValidateOptionsResult.Success;
         }
 
-        if (string.IsNullOrWhiteSpace(options.Model) || options.Model.Length > 64 || !options.Model.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-'))
+        if (!IsName(options.Model, 64, allowDot: true))
         {
             return ValidateOptionsResult.Fail("Consolidation:Model (MNEMARR__CONSOLIDATION__MODEL) is a model name: letters, digits, dots, dashes and underscores.");
+        }
+
+        if (!string.IsNullOrEmpty(options.Agent) && !IsName(options.Agent, 32, allowDot: false))
+        {
+            return ValidateOptionsResult.Fail("Consolidation:Agent (MNEMARR__CONSOLIDATION__AGENT) is the id of an agent of the runner, such as claude-code or openai, or empty.");
         }
 
         if (options.IdleMinutes is < 1 or > 1440 || options.PassSeconds is < 10 or > 86_400 || options.PerPass is < 1 or > 20 || options.PerDay is < 1 or > 1000
@@ -61,4 +69,7 @@ public sealed class ConsolidationOptionsValidator : IValidateOptions<Consolidati
 
         return ValidateOptionsResult.Success;
     }
+
+    private static bool IsName(string? value, int maxLength, bool allowDot) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' || (allowDot && character == '.'));
 }

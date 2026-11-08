@@ -271,6 +271,10 @@ public static class Schema
             last_at TEXT NOT NULL,
             PRIMARY KEY (machine, session)
         );
+        CREATE TABLE consolidation_days (
+            day TEXT NOT NULL PRIMARY KEY,
+            runs INTEGER NOT NULL
+        );
         """,
     ];
 

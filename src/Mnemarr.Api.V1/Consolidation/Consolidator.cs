@@ -90,34 +90,71 @@ public sealed class Consolidator
         await _one.WaitAsync(cancellationToken);
         try
         {
-            var room = options.PerDay - _store.Counts(DayStart(), options.MaxTries).Today;
-            if (room <= 0)
-            {
-                return 0;
-            }
-
-            var idleBefore = ignoreIdle ? _clock.GetUtcNow() : _clock.GetUtcNow() - TimeSpan.FromMinutes(options.IdleMinutes);
-            var asked = 0;
-            foreach (var (machine, session) in _store.Pending(idleBefore, options.MaxTries, Math.Min(options.PerPass, room)))
-            {
-                var outcome = await ConsolidateAsync(machine, session, cancellationToken);
-                if (outcome.Asked)
-                {
-                    asked++;
-                }
-
-                if (outcome.Failure is not null && Volatile.Read(ref _problem) is not null)
-                {
-                    break; // the runner cannot be reached: the next conversations would meet the same wall
-                }
-            }
-
-            return asked;
+            return await PassAsync(ignoreIdle, cancellationToken);
         }
         finally
         {
             _one.Release();
         }
+    }
+
+    /// <summary>
+    /// Starts a pass in the background now, without waiting for the conversations to be left alone. False when it cannot run or one is going on: two requests at the same moment start one pass.
+    /// It stops with the application.
+    /// </summary>
+    public bool TryStartNow(CancellationToken stopping)
+    {
+        if (!_options.Value.Enabled || StateOf(MemoryVault()) is not "ready" || !_one.Wait(0, stopping))
+        {
+            return false;
+        }
+
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await PassAsync(ignoreIdle: true, stopping);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "A run of the consolidation that was asked for failed.");
+                }
+                finally
+                {
+                    _one.Release();
+                }
+            },
+            CancellationToken.None);
+        return true;
+    }
+
+    private async Task<int> PassAsync(bool ignoreIdle, CancellationToken cancellationToken)
+    {
+        var options = _options.Value;
+        var room = options.PerDay - _store.Counts(DayStart(), options.MaxTries).Today;
+        if (room <= 0)
+        {
+            return 0;
+        }
+
+        var idleBefore = ignoreIdle ? _clock.GetUtcNow() : _clock.GetUtcNow() - TimeSpan.FromMinutes(options.IdleMinutes);
+        var asked = 0;
+        foreach (var (machine, session) in _store.Pending(idleBefore, options.MaxTries, Math.Min(options.PerPass, room)))
+        {
+            var outcome = await ConsolidateAsync(machine, session, cancellationToken);
+            if (outcome.Asked)
+            {
+                asked++;
+            }
+
+            if (outcome.Failure is not null && Volatile.Read(ref _problem) is not null)
+            {
+                break; // the runner cannot be reached: the next conversations would meet the same wall
+            }
+        }
+
+        return asked;
     }
 
     /// <summary>Consolidates what is new in one conversation. Never throws for a runner that fails: the failure is kept for the page.</summary>
@@ -141,11 +178,13 @@ public sealed class Consolidator
         try
         {
             written = await _job.RunAsync(ConsolidationPrompt.Build(record, vault.Name, SourceCatalog.ConversationsName, excerpt, state.TurnsDone, _clock.GetUtcNow()), cancellationToken);
+            _store.CountRun(_clock.GetUtcNow());
             Volatile.Write(ref _problem, null);
         }
         catch (ConsolidationFailureException ex)
         {
             failure = ex.Message;
+            _store.CountRun(_clock.GetUtcNow());
             Volatile.Write(ref _problem, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)

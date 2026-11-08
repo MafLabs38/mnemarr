@@ -42,7 +42,9 @@ describe('ConsolidationCard', () => {
     renderWithProviders(<ConsolidationCard />, '/', admin);
 
     expect(
-      await screen.findByText(/3 conversation\(s\) wait · 12 done · 20 note\(s\) written or changed · 4 of 30 today/),
+      await screen.findByText(
+        /3 conversation\(s\) wait · 12 done · 20 note\(s\) written or changed · 4 of 30 runs today/,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(/A model \(haiku\) reads the new turns/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Consolidate what waits now' }));

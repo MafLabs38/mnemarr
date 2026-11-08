@@ -14,7 +14,7 @@ maintainer's rule: the subscription, a light model (Haiku), small uses, a cap.
 ## Decision
 
 1. **A background job, off by default, bounded.** `Consolidation:Enabled` (environment) turns it on. Every few minutes it takes the conversations that grew since their last consolidation and have been left
-   alone for 30 minutes, at most 3 per pass and 30 per day (UTC), the oldest first. The model is a setting (`haiku`). A conversation that failed 3 times is left alone until it has grown by 200 lines. A person who
+   alone for 30 minutes, at most 3 per pass and 30 runs of the model per day (UTC), the oldest first (a conversation read in several runs, or tried again, costs each run). The model is a setting (`haiku`). A conversation that failed 3 times is left alone until it has grown by 200 lines. A person who
    manages sources can run it now from the Sources page (`POST /api/v1/consolidation/run`), without waiting for the idle time. It needs the runner (`Agent:Url`) and a memory vault open for writing; without
    them the status says which is missing and nothing is sent anywhere.
 2. **It reads the new turns only, and Mnemarr cuts them.** Mnemarr keeps for each conversation the lines it held and the turns it read at its last consolidation (table `consolidations`). A run takes the turns after
