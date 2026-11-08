@@ -329,14 +329,66 @@ fn project_name(path: &Path) -> String {
 /// in their home unless it was told another): a machine that sends nothing must say whether it is because there is nothing, or because it looks elsewhere than where the
 /// conversations are (another user, a Linux system in WSL, a container).
 pub fn watching_sentence(projects: &Path, files: usize) -> String {
-    if !projects.is_dir() {
-        return "Claude Code: the folder of its conversations (.claude/projects in the home of the user the collector runs as) is not there; conversations held under another user, in WSL or in a container are not seen".to_string();
+    watching_sentence_among(projects, files, &users_folder())
+}
+
+/// The same, with the folder that holds the homes of the users of the computer given (a test gives its own).
+pub fn watching_sentence_among(projects: &Path, files: usize, homes: &Path) -> String {
+    if files > 0 {
+        return match files {
+            1 => "Claude Code: 1 conversation found".to_string(),
+            count => format!("Claude Code: {count} conversations found"),
+        };
     }
-    match files {
-        0 => "Claude Code: the folder is there but holds no conversation yet".to_string(),
-        1 => "Claude Code: 1 conversation found".to_string(),
-        count => format!("Claude Code: {count} conversations found"),
+    let elsewhere = homes_with_conversations(homes, projects);
+    let also = if elsewhere > 0 {
+        format!(
+            "; conversations of Claude Code exist in the home of {elsewhere} other user(s) of this computer: the collector must run as the user who holds them"
+        )
+    } else {
+        String::new()
+    };
+    if projects.is_dir() {
+        let folders = fs::read_dir(projects)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.path().is_dir())
+                    .count()
+            })
+            .unwrap_or(0);
+        format!(
+            "Claude Code: the folder is there ({folders} project folder(s)) but holds no conversation file{also}"
+        )
+    } else {
+        format!(
+            "Claude Code: the folder of its conversations (.claude/projects in the home of the user the collector runs as, or CLAUDE_CONFIG_DIR) is not there; conversations held in WSL or in a container are not seen{also}"
+        )
     }
+}
+
+/// Where the homes of the users of this computer are.
+fn users_folder() -> PathBuf {
+    if cfg!(windows) {
+        let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+        PathBuf::from(format!("{drive}\\Users"))
+    } else if cfg!(target_os = "macos") {
+        PathBuf::from("/Users")
+    } else {
+        PathBuf::from("/home")
+    }
+}
+
+/// How many homes under `homes` (other than the one the collector looks in) hold conversations of Claude Code. A home that cannot be read is not counted.
+fn homes_with_conversations(homes: &Path, projects: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(homes) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path().join(".claude").join("projects"))
+        .filter(|candidate| candidate != projects && !conversation_files(candidate).is_empty())
+        .count()
 }
 
 /// The conversations of a machine: the `.jsonl` files directly in each project folder (what a sub-agent said is in a folder of its own and is
@@ -853,7 +905,7 @@ mod tests {
 
         let folder = Workspace::new("watching");
         let folder = folder.0.clone();
-        assert!(watching_sentence(&folder, 0).contains("holds no conversation yet"));
+        assert!(watching_sentence(&folder, 0).contains("holds no conversation file"));
         assert_eq!(
             watching_sentence(&folder, 1),
             "Claude Code: 1 conversation found"
@@ -862,5 +914,34 @@ mod tests {
             watching_sentence(&folder, 12),
             "Claude Code: 12 conversations found"
         );
+    }
+
+    #[test]
+    fn should_say_where_else_conversations_are_when_this_user_has_none() {
+        let homes = std::env::temp_dir().join(format!("mnemarr-homes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&homes);
+        let mine = homes.join("me").join(".claude").join("projects");
+        let theirs = homes
+            .join("zoe")
+            .join(".claude")
+            .join("projects")
+            .join("-work");
+        fs::create_dir_all(&mine).unwrap();
+        fs::create_dir_all(&theirs).unwrap();
+        fs::write(theirs.join("session.jsonl"), "{}\n").unwrap();
+
+        let sentence = watching_sentence_among(&mine, 0, &homes);
+
+        assert!(
+            sentence.contains("holds no conversation file"),
+            "{sentence}"
+        );
+        assert!(sentence.contains("1 other user(s)"), "{sentence}");
+        assert!(!sentence.contains("zoe"), "no name: {sentence}");
+        assert_eq!(
+            watching_sentence_among(&mine, 3, &homes),
+            "Claude Code: 3 conversations found"
+        );
+        let _ = fs::remove_dir_all(&homes);
     }
 }

@@ -150,9 +150,9 @@ The first run sends the whole history of the machine: it can take a few minutes 
 
 **Today only Claude Code is read** (`~/.claude/projects/<project>/<session>.jsonl`, `%USERPROFILE%\.claude\projects` on Windows): that folder is **where Claude Code itself keeps its conversations, whatever the folder of your project is** (`L:\Workspace\...` or any other), so there is nothing to set when the collector runs as the same user as Claude Code. Codex, Copilot and Gemini are designed ([formats](conversation-formats.md), roadmap vertical 4) and not built yet.
 
-It looks under the home of **the user it runs as**. Conversations held under another user, inside WSL (a Linux home of its own), in a dev container or on another machine are not seen: run a collector there too (a machine is a computer and an environment: one collector per place where Claude Code runs).
+It looks under the home of **the user it runs as**, found the way Claude Code finds it (`USERPROFILE` on Windows, `HOME` elsewhere; a `HOME` set by Git for Windows or another tool does not count there), or in `CLAUDE_CONFIG_DIR` when Claude Code was told another folder. Conversations held under another user, inside WSL (a Linux home of its own), in a dev container or on another machine are not seen: run a collector there too (a machine is a computer and an environment: one collector per place where Claude Code runs).
 
-A collector that sends nothing says why: on the Machines page, under the count of conversations, a machine with none shows **what its last pass found** ("the folder of its conversations is not there", "the folder is there but holds no conversation yet"), without any path.
+A collector that sends nothing says why: on the Machines page, under the count of conversations, a machine with none shows **what its last pass found** ("the folder of its conversations is not there", "the folder is there but holds no conversation file", and whether conversations of Claude Code exist in the home of another user of the computer), without any path.
 
 ## See that it works
 
