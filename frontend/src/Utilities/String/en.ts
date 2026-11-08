@@ -127,6 +127,11 @@ const en = {
   Search: 'Search',
   SearchError: 'The search failed.',
   SearchTheNotes: 'Search the notes',
+  SearchHowTitle: 'How does the search work?',
+  SearchHowText:
+    'It looks for your words and for what you mean. Type keywords, or ask a question in your own words: the notes about it are found even when they use other words.',
+  SearchHowExample:
+    'Example: « comment le collecteur se met-il à jour tout seul ? » finds the note about the installer and its updates, though that note never says « tout seul ». Each result says whether it matched by its words, by its meaning, or both.',
   MatchKeywords: 'matched by its words',
   MatchMeaning: 'matched by its meaning',
   MatchBoth: 'matched by its words and its meaning',

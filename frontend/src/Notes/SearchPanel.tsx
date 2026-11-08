@@ -5,6 +5,7 @@ import Alert from 'Components/Alert/Alert';
 import Button from 'Components/Form/Button';
 import TextField from 'Components/Form/TextField';
 import LoadingIndicator from 'Components/LoadingIndicator';
+import { icons } from 'Helpers/Props/icons';
 import { permissions } from 'Session/session';
 import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
@@ -78,6 +79,13 @@ export default function SearchPanel() {
         <TextField label={translate('SearchTheNotes')} onChange={(event) => setText(event.target.value)} value={text} />
         <Button type="submit">{translate('Search')}</Button>
       </form>
+      <details className={styles.why}>
+        <summary>
+          <icons.INFO aria-hidden="true" size={14} /> {translate('SearchHowTitle')}
+        </summary>
+        <p>{translate('SearchHowText')}</p>
+        <p>{translate('SearchHowExample')}</p>
+      </details>
       <MeaningState />
       {asked && <Results query={asked} />}
     </>
