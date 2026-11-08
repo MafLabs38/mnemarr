@@ -53,6 +53,15 @@ interface Round {
 
 const rejectedByAbort = 'The turn was stopped.';
 
+/** The address without the slashes at its end (a loop, not a pattern: nothing here can backtrack on an address that somebody wrote). */
+function withoutTrailingSlashes(address: string): string {
+  let end = address.length;
+  while (end > 0 && address[end - 1] === '/') {
+    end -= 1;
+  }
+  return address.slice(0, end);
+}
+
 export class OpenAiCompatibleAdapter implements AgentAdapter {
   readonly id = 'openai';
   readonly models: readonly ModelOption[];
@@ -194,7 +203,7 @@ class OpenAiProcess implements AgentProcess {
   /** One call of the model, streamed: the words as they come, and the tools it asks for once it has finished. */
   private async complete(tools: McpTool[], signal: AbortSignal): Promise<Round> {
     const { baseUrl, apiKey, fetcher = fetch } = this.settings;
-    const response = await fetcher(`${baseUrl!.replace(/\/+$/, '')}/chat/completions`, {
+    const response = await fetcher(`${withoutTrailingSlashes(baseUrl ?? '')}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

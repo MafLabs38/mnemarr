@@ -19,7 +19,8 @@ export type ChatItem =
 
 /** `mcp__mnemarr__create_note` → `create_note`. */
 export function shortToolName(name: string): string {
-  return name.replace(/^mcp__[a-z0-9-]+__/, '');
+  const server = /^mcp__[a-z0-9-]{1,64}__/.exec(name);
+  return server ? name.slice(server[0].length) : name;
 }
 
 function resolved(event: Extract<ChatEvent, { type: 'permission-resolved' }>): PermissionState {
