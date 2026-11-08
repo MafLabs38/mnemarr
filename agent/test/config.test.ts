@@ -8,16 +8,6 @@ const base = {
   MNEMARR_MCP_URL: 'http://mnemarr.example:8383/mcp',
 };
 
-test("Mnemarr's MCP key is optional: the runner uses the token Mnemarr mints for each message", () => {
-  assert.equal(loadConfig(base).mnemarrMcpKey, undefined);
-  assert.equal(loadConfig({ ...base, MNEMARR_MCP_APIKEY: '  ' }).mnemarrMcpKey, undefined);
-});
-
-test('a key that is set must still be strong enough', () => {
-  assert.equal(loadConfig({ ...base, MNEMARR_MCP_APIKEY: 'k'.repeat(40) }).mnemarrMcpKey, 'k'.repeat(40));
-  assert.throws(() => loadConfig({ ...base, MNEMARR_MCP_APIKEY: 'short' }), /MNEMARR_MCP_APIKEY, when set/);
-});
-
 test('the models offered and the default one can be set, and are checked', () => {
   const config = loadConfig({
     ...base,

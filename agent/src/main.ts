@@ -1,5 +1,5 @@
-// mnemarr-agent: runs an agent CLI headless behind Mnemarr's chat panel (D-87). Its only tool is Mnemarr's MCP
-// server; it has no shell and no access to the machines (D-88).
+// mnemarr-agent: runs an agent CLI headless behind Mnemarr's chat panel (ADR 0035). Its only tool is Mnemarr's MCP
+// server; it has no shell and no access to the machines (ADR 0035).
 
 import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -58,7 +58,6 @@ async function main(): Promise<void> {
     workDir: dirs.workDir,
     runDir: dirs.runDir,
     mnemarrMcpUrl: config.mnemarrMcpUrl,
-    mnemarrMcpKey: config.mnemarrMcpKey,
   });
   await manager.init();
 

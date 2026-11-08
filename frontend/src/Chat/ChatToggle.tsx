@@ -5,7 +5,7 @@ import { useChatStore } from './chatStore';
 import styles from './ChatToggle.module.css';
 import { useChatStatus } from './useChat';
 
-/** The header icon that opens the chat panel (D-90); absent when the chat is off (no PORTARR__AGENT__URL). */
+/** The header icon that opens the chat panel (ADR 0035); absent when the chat is off (no MNEMARR__AGENT__URL). */
 export default function ChatToggle() {
   const status = useChatStatus();
   const open = useChatStore((state) => state.open);

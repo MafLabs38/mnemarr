@@ -124,6 +124,7 @@ const adapter: AgentAdapter = {
   models: [{ id: 'sonnet', label: 'Sonnet' }],
   defaultModel: 'sonnet',
   available: () => true,
+  credentialsHint: 'nothing to set: this one is scripted',
   start: (options) => new ScriptedProcess(options),
 };
 
@@ -138,7 +139,6 @@ const manager = new SessionManager([adapter], store, {
   workDir: config.dataDir,
   runDir: config.dataDir,
   mnemarrMcpUrl: config.mnemarrMcpUrl,
-  mnemarrMcpKey: config.mnemarrMcpKey,
 });
 await manager.init();
 createRunnerServer(manager, config.secret, (message) => process.stdout.write(`${message}\n`)).listen(

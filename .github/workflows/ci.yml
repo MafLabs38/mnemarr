@@ -223,6 +223,8 @@ jobs:
       # forks never get it.
       # Documented exception (CLAUDE.md): docker:S8431 asks for the tag or the digest of a base image, not both. The Dockerfile keeps
       # both on purpose: the digest makes a build reproducible, the tag is what Dependabot follows to move the digest (ADR 0013).
+      # agent/** is excluded from the coverage figure only (its issues are still analysed): the runner is tested by Node's own test runner, which
+      # writes no lcov report here; its tests and gates (tsc, ESLint with SonarJS, Prettier) run in this workflow.
       - name: Begin SonarQube analysis
         run: >
           dotnet sonarscanner begin

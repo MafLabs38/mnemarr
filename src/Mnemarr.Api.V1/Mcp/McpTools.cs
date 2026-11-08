@@ -77,17 +77,21 @@ public sealed class McpTools
     ];
 
     /// <summary>The tools this caller is offered: what their permissions allow, the writing ones only if the operator turned them on.</summary>
+    /// <summary>Every tool this server knows, for whoever may call it or not (the runner of the chat tells reads from writes by the name of a tool, and a test holds the two together).</summary>
+    public static IEnumerable<McpTool> All => Notes.Concat(McpAdminTools.Definitions);
+
     public IEnumerable<McpTool> Available(McpCaller caller) => Notes.Concat(McpAdminTools.Definitions).Where(tool => caller.Has(tool.Permission) && (!tool.Writes || _options.Value.WriteTools));
 
     public async Task<JsonNode> CallAsync(string name, JsonElement arguments, McpCaller caller, CancellationToken cancellationToken)
     {
         // A tool that is not offered does not exist for the caller, whatever its name says.
         var tool = Available(caller).FirstOrDefault(known => known.Name == name) ?? throw new RejectedException(Problem.NotFound, $"There is no tool named '{name}' for you.");
-        var actor = new NoteActor(caller.Scope, caller.Name);
         if (McpAdminTools.Handles(tool.Name))
         {
             return JsonSerializer.SerializeToNode(await _admin.CallAsync(tool.Name, arguments, caller, cancellationToken), Json) ?? new JsonObject();
         }
+
+        var actor = new NoteActor(caller.Scope, caller.Name);
 
         object result = tool.Name switch
         {

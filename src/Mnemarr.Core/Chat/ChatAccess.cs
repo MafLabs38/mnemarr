@@ -20,6 +20,7 @@ public sealed record ChatTokenIdentity(AccessPrincipal Principal, string Convers
 public sealed class ChatAccess
 {
     public const string TokenPrefix = "mnc_";
+    private const string AccountParameter = "$account";
     public static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan TokenMaxLifetime = TimeSpan.FromHours(12);
 
@@ -37,7 +38,7 @@ public sealed class ChatAccess
     public void Register(string conversationId, Account owner)
     {
         using var connection = _database.Open();
-        Execute(connection, "INSERT OR REPLACE INTO chat_conversations (id, account_id, owner_name, created_at) VALUES ($id, $account, $name, $at)", ("$id", conversationId), ("$account", owner.Id.ToString()), ("$name", owner.Name), ("$at", _clock.GetUtcNow().ToString("O")));
+        Execute(connection, "INSERT OR REPLACE INTO chat_conversations (id, account_id, owner_name, created_at) VALUES ($id, $account, $name, $at)", ("$id", conversationId), (AccountParameter, owner.Id.ToString()), ("$name", owner.Name), ("$at", _clock.GetUtcNow().ToString("O")));
     }
 
     /// <summary>Whether the person owns the conversation: the answer for another person's conversation is "no", never "forbidden", so that its existence is not revealed.</summary>
@@ -47,32 +48,67 @@ public sealed class ChatAccess
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT 1 FROM chat_conversations WHERE id = $id AND account_id = $account";
         command.Parameters.AddWithValue("$id", conversationId);
-        command.Parameters.AddWithValue("$account", accountId.ToString());
+        command.Parameters.AddWithValue(AccountParameter, accountId.ToString());
         return command.ExecuteScalar() is not null;
     }
 
-    /// <summary>The conversations that someone owns, by id: what the list of the runner is narrowed with.</summary>
-    public IReadOnlyDictionary<string, ChatOwner> Owners()
+    /// <summary>The ids of the conversations that this person owns.</summary>
+    public IReadOnlySet<string> OwnedBy(Guid accountId)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, account_id, owner_name FROM chat_conversations";
+        command.CommandText = "SELECT id FROM chat_conversations WHERE account_id = $account";
+        command.Parameters.AddWithValue(AccountParameter, accountId.ToString());
         using var reader = command.ExecuteReader();
-        var owners = new Dictionary<string, ChatOwner>(StringComparer.Ordinal);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
         while (reader.Read())
         {
-            owners[reader.GetString(0)] = new ChatOwner(Guid.Parse(reader.GetString(1)), reader.GetString(2));
+            ids.Add(reader.GetString(0));
         }
 
-        return owners;
+        return ids;
     }
 
     /// <summary>Forgets a conversation and every token of it.</summary>
     public void Forget(string conversationId)
     {
         using var connection = _database.Open();
-        Execute(connection, "DELETE FROM chat_conversations WHERE id = $id", ("$id", conversationId));
-        Execute(connection, "DELETE FROM chat_tokens WHERE conversation_id = $id", ("$id", conversationId));
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, "DELETE FROM chat_conversations WHERE id = $id", transaction, ("$id", conversationId));
+        Execute(connection, "DELETE FROM chat_tokens WHERE conversation_id = $id", transaction, ("$id", conversationId));
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Forgets the conversations that the runner no longer has (it makes room for new ones, and its volume can be lost) and the tokens of them, given the ids it lists now. Only what a runner that
+    /// answered said is passed here: a runner that did not answer forgets nothing.
+    /// </summary>
+    public void Keep(IReadOnlySet<string> listed)
+    {
+        using var connection = _database.Open();
+        var gone = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT id FROM chat_conversations";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                if (!listed.Contains(reader.GetString(0)))
+                {
+                    gone.Add(reader.GetString(0));
+                }
+            }
+        }
+
+        using var transaction = connection.BeginTransaction();
+        foreach (var id in gone)
+        {
+            Execute(connection, "DELETE FROM chat_conversations WHERE id = $id", transaction, ("$id", id));
+            Execute(connection, "DELETE FROM chat_tokens WHERE conversation_id = $id", transaction, ("$id", id));
+        }
+
+        Execute(connection, "DELETE FROM chat_tokens WHERE absolute_expires_at < $now OR expires_at < $now", transaction, ("$now", _clock.GetUtcNow().ToString("O")));
+        transaction.Commit();
     }
 
     /// <summary>The token the runner uses as the MCP key for this person's turns in this conversation (shown once, kept as a hash).</summary>
@@ -81,17 +117,20 @@ public sealed class ChatAccess
         var now = _clock.GetUtcNow();
         var token = TokenPrefix + Base64Url(RandomNumberGenerator.GetBytes(32));
         using var connection = _database.Open();
-        Execute(connection, "DELETE FROM chat_tokens WHERE absolute_expires_at < $now OR expires_at < $now", ("$now", now.ToString("O")));
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, "DELETE FROM chat_tokens WHERE absolute_expires_at < $now OR expires_at < $now", transaction, ("$now", now.ToString("O")));
         // A message keeps the earlier tokens of its conversation alive too: a process that the runner started already holds one of them.
-        Execute(connection, "UPDATE chat_tokens SET expires_at = $expires WHERE conversation_id = $conversation AND absolute_expires_at > $expires", ("$expires", (now + TokenLifetime).ToString("O")), ("$conversation", conversationId));
+        Execute(connection, "UPDATE chat_tokens SET expires_at = $expires WHERE conversation_id = $conversation AND absolute_expires_at > $expires", transaction, ("$expires", (now + TokenLifetime).ToString("O")), ("$conversation", conversationId));
         Execute(
             connection,
             "INSERT INTO chat_tokens (token_hash, account_id, conversation_id, expires_at, absolute_expires_at) VALUES ($hash, $account, $conversation, $expires, $absolute)",
+            transaction,
             ("$hash", SecretHash.Of(token)),
-            ("$account", accountId.ToString()),
+            (AccountParameter, accountId.ToString()),
             ("$conversation", conversationId),
             ("$expires", (now + TokenLifetime).ToString("O")),
             ("$absolute", (now + TokenMaxLifetime).ToString("O")));
+        transaction.Commit();
         return token;
     }
 
@@ -126,9 +165,12 @@ public sealed class ChatAccess
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-    private static void Execute(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
+    private static void Execute(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters) => Execute(connection, sql, null, parameters);
+
+    private static void Execute(SqliteConnection connection, string sql, SqliteTransaction? transaction, params (string Name, object Value)[] parameters)
     {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = sql;
         foreach (var (name, value) in parameters)
         {

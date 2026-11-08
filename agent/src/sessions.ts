@@ -1,6 +1,6 @@
-// Conversations and their CLI processes (D-87): one process per active conversation, started on its first message
+// Conversations and their CLI processes (ADR 0035): one process per active conversation, started on its first message
 // (resuming the CLI session when the conversation is reopened), stopped after an idle timeout, at most
-// `maxSessions` at once (the least recently used idle one makes room). Tool permissions are decided here (D-88).
+// `maxSessions` at once (the least recently used idle one makes room). Tool permissions are decided here (ADR 0035).
 
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
@@ -31,8 +31,6 @@ export interface SessionOptions {
   /** Where the per-session MCP configuration files are written (mode 600). */
   runDir: string;
   mnemarrMcpUrl: string;
-  /** A per-user key for callers that send no token; optional, Mnemarr mints a token per message (D-98). */
-  mnemarrMcpKey?: string;
   now?: () => Date;
 }
 
@@ -168,14 +166,14 @@ export class SessionManager {
 
   /**
    * Sends the operator's message; the answer arrives as events. 409 while a turn runs. `mcpToken` is the token Mnemarr
-   * minted for the user who sends it (V7): a process started now uses it as its MCP key, so Mnemarr's tools run as that
-   * user; without it the shared key applies (older Mnemarr, or a caller that is not a user).
+   * minted for the person who sends it: a process started now uses it as its MCP key, so Mnemarr's tools run as that
+   * person. There is no other key: a message without a token reaches nothing.
    */
-  send(id: string, text: string, model?: string, mcpToken?: string): void {
+  send(id: string, text: string, mcpToken: string, model?: string): void {
     const conversation = this.require(id);
     const adapter = this.adapter(conversation.agent);
     if (!adapter.available()) {
-      throw new ChatError(503, `${adapter.name} has no credentials: set CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY.`);
+      throw new ChatError(503, `${adapter.name} has no credentials: ${adapter.credentialsHint}.`);
     }
     const chosen = model ? this.model(adapter, model) : conversation.model;
     let current = this.active.get(id);
@@ -187,11 +185,12 @@ export class SessionManager {
       this.stop(id);
       current = undefined;
     }
+    // Spawned first: a process that cannot start (no room, no token) must not leave the model and the title changed.
+    const active = current ?? this.spawn(conversation, adapter, chosen, mcpToken);
     conversation.model = chosen;
     if (!conversation.title) {
       conversation.title = titleOf(text);
     }
-    const active = current ?? this.spawn(conversation, adapter, mcpToken);
     active.busy = true;
     active.lastActive = Date.now();
     this.emit(id, { type: 'user', text });
@@ -285,10 +284,10 @@ export class SessionManager {
     }
   }
 
-  private spawn(conversation: Conversation, adapter: AgentAdapter, mcpToken?: string): Active {
+  private spawn(conversation: Conversation, adapter: AgentAdapter, model: string, mcpToken: string): Active {
     this.makeRoom();
     const mcpConfigFile = join(this.options.runDir, `${conversation.id}.${randomUUID()}.mcp.json`);
-    this.writeMcpConfig(conversation.id, mcpConfigFile, mcpToken);
+    this.writeMcpConfig(mcpConfigFile, mcpToken);
     const sessionId = conversation.agentSessionId ? undefined : randomUUID();
     if (sessionId) {
       conversation.agentSessionId = sessionId;
@@ -297,7 +296,7 @@ export class SessionManager {
     // Filled right after start: the exit callback needs to know which process it was.
     const holder: { active?: Active } = {};
     const process = adapter.start({
-      model: conversation.model,
+      model,
       resume: sessionId ? undefined : conversation.agentSessionId,
       sessionId: sessionId ?? conversation.agentSessionId ?? randomUUID(),
       workDir: this.options.workDir,
@@ -326,7 +325,7 @@ export class SessionManager {
     });
     const active: Active = {
       process,
-      model: conversation.model,
+      model,
       busy: false,
       lastActive: Date.now(),
       pending: new Map(),
@@ -338,21 +337,14 @@ export class SessionManager {
     return active;
   }
 
-  /** The MCP configuration of one process: Mnemarr's `/mcp`, its key or the user's token, and the origin the audit records (D-89). */
-  private writeMcpConfig(conversationId: string, file: string, mcpToken?: string): void {
-    const key = mcpToken ?? this.options.mnemarrMcpKey;
-    if (!key) {
-      throw new ChatError(400, 'No MCP token for this message: Mnemarr mints one per message.');
-    }
+  /** The MCP configuration of one process: Mnemarr's `/mcp` and the person's token (the audit knows the conversation by the token). */
+  private writeMcpConfig(file: string, mcpToken: string): void {
     const config = {
       mcpServers: {
         [serverName]: {
           type: 'http',
           url: this.options.mnemarrMcpUrl,
-          headers: {
-            'X-Api-Key': key,
-            'X-Mnemarr-Origin': `chat:${conversationId}`,
-          },
+          headers: { 'X-Api-Key': mcpToken },
         },
       },
     };
@@ -389,7 +381,7 @@ export class SessionManager {
     }
   }
 
-  /** D-88: reads run, writes wait for the operator, anything else is refused without asking. */
+  /** Reads run, writes wait for the operator, anything else is refused without asking. */
   private decide(
     id: string,
     active: Active | undefined,

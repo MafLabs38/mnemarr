@@ -21,7 +21,7 @@ interface PromptBoxProps {
 }
 
 /**
- * The prompt (D-90): a textarea that takes typing and pasting (dictation tools paste), several lines; Enter sends,
+ * The prompt (ADR 0035): a textarea that takes typing and pasting (dictation tools paste), several lines; Enter sends,
  * Shift+Enter breaks the line. Agent and model under it; Stop while a turn runs.
  */
 export default function PromptBox({

@@ -11,7 +11,7 @@ interface ToolCallBlockProps {
   result?: { isError: boolean; summary: string };
 }
 
-/** One tool call, collapsed: its name and state; open, its arguments and what it answered (D-90). */
+/** One tool call, collapsed: its name and state; open, its arguments and what it answered (ADR 0035). */
 export default function ToolCallBlock({ name, input, result }: Readonly<ToolCallBlockProps>) {
   let state = translate('ToolRunning');
   let stateClass = styles.toolRunning;

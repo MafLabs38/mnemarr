@@ -52,22 +52,33 @@ public sealed class ChatTokenLifetimeFixture : IClassFixture<ChatFactory>
     }
 
     [Fact]
-    public async Task should_stop_the_token_when_it_is_unknown_or_has_expired_and_when_the_person_is_disabled()
+    public async Task should_not_open_the_mcp_server_with_a_token_it_never_made()
     {
-        var (person, accountId) = await PersonAsync();
+        (await ToolsAsync("mnc_" + new string('x', 43))).Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task should_stop_the_token_thirty_minutes_after_the_last_message()
+    {
+        var (person, _) = await PersonAsync();
         var (_, token) = await SendAsync(person);
         (await ToolsAsync(token)).Should().Be(HttpStatusCode.OK);
 
-        (await ToolsAsync("mnc_" + new string('x', 43))).Should().Be(HttpStatusCode.Unauthorized, "unknown");
         _factory.Clock.Advance(ChatAccess.TokenLifetime + TimeSpan.FromMinutes(1));
-        (await ToolsAsync(token)).Should().Be(HttpStatusCode.Unauthorized, "expired");
 
-        var (disabledPerson, disabledId) = await PersonAsync();
-        var (_, fresh) = await SendAsync(disabledPerson);
+        (await ToolsAsync(token)).Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task should_stop_the_token_when_the_person_is_disabled()
+    {
+        var (person, id) = await PersonAsync();
+        var (_, token) = await SendAsync(person);
         using var admin = await _factory.SignedInClientAsync();
-        (await admin.PutAsJsonAsync($"/api/v1/accounts/{disabledId}", new { role = "Reader", enabled = false }, Token)).IsSuccessStatusCode.Should().BeTrue();
-        (await ToolsAsync(fresh)).Should().Be(HttpStatusCode.Unauthorized, "the person is disabled");
-        accountId.Should().NotBe(disabledId);
+
+        (await admin.PutAsJsonAsync($"/api/v1/accounts/{id}", new { role = "Reader", enabled = false }, Token)).IsSuccessStatusCode.Should().BeTrue();
+
+        (await ToolsAsync(token)).Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]

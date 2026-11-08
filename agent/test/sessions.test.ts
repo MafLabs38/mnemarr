@@ -7,6 +7,8 @@ import { classify } from '../src/policy.ts';
 import { ChatError } from '../src/sessions.ts';
 import { newManager, waitFor } from './fakes.ts';
 
+const token = `mnc_${'a'.repeat(43)}`;
+
 test('classify: Mnemarr reads run, Mnemarr writes ask, anything else is forbidden', () => {
   assert.equal(classify('mcp__mnemarr__list_sources'), 'read');
   assert.equal(classify('mcp__mnemarr__list_notes'), 'read');
@@ -23,7 +25,7 @@ async function started() {
   const conversation = await context.manager.create(undefined, undefined, undefined);
   const events: ChatEventEnvelope[] = [];
   context.manager.subscribe(conversation.id, 0, (event) => events.push(event));
-  context.manager.send(conversation.id, 'Add a note to the provider object-storage\nsecond line');
+  context.manager.send(conversation.id, 'Add a note to the provider object-storage\nsecond line', token);
   return { ...context, id: conversation.id, events, process: context.adapter.last };
 }
 
@@ -35,7 +37,7 @@ test('a message starts one process with a fresh session id, and titles the conve
   assert.equal(manager.get(id).title, 'Add a note to the provider object-storage');
   assert.equal(manager.get(id).busy, true);
   assert.throws(
-    () => manager.send(id, 'again'),
+    () => manager.send(id, 'again', token),
     (error: ChatError) => error.status === 409,
   );
 });
@@ -119,7 +121,7 @@ test('stored events leave out live-only ones; a reopened conversation resumes th
 
   // The process stops (idle timeout, restart…): the next message resumes the same CLI session.
   process.close();
-  manager.send(id, 'And now?');
+  manager.send(id, 'And now?', token);
   assert.equal(adapter.processes.length, 2);
   assert.equal(adapter.last.options.resume, process.options.sessionId);
 
@@ -148,13 +150,13 @@ test('at most maxSessions processes: the idle one makes room, busy ones refuse',
   const { manager, adapter } = await newManager(1);
   const first = await manager.create(undefined, undefined, 'one');
   const second = await manager.create(undefined, undefined, 'two');
-  manager.send(first.id, 'hello');
+  manager.send(first.id, 'hello', token);
   assert.throws(
-    () => manager.send(second.id, 'hello'),
+    () => manager.send(second.id, 'hello', token),
     (error: ChatError) => error.status === 429,
   );
   adapter.last.options.onEvent({ type: 'turn-end', isError: false });
-  manager.send(second.id, 'hello');
+  manager.send(second.id, 'hello', token);
   assert.equal(adapter.processes[0].closed, true);
   assert.equal(manager.list().filter((conversation) => conversation.running).length, 1);
 });
@@ -172,28 +174,33 @@ function mcpKeyOf(process: { options: { mcpConfigFile: string } }): string {
   return Object.values(config.mcpServers)[0].headers['X-Api-Key'];
 }
 
-test("a process uses the user's token as its MCP key, else the shared key", async () => {
+test("a process uses the person's token as its MCP key, and nothing else", async () => {
   const { manager, adapter } = await newManager();
-  const withToken = await manager.create(undefined, undefined, undefined);
-  manager.send(withToken.id, 'hello', undefined, `mnc_${'a'.repeat(43)}`);
-  assert.equal(mcpKeyOf(adapter.last), `mnc_${'a'.repeat(43)}`);
-
-  const without = await manager.create(undefined, undefined, undefined);
-  manager.send(without.id, 'hello');
-  assert.equal(mcpKeyOf(adapter.last), 'k'.repeat(40));
+  const conversation = await manager.create(undefined, undefined, undefined);
+  manager.send(conversation.id, 'hello', token);
+  assert.equal(mcpKeyOf(adapter.last), token);
+  const config = readFileSync(adapter.last.options.mcpConfigFile, 'utf8');
+  assert.ok(!config.includes('X-Mnemarr-Origin'), 'the audit knows the conversation by the token, not by a header');
 });
 
-test('a message with neither a token nor a shared key is refused instead of reaching Mnemarr without credentials', async () => {
-  const { manager } = await newManager(2, null);
-  const conversation = await manager.create(undefined, undefined, undefined);
+test('a process that cannot start leaves the conversation as it was', async () => {
+  const { manager } = await newManager(1);
+  const busy = await manager.create(undefined, undefined, 'busy');
+  const other = await manager.create(undefined, undefined, undefined);
+  manager.send(busy.id, 'hello', token);
+
   assert.throws(
-    () => manager.send(conversation.id, 'hello'),
-    (error: ChatError) => error.status === 400,
+    () => manager.send(other.id, 'a new idea', token, 'large'),
+    (error: ChatError) => error.status === 429,
   );
+
+  const kept = manager.list().find((conversation) => conversation.id === other.id);
+  assert.equal(kept?.model, 'small');
+  assert.equal(kept?.title, '');
 });
 
 test('at the conversation cap the oldest idle conversation makes room for a new one', async () => {
-  const { manager } = await newManager(2, null, 2);
+  const { manager } = await newManager(2, 2);
   const first = await manager.create(undefined, undefined, 'first');
   await new Promise((resolve) => setImmediate(resolve));
   const second = await manager.create(undefined, undefined, 'second');
@@ -207,9 +214,9 @@ test('at the conversation cap the oldest idle conversation makes room for a new 
 });
 
 test('when every conversation at the cap is running, a new one waits', async () => {
-  const { manager } = await newManager(2, null, 1);
+  const { manager } = await newManager(2, 1);
   const only = await manager.create(undefined, undefined, undefined);
-  manager.send(only.id, 'hello', undefined, `mnc_${'a'.repeat(43)}`);
+  manager.send(only.id, 'hello', token);
 
   await assert.rejects(manager.create(undefined, undefined, undefined), (error: ChatError) => error.status === 429);
 });

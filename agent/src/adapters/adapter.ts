@@ -1,6 +1,6 @@
-// The adapter interface (D-87): one implementation per agent CLI. An adapter starts the CLI in its headless,
+// The adapter interface (ADR 0035): one implementation per agent CLI. An adapter starts the CLI in its headless,
 // structured mode, writes the operator's messages and permission answers to it, and turns its output into
-// ChatEvents. It never decides what a tool may do: the session manager's policy does (D-88).
+// ChatEvents. It never decides what a tool may do: the session manager's policy does (ADR 0035).
 
 import type { ChatEvent } from '../events.ts';
 
@@ -52,5 +52,7 @@ export interface AgentAdapter {
   readonly defaultModel: string;
   /** Whether the credentials it needs are present (the agent is listed but unusable otherwise). */
   available(): boolean;
+  /** What to set when `available()` is false, said to the person who tries to use the agent. */
+  readonly credentialsHint: string;
   start(options: StartOptions): AgentProcess;
 }

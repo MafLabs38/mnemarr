@@ -362,6 +362,7 @@ test.describe('smoke @smoke', () => {
     const card = panel.getByRole('region', { name: 'Apply this change?' });
     await expect(card).toBeVisible();
     await expect(card.getByText('create_note')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
     const note = `/api/v1/notes/${id}/${words}.md`;
     expect((await api.get(note)).status()).toBe(404);
 

@@ -1,0 +1,9 @@
+{
+  "name": "mnemarr-agent-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The agent CLI that the runner image carries, pinned by the lockfile next to this file",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.63"
+  }
+}

@@ -77,8 +77,8 @@ public sealed class McpAdminTools
         name switch
         {
             "get_status" => Status(caller),
-            "create_source" => Created(Create(arguments, caller)),
-            "update_source" => Created(Update(arguments, caller)),
+            "create_source" => Described(Create(arguments, caller)),
+            "update_source" => Described(Update(arguments, caller)),
             "delete_source" => Delete(arguments, caller),
             "index_source" => await IndexAsync(arguments, caller, cancellationToken),
             "sync_source" => await SyncAsync(arguments, caller, cancellationToken),
@@ -132,7 +132,7 @@ public sealed class McpAdminTools
         return new { action = report.Action.ToString(), head = report.Head };
     }
 
-    private static object Created(Source source) => new { name = source.Name, kind = source.Kind.ToString(), mode = source.Mode.ToString(), path = source.Path, repository = source.Repository?.Url };
+    private static object Described(Source source) => new { name = source.Name, kind = source.Kind.ToString(), mode = source.Mode.ToString(), path = source.Path, repository = source.Repository?.Url };
 
     private static GitRepository? Repository(JsonElement arguments) =>
         McpArguments.Optional(arguments, "repository_url") is { } url ? new GitRepository(url, McpArguments.Optional(arguments, "repository_branch"), McpArguments.Optional(arguments, "repository_credential")) : null;

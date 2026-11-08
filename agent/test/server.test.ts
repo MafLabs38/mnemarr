@@ -56,7 +56,7 @@ test('conversations: create, send, validate, delete', async () => {
   const sent = await fetch(`${base}/v1/conversations/${id}/messages`, {
     method: 'POST',
     headers: auth,
-    body: JSON.stringify({ text: 'hello' }),
+    body: JSON.stringify({ text: 'hello', mcpToken: `mnc_${'b'.repeat(43)}` }),
   });
   assert.equal(sent.status, 202);
   const permission = await fetch(`${base}/v1/conversations/${id}/permissions/unknown`, {
@@ -71,7 +71,7 @@ test('conversations: create, send, validate, delete', async () => {
   assert.equal((await fetch(`${base}/v1/conversations/${id}`, { headers: auth })).status, 404);
 });
 
-test('a message may carry the per-user MCP token; a malformed one is refused', async () => {
+test('a message must carry the MCP token Mnemarr minted; a missing or malformed one is refused', async () => {
   const created = await fetch(`${base}/v1/conversations`, { method: 'POST', headers: auth, body: '{}' });
   const { id } = (await created.json()) as { id: string };
   const send = (mcpToken: unknown) =>
@@ -82,6 +82,7 @@ test('a message may carry the per-user MCP token; a malformed one is refused', a
     });
 
   assert.equal((await send('not-a-token')).status, 400);
+  assert.equal((await send(undefined)).status, 400);
   assert.equal((await send(`mnc_${'b'.repeat(43)}`)).status, 202);
   await fetch(`${base}/v1/conversations/${id}`, { method: 'DELETE', headers: auth });
 });

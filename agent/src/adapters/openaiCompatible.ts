@@ -1,7 +1,7 @@
-// A model behind an OpenAI-compatible API (D-87): OpenAI, Azure OpenAI, a local server such as Ollama or vLLM, or anything that speaks `/chat/completions`
+// A model behind an OpenAI-compatible API (ADR 0035): OpenAI, Azure OpenAI, a local server such as Ollama or vLLM, or anything that speaks `/chat/completions`
 // with tool calls. There is no CLI to drive here, so this adapter runs the agent loop itself: it sends the conversation and Mnemarr's MCP tools to the model,
 // calls the tool the model asks for, gives it the result, and goes on until the model answers in words. What it must not do is decide what a tool may do: every
-// call is asked of the session manager as a `permission-request`, whose policy answers (D-88), exactly as for a CLI that asks over its control protocol.
+// call is asked of the session manager as a `permission-request`, whose policy answers (ADR 0035), exactly as for a CLI that asks over its control protocol.
 
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -78,6 +78,8 @@ export class OpenAiCompatibleAdapter implements AgentAdapter {
   get name(): string {
     return this.settings.name;
   }
+
+  readonly credentialsHint = 'set MNEMARR_AGENT_OPENAI_URL and MNEMARR_AGENT_OPENAI_MODELS';
 
   available(): boolean {
     return Boolean(this.settings.baseUrl);

@@ -45,6 +45,7 @@ public sealed record ChatCancelRequest;
 /// </summary>
 [ApiController]
 [Authorize(Policy = Permissions.ChatUse)]
+[PeopleOnly]
 [Route("api/v1/chat")]
 public sealed partial class ChatController : ControllerBase
 {
@@ -199,8 +200,9 @@ public sealed partial class ChatController : ControllerBase
         {
             // The page closed the stream.
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or OperationCanceledException)
         {
+            // A runner that did not send its headers in time ends here too (a timeout is a cancellation that is not the page's).
             LogUnreachable(exception.GetType().Name);
             if (!Response.HasStarted)
             {

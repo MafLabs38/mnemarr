@@ -1,16 +1,20 @@
-# mnemarr-agent (D-87): the optional companion that runs an agent CLI headless behind Mnemarr's chat panel.
+# mnemarr-agent (ADR 0035): the optional companion that runs an agent CLI headless behind Mnemarr's chat panel.
 # Not part of Mnemarr's image. Its only tool is Mnemarr's MCP server: no shell tool, no access to the machines.
 #
 #   docker build -t mnemarr-agent agent/
 #
 # Node 22 runs the TypeScript sources directly (type stripping): no build step, no runtime dependency.
-FROM node:22.18-bookworm-slim
+# The base image is pinned by its digest (node 22.18, bookworm-slim); a change of it is a pull request like any other.
+FROM node:22.18-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
 
-# The agent CLIs. Pin the version you validated; adapters for other CLIs add theirs here.
-ARG CLAUDE_CODE_VERSION=2.1.63
-# No install script of any package runs (the CLI is a bundle of JavaScript: it needs none).
-RUN npm install -g --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+# The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI and of everything it
+# needs are fixed there; adapters for other CLIs add theirs). No install script of any package runs: the CLI is a bundle
+# of JavaScript and needs none.
+WORKDIR /opt/cli
+COPY cli/package.json cli/package-lock.json ./
+RUN npm ci --ignore-scripts --omit=dev \
  && npm cache clean --force
+ENV PATH="/opt/cli/node_modules/.bin:${PATH}"
 
 WORKDIR /app
 COPY package.json ./

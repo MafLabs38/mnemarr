@@ -1,4 +1,4 @@
-// What the agent is told it is, whatever the CLI or the model behind it (D-87): the same words for every adapter.
+// What the agent is told it is, whatever the CLI or the model behind it (ADR 0035): the same words for every adapter.
 
 export const systemPrompt = `You are the assistant built into Mnemarr, a self-hosted long-term memory: sources of notes (knowledge vaults such
 as courses, a memory vault of what was decided and learned, and the conversations that assistants held), searched by words

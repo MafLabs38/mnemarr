@@ -18,7 +18,7 @@ interface Listening {
 }
 
 async function listen(
-  handler: (request: { path: string; body: any }, response: ServerResponse) => void,
+  handler: (request: { path: string; body: { id?: number; method?: string } }, response: ServerResponse) => void,
 ): Promise<Listening> {
   const requests: Listening['requests'] = [];
   const server = createServer((request, response) => {
@@ -92,7 +92,7 @@ function start(openai: Listening, mcp: Listening, options: { resume?: string; st
         mnemarr: {
           type: 'http',
           url: `${mcp.url}/mcp`,
-          headers: { 'X-Api-Key': 'mnm_secret', 'X-Mnemarr-Origin': 'chat:c1' },
+          headers: { 'X-Api-Key': 'mnm_secret' },
         },
       },
     }),
@@ -189,7 +189,6 @@ test('a tool the model asks for is shown, run by the MCP server with the key, an
   const called = mcp.requests.find((request) => (request.body as { method: string }).method === 'tools/call');
   assert.deepEqual((called?.body as { params: unknown }).params, { name: 'search', arguments: { query: 'backup' } });
   assert.equal(called?.headers['x-api-key'], 'mnm_secret');
-  assert.equal(called?.headers['x-mnemarr-origin'], 'chat:c1');
   const second = openai.requests[1].body as { messages: { role: string; content: string }[] };
   assert.deepEqual(second.messages.at(-1), { role: 'tool', tool_call_id: 'call_1', content: 'a note says so' });
   assert.equal((run.events.at(-1) as { type: string }).type, 'turn-end');

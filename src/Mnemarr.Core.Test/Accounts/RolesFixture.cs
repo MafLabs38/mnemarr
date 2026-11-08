@@ -21,15 +21,6 @@ public sealed class RolesFixture
         Roles.Find(role)!.Permissions.Should().BeEquivalentTo(expected);
     }
 
-    [Theory]
-    [InlineData(Roles.Assistant)]
-    [InlineData(Roles.Collector)]
-    [InlineData(Roles.Monitor)]
-    public void should_keep_the_chat_for_people_and_not_for_the_roles_of_services_that_are_not_for_it(string role)
-    {
-        Roles.Find(role)!.Permissions.Should().NotContain(Permissions.ChatUse);
-    }
-
     [Fact]
     public void should_know_no_role_by_another_case_and_give_nothing_to_an_unknown_role()
     {

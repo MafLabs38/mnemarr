@@ -25,14 +25,18 @@ conversations do (no pay-per-use key), and it must not depend on Claude: someone
 4. **The model acts as the person, within what their role gives, and the log says it was the chat.** Each message carries a token (`mnc_…`, kept as a hash) tied to the person and the
    conversation: 30 minutes from the last message, 12 hours at most, valid on the MCP server **and nowhere else**, with no permission of its own: what it may do is the person's
    role **as it is now**, read at each call, so a person who loses the role or the account loses the chat's hands at once. The audit records `alice (via chat:<id>)`. A new permission
-   `chat.use` goes to Admin, Operator and Reader; the roles of services have none. A conversation belongs to the person who started it; another person's is "not found".
+   `chat.use` goes to Admin, Operator and Reader; the roles of services have none, and a key of a service cannot use the chat even with a role that has it: the chat is for people. A conversation belongs to the person who
+   started it; another person's is "not found". A person keeps 50 conversations at most (the runner's cap is one for everybody, and one person must not fill it), and the runner carries
+   no key of its own to the MCP server: a message without the token Mnemarr minted for it reaches nothing.
 5. **What the model can look after.** The MCP server gains the tools that look after Mnemarr: `get_status`, `create_source`, `update_source`, `delete_source`, `index_source`,
    `sync_source` (with an optional Git repository), and `request_collector_enrolment` moves beside them. Those that change something are offered only when the operator turned the
    writing tools on (`Mcp:WriteTools`, as for notes), under the permission of the REST API. **"Add this to my courses and push it" needs nothing new**: a knowledge source that is
    a Git checkout and open for writing commits and pushes what `create_note`, `append_to_note` and `update_note` write (ADR 0023): the chat asks the person, then the notes tools do it.
-   **Settings of Mnemarr are not changed by the chat**: they are the operator's environment or configuration as code.
+   The source tools follow `Mcp:WriteTools` and not a setting of their own: a source is declared in Mnemarr's database, not in its environment, so it is not one of the "settings"
+   that D-20 keeps off by default; the same switch that lets the model write notes lets it declare sources. **Settings of Mnemarr are not changed by the chat**: they are the operator's environment or configuration as code.
 6. **Where it is kept.** The conversations (what was said, the tool calls) are in the runner's volume, **and are sent to the model's provider**: the operator accepts this by choosing it.
-   Mnemarr keeps whose a conversation is, and the tokens. The runner's secret (32 characters or more) is shared with Mnemarr; the runner is not published.
+   Mnemarr keeps whose a conversation is, and the tokens. The runner's secret (32 characters or more) is shared with Mnemarr; the runner is not published. The volume is backed up with the runner's other data, apart from Mnemarr's
+   database (a lost volume loses the conversations, and Mnemarr forgets their owners at its next listing). Mnemarr passes the runner's JSON through, so the two images move together: update both.
 
 ## Consequences
 

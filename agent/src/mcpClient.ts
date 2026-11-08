@@ -1,6 +1,5 @@
-// A minimal MCP client over HTTP, for the adapters that are not a CLI (D-87): the agent loop of such an adapter is its own, and Mnemarr's MCP server is the only
-// thing it talks to. One JSON-RPC message per POST, answered as JSON (the transport Mnemarr's server offers). The address and the headers (the key, the origin
-// the audit records) come from the per-process configuration file that the session manager writes, never from the model.
+// A minimal MCP client over HTTP, for the adapters that are not a CLI (ADR 0035): the agent loop of such an adapter is its own, and Mnemarr's MCP server is the only
+// thing it talks to. One JSON-RPC message per POST, answered as JSON (the transport Mnemarr's server offers). The address and the headers (the key) come from the per-process configuration file that the session manager writes, never from the model.
 
 import { readFileSync } from 'node:fs';
 

@@ -1,4 +1,4 @@
-// The events of a conversation, the same whatever the agent CLI behind it (D-87). Adapters turn their CLI's
+// The events of a conversation, the same whatever the agent CLI behind it (ADR 0035). Adapters turn their CLI's
 // output into these; the session manager numbers them, keeps the durable ones and streams them all.
 
 /** Token and cost figures of one turn, as the CLI reports them (a subscription reports a notional cost). */

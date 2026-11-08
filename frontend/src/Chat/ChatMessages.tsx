@@ -60,7 +60,7 @@ function Item({
   }
 }
 
-/** The conversation, as an IDE chat shows it (D-90): messages, collapsible tool calls, permission cards, usage. */
+/** The conversation, as an IDE chat shows it (ADR 0035): messages, collapsible tool calls, permission cards, usage. */
 export default function ChatMessages({ items, draft, running, answering, onAnswer }: Readonly<ChatMessagesProps>) {
   const end = useRef<HTMLDivElement>(null);
 

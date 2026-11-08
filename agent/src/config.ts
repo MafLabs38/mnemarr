@@ -1,4 +1,4 @@
-// The runner's settings, from its environment (D-87). Secrets (the shared secret, Mnemarr's MCP key, the
+// The runner's settings, from its environment (ADR 0035). Secrets (the shared secret, the tokens, the
 // Claude token) are read here and never logged.
 
 export interface RunnerConfig {
@@ -8,7 +8,6 @@ export interface RunnerConfig {
   secret: string;
   dataDir: string;
   mnemarrMcpUrl: string;
-  mnemarrMcpKey?: string;
   maxSessions: number;
   /** Conversations kept on disk; the oldest idle one makes room for a new one. */
   maxConversations: number;
@@ -17,7 +16,7 @@ export interface RunnerConfig {
   models?: { id: string; label: string }[];
   defaultModel?: string;
   claudeCommand: string;
-  /** A model behind an OpenAI-compatible API, as a second agent beside Claude Code (D-87); undefined when no address is given. */
+  /** A model behind an OpenAI-compatible API, as a second agent beside Claude Code (ADR 0035); undefined when no address is given. */
   openai?: {
     baseUrl: string;
     apiKey?: string;
@@ -103,12 +102,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): RunnerConfig {
   if (!/^https?:\/\/[^\s]+\/mcp$/.test(mcpUrl)) {
     errors.push("MNEMARR_MCP_URL must be Mnemarr's MCP endpoint, e.g. http://mnemarr:8383/mcp.");
   }
-  // Optional: Mnemarr mints a token per message (D-98), which is what the runner normally uses. A shared key only
-  // serves callers that send none, and it should be a per-user key, never an Admin-equivalent secret.
-  const mcpKey = env.MNEMARR_MCP_APIKEY?.trim() ? env.MNEMARR_MCP_APIKEY : undefined;
-  if (mcpKey !== undefined && mcpKey.trim().length < minimumSecretLength) {
-    errors.push(`MNEMARR_MCP_APIKEY, when set, must be at least ${minimumSecretLength} characters.`);
-  }
   let models: { id: string; label: string }[] | undefined;
   try {
     models = parseModels(env.MNEMARR_AGENT_MODELS);
@@ -129,7 +122,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): RunnerConfig {
     secret,
     dataDir: env.MNEMARR_AGENT_DATA ?? '/data',
     mnemarrMcpUrl: mcpUrl,
-    mnemarrMcpKey: mcpKey,
     maxSessions: integer(env.MNEMARR_AGENT_MAX_SESSIONS, 3, 1, 20),
     maxConversations: integer(env.MNEMARR_AGENT_MAX_CONVERSATIONS, 200, 1, 5000),
     models,

@@ -43,23 +43,30 @@ public sealed partial class ChatService
             return response;
         }
 
-        var owners = _access.Owners();
+        // The runner's list is what exists: what Mnemarr keeps of a conversation that is gone (the runner makes room, or its volume was lost) goes with it.
+        var existing = all.OfType<JsonObject>().Select(item => item["id"]?.GetValue<string>() ?? string.Empty).ToHashSet(StringComparer.Ordinal);
+        _access.Keep(existing);
+        var mine = _access.OwnedBy(caller.Account.Id);
         var visible = new JsonArray();
-        foreach (var item in all.OfType<JsonObject>().ToList())
+        foreach (var item in all.OfType<JsonObject>().Where(item => mine.Contains(item["id"]?.GetValue<string>() ?? string.Empty)))
         {
-            if (owners.TryGetValue(item["id"]?.GetValue<string>() ?? string.Empty, out var owner) && owner.AccountId == caller.Account.Id)
-            {
-                all.Remove(item);
-                visible.Add(item);
-            }
+            visible.Add(item.DeepClone());
         }
 
         return new AgentRunnerResponse(StatusCodes.Status200OK, visible.ToJsonString());
     }
 
+    /// <summary>How many conversations a person may keep: the runner has one cap for everybody, and one person must not fill it with theirs and push out the others'.</summary>
+    public const int MaxConversationsPerPerson = 50;
+
     /// <summary>Starts a conversation and records its owner; when that fails, the runner's conversation is removed so that none is left without an owner.</summary>
     public async Task<AgentRunnerResponse> CreateAsync(object request, ChatCaller caller, CancellationToken cancellationToken)
     {
+        if (_access.OwnedBy(caller.Account.Id).Count >= MaxConversationsPerPerson)
+        {
+            return new AgentRunnerResponse(StatusCodes.Status429TooManyRequests, $$"""{"title":"You keep {{MaxConversationsPerPerson}} conversations: delete one first."}""");
+        }
+
         var response = await _runner.SendAsync(HttpMethod.Post, "v1/conversations", request, cancellationToken);
         if (response is not { StatusCode: StatusCodes.Status201Created, Json: { } json } || JsonNode.Parse(json)?["id"]?.GetValue<string>() is not { } id)
         {

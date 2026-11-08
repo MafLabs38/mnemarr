@@ -1,4 +1,4 @@
-// Claude Code in its headless, structured mode (D-87): `claude -p` reading and writing stream-json, one process per
+// Claude Code in its headless, structured mode (ADR 0035): `claude -p` reading and writing stream-json, one process per
 // active conversation. Permission prompts come over the same pipes (`--permission-prompt-tool stdio`, the control
 // protocol the Agent SDK uses): a `control_request` of subtype `can_use_tool` on stdout, answered by a
 // `control_response` on stdin. No PTY, no screen scraping.
@@ -219,6 +219,11 @@ export function parseLine(raw: string): AdapterEvent[] {
   } catch {
     return [];
   }
+  return eventsOf(parsed);
+}
+
+/** The events of a line that was parsed already (the process parses each line once). */
+function eventsOf(parsed: unknown): AdapterEvent[] {
   const line = asRecord(parsed);
   if (!line) {
     return [];
@@ -356,25 +361,29 @@ class ClaudeCodeProcess implements AgentProcess {
   }
 
   private handle(raw: string): void {
-    for (const event of parseLine(raw)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return; // Not JSON: ignored.
+    }
+    for (const event of eventsOf(parsed)) {
       this.options.onEvent(event);
     }
     // Control requests this runner does not serve (hooks, elicitation, MCP over the SDK) get an error answer, so the
     // CLI never waits on them.
-    if (raw.includes('"control_request"') && !raw.includes('"can_use_tool"')) {
-      try {
-        const line = JSON.parse(raw) as { request_id?: string };
-        if (line.request_id) {
-          this.write(
-            JSON.stringify({
-              type: 'control_response',
-              response: { subtype: 'error', request_id: line.request_id, error: 'Not supported by mnemarr-agent.' },
-            }),
-          );
-        }
-      } catch {
-        // Not JSON: ignored.
-      }
+    const line = asRecord(parsed);
+    if (
+      line?.type === 'control_request' &&
+      asRecord(line.request)?.subtype !== 'can_use_tool' &&
+      typeof line.request_id === 'string'
+    ) {
+      this.write(
+        JSON.stringify({
+          type: 'control_response',
+          response: { subtype: 'error', request_id: line.request_id, error: 'Not supported by mnemarr-agent.' },
+        }),
+      );
     }
   }
 }
@@ -411,6 +420,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     this.home = home;
     this.env = env;
   }
+
+  readonly credentialsHint = 'set CLAUDE_CODE_OAUTH_TOKEN (the login of a Claude subscription) or ANTHROPIC_API_KEY';
 
   available(): boolean {
     return Boolean(this.env.CLAUDE_CODE_OAUTH_TOKEN || this.env.ANTHROPIC_API_KEY);

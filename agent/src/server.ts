@@ -1,5 +1,5 @@
-// The runner's HTTP API (D-87), for Mnemarr only: a bearer shared secret on every route but /healthz, JSON in and
-// out, server-sent events for a conversation's stream. Mnemarr proxies it to the chat panel (D-89).
+// The runner's HTTP API (ADR 0035), for Mnemarr only: a bearer shared secret on every route but /healthz, JSON in and
+// out, server-sent events for a conversation's stream. Mnemarr proxies it to the chat panel (ADR 0035).
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -12,7 +12,7 @@ export const maxMessageLength = 20_000;
 const keepAliveMs = 15_000;
 const requestIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
 const namePattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-/** The per-turn token Mnemarr mints for the user (V7, D-98): used as the MCP key instead of the shared one. */
+/** The per-turn token Mnemarr mints for the user: used as the MCP key instead of the shared one. */
 const mcpTokenPattern = /^mnc_[A-Za-z0-9_-]{20,100}$/;
 
 function digest(value: string): Buffer {
@@ -71,14 +71,11 @@ function optionalName(body: Record<string, unknown>, key: string): string | unde
   return value;
 }
 
-/** Absent or empty: the runner falls back to the shared key it was configured with. */
-function optionalMcpToken(body: Record<string, unknown>): string | undefined {
+/** Every message carries the token Mnemarr minted for the person: the runner holds no key of its own. */
+function requiredMcpToken(body: Record<string, unknown>): string {
   const value = body.mcpToken;
-  if (value === undefined || value === null || value === '') {
-    return undefined;
-  }
   if (typeof value !== 'string' || !mcpTokenPattern.test(value)) {
-    throw new ChatError(400, 'mcpToken is not a token Mnemarr minted.');
+    throw new ChatError(400, 'mcpToken is required: it is the token Mnemarr minted for this message.');
   }
   return value;
 }
@@ -157,7 +154,7 @@ async function message({ manager, request, response }: Call, id: string): Promis
   if (text.trim().length === 0 || text.length > maxMessageLength) {
     throw new ChatError(400, `text must be 1 to ${maxMessageLength} characters.`);
   }
-  manager.send(id, text, optionalName(body, 'model'), optionalMcpToken(body));
+  manager.send(id, text, requiredMcpToken(body), optionalName(body, 'model'));
   send(response, 202, { accepted: true });
 }
 

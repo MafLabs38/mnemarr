@@ -318,13 +318,17 @@ describe('ChatPanel', () => {
         seq: 1,
         at,
         type: 'text',
-        text: 'A **bold** word <img src=x onerror=alert(1)> and [a link](https://example.org).',
+        text: 'A **bold** word <img src=x onerror=alert(1)> and [a link](https://example.org/page) or [a script](javascript:alert(1)).',
       }),
     );
 
     const log = await screen.findByRole('log', { name: 'Conversation' });
     expect(within(log).getByText('bold').tagName).toBe('STRONG');
     expect(log.querySelector('img')).toBeNull();
-    expect(within(log).getByRole('link', { name: 'a link' })).toHaveAttribute('rel', 'noreferrer noopener');
+    const link = within(log).getByRole('link', { name: 'a link' });
+    expect(link).toHaveAttribute('rel', 'noreferrer noopener');
+    expect(link).toHaveAttribute('title', 'https://example.org/page');
+    expect(log).toHaveTextContent('a link (example.org)');
+    expect(log.querySelector('a[href^="javascript"]')).toBeNull();
   });
 });

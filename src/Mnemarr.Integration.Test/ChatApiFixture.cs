@@ -2,8 +2,6 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.DependencyInjection;
-using Mnemarr.Core.Chat;
 
 namespace Mnemarr.Integration.Test;
 
@@ -120,22 +118,30 @@ public sealed class ChatApiFixture : IClassFixture<ChatFactory>, IClassFixture<M
 
         _factory.Runner.Requests.Should().OnlyContain(request => request.Authorization == "Bearer " + new string('s', 40));
         _factory.Runner.Requests.Last().Body.Should().NotContain("X-Mnemarr-Request");
+        // Nothing of the browser's request goes on: no cookie, no header of the interface, no key.
+        _factory.Runner.HeaderNames.Should().OnlyContain(name => name == "Authorization" || name == "Content-Type" || name == "Content-Length" || name == "Accept" || name == "Last-Event-ID");
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task should_refuse_an_empty_message_and_a_model_that_is_not_a_name(string text)
+    public async Task should_refuse_an_empty_message(string text)
     {
         var callers = await Callers.ForAsync(_factory);
         var id = await StartAsync(callers["Reader"]);
 
         (await callers["Reader"].PostAsJsonAsync($"/api/v1/chat/conversations/{id}/messages", new { text }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await callers["Reader"].PostAsJsonAsync($"/api/v1/chat/conversations/{id}/messages", new { text = "hi", model = "Bad Model; rm" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await callers["Reader"].PostAsJsonAsync($"/api/v1/chat/conversations/{id}/messages", new { text = new string('x', ChatController_MaxLength + 1) }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
-    private const int ChatController_MaxLength = Mnemarr.Api.V1.Chat.ChatController.MaxMessageLength;
+    [Fact]
+    public async Task should_refuse_a_model_that_is_not_a_name_and_a_message_that_is_too_long()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var id = await StartAsync(callers["Reader"]);
+
+        (await callers["Reader"].PostAsJsonAsync($"/api/v1/chat/conversations/{id}/messages", new { text = "hi", model = "Bad Model; rm" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await callers["Reader"].PostAsJsonAsync($"/api/v1/chat/conversations/{id}/messages", new { text = new string('x', Mnemarr.Api.V1.Chat.ChatController.MaxMessageLength + 1) }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 
     [Fact]
     public async Task should_say_a_runner_that_is_down_or_refuses_the_secret_is_a_bad_gateway()
@@ -154,6 +160,67 @@ public sealed class ChatApiFixture : IClassFixture<ChatFactory>, IClassFixture<M
         {
             _factory.Runner.Down = false;
             _factory.Runner.Refuses = null;
+        }
+    }
+
+    [Fact]
+    public async Task should_keep_the_chat_for_people_even_when_a_service_has_the_role_that_gives_it()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var id = await Callers.CreateAsync(callers.Admin, new { name = Callers.Unique("robot"), kind = "Service", role = "Reader" });
+        var robot = _factory.CreateKeyClient(await Callers.CreateKeyAsync(callers.Admin, id));
+
+        (await robot.GetAsync("/api/v1/chat/conversations", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await robot.PostAsJsonAsync("/api/v1/chat/conversations", new { agent = "claude-code", model = "sonnet" }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task should_stop_a_person_from_keeping_more_than_fifty_conversations()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var name = Callers.Unique("collector-of-chats");
+        await Callers.CreateAsync(callers.Admin, new { name, kind = "User", role = "Reader", password = Callers.Password });
+        var person = await _factory.SignedInClientAsync(name, Callers.Password);
+        for (var count = 0; count < Mnemarr.Api.V1.Chat.ChatService.MaxConversationsPerPerson; count++)
+        {
+            await StartAsync(person);
+        }
+
+        var refused = await person.PostAsJsonAsync("/api/v1/chat/conversations", new { agent = "claude-code", model = "sonnet" }, Token);
+
+        refused.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await refused.Content.ReadAsStringAsync(Token)).Should().Contain("delete one first");
+    }
+
+    [Fact]
+    public async Task should_forget_the_conversations_that_the_runner_no_longer_has_with_their_tokens()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var id = await StartAsync(callers["Reader"]);
+        var token = await SendAsync(callers["Reader"], id);
+        (await RpcAsync(WithToken(token), "tools/list"))["result"].Should().NotBeNull();
+
+        _factory.Runner.Forget(id);
+        var listed = await callers["Reader"].GetFromJsonAsync<JsonElement>("/api/v1/chat/conversations", Token);
+
+        listed.EnumerateArray().Select(item => item.GetProperty("id").GetString()).Should().NotContain(id);
+        (await callers["Reader"].GetAsync($"/api/v1/chat/conversations/{id}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await WithToken(token).PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" }, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the model of a conversation that is gone has no hands");
+    }
+
+    [Fact]
+    public async Task should_answer_a_bad_gateway_when_the_stream_does_not_start_in_time()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var id = await StartAsync(callers["Reader"]);
+        try
+        {
+            _factory.Runner.Stalls = true;
+            (await callers["Reader"].GetAsync($"/api/v1/chat/conversations/{id}/events", Token)).StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        }
+        finally
+        {
+            _factory.Runner.Stalls = false;
         }
     }
 
@@ -208,11 +275,5 @@ public sealed class ChatApiFixture : IClassFixture<ChatFactory>, IClassFixture<M
         created["result"]!["isError"]?.GetValue<bool>().Should().NotBe(true);
         var audit = await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/audit?limit=50", Token);
         audit.EnumerateArray().Any(entry => entry.GetProperty("actor").GetString()!.Contains($"(via chat:{id})", StringComparison.Ordinal)).Should().BeTrue("the log says that the chat acted for the person");
-    }
-
-    [Fact]
-    public void should_have_the_chat_registered_as_a_service()
-    {
-        _factory.Services.GetRequiredService<ChatAccess>().Should().NotBeNull();
     }
 }

@@ -52,6 +52,7 @@ Mnemarr also searches by meaning, with a model that runs on this host (the image
 An optional runner gives the interface a chat ([the chat](chat.md)). **Is it up?** The chat icon shows at the right of the header and the panel says *The assistant runner does not answer* when it does not. A runner that restarts keeps the conversations (its volume) and resumes them at the next message; a change that waited for approval when it stopped shows *Cancelled*.
 
 - **Who did that?** The audit log says `person (via chat:<conversation>)` for what the chat's model did with a person's token.
+- **Back it up**: the conversations are in the runner's volume (`/data`), not in Mnemarr's database: back that volume up on its own. If it is lost, the conversations are gone and Mnemarr forgets who owned them the next time the panel lists them.
 - **Stop the chat now**: empty `MNEMARR__AGENT__URL` (the chat disappears, nothing else changes) or stop the runner. The tokens it holds expire by themselves in 30 minutes.
 - **Take it from a person**: remove `chat.use` from their role (they lose the chat and the token's hands at once).
 

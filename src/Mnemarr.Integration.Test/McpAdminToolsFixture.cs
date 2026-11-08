@@ -96,9 +96,39 @@ public sealed class McpAdminToolsFixture : IClassFixture<MnemarrFactory>, IClass
     [InlineData("index_source", """{"source":"no-such-source"}""")]
     public async Task should_refuse_what_the_rest_api_would_refuse(string tool, string arguments)
     {
-        var (isError, _) = await CallAsync(await KeyAsync(_writable, "Operator"), tool, JsonSerializer.Deserialize<JsonElement>(arguments));
+        var (isError, content) = await CallAsync(await KeyAsync(_writable, "Operator"), tool, JsonSerializer.Deserialize<JsonElement>(arguments));
 
         isError.Should().BeTrue();
+        content.GetValue<string>().Should().NotBeNullOrWhiteSpace("the model is told why, so that it can say it");
+    }
+
+    [Fact]
+    public void should_never_give_a_tool_that_changes_something_the_name_of_a_read()
+    {
+        // The runner of the chat lets a tool run without asking when its name starts with get_, list_, find_ or read_ (or is "search"): a tool that changes something must never match.
+        // The other way is safe: a tool that only asks for a change that a person approves later (request_collector_enrolment) is a read by Mnemarr and a card by the runner.
+        var reads = new[] { "get_", "list_", "find_", "read_" };
+        foreach (var tool in Mnemarr.Api.V1.Mcp.McpTools.All)
+        {
+            var looksLikeARead = tool.Name == "search" || reads.Any(prefix => tool.Name.StartsWith(prefix, StringComparison.Ordinal));
+            (looksLikeARead && tool.Writes).Should().BeFalse($"the runner would let {tool.Name} run without asking, and it changes something");
+        }
+    }
+
+    [Fact]
+    public async Task should_read_a_source_again_and_report_what_it_synchronised()
+    {
+        var client = await KeyAsync(_writable, "Operator");
+        var name = Callers.Unique("again");
+        var folder = Path.Combine(_writable.DataFolder, "sources", name);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "a.md"), "# A\nA note.");
+        (await CallAsync(client, "create_source", new { name, kind = "Knowledge", mode = "ReadOnly", path = folder })).IsError.Should().BeFalse();
+
+        var synced = await CallAsync(client, "sync_source", new { source = name });
+
+        synced.IsError.Should().BeTrue("a folder that is not a Git repository has nothing to synchronise");
+        synced.Content.GetValue<string>().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]

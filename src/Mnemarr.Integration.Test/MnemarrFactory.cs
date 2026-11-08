@@ -490,6 +490,31 @@ public sealed class FakeRunner : HttpMessageHandler
 {
     private readonly List<(HttpMethod Method, string Path, string? Body, string? Authorization)> _requests = [];
     private readonly HashSet<string> _conversations = [];
+    private readonly HashSet<string> _headerNames = [];
+
+    /// <summary>The names of the headers that reached the runner, from every request.</summary>
+    public IReadOnlySet<string> HeaderNames
+    {
+        get
+        {
+            lock (_headerNames)
+            {
+                return new HashSet<string>(_headerNames, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    /// <summary>When true, the runner never starts to answer the stream (it ends as a cancelled call, as a timeout does).</summary>
+    public bool Stalls { get; set; }
+
+    /// <summary>Makes the runner forget a conversation, as it does when its volume is lost or room is made for new ones.</summary>
+    public void Forget(string id)
+    {
+        lock (_conversations)
+        {
+            _conversations.Remove(id);
+        }
+    }
 
     public IReadOnlyList<(HttpMethod Method, string Path, string? Body, string? Authorization)> Requests
     {
@@ -514,6 +539,19 @@ public sealed class FakeRunner : HttpMessageHandler
         lock (_requests)
         {
             _requests.Add((request.Method, request.RequestUri!.AbsolutePath, body, request.Headers.Authorization?.ToString()));
+        }
+
+        lock (_headerNames)
+        {
+            foreach (var header in request.Headers)
+            {
+                _headerNames.Add(header.Key);
+            }
+
+            foreach (var header in request.Content?.Headers ?? Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>())
+            {
+                _headerNames.Add(header.Key);
+            }
         }
 
         if (Down)
@@ -566,6 +604,11 @@ public sealed class FakeRunner : HttpMessageHandler
 
         if (path.EndsWith("/events", StringComparison.Ordinal))
         {
+            if (Stalls)
+            {
+                throw new TaskCanceledException("The runner did not answer in time.");
+            }
+
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("id: 1\ndata: {\"type\":\"user\",\"text\":\"hi\",\"seq\":1}\n\n", System.Text.Encoding.UTF8, "text/event-stream") };
         }
 

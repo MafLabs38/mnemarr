@@ -105,7 +105,6 @@ test("the CLI's environment never carries the runner's secret or Mnemarr's key",
     {
       PATH: '/usr/bin',
       MNEMARR_AGENT_SECRET: 's'.repeat(40),
-      MNEMARR_MCP_APIKEY: 'k'.repeat(40),
       CLAUDE_CODE_OAUTH_TOKEN: 'example-token',
       HOME: '/home/operator',
     },
@@ -113,7 +112,6 @@ test("the CLI's environment never carries the runner's secret or Mnemarr's key",
     '/data/home',
   );
   assert.equal(env.MNEMARR_AGENT_SECRET, undefined);
-  assert.equal(env.MNEMARR_MCP_APIKEY, undefined);
   assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, 'example-token');
   assert.equal(env.HOME, '/data/home');
   assert.equal(env.CLAUDE_CONFIG_DIR, '/data/claude');
