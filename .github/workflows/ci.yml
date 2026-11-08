@@ -105,6 +105,8 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn test --coverage
+      # The assistant runner of the chat (agent/) has its own tests, on Node's runner (ADR 0035).
+      - run: yarn test:agent
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: coverage-frontend
@@ -229,7 +231,7 @@ jobs:
           /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
           /d:sonar.cs.vscoveragexml.reportsPaths="coverage/**/*.xml"
           /d:sonar.javascript.lcov.reportPaths="coverage/coverage-frontend/lcov.info"
-          /d:sonar.coverage.exclusions="**/obj/**,**/*.g.cs,**/__tests__/**,tests/**"
+          /d:sonar.coverage.exclusions="**/obj/**,**/*.g.cs,**/__tests__/**,tests/**,agent/**"
           /d:sonar.cs.roslyn.ignoreIssues=true
           /d:sonar.qualitygate.wait=true
           /d:sonar.issue.ignore.multicriteria=e1
@@ -482,3 +484,23 @@ jobs:
           cache-from: ${{ needs.release.outputs.version == '' && 'type=gha' || '' }}
           # Nor does a release write the cache that later builds read.
           cache-to: ${{ needs.release.outputs.version == '' && 'type=gha,mode=max' || '' }}
+      # The assistant runner of the chat (ADR 0035) is a companion with its own image, built from agent/ and tagged the same way.
+      - id: meta-agent
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}-agent
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=${{ needs.release.outputs.version }},enable=${{ needs.release.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ needs.release.outputs.version != '' }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: agent
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-agent.outputs.tags }}
+          labels: ${{ steps.meta-agent.outputs.labels }}
+          no-cache: ${{ needs.release.outputs.version != '' }}
+          cache-from: ${{ needs.release.outputs.version == '' && 'type=gha,scope=agent' || '' }}
+          cache-to: ${{ needs.release.outputs.version == '' && 'type=gha,mode=max,scope=agent' || '' }}

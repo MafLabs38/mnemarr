@@ -343,7 +343,7 @@ test.describe('smoke @smoke', () => {
     test.setTimeout(90_000);
     const source = unique('chat');
     // One word that no other note has.
-    const words = unique('chat').replace(/-/g, '');
+    const words = unique('chat').replaceAll('-', '');
     const api = await signedInRequest(playwright, baseURL ?? '');
     const created = await api.post('/api/v1/sources', {
       data: { name: source, kind: 'Knowledge', mode: 'ReadWrite', path: `/work/${testInfo.project.name}` },

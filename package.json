@@ -19,6 +19,7 @@
     "format": "prettier --write \"frontend/**/*.{ts,tsx,css}\" \"tests/e2e/**/*.ts\"",
     "format:check": "prettier --check \"frontend/**/*.{ts,tsx,css}\" \"tests/e2e/**/*.ts\"",
     "test": "vitest run --config frontend/vite.config.ts",
+    "test:agent": "node --test --test-timeout=30000 agent/test/*.test.ts",
     "e2e": "playwright test --config tests/e2e/playwright.config.ts"
   },
   "dependencies": {

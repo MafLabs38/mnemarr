@@ -12,7 +12,6 @@ import { McpClient, type McpEndpoint, type McpTool, readEndpoint } from '../mcpC
 import { serverName } from '../policy.ts';
 import { systemPrompt } from '../prompt.ts';
 import type {
-  AdapterEvent,
   AgentAdapter,
   AgentProcess,
   ModelOption,
@@ -100,7 +99,7 @@ class OpenAiProcess implements AgentProcess {
     mkdirSync(settings.stateDir, { recursive: true, mode: 0o700 });
     // A conversation is its session id: a process that starts later for the same id takes its messages back.
     const session = options.resume ?? options.sessionId;
-    this.stateFile = join(settings.stateDir, `${session.replace(/[^A-Za-z0-9-]/g, '')}.json`);
+    this.stateFile = join(settings.stateDir, `${session.replaceAll(/[^A-Za-z0-9-]/g, '')}.json`);
     this.messages = this.load();
     queueMicrotask(() => options.onEvent({ type: 'session', agentSessionId: session, model: options.model }));
   }

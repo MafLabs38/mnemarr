@@ -4,9 +4,15 @@
 
 import { mkdir } from 'node:fs/promises';
 
-import type { AdapterEvent, AgentAdapter, AgentProcess, PermissionDecision, StartOptions } from '/app/src/adapters/adapter.ts';
-import { McpClient, readEndpoint } from '/app/src/mcpClient.ts';
+import type {
+  AdapterEvent,
+  AgentAdapter,
+  AgentProcess,
+  PermissionDecision,
+  StartOptions,
+} from '/app/src/adapters/adapter.ts';
 import { loadConfig } from '/app/src/config.ts';
+import { McpClient, readEndpoint } from '/app/src/mcpClient.ts';
 import { createRunnerServer } from '/app/src/server.ts';
 import { SessionManager } from '/app/src/sessions.ts';
 import { ConversationStore } from '/app/src/store.ts';
@@ -50,7 +56,11 @@ class ScriptedProcess implements AgentProcess {
     this.options.onEvent(event);
   }
 
-  private async tool(id: string, name: string, input: unknown): Promise<{ isError: boolean; text: string } | undefined> {
+  private async tool(
+    id: string,
+    name: string,
+    input: unknown,
+  ): Promise<{ isError: boolean; text: string } | undefined> {
     const toolName = `mcp__mnemarr__${name}`;
     this.emit({ type: 'tool-call', id, name: toolName, input });
     const decision = await new Promise<PermissionDecision>((resolve) => {
@@ -71,14 +81,27 @@ class ScriptedProcess implements AgentProcess {
       const sources = await this.tool('call-1', 'list_sources', {});
       const wanted = /\bto (\S+)/.exec(text)?.[1];
       if (!sources || !wanted) {
-        this.emit({ type: 'text', text: 'I looked at your sources. Tell me which one to add to: "add <text> to <source>".' });
+        this.emit({
+          type: 'text',
+          text: 'I looked at your sources. Tell me which one to add to: "add <text> to <source>".',
+        });
         return this.end(false);
       }
       const what = /^add (.+) to \S+/i.exec(text)?.[1] ?? text;
       // The path comes from the words, so that the same request made twice in one stack does not meet its own note.
-      const path = `${what.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.md`;
-      const created = await this.tool('call-2', 'create_note', { source: wanted, path, content: `# From the chat\n\n${what}\n` });
-      this.emit({ type: 'text', text: created && !created.isError ? `Done: I added it to ${wanted}.` : 'I did not change anything.' });
+      const path = `${what
+        .toLowerCase()
+        .replaceAll(/[^a-z0-9]+/g, '-')
+        .replaceAll(/^-|-$/g, '')}.md`;
+      const created = await this.tool('call-2', 'create_note', {
+        source: wanted,
+        path,
+        content: `# From the chat\n\n${what}\n`,
+      });
+      this.emit({
+        type: 'text',
+        text: created && !created.isError ? `Done: I added it to ${wanted}.` : 'I did not change anything.',
+      });
       this.end(false);
     } catch (error) {
       this.emit({ type: 'error', message: error instanceof Error ? error.message : String(error) });
@@ -87,7 +110,11 @@ class ScriptedProcess implements AgentProcess {
   }
 
   private end(isError: boolean): void {
-    this.emit({ type: 'turn-end', isError, usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 } });
+    this.emit({
+      type: 'turn-end',
+      isError,
+      usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
   }
 }
 
@@ -114,4 +141,7 @@ const manager = new SessionManager([adapter], store, {
   mnemarrMcpKey: config.mnemarrMcpKey,
 });
 await manager.init();
-createRunnerServer(manager, config.secret, (message) => process.stdout.write(`${message}\n`)).listen(config.port, config.host);
+createRunnerServer(manager, config.secret, (message) => process.stdout.write(`${message}\n`)).listen(
+  config.port,
+  config.host,
+);
