@@ -335,6 +335,51 @@ test.describe('smoke @smoke', () => {
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 
+  test('a person asks the chat to add a note, sees the change wait for them, approves it, and it is written as them, through the chat', async ({
+    page,
+    playwright,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(90_000);
+    const source = unique('chat');
+    // One word that no other note has.
+    const words = unique('chat').replace(/-/g, '');
+    const api = await signedInRequest(playwright, baseURL ?? '');
+    const created = await api.post('/api/v1/sources', {
+      data: { name: source, kind: 'Knowledge', mode: 'ReadWrite', path: `/work/${testInfo.project.name}` },
+    });
+    expect(created.status()).toBe(201);
+    const id = ((await created.json()) as { id: string }).id;
+    await signIn(page, '/notes');
+
+    await page.getByRole('button', { name: 'Chat' }).click();
+    const panel = page.getByRole('complementary', { name: 'Chat' });
+    await expect(panel.getByText(/Every change waits for your approval/)).toBeVisible();
+    await panel.getByLabel('Your message').fill(`add ${words} to ${source}`);
+    await panel.getByRole('button', { name: 'Send' }).click();
+
+    // The model reads, then proposes: nothing is written until the person says so.
+    const card = panel.getByRole('region', { name: 'Apply this change?' });
+    await expect(card).toBeVisible();
+    await expect(card.getByText('create_note')).toBeVisible();
+    const note = `/api/v1/notes/${id}/${words}.md`;
+    expect((await api.get(note)).status()).toBe(404);
+
+    await card.getByRole('button', { name: 'Approve' }).click();
+    await expect(panel.getByText(`Done: I added it to ${source}.`)).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    // Written as the person, and the log says it was the chat.
+    await expect(async () => {
+      const found = (await (await api.get('/api/v1/search?q=' + encodeURIComponent(words))).json()) as {
+        path: string;
+      }[];
+      expect(found.length).toBeGreaterThan(0);
+    }).toPass({ timeout: 30_000 });
+    const audit = (await (await api.get('/api/v1/audit?limit=100')).json()) as { actor: string }[];
+    expect(audit.some((entry) => /^admin \(via chat:[0-9a-f-]{36}\)$/.test(entry.actor))).toBe(true);
+  });
+
   test('an operator declares a Git source, is told when the host is not allowed, and sees why a sync failed', async ({
     page,
   }) => {

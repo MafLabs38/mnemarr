@@ -41,6 +41,17 @@ See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each pr
 
 Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not indexed. A pass lists the folder and reads only the notes whose size or last write time changed, so a vault on a share is not read in full every interval; `POST /api/v1/sources/{id}/index?rebuild=true` reads everything. The folder of a source is checked against the roots again before every scan, and a link anywhere between the root and the folder is refused. If a scan fails (the folder was unmounted, or is outside the roots now), the source shows why (`lastError`) and `/health/ready` is degraded with the reason `source-unreadable`; its old notes stay searchable. `POST /api/v1/sources/{id}/index?rebuild=true` cuts every note again. The mode of a source is its write switch: read-only unless you turn writing on. Forgetting a source in the interface forgets its index, never its files.
 
+## The chat (`Agent`)
+
+The chat needs an optional second container, the assistant runner; see [the chat](chat.md) ([ADR 0035](adr/0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md)).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__AGENT__URL` | empty | The address of the runner, for example `http://mnemarr-agent:8489`. Empty: the chat is off, its endpoints answer 404 and the interface shows none. |
+| `MNEMARR__AGENT__SECRET` | empty | The secret shared with the runner, 32 characters or more (the start fails otherwise). Never returned, never logged. |
+
+The tools with which the chat changes notes and sources are the MCP writing tools: `MNEMARR__MCP__WRITETOOLS=true`.
+
 ## Search by meaning (`Embeddings`)
 
 The notes and the conversations are also searched by meaning, with a model that runs on this host (ADR 0034). The image carries the model and the library and sets the two paths; a build without them leaves the feature off.

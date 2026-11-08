@@ -1,0 +1,22 @@
+# The assistant runner of the chat (ADR 0035, docs/chat.md): one container beside Mnemarr. Pin a version; no port is published: only Mnemarr talks to it.
+services:
+  mnemarr:
+    environment:
+      MNEMARR__AGENT__URL: http://mnemarr-agent:8489
+      MNEMARR__AGENT__SECRET: ${AGENT_SECRET}                  # 32 characters or more: openssl rand -hex 32
+      MNEMARR__MCP__WRITETOOLS: 'true'                         # lets the chat change notes and sources, with the person's approval
+  mnemarr-agent:
+    image: ghcr.io/<owner>/mnemarr-agent:<tag>
+    restart: unless-stopped
+    environment:
+      MNEMARR_AGENT_SECRET: ${AGENT_SECRET}
+      MNEMARR_MCP_URL: http://mnemarr:8383/mcp
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN}      # `claude setup-token`: the Claude subscription, not an API key
+      # MNEMARR_AGENT_MODELS: sonnet,opus:Opus                 # the Claude models offered (id or id:Label)
+      # MNEMARR_AGENT_OPENAI_URL: http://ollama:11434/v1       # a second agent: any OpenAI-compatible API
+      # MNEMARR_AGENT_OPENAI_MODELS: llama3.1
+      # MNEMARR_AGENT_OPENAI_KEY: ${OPENAI_KEY}                # only when the API wants one
+    volumes:
+      - agent-data:/data
+volumes:
+  agent-data:

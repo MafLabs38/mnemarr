@@ -38,3 +38,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0032](0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md) | The collector is installed by an installer and updates itself from the Mnemarr it sends to | D-52 |
 | [0033](0033-the-page-of-approval-fills-in-the-code-from-the-address-and-a-known-machine-is-taken-over-by-writing-its-name.md) | The page of approval fills in the code from the address, and a known machine is taken over by writing its name | D-53 |
 | [0034](0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md) | Search by meaning is computed on the host and merged with the words by rank | D-54 |
+| [0035](0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md) | The chat is a panel, a proxy and a runner, with an adapter for each kind of model | D-55 |
