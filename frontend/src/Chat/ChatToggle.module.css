@@ -1,0 +1,27 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusMedium);
+  background-color: var(--paperCard);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-color: var(--hairlineStrong);
+}
+
+.toggle:focus-visible {
+  outline: var(--borderWidth) solid var(--accent);
+  outline-offset: 2px;
+}
+
+.toggle.active {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  color: var(--inkOnAccent);
+}

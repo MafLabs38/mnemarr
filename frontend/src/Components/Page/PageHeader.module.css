@@ -24,3 +24,11 @@
   font-size: var(--fontSizeCardTitle);
   font-weight: 700;
 }
+
+/* The things at the right of the header, together: the chat's button and the account. */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}

@@ -1,3 +1,4 @@
+import ChatToggle from 'Chat/ChatToggle';
 import { Link } from 'react-router-dom';
 
 import BrandLogo from 'Components/BrandLogo';
@@ -13,7 +14,10 @@ export default function PageHeader() {
         <BrandLogo size={36} />
         <span className={styles.name}>{translate('AppName')}</span>
       </Link>
-      <AccountMenu />
+      <div className={styles.actions}>
+        <ChatToggle />
+        <AccountMenu />
+      </div>
     </header>
   );
 }

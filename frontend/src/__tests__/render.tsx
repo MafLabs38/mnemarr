@@ -15,6 +15,7 @@ export const adminSession: Session = {
   permissions: [
     'accounts.manage',
     'audit.read',
+    'chat.use',
     'collectors.manage',
     'collectors.request',
     'conversations.read',
@@ -33,7 +34,7 @@ export const readerSession: Session = {
   name: 'reader',
   kind: 'User',
   role: 'Reader',
-  permissions: ['notes.read', 'search'],
+  permissions: ['chat.use', 'notes.read', 'search'],
 };
 
 /**
