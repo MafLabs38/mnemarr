@@ -235,6 +235,25 @@ public static class Schema
         );
         CREATE INDEX chunk_embeddings_by_model ON chunk_embeddings (model);
         """,
+        // 18: the chat (ADR 0035): the conversations of the chat belong to a person (the runner keeps their content), and the runner reaches the MCP server with a token that belongs
+        // to a person and a conversation and expires: only its hash is kept.
+        """
+        CREATE TABLE chat_conversations (
+            id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            owner_name TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX chat_conversations_by_account ON chat_conversations (account_id);
+        CREATE TABLE chat_tokens (
+            token_hash TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            absolute_expires_at TEXT NOT NULL
+        );
+        CREATE INDEX chat_tokens_by_conversation ON chat_tokens (conversation_id);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

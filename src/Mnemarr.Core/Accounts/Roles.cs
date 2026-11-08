@@ -18,10 +18,10 @@ public static class Roles
         new(
             Operator,
             "Reads and writes notes, searches, manages sources, reads the status of the system.",
-            Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.SourcesManage, Permissions.SystemRead),
+            Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.SourcesManage, Permissions.SystemRead, Permissions.ChatUse),
             ForUsers: true,
             ForServices: true),
-        new(Reader, "Reads notes and searches, nothing else.", Set(Permissions.NotesRead, Permissions.Search), ForUsers: true, ForServices: true),
+        new(Reader, "Reads notes and searches, and may ask the chat about them.", Set(Permissions.NotesRead, Permissions.Search, Permissions.ChatUse), ForUsers: true, ForServices: true),
         new(Assistant, "An assistant: reads and writes notes, searches, reads the conversations, can ask for a machine to be enrolled (a key is given to an assistant on purpose, and can be limited to sources).", Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.ConversationsRead, Permissions.CollectorsRequest), ForUsers: false, ForServices: true),
         new(Collector, "A collector: sends conversations, nothing else.", Set(Permissions.IngestWrite), ForUsers: false, ForServices: true),
         new(Monitor, "A companion that watches: reads the status of the system, nothing else.", Set(Permissions.SystemRead), ForUsers: false, ForServices: true),

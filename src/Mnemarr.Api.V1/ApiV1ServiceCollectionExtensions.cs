@@ -10,7 +10,10 @@ public static class ApiV1ServiceCollectionExtensions
     public static IServiceCollection AddMnemarrApiV1(this IServiceCollection services)
     {
         services.AddSingleton<Collectors.InstallCommands>();
+        services.AddSingleton<Mcp.McpAdminTools>();
         services.AddSingleton<Mcp.McpTools>();
+        services.AddHttpClient<Chat.AgentRunnerClient>();
+        services.AddSingleton<Chat.ChatService>();
         services.AddMnemarrRateLimits();
         services.AddControllers(options => options.Filters.Add<RejectedFilter>()).AddApplicationPart(typeof(SystemController).Assembly);
         return services;

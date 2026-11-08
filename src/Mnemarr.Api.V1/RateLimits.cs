@@ -14,7 +14,11 @@ public static class RateLimits
     /// <summary>The policy of the download of a program: at most <see cref="ProgramDownloadPermits"/> at the same time, the others are refused at once.</summary>
     public const string ProgramDownload = "program-download";
 
+    /// <summary>The policy of the event streams of the chat: each one stays open as long as a page shows a conversation, so the open ones are counted (ADR 0035).</summary>
+    public const string ChatStreams = "chat-streams";
+
     private const int ProgramDownloadPermits = 4;
+    private const int ChatStreamPermits = 50;
 
     /// <summary>What a refused caller is told to wait: a program is written in a few seconds.</summary>
     private const int RetryAfterSeconds = 5;
@@ -26,6 +30,11 @@ public static class RateLimits
             options.AddConcurrencyLimiter(ProgramDownload, limit =>
             {
                 limit.PermitLimit = ProgramDownloadPermits;
+                limit.QueueLimit = 0;
+            });
+            options.AddConcurrencyLimiter(ChatStreams, limit =>
+            {
+                limit.PermitLimit = ChatStreamPermits;
                 limit.QueueLimit = 0;
             });
             options.OnRejected = async (context, cancellationToken) =>
