@@ -254,6 +254,10 @@ public static class Schema
         );
         CREATE INDEX chat_tokens_by_conversation ON chat_tokens (conversation_id);
         """,
+        // 19: what a collector found where it looks for conversations (a sentence with no path), so that a machine that sends nothing says why on the machines page.
+        """
+        ALTER TABLE machines ADD COLUMN watching TEXT;
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

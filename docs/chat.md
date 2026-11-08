@@ -67,6 +67,8 @@ OpenAI, Azure OpenAI, Ollama, vLLM, a gateway: anything that answers `/chat/comp
 
 ## What to know
 
+- **Long notes are read in windows.** A conversation can hold hundreds of thousands of characters. `read_note` gives at most 20 000 characters at a time and says the total length and where the next window starts; the model can ask for the end of the note (`tail`, the latest of a conversation), another window (`offset`) or the passage around some words (`around`). It is told to do so for the conversations, to learn where a project stands.
+
 - **What you say goes to the model's provider** (Anthropic, OpenAI, …), the conversation's notes included. Choose it knowing that; a local model keeps everything on your host.
 - **A subscription has limits** shared with your own use of Claude; a chat turn costs what a Claude Code turn costs.
 - **The runner and Mnemarr move together**: Mnemarr passes the runner's answers through to the panel, so update both images at once. Each person keeps 50 conversations at most (`MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON`): delete one to start another. The runner deletes nothing to make room: at its own cap (`MNEMARR_AGENT_MAX_CONVERSATIONS`, 200) it refuses new conversations, so keep the number of people times the cap per person under it.

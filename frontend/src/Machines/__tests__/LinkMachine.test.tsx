@@ -162,6 +162,7 @@ describe('LinkMachine', () => {
       programDiffers: false,
       updateTo: null,
       updateNote: null,
+      watching: null,
     };
     server({ machines: [existing] });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');

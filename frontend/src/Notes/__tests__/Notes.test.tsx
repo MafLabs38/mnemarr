@@ -116,6 +116,35 @@ describe('Notes', () => {
     expect([...tree.querySelectorAll('details')].every((folder) => folder.hasAttribute('open'))).toBe(true);
   });
 
+  it('shows a note that arrives while the page is open, without a reload', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let arrived = false;
+      stubApi((_method, path) => {
+        if (path === '/notes' || path.startsWith('/notes?')) {
+          const list = arrived
+            ? [
+                ...entries,
+                { sourceId: S1, sourceName: 'cours', path: 'devops/new.md', title: 'Arrivée', topic: 'devops' },
+              ]
+            : entries;
+          return { body: { notes: list, total: list.length, sources: noteSources } };
+        }
+        return undefined;
+      });
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const tree = await screen.findByRole('navigation', { name: 'Notes' });
+      expect(within(tree).queryByText('Arrivée')).not.toBeInTheDocument();
+
+      arrived = true;
+      await vi.advanceTimersByTimeAsync(16_000);
+
+      expect(await within(tree).findByRole('link', { name: 'Arrivée' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('asks the person to choose a note when none is open', async () => {
     server(noteWith('# Docker'));
     renderWithProviders(<Notes />, '/notes', readerSession);

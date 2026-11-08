@@ -16,6 +16,9 @@ internal static class McpArguments
     internal static int? Integer(JsonElement arguments, string name) =>
         arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : null;
 
+    internal static bool Boolean(JsonElement arguments, string name) =>
+        arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+
     /// <summary>The JSON Schema of the arguments of a tool: an object with properties of a type each, some required.</summary>
     internal static JsonObject Schema(params (string Name, string Type, string Description, bool Required)[] properties)
     {

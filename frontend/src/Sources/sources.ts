@@ -91,7 +91,8 @@ export interface IndexReport {
 }
 
 export function useSources() {
-  return useApiQuery<SourceItem[]>('/sources');
+  // The counts of notes change as the sources are read: asked again now and then while the page is seen.
+  return useApiQuery<SourceItem[]>('/sources', { refetchInterval: 15_000 });
 }
 
 export function useSourceKinds() {

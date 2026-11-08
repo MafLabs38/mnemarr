@@ -146,6 +146,14 @@ mnemarr-collector run \
 
 The first run sends the whole history of the machine: it can take a few minutes for a large one, and is safe to interrupt.
 
+## Where it looks, and which assistants it reads
+
+**Today only Claude Code is read** (`~/.claude/projects/<project>/<session>.jsonl`, `%USERPROFILE%\.claude\projects` on Windows): that folder is **where Claude Code itself keeps its conversations, whatever the folder of your project is** (`L:\Workspace\...` or any other), so there is nothing to set when the collector runs as the same user as Claude Code. Codex, Copilot and Gemini are designed ([formats](conversation-formats.md), roadmap vertical 4) and not built yet.
+
+It looks under the home of **the user it runs as**. Conversations held under another user, inside WSL (a Linux home of its own), in a dev container or on another machine are not seen: run a collector there too (a machine is a computer and an environment: one collector per place where Claude Code runs).
+
+A collector that sends nothing says why: on the Machines page, under the count of conversations, a machine with none shows **what its last pass found** ("the folder of its conversations is not there", "the folder is there but holds no conversation yet"), without any path.
+
 ## See that it works
 
 - The **Machines** page (and `GET /api/v1/collectors`) shows each machine: its kind, its state (**online**, **away** when an intermittent machine sleeps, **silent** when an always-on machine has not been heard from, **failing** when a pass reported an error, **refused** when it was revoked, **waiting** before its first pass), when it was last seen, the version of its collector and how many conversations it sent. It tells something about the conversations, so it needs the right to read them (`conversations.read`: `Admin` and `Assistant`).

@@ -40,6 +40,8 @@ pub struct Report {
     pub unreadable: Vec<String>,
     /// The lines of the batch that could not go because the server could not be reached or refused the key: what the collector still has to send, as far as it knows.
     pub pending_lines: u64,
+    /// What this pass found where it looks, in a sentence with no path: so that a machine that sends nothing says why (the folder is not there, or has no conversation).
+    pub watching: Option<String>,
 }
 
 /// Reads the conversations of a machine and sends them.
@@ -69,6 +71,7 @@ impl<U: Uploader> Collector<U> {
     pub fn pass(&self, state: &mut State) -> Report {
         let mut report = Report::default();
         let files = conversation_files(&self.projects);
+        report.watching = Some(watching_sentence(&self.projects, files.len()));
         if !files.is_empty() {
             // What was said of files that are gone is not kept for ever.
             let present: std::collections::HashSet<String> = files
@@ -320,6 +323,20 @@ fn project_name(path: &Path) -> String {
                 .map(str::to_string)
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// What the collector found where it looks for the conversations of Claude Code, with no path (the folder is the one of the user it runs as, `.claude/projects`
+/// in their home unless it was told another): a machine that sends nothing must say whether it is because there is nothing, or because it looks elsewhere than where the
+/// conversations are (another user, a Linux system in WSL, a container).
+pub fn watching_sentence(projects: &Path, files: usize) -> String {
+    if !projects.is_dir() {
+        return "Claude Code: the folder of its conversations (.claude/projects in the home of the user the collector runs as) is not there; conversations held under another user, in WSL or in a container are not seen".to_string();
+    }
+    match files {
+        0 => "Claude Code: the folder is there but holds no conversation yet".to_string(),
+        1 => "Claude Code: 1 conversation found".to_string(),
+        count => format!("Claude Code: {count} conversations found"),
+    }
 }
 
 /// The conversations of a machine: the `.jsonl` files directly in each project folder (what a sub-agent said is in a folder of its own and is
@@ -821,5 +838,29 @@ mod tests {
 
         assert_eq!(state.files.len(), 1);
         assert!(!state.files.contains_key("/gone/old.jsonl"));
+    }
+
+    #[test]
+    fn should_say_what_it_found_where_it_looks_without_a_path() {
+        let nothing = std::env::temp_dir().join("mnemarr-collector-not-there-at-all");
+        let missing = watching_sentence(&nothing, 0);
+        assert!(missing.contains("is not there"), "{missing}");
+        assert!(missing.contains("WSL"), "{missing}");
+        assert!(
+            !missing.contains("mnemarr-collector-not-there"),
+            "no path: {missing}"
+        );
+
+        let folder = Workspace::new("watching");
+        let folder = folder.0.clone();
+        assert!(watching_sentence(&folder, 0).contains("holds no conversation yet"));
+        assert_eq!(
+            watching_sentence(&folder, 1),
+            "Claude Code: 1 conversation found"
+        );
+        assert_eq!(
+            watching_sentence(&folder, 12),
+            "Claude Code: 12 conversations found"
+        );
     }
 }

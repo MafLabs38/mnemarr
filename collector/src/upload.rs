@@ -57,6 +57,8 @@ pub struct Heartbeat<'a> {
     pub can_update: bool,
     /// Why the last attempt to update failed, when it did: a short sentence for the machines page.
     pub update_note: Option<String>,
+    /// What the last pass found where it looks for conversations: a sentence with no path, for the machines page.
+    pub watching: Option<&'a str>,
 }
 
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
@@ -177,6 +179,7 @@ impl Uploader for HttpUploader {
                 "intervalSeconds": beat.interval_seconds,
                 "canUpdate": beat.can_update,
                 "updateNote": beat.update_note,
+                "watching": beat.watching,
             }),
         )?;
         if status == 200 || status == 204 {
@@ -410,6 +413,7 @@ mod tests {
                 interval_seconds: 30,
                 can_update: false,
                 update_note: None,
+                watching: Some("Claude Code: 3 conversations found"),
             })
             .unwrap();
 
@@ -431,6 +435,7 @@ mod tests {
                 "intervalSeconds": 30,
                 "canUpdate": false,
                 "updateNote": null,
+                "watching": "Claude Code: 3 conversations found",
             })
         );
     }
@@ -446,6 +451,7 @@ mod tests {
             interval_seconds: 30,
             can_update: false,
             update_note: None,
+            watching: None,
         };
         let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
         assert!(matches!(
@@ -487,6 +493,7 @@ mod tests {
                 update_note: Some(
                     "none of the Mnemarr it sends to is reached over HTTPS".to_string(),
                 ),
+                watching: None,
             })
             .unwrap();
 

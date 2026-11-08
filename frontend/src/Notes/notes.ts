@@ -120,9 +120,16 @@ function encodePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/');
 }
 
-/** The notes the person may read, of one tag when asked. */
+const TREE_REFRESH_MS = 15_000;
+
+/**
+ * The notes the person may read, of one tag when asked. Notes come by themselves (a collector sends the conversations as they go, a source is read again): the page
+ * asks again now and then while it is open and seen, so that nobody reloads it to see what arrived.
+ */
 export function useNoteTree(tag: string | null) {
-  return useApiQuery<NoteListing>(tag ? `/notes?tag=${encodeURIComponent(tag)}` : '/notes');
+  return useApiQuery<NoteListing>(tag ? `/notes?tag=${encodeURIComponent(tag)}` : '/notes', {
+    refetchInterval: TREE_REFRESH_MS,
+  });
 }
 
 export function useTags() {

@@ -61,8 +61,8 @@ public sealed class McpTools
             McpArguments.Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note.", false), ("limit", "integer", "At most this many hits (1 to 25, default 10).", false)),
             Permissions.Search, false),
         new("list_notes", "Lists notes (source, path, title), of one source or carrying one tag.", McpArguments.Schema(OptionalSourceArg, ("tag", Str, "A tag, without #.", false)), Permissions.NotesRead, false),
-        new("read_note", "Reads a note: its whole text, its tags, the notes that link to it, and its version (send it back to change the note).",
-            McpArguments.Schema(SourceArg, (PathKey, Str, "The path of the note in its source, such as Topic/Note.md.", true)), Permissions.NotesRead, false),
+        new("read_note", "Reads a note: its text, its tags, the notes that link to it, and its version. A long note (a conversation can be hundreds of thousands of characters) comes in a window of at most 20000 characters: the answer says the total length and where the next window starts. Ask for another window with offset, for the end of the note with tail (the latest of a conversation is at its end), or for the passage around some words with around. A note that came truncated cannot be replaced whole: use append_to_note.",
+            McpArguments.Schema(SourceArg, (PathKey, Str, "The path of the note in its source, such as Topic/Note.md.", true), ("offset", "integer", "Start at this character (default 0).", false), ("length", "integer", "At most this many characters (1 to 20000, default 20000).", false), ("tail", "boolean", "Read the last characters of the note instead of the first.", false), ("around", Str, "Read the passage around the first place where these words appear.", false)), Permissions.NotesRead, false),
         new("list_tags", "The tags of the notes, most used first.", McpArguments.Schema(), Permissions.NotesRead, false),
         new("create_note", "Creates a note. The path ends in .md; folders are created. The text is the whole file, front matter included.",
             McpArguments.Schema((SourceKey, Str, "A source name (it must be open for writing).", true), (PathKey, Str, "Where the note goes, such as Topic/Note.md.", true), (ContentKey, Str, "The whole text of the note.", true)), Permissions.NotesWrite, true),
@@ -133,6 +133,7 @@ public sealed class McpTools
     private object Read(JsonElement arguments, McpCaller caller)
     {
         var note = _reader.Read(SourceId(arguments, caller.Scope), McpArguments.Text(arguments, PathKey), caller.Scope);
+        var window = NoteWindow.Of(note.Raw, McpArguments.Integer(arguments, "offset"), McpArguments.Integer(arguments, "length"), McpArguments.Boolean(arguments, "tail"), McpArguments.Optional(arguments, "around"));
         return new
         {
             source = note.Detail.Note.SourceName,
@@ -142,7 +143,11 @@ public sealed class McpTools
             version = note.Version,
             kind = note.Kind.ToString(),
             writable = NoteRights.Evaluate(note.Kind, note.Mode, caller.Has(Permissions.NotesWrite)).CanWrite,
-            content = note.Raw,
+            content = window.Text,
+            totalChars = window.Total,
+            offset = window.Offset,
+            truncated = window.Truncated,
+            nextOffset = window.NextOffset,
             linkedFrom = note.Detail.Backlinks.Select(backlink => new { source = backlink.SourceName, path = backlink.Path }).ToList(),
         };
     }
