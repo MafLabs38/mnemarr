@@ -112,6 +112,7 @@ describe('Notes', () => {
 
     expect(within(tree).getByRole('link', { name: 'Choix du réseau' })).toBeInTheDocument();
     expect(within(tree).queryByRole('link', { name: 'Docker' })).not.toBeInTheDocument();
+    expect(tree.querySelectorAll('details').length).toBeGreaterThan(0);
     expect([...tree.querySelectorAll('details')].every((folder) => folder.hasAttribute('open'))).toBe(true);
   });
 
@@ -588,10 +589,11 @@ describe('Notes', () => {
       renderWithProviders(<Notes />, '/notes', readerSession);
       const region = await screen.findByRole('region', { name: 'Search' });
 
+      expect(within(region).getByText(/ask a question in your own words/)).not.toBeVisible();
       await userEvent.click(within(region).getByText('How does the search work?'));
 
       expect(within(region).getByText(/ask a question in your own words/)).toBeVisible();
-      expect(within(region).getByText(/comment le collecteur se met-il à jour tout seul/)).toBeVisible();
+      expect(within(region).getByText(/Example: /)).toBeVisible();
     });
 
     it('says when nothing is found, and asks for nothing while nothing is typed', async () => {
