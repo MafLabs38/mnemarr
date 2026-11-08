@@ -12,6 +12,8 @@ export class FakeProcess implements AgentProcess {
   interrupted = 0;
   closed = false;
   killed = false;
+  /** A real process takes a moment to exit after its input is closed: with false, it does not exit by itself. */
+  exitsOnClose = true;
   readonly options: StartOptions;
 
   constructor(options: StartOptions) {
@@ -32,7 +34,9 @@ export class FakeProcess implements AgentProcess {
 
   close(): void {
     this.closed = true;
-    this.options.onExit(0);
+    if (this.exitsOnClose) {
+      this.options.onExit(0);
+    }
   }
 
   kill(): void {
@@ -51,6 +55,7 @@ export class FakeAdapter implements AgentAdapter {
   readonly credentialsHint = 'set the fake credentials';
   readonly processes: FakeProcess[] = [];
   failNextStart = false;
+  exitsOnClose = true;
   readonly forgotten: string[] = [];
 
   forget(agentSessionId: string): Promise<void> {
@@ -68,6 +73,7 @@ export class FakeAdapter implements AgentAdapter {
       throw new Error('The CLI could not start.');
     }
     const process = new FakeProcess(options);
+    process.exitsOnClose = this.exitsOnClose;
     this.processes.push(process);
     return process;
   }

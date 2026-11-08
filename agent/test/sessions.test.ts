@@ -359,3 +359,23 @@ test('without a choice a conversation goes to the first agent that can run', asy
 
   assert.equal(conversation.agent, usable.id);
 });
+
+test('a message sent while the idle process is still closing goes to a new process, not to the one that is going away', async () => {
+  mock.timers.enable({ apis: ['Date', 'setInterval'], now: 0 });
+  try {
+    const { manager, adapter } = await newManager();
+    adapter.exitsOnClose = false;
+    const conversation = await manager.create(undefined, undefined, undefined);
+    manager.send(conversation.id, 'hello', token);
+    adapter.last.options.onEvent({ type: 'turn-end', isError: false });
+    mock.timers.tick(120_000);
+    assert.equal(adapter.last.closed, true, 'the idle sweep closed it, and it has not exited yet');
+
+    manager.send(conversation.id, 'are you there?', token);
+
+    assert.equal(adapter.processes.length, 2);
+    assert.deepEqual(adapter.last.sent, ['are you there?']);
+  } finally {
+    mock.timers.reset();
+  }
+});

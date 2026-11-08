@@ -201,7 +201,7 @@ export class SessionManager {
     if (current?.busy) {
       throw new ChatError(409, 'A turn is running: wait for it or stop it.');
     }
-    if (current && (current.model !== chosen || Date.now() - current.startedAt > maxProcessAgeMs)) {
+    if (current && (current.stopping || current.model !== chosen || Date.now() - current.startedAt > maxProcessAgeMs)) {
       // Another model, or a token that is about to end: the next process resumes the same CLI session with it.
       this.stop(id);
       current = undefined;

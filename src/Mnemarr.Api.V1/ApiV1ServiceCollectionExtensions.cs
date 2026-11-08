@@ -12,7 +12,8 @@ public static class ApiV1ServiceCollectionExtensions
         services.AddSingleton<Collectors.InstallCommands>();
         services.AddSingleton<Mcp.McpAdminTools>();
         services.AddSingleton<Mcp.McpTools>();
-        services.AddHttpClient<Chat.AgentRunnerClient>();
+        // The runner is a sibling container whose address can change when it is recreated: connections are renewed every two minutes.
+        services.AddHttpClient<Chat.AgentRunnerClient>().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(2) });
         services.AddSingleton<Chat.ChatService>();
         services.AddMnemarrRateLimits();
         services.AddControllers(options => options.Filters.Add<RejectedFilter>()).AddApplicationPart(typeof(SystemController).Assembly);
