@@ -39,3 +39,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0033](0033-the-page-of-approval-fills-in-the-code-from-the-address-and-a-known-machine-is-taken-over-by-writing-its-name.md) | The page of approval fills in the code from the address, and a known machine is taken over by writing its name | D-53 |
 | [0034](0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md) | Search by meaning is computed on the host and merged with the words by rank | D-54 |
 | [0035](0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md) | The chat is a panel, a proxy and a runner, with an adapter for each kind of model | D-55 |
+| [0036](0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md) | The consolidation reads the new turns and writes notes of the memory vault as an account of its own, through the runner | D-56 |

@@ -11,6 +11,7 @@ public static class Roles
     public const string Assistant = "Assistant";
     public const string Collector = "Collector";
     public const string Monitor = "Monitor";
+    public const string Consolidator = "Consolidator";
 
     public static IReadOnlyList<Role> All { get; } =
     [
@@ -25,6 +26,12 @@ public static class Roles
         new(Assistant, "An assistant: reads and writes notes, searches, reads the conversations, can ask for a machine to be enrolled (a key is given to an assistant on purpose, and can be limited to sources).", Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.ConversationsRead, Permissions.CollectorsRequest), ForUsers: false, ForServices: true),
         new(Collector, "A collector: sends conversations, nothing else.", Set(Permissions.IngestWrite), ForUsers: false, ForServices: true),
         new(Monitor, "A companion that watches: reads the status of the system, nothing else.", Set(Permissions.SystemRead), ForUsers: false, ForServices: true),
+        new(
+            Consolidator,
+            "The consolidation (ADR 0036): reads the notes and the conversations, and writes notes in the memory vault; the server holds it to the memory vault.",
+            Set(Permissions.NotesRead, Permissions.NotesWrite, Permissions.Search, Permissions.ConversationsRead),
+            ForUsers: false,
+            ForServices: true),
     ];
 
     public static Role? Find(string name) => All.FirstOrDefault(role => string.Equals(role.Name, name, StringComparison.Ordinal));

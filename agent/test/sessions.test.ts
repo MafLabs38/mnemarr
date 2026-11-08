@@ -379,3 +379,45 @@ test('a message sent while the idle process is still closing goes to a new proce
     mock.timers.reset();
   }
 });
+
+test('a job runs the note tools it is allowed without a card, and refuses the others without asking anybody', async () => {
+  const { manager, adapter } = await newManager();
+  const job = await manager.create(undefined, undefined, 'consolidation', 'job');
+  const events: ChatEventEnvelope[] = [];
+  manager.subscribe(job.id, 0, (event) => events.push(event));
+  manager.send(job.id, 'consolidate', token);
+  const ask = (requestId: string, toolName: string) =>
+    adapter.last.options.onEvent({ type: 'permission-request', requestId, toolName, input: {} });
+
+  ask('a', 'mcp__mnemarr__create_note');
+  ask('b', 'mcp__mnemarr__delete_note');
+  ask('c', 'Bash');
+
+  assert.deepEqual(
+    adapter.last.answers.map((answer) => [answer.requestId, answer.decision.allow]),
+    [
+      ['a', true],
+      ['b', false],
+      ['c', false],
+    ],
+  );
+  assert.equal(events.filter((event) => event.type === 'permission').length, 0, 'nobody is there to approve: no card');
+  assert.equal(manager.get(job.id).policy, 'job');
+});
+
+test('a chat stays a chat: a change waits for the person', async () => {
+  const { manager, adapter } = await newManager();
+  const chat = await manager.create(undefined, undefined, undefined);
+
+  manager.send(chat.id, 'hello', token);
+  adapter.last.options.onEvent({
+    type: 'permission-request',
+    requestId: 'a',
+    toolName: 'mcp__mnemarr__create_note',
+    input: {},
+  });
+
+  assert.equal(adapter.last.answers.length, 0);
+  assert.equal(manager.get(chat.id).pendingPermissions, 1);
+  assert.equal(manager.get(chat.id).policy, 'chat');
+});

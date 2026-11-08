@@ -63,6 +63,8 @@ public sealed class EndpointsFixture
         "api/v1/config",
         "api/v1/config",
         "api/v1/config/status",
+        "api/v1/consolidation",
+        "api/v1/consolidation/run",
         "api/v1/conversations/title",
         "api/v1/conversations/title",
         "api/v1/conversations/title/rewrite",

@@ -241,4 +241,44 @@ public sealed class ChatAccessFixture : IDisposable
         command.CommandText = "SELECT COUNT(*) FROM chat_tokens";
         command.ExecuteScalar().Should().Be(0L);
     }
+
+    [Fact]
+    public void should_give_a_job_the_hands_of_the_consolidation_account_and_no_other()
+    {
+        var consolidation = _h.Robot("consolidation", Roles.Consolidator);
+        var job = ChatAccess.JobPrefix + NewId();
+
+        var identity = _subject.Authenticate(_subject.Mint(consolidation.Id, job));
+
+        identity.Should().NotBeNull();
+        identity!.ConversationId.Should().Be(job);
+        identity.Principal.Permissions.Should().BeEquivalentTo(Roles.Find(Roles.Consolidator)!.Permissions);
+        identity.Principal.Permissions.Should().NotContain([Permissions.SourcesManage, Permissions.ChatUse, Permissions.AccountsManage]);
+    }
+
+    [Fact]
+    public void should_refuse_a_job_token_of_a_person_or_of_a_service_that_is_not_the_consolidation()
+    {
+        var person = _h.Admin("root");
+        var other = _h.Robot("assistant-1", Roles.Assistant);
+        var job = ChatAccess.JobPrefix + NewId();
+
+        _subject.Authenticate(_subject.Mint(person.Id, job)).Should().BeNull("a job does not act as a person");
+        _subject.Authenticate(_subject.Mint(other.Id, job)).Should().BeNull("only the account of the consolidation");
+    }
+
+    [Fact]
+    public void should_stop_a_job_token_when_the_consolidation_account_is_disabled_or_given_another_role_and_refuse_a_chat_token_to_it()
+    {
+        var consolidation = _h.Robot("consolidation", Roles.Consolidator);
+        var job = _subject.Mint(consolidation.Id, ChatAccess.JobPrefix + NewId());
+        var asked = _subject.Mint(consolidation.Id, NewId());
+        _subject.Authenticate(job).Should().NotBeNull();
+        _subject.Authenticate(asked).Should().BeNull("the chat is for people");
+
+        _h.Service.Update(consolidation.Id, Roles.Consolidator, enabled: false, "test");
+        _subject.Authenticate(job).Should().BeNull();
+        _h.Service.Update(consolidation.Id, Roles.Reader, enabled: true, "test");
+        _subject.Authenticate(job).Should().BeNull("the role is not the consolidation's any more");
+    }
 }

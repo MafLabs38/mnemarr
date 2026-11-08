@@ -9,6 +9,7 @@ using Mnemarr.Core.Backup;
 using Mnemarr.Core.Chat;
 using Mnemarr.Core.Collectors;
 using Mnemarr.Core.Configuration;
+using Mnemarr.Core.Consolidation;
 using Mnemarr.Core.Conversations;
 using Mnemarr.Core.Declarative;
 using Mnemarr.Core.Embeddings;
@@ -34,6 +35,11 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<AgentOptions>().Bind(configuration.GetSection(AgentOptions.SectionName)).ValidateOnStart();
         services.AddSingleton<IValidateOptions<AgentOptions>, AgentOptionsValidator>();
         services.AddSingleton<ChatAccess>();
+        services.AddOptions<ConsolidationOptions>().Bind(configuration.GetSection("Consolidation")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ConsolidationOptions>, ConsolidationOptionsValidator>();
+        services.AddSingleton<IConsolidationStore, SqliteConsolidationStore>();
+        services.AddSingleton<ConsolidationAccount>();
+        services.AddSingleton<ConsolidationInput>();
 
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection("Auth")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();

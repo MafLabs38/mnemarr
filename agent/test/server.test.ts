@@ -119,12 +119,53 @@ test('a body that is not a JSON object is a 400', async () => {
   }
 });
 
+test('a conversation can be started as a job, and any other policy is refused', async () => {
+  const job = await fetch(`${base}/v1/conversations`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({ policy: 'job', title: 'consolidation' }),
+  });
+  assert.equal(job.status, 201);
+  const { id, policy } = (await job.json()) as { id: string; policy: string };
+  assert.equal(policy, 'job');
+  const other = await fetch(`${base}/v1/conversations`, {
+    method: 'POST',
+    headers: auth,
+    body: JSON.stringify({ policy: 'admin' }),
+  });
+  assert.equal(other.status, 400);
+  await fetch(`${base}/v1/conversations/${id}`, { method: 'DELETE', headers: auth });
+});
+
 test('a body beyond the limit is a 413', async () => {
   const response = await fetch(`${base}/v1/conversations`, {
     method: 'POST',
     headers: auth,
-    body: JSON.stringify({ title: 'x'.repeat(200_000) }),
+    body: JSON.stringify({ title: 'x'.repeat(600_000) }),
   });
 
   assert.equal(response.status, 413);
+});
+
+test('a job may be given a message far longer than a chat message, and a chat may not', async () => {
+  const token = `mnc_${'c'.repeat(43)}`;
+  const long = 'x'.repeat(100_000);
+  const send = async (id: string) =>
+    fetch(`${base}/v1/conversations/${id}/messages`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ text: long, mcpToken: token }),
+    });
+  const job = (await (
+    await fetch(`${base}/v1/conversations`, { method: 'POST', headers: auth, body: JSON.stringify({ policy: 'job' }) })
+  ).json()) as { id: string };
+  const chat = (await (
+    await fetch(`${base}/v1/conversations`, { method: 'POST', headers: auth, body: '{}' })
+  ).json()) as { id: string };
+
+  assert.equal((await send(job.id)).status, 202);
+  assert.equal((await send(chat.id)).status, 400);
+  for (const id of [job.id, chat.id]) {
+    await fetch(`${base}/v1/conversations/${id}`, { method: 'DELETE', headers: auth });
+  }
 });

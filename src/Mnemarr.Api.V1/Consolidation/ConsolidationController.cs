@@ -1,0 +1,60 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Mnemarr.Core.Accounts;
+
+namespace Mnemarr.Api.V1.Consolidation;
+
+/// <summary>An empty JSON body, so that asking for a run is a JSON request (never a cross-site form post).</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2094:Classes should not be empty", Justification = "Its type is the contract: a body bound to it must be JSON, which a cross-site form cannot send.")]
+public sealed record ConsolidationRunRequest;
+
+/// <summary>Where the consolidation stands (ADR 0036) and a way to run it now.</summary>
+[ApiController]
+[Route("api/v1/consolidation")]
+public sealed class ConsolidationController : ControllerBase
+{
+    private readonly Consolidator _consolidator;
+    private readonly ILogger<ConsolidationController> _logger;
+
+    public ConsolidationController(Consolidator consolidator, ILogger<ConsolidationController> logger)
+    {
+        _consolidator = consolidator;
+        _logger = logger;
+    }
+
+    /// <summary>How the consolidation stands: on or off and why not, the memory vault it writes in, what waits, what is done, what failed.</summary>
+    [HttpGet]
+    [Authorize(Policy = Permissions.SystemRead)]
+    public ConsolidationStatus Get() => _consolidator.Status();
+
+    /// <summary>Consolidates the conversations that grew since their last consolidation, now, without waiting for them to be left alone. It runs in the background: the status says when it is done.</summary>
+    /// <response code="202">A run was started.</response>
+    /// <response code="409">The consolidation is off, cannot run (see the status), or is running.</response>
+    [HttpPost("run")]
+    [Authorize(Policy = Permissions.SourcesManage)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult Run(ConsolidationRunRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (_consolidator.Status().State is not "ready")
+        {
+            return Conflict(new ProblemDetails { Status = StatusCodes.Status409Conflict, Title = "The consolidation is not ready to run: see its status." });
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _consolidator.RunPassAsync(ignoreIdle: true, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "A run of the consolidation that was asked for failed.");
+            }
+        });
+        return Accepted();
+    }
+}

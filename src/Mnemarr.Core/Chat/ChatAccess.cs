@@ -20,6 +20,9 @@ public sealed record ChatTokenIdentity(AccessPrincipal Principal, string Convers
 public sealed class ChatAccess
 {
     public const string TokenPrefix = "mnc_";
+
+    /// <summary>The id of a job (the consolidation) starts with this: its token belongs to the consolidation account, not to a person, and its log line says <c>job:</c> instead of <c>chat:</c>.</summary>
+    public const string JobPrefix = "job:";
     private const string AccountParameter = "$account";
     public static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan TokenMaxLifetime = TimeSpan.FromHours(12);
@@ -176,14 +179,23 @@ public sealed class ChatAccess
         }
 
         var account = _accounts.Get(Guid.Parse(reader.GetString(0)));
-        // Nothing the chat's hands hold goes beyond what the person's role gives today, and the chat is for people: a person who may not use the chat any more has no hands in it.
-        if (account is not { Enabled: true, Kind: AccountKind.User } || !account.Permissions.Contains(Permissions.ChatUse))
+        var conversation = reader.GetString(1);
+        if (!MayAct(account, conversation))
         {
             return null;
         }
 
-        return new ChatTokenIdentity(new AccessPrincipal(account, account.Permissions, null, null), reader.GetString(1));
+        return new ChatTokenIdentity(new AccessPrincipal(account!, account!.Permissions, null, null), conversation);
     }
+
+    /// <summary>
+    /// Nothing the token's hands hold goes beyond what the role gives today. The chat is for people: a person who may not use the chat any more has no hands in it. A job acts as the
+    /// consolidation account and no other: an account that is disabled, or that was given another role, has none.
+    /// </summary>
+    private static bool MayAct(Account? account, string conversation) =>
+        conversation.StartsWith(JobPrefix, StringComparison.Ordinal)
+            ? account is { Enabled: true, Kind: AccountKind.Service, Role: Roles.Consolidator }
+            : account is { Enabled: true, Kind: AccountKind.User } && account.Permissions.Contains(Permissions.ChatUse);
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 

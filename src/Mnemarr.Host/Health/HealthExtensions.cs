@@ -13,6 +13,7 @@ public static class HealthExtensions
         // One instance: it keeps its last result, and AddCheck would otherwise build a new one for every probe.
         services.TryAddSingleton<DataFolderHealthCheck>();
         services.TryAddSingleton<Mnemarr.Api.V1.Chat.AgentHealthCheck>();
+        services.TryAddSingleton<Mnemarr.Api.V1.Consolidation.ConsolidationHealthCheck>();
         services.AddHealthChecks()
             .AddCheck<DataFolderHealthCheck>("data-folder", tags: [ReadyTag])
             .AddCheck<DatabaseHealthCheck>("database", tags: [ReadyTag])
@@ -22,7 +23,8 @@ public static class HealthExtensions
             .AddCheck<CollectorsHealthCheck>("collectors", tags: [ReadyTag])
             .AddCheck<BackupHealthCheck>("backup", tags: [ReadyTag])
             .AddCheck<EmbeddingsHealthCheck>("embeddings", tags: [ReadyTag])
-            .AddCheck<Mnemarr.Api.V1.Chat.AgentHealthCheck>("chat", tags: [ReadyTag]);
+            .AddCheck<Mnemarr.Api.V1.Chat.AgentHealthCheck>("chat", tags: [ReadyTag])
+            .AddCheck<Mnemarr.Api.V1.Consolidation.ConsolidationHealthCheck>("consolidation", tags: [ReadyTag]);
         return services;
     }
 

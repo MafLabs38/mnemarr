@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { classify, knownReadTools, shortToolName } from '../src/policy.ts';
+import { classify, jobMayCall, knownReadTools, shortToolName } from '../src/policy.ts';
 
 test('every tool that is allowed on the command line is a read for the policy too', () => {
   for (const tool of knownReadTools) {
@@ -45,4 +45,24 @@ test('anything that is not a tool of Mnemarr is forbidden, whatever its name loo
 test('people see the short name of a tool', () => {
   assert.equal(shortToolName('mcp__mnemarr__create_note'), 'create_note');
   assert.equal(shortToolName('Bash'), 'Bash');
+});
+
+test('an unattended job may read, and change notes (not remove them), and nothing else', () => {
+  for (const tool of [
+    'search',
+    'read_note',
+    'list_notes',
+    'create_note',
+    'update_note',
+    'append_to_note',
+    'rename_note',
+  ]) {
+    assert.equal(jobMayCall(`mcp__mnemarr__${tool}`), true, tool);
+  }
+  for (const tool of ['delete_note', 'create_source', 'delete_source', 'sync_source', 'request_collector_enrolment']) {
+    assert.equal(jobMayCall(`mcp__mnemarr__${tool}`), false, tool);
+  }
+  for (const tool of ['Bash', 'Write', 'mcp__other__create_note']) {
+    assert.equal(jobMayCall(tool), false, tool);
+  }
 });

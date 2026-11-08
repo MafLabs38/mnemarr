@@ -93,12 +93,12 @@
 - Start-of-session context (D-12) from the recent conversations and notes of the application, within a budget, wired by the install with the operator's consent.
 - A read key per machine, separate from the ingest key (Q-26).
 
-### 6. Consolidation: conversations become durable notes
+### 6. Consolidation: conversations become durable notes — **built** ([ADR 0036](adr/0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md))
 
 *Demo: after a day of work, the memory vault holds notes of what was decided and learned, linked to the conversations.*
 
 - A background job (through the assistant runner, ADR 0007) reads new conversations and writes or updates notes per application, supersedes the contradicted ones, keeps provenance (D-17). The **summary title** of each conversation is built already ([ADR 0028](adr/0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md)).
-- Needs a decision on what pays for it (a subscription through the CLI, or an API key); it costs per conversation.
+- Paid by the subscription through the runner, a light model, bounded per pass and per day. Follow-ups: a pause when the subscription's limit is near, a second pass that merges and prunes the vault, tuning on real conversations.
 
 ### 7. Search by meaning
 

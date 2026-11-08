@@ -12,6 +12,8 @@ export interface Conversation {
   title: string;
   agent: string;
   model: string;
+  /** What the conversation may do: `chat` (a person is there and approves the changes) or `job` (unattended, the consolidation: a fixed set of note tools runs, nothing else). */
+  policy?: 'chat' | 'job';
   /** The CLI's session, set by its first process; resumed by the next ones. */
   agentSessionId?: string;
   createdAt: string;
