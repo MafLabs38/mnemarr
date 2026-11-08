@@ -5,15 +5,17 @@ using System.Text.Json.Nodes;
 namespace Mnemarr.Integration.Test;
 
 /// <summary>The tools that look after Mnemarr over MCP (ADR 0035): its state and its sources, under the permissions of the key, and the ones that change something only when the operator allows them.</summary>
-public sealed class McpAdminToolsFixture : IClassFixture<MnemarrFactory>, IClassFixture<McpWriteFactory>
+public sealed class McpAdminToolsFixture : IClassFixture<MnemarrFactory>, IClassFixture<McpWriteFactory>, IClassFixture<McpNotesOnlyFactory>
 {
     private readonly MnemarrFactory _readOnly;
     private readonly McpWriteFactory _writable;
+    private readonly McpNotesOnlyFactory _notesOnly;
 
-    public McpAdminToolsFixture(MnemarrFactory readOnly, McpWriteFactory writable)
+    public McpAdminToolsFixture(MnemarrFactory readOnly, McpWriteFactory writable, McpNotesOnlyFactory notesOnly)
     {
         _readOnly = readOnly;
         _writable = writable;
+        _notesOnly = notesOnly;
     }
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -51,6 +53,14 @@ public sealed class McpAdminToolsFixture : IClassFixture<MnemarrFactory>, IClass
         readOnly.Should().Contain("get_status").And.NotContain(["create_source", "update_source", "delete_source", "index_source", "sync_source"]);
         writable.Should().Contain(["get_status", "create_source", "update_source", "delete_source", "index_source", "sync_source"]);
         (await ToolsAsync(await KeyAsync(_writable, "Assistant"))).Should().NotContain(["get_status", "create_source"], "an assistant's role has neither the status nor the sources");
+    }
+
+    [Fact]
+    public async Task should_not_offer_the_tools_that_look_after_sources_to_an_operator_who_only_let_assistants_write_notes()
+    {
+        var tools = await ToolsAsync(await KeyAsync(_notesOnly, "Operator"));
+
+        tools.Should().Contain(["create_note", "update_note", "get_status"]).And.NotContain(["create_source", "update_source", "delete_source", "index_source", "sync_source"]);
     }
 
     [Fact]

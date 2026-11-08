@@ -93,18 +93,22 @@ impl<U: Uploader> Collector<U> {
 
     /// How many passes go by between two comparisons of what the collector believes it sent with what the server holds (a pass is thirty seconds by default).
     const CHECK_EVERY_PASSES: u32 = 120;
+    const RETRY_AFTER_PASSES: u32 = 4;
 
     fn reconcile_when_due(&self, state: &mut State) {
         if state.check_in > 0 {
             state.check_in -= 1;
             return;
         }
-        // A server that cannot be asked now is asked at the next pass.
-        if let Ok(known) = self.uploader.positions(&self.machine) {
-            state.check_in = Self::CHECK_EVERY_PASSES;
-            if let Some(held) = known {
-                let _ = self.reconcile(state, &held);
+        match self.uploader.positions(&self.machine) {
+            Ok(known) => {
+                state.check_in = Self::CHECK_EVERY_PASSES;
+                if let Some(held) = known {
+                    let _ = self.reconcile(state, &held);
+                }
             }
+            // A server that cannot be asked (away, refusing the key, answering something else) is asked again soon, not at every pass.
+            Err(_) => state.check_in = Self::RETRY_AFTER_PASSES,
         }
     }
 
@@ -473,6 +477,7 @@ mod tests {
         applications: RefCell<Vec<String>>,
         down: RefCell<Option<UploadError>>,
         held: RefCell<Option<std::collections::HashMap<String, u64>>>,
+        positions_fail: RefCell<bool>,
     }
 
     impl Fake {
@@ -483,6 +488,7 @@ mod tests {
                 applications: RefCell::new(Vec::new()),
                 down: RefCell::new(None),
                 held: RefCell::new(None),
+                positions_fail: RefCell::new(false),
             }
         }
     }
@@ -492,6 +498,9 @@ mod tests {
             &self,
             _machine: &str,
         ) -> Result<Option<std::collections::HashMap<String, u64>>, UploadError> {
+            if *self.positions_fail.borrow() {
+                return Err(UploadError::Later("away".to_string()));
+            }
             Ok(self.held.borrow().clone())
         }
 
@@ -627,6 +636,45 @@ mod tests {
 
         assert_eq!(again.lines_sent, 2);
         assert_eq!(fake.taken.borrow().len(), 2);
+    }
+
+    #[test]
+    fn should_leave_the_state_alone_when_the_server_holds_more_and_resend_a_session_it_does_not_know()
+     {
+        let workspace = Workspace::new("more");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+
+        let mut held = std::collections::HashMap::new();
+        held.insert("session-1".to_string(), 50);
+        assert_eq!(collector.reconcile(&mut state, &held), 0);
+        assert_eq!(state.files.values().next().unwrap().lines, 2);
+        held.clear();
+        assert_eq!(collector.reconcile(&mut state, &held), 1);
+        assert_eq!(state.files.values().next().unwrap().lines, 0);
+    }
+
+    #[test]
+    fn should_ask_again_soon_when_the_server_cannot_say_and_not_for_a_while_when_it_cannot_compare()
+    {
+        let workspace = Workspace::new("asks");
+        fs::write(workspace.file(), "{\"a\":1}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+
+        // An older server answers that it cannot say: the question is not repeated for a long time.
+        collector.pass(&mut state);
+        assert_eq!(state.check_in, Collector::<&Fake>::CHECK_EVERY_PASSES);
+
+        // A server that fails to answer is asked again after a few passes, not at every pass.
+        *fake.positions_fail.borrow_mut() = true;
+        state.check_in = 0;
+        collector.pass(&mut state);
+        assert_eq!(state.check_in, Collector::<&Fake>::RETRY_AFTER_PASSES);
     }
 
     #[test]
@@ -987,7 +1035,8 @@ mod tests {
     #[test]
     fn should_say_what_it_found_where_it_looks_without_a_path() {
         let nothing = std::env::temp_dir().join("mnemarr-collector-not-there-at-all");
-        let missing = watching_sentence(&nothing, 0);
+        let no_homes = std::env::temp_dir().join("mnemarr-collector-no-homes-at-all");
+        let missing = watching_sentence_among(&nothing, 0, &no_homes);
         assert!(missing.contains("is not there"), "{missing}");
         assert!(missing.contains("WSL"), "{missing}");
         assert!(
@@ -997,13 +1046,15 @@ mod tests {
 
         let folder = Workspace::new("watching");
         let folder = folder.0.clone();
-        assert!(watching_sentence(&folder, 0).contains("holds no conversation file"));
+        assert!(
+            watching_sentence_among(&folder, 0, &no_homes).contains("holds no conversation file")
+        );
         assert_eq!(
-            watching_sentence(&folder, 1),
+            watching_sentence_among(&folder, 1, &no_homes),
             "Claude Code: 1 conversation found"
         );
         assert_eq!(
-            watching_sentence(&folder, 12),
+            watching_sentence_among(&folder, 12, &no_homes),
             "Claude Code: 12 conversations found"
         );
     }

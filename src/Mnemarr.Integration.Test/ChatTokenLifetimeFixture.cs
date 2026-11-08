@@ -86,11 +86,12 @@ public sealed class ChatTokenLifetimeFixture : IClassFixture<ChatFactory>
     {
         var (person, _) = await PersonAsync();
         var (conversation, token) = await SendAsync(person);
+        await SendAsync(person); // another conversation, which the runner keeps: its list is not empty
         (await ToolsAsync(token)).Should().Be(HttpStatusCode.OK);
         _factory.Runner.Forget(conversation);
 
         // Just made: a list asked for before it existed must not take it away.
-        (await person.GetFromJsonAsync<JsonElement>("/api/v1/chat/conversations", Token)).GetArrayLength().Should().Be(0);
+        (await person.GetFromJsonAsync<JsonElement>("/api/v1/chat/conversations", Token)).EnumerateArray().Select(item => item.GetProperty("id").GetString()).Should().NotContain(conversation);
         (await ToolsAsync(token)).Should().Be(HttpStatusCode.OK, "it is younger than the grace");
 
         _factory.Clock.Advance(ChatAccess.NewConversationGrace + TimeSpan.FromMinutes(1));

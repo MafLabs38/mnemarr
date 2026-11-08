@@ -90,6 +90,14 @@ public sealed class ChatAccess
     {
         using var connection = _database.Open();
         var gone = new List<string>();
+        // A runner that lists nothing has been started on an empty or unmounted volume, more likely than it has lost every conversation: the owners are kept, so that the conversations
+        // are theirs again when the volume comes back (a row is cheap, and a conversation nobody owns can be seen and deleted by nobody).
+        if (listed.Count == 0)
+        {
+            ForgetExpiredTokens(connection);
+            return;
+        }
+
         using (var command = connection.CreateCommand())
         {
             command.CommandText = "SELECT id FROM chat_conversations WHERE created_at < $recent";
@@ -114,6 +122,9 @@ public sealed class ChatAccess
         Execute(connection, "DELETE FROM chat_tokens WHERE absolute_expires_at < $now OR expires_at < $now", transaction, ("$now", _clock.GetUtcNow().ToString("O")));
         transaction.Commit();
     }
+
+    private void ForgetExpiredTokens(SqliteConnection connection) =>
+        Execute(connection, "DELETE FROM chat_tokens WHERE absolute_expires_at < $now OR expires_at < $now", ("$now", _clock.GetUtcNow().ToString("O")));
 
     /// <summary>The token the runner uses as the MCP key for this person's turns in this conversation (shown once, kept as a hash).</summary>
     public string Mint(Guid accountId, string conversationId)

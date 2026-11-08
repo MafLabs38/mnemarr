@@ -128,7 +128,9 @@ impl HttpUploader {
             .call()
             .map_err(|error| UploadError::Later(error.to_string()))?;
         let status = response.status().as_u16();
-        let text = response.body_mut().read_to_string().unwrap_or_default();
+        let text = response.body_mut().read_to_string().map_err(|error| {
+            UploadError::Later(format!("reading the answer of the server: {error}"))
+        })?;
         Ok((status, text))
     }
 

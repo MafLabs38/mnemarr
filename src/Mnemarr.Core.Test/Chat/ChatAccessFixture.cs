@@ -72,9 +72,22 @@ public sealed class ChatAccessFixture : IDisposable
         var id = NewId();
         _subject.Register(id, alice);
 
-        _subject.Keep(new HashSet<string>());
+        _subject.Keep(new HashSet<string> { NewId() });
 
         _subject.CanAccess(id, alice.Id).Should().BeTrue("the runner's list was asked for before it existed");
+    }
+
+    [Fact]
+    public void should_keep_every_owner_when_the_runner_lists_nothing_at_all()
+    {
+        var alice = _h.Reader("alice");
+        var id = NewId();
+        _subject.Register(id, alice);
+        _h.Clock.Advance(ChatAccess.NewConversationGrace + TimeSpan.FromMinutes(1));
+
+        _subject.Keep(new HashSet<string>());
+
+        _subject.CanAccess(id, alice.Id).Should().BeTrue("a runner started on an empty or unmounted volume has not lost every conversation for good");
     }
 
     [Fact]

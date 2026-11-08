@@ -400,6 +400,22 @@ public sealed class McpWriteFactory : MnemarrFactoryBase
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting("Mcp:WriteTools", "true");
+        builder.UseSetting("Mcp:SourceTools", "true");
+    }
+}
+
+/// <summary>An application whose operator turned the MCP write tools on for notes only (<c>Mcp:WriteTools</c>, not <c>Mcp:SourceTools</c>).</summary>
+public sealed class McpNotesOnlyFactory : MnemarrFactoryBase
+{
+    public McpNotesOnlyFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Mcp:WriteTools", "true");
     }
 }
 
@@ -480,7 +496,11 @@ public sealed class ChatFactory : MnemarrFactoryBase
             options.Url = "http://runner.example:8489";
             options.Secret = new string('s', 40);
         });
-        services.PostConfigure<McpOptions>(options => options.WriteTools = true);
+        services.PostConfigure<McpOptions>(options =>
+        {
+            options.WriteTools = true;
+            options.SourceTools = true;
+        });
         services.AddHttpClient<Mnemarr.Api.V1.Chat.AgentRunnerClient>().ConfigurePrimaryHttpMessageHandler(() => Runner);
     }
 }

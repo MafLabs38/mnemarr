@@ -15,7 +15,7 @@ browser ── Mnemarr (/api/v1/chat, the proxy) ── shared secret ──▶ 
 - **Write, with your approval.** *Add this to my courses.* It reads the note, proposes the change as a card (**Apply this change?**, with the tool and its arguments); nothing changes until you press **Approve**. A source that is a Git checkout open for writing commits and pushes it, so you can pull it elsewhere.
 - **Look after Mnemarr.** Declare, change or forget a source, read it again, bring a Git source up to date, ask for a machine to join. Same cards.
 - It does **not** change Mnemarr's settings (they are the operator's environment and configuration as code), and it has no shell, no file and no network access.
-- The writing tools are off unless the operator turned them on (`MNEMARR__MCP__WRITETOOLS=true`): the chat then only reads, and says so.
+- The writing tools are off unless the operator turned them on (`MNEMARR__MCP__WRITETOOLS=true` for notes, `MNEMARR__MCP__SOURCETOOLS=true` as well for the tools that look after sources): the chat then only reads, and says so.
 - It acts **as you**: what it may do is what your role allows, and the audit log says `you (via chat:<id>)`. The roles Admin, Operator and Reader may use it (`chat.use`); an assistant's key may not.
 
 ## Run the runner
@@ -26,7 +26,8 @@ services:
     environment:
       MNEMARR__AGENT__URL: http://mnemarr-agent:8489
       MNEMARR__AGENT__SECRET: ${AGENT_SECRET}            # 32 characters or more: openssl rand -hex 32
-      MNEMARR__MCP__WRITETOOLS: 'true'                   # so that it can change notes and sources, with your approval
+      MNEMARR__MCP__WRITETOOLS: 'true'                   # so that it can change notes, with your approval
+      MNEMARR__MCP__SOURCETOOLS: 'true'                  # and declare, change and forget sources
   mnemarr-agent:
     image: ghcr.io/<owner>/mnemarr-agent:<tag>
     restart: unless-stopped

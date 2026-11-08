@@ -80,7 +80,11 @@ public sealed class McpTools
     public static IEnumerable<McpTool> All => Notes.Concat(McpAdminTools.Definitions);
 
     /// <summary>The tools this caller is offered: what their permissions allow, the writing ones only if the operator turned them on.</summary>
-    public IEnumerable<McpTool> Available(McpCaller caller) => All.Where(tool => caller.Has(tool.Permission) && (!tool.Writes || _options.Value.WriteTools));
+    public IEnumerable<McpTool> Available(McpCaller caller) => All.Where(tool => caller.Has(tool.Permission) && Offered(tool));
+
+    /// <summary>The tools that read are always offered; those that write need the operator's switch, and those that look after sources need their own as well.</summary>
+    private bool Offered(McpTool tool) =>
+        !tool.Writes || (_options.Value.WriteTools && (tool.Permission != Permissions.SourcesManage || _options.Value.SourceTools));
 
     public async Task<JsonNode> CallAsync(string name, JsonElement arguments, McpCaller caller, CancellationToken cancellationToken)
     {

@@ -51,6 +51,7 @@ services:
       MNEMARR__AGENT__URL: http://agent:8489
       MNEMARR__AGENT__SECRET: e2e-agent-secret-0123456789abcdef0123456789
       MNEMARR__MCP__WRITETOOLS: 'true'
+      MNEMARR__MCP__SOURCETOOLS: 'true'
       # The model reads the notes of the stack on one thread: the journeys run beside it on a small runner, and must not wait for it.
       MNEMARR__EMBEDDINGS__THREADS: '1'
     configs:

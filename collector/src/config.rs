@@ -917,4 +917,23 @@ mod tests {
         );
         assert_eq!(claude_dir(&none, None), None);
     }
+
+    #[test]
+    fn should_use_the_other_variable_when_the_first_is_empty_or_blank() {
+        let only_profile = |name: &str| match name {
+            "HOME" => Some("  ".to_string()),
+            "USERPROFILE" => Some("C:\\Users\\me".to_string()),
+            _ => None,
+        };
+        assert_eq!(
+            home_dir(&only_profile),
+            Some(PathBuf::from("C:\\Users\\me"))
+        );
+        let only_home = |name: &str| match name {
+            "HOME" => Some("/home/me".to_string()),
+            "USERPROFILE" => Some(String::new()),
+            _ => None,
+        };
+        assert_eq!(home_dir(&only_home), Some(PathBuf::from("/home/me")));
+    }
 }
