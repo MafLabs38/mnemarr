@@ -11,6 +11,9 @@ public sealed record ConsolidationCounts(int Waiting, int Done, int Failing, int
 
 public interface IConsolidationStore
 {
+    /// <summary>A conversation that failed too often is tried again once it has grown by this many lines: what failed was another text.</summary>
+    public const int RetryAfterGrowth = 200;
+
     ConsolidationRecord? Find(string machine, string session);
 
     void Save(ConsolidationRecord record);
@@ -19,6 +22,9 @@ public interface IConsolidationStore
     IReadOnlyList<(string Machine, string Session)> Pending(DateTimeOffset idleBefore, int maxTries, int limit);
 
     ConsolidationCounts Counts(DateTimeOffset dayStart, int maxTries);
+
+    /// <summary>Gives the conversations that failed too often their tries back, so that the next pass tries them again. Returns how many.</summary>
+    int ResetFailures(int maxTries);
 
     /// <summary>A run of the model, whatever came of it: what the day's cap counts (a conversation read in several runs, or tried again, costs each time).</summary>
     void CountRun(DateTimeOffset at);
@@ -77,11 +83,12 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
             SELECT c.machine, c.session FROM conversations c
             LEFT JOIN consolidations k ON k.machine = c.machine AND k.session = c.session
             WHERE c.updated_at <= $idle AND c.lines > coalesce(k.lines_done, 0)
-              AND (coalesce(k.tries, 0) < $tries OR c.lines > coalesce(k.lines_done, 0) + 200)
+              AND (coalesce(k.tries, 0) < $tries OR c.lines > coalesce(k.lines_done, 0) + $growth)
             ORDER BY c.updated_at LIMIT $limit
             """;
         command.Parameters.AddWithValue("$idle", StorageText.Format(idleBefore));
         command.Parameters.AddWithValue("$tries", maxTries);
+        command.Parameters.AddWithValue("$growth", IConsolidationStore.RetryAfterGrowth);
         command.Parameters.AddWithValue("$limit", limit);
         using var reader = command.ExecuteReader();
         var found = new List<(string, string)>();
@@ -110,6 +117,14 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
         using var reader = command.ExecuteReader();
         reader.Read();
         return new ConsolidationCounts(reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4));
+    }
+
+    public int ResetFailures(int maxTries)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE consolidations SET tries = 0, error = NULL WHERE error IS NOT NULL";
+        return command.ExecuteNonQuery();
     }
 
     public void CountRun(DateTimeOffset at)

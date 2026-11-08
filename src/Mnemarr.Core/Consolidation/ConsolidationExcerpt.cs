@@ -47,7 +47,9 @@ public static class ConsolidationExcerpts
         }
 
         var body = turn.Text.Length > MaxTurnChars ? turn.Text[..MaxTurnChars] + "\n[... cut]" : turn.Text;
+        // The markers that close the data block cannot be written by a turn: what looks like one is made harmless.
+        body = body.Replace(ConsolidationPrompt.End, "CONVERSATION >>>", StringComparison.Ordinal).Replace(ConsolidationPrompt.Begin, "<<< CONVERSATION", StringComparison.Ordinal);
         var when = turn.At is { } at ? string.Create(CultureInfo.InvariantCulture, $" · {at:yyyy-MM-dd HH:mm}") : string.Empty;
-        return $"[{turn.Role}{when}]\n{body.Trim()}\n\n";
+        return $"[{ConsolidationPrompt.OneLine(turn.Role, "unknown")}{when}]\n{body.Trim()}\n\n";
     }
 }

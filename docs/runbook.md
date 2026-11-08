@@ -55,7 +55,8 @@ Turns conversations into notes of the memory vault ([ADR 0036](adr/0036-the-cons
 - **Who wrote this note?** The log says `consolidation (via job:<id>)`; the note's front matter lists the conversations it came from. A wrong note is corrected like any note (a person with `notes.write`, or the chat), or reverted when the vault is a Git repository.
 - **Stop it now**: set `MNEMARR__CONSOLIDATION__ENABLED=false` and restart (notes already written stay). The account `consolidation` and its role `Consolidator` are listed under Accounts; disabling the account stops the model's access at once (its token is refused).
 - **It costs the subscription**: at most `PERPASS` conversations per pass and `PERDAY` runs of the model per day (UTC), each bounded by `MAXCHARS`. Lower them, or the model, if your own use of Claude is cut short.
-- **A conversation is never consolidated again from the start**: Mnemarr keeps how many turns were read; delete the row (table `consolidations`) only to have one read again.
+- **A conversation keeps failing**: after `MAXTRIES` failures it is left alone (the probe says `consolidation-failing`) until it has grown by 200 lines. When the cause is gone (a login renewed, the runner back), **Try the conversations that failed again** on the card (`POST /api/v1/consolidation/retry`).
+- **A conversation is never consolidated again from the start**: Mnemarr keeps how many turns were read.
 
 ## The chat
 

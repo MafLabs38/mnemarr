@@ -10,6 +10,9 @@ namespace Mnemarr.Api.V1.Consolidation;
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Major Code Smell", "S2094:Classes should not be empty", Justification = "Its type is the contract: a body bound to it must be JSON, which a cross-site form cannot send.")]
 public sealed record ConsolidationRunRequest;
 
+/// <summary>How many conversations were given their tries back.</summary>
+public sealed record ConsolidationRetryResource(int Retried);
+
 /// <summary>Where the consolidation stands (ADR 0036) and a way to run it now.</summary>
 [ApiController]
 [Route("api/v1/consolidation")]
@@ -45,5 +48,14 @@ public sealed class ConsolidationController : ControllerBase
         }
 
         return Accepted();
+    }
+
+    /// <summary>Gives the conversations that failed too often their tries back, so that the next pass tries them again (a pass that failed for a reason that is gone: a login renewed, a runner back).</summary>
+    [HttpPost("retry")]
+    [Authorize(Policy = Permissions.SourcesManage)]
+    public ConsolidationRetryResource Retry(ConsolidationRunRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new ConsolidationRetryResource(_consolidator.RetryFailed());
     }
 }

@@ -26,7 +26,7 @@ public sealed class ConsolidationAccount
         lock (_lock)
         {
             return _accounts.List().FirstOrDefault(account => string.Equals(account.Name, Name, StringComparison.OrdinalIgnoreCase))
-                ?? _service.Create(Name, AccountKind.Service, Roles.Consolidator, null, "mnemarr");
+                ?? _service.CreateSystem(Name, Roles.Consolidator, "mnemarr");
         }
     }
 }

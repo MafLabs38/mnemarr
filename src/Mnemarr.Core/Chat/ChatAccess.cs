@@ -194,7 +194,7 @@ public sealed class ChatAccess
     /// </summary>
     private static bool MayAct(Account? account, string conversation) =>
         conversation.StartsWith(JobPrefix, StringComparison.Ordinal)
-            ? account is { Enabled: true, Kind: AccountKind.Service, Role: Roles.Consolidator }
+            ? account is { Enabled: true, Kind: AccountKind.Service, Role: Roles.Consolidator } && string.Equals(account.Name, Consolidation.ConsolidationAccount.Name, StringComparison.OrdinalIgnoreCase)
             : account is { Enabled: true, Kind: AccountKind.User } && account.Permissions.Contains(Permissions.ChatUse);
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');

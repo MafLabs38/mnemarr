@@ -186,6 +186,61 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
     }
 
     [Fact]
+    public async Task should_try_a_conversation_that_failed_again_when_it_has_grown_a_lot_or_when_a_person_asks()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        await MemoryVaultAsync(callers);
+        var machine = Callers.Unique("pc");
+        var session = Callers.Unique("s");
+        await SendAsync(callers, machine, session, 0, ("user", $"First thing to keep for {machine}."), ("assistant", "Yes."));
+        var failing = true;
+        _factory.Runner.JobBehaviour = (_, prompt, job) =>
+        {
+            if (failing && prompt.Contains(machine, StringComparison.Ordinal))
+            {
+                job.Ended(true, "The login of the subscription is not valid.");
+                throw new InvalidOperationException("after the end");
+            }
+
+            return Task.CompletedTask;
+        };
+        await RunAndWaitAsync(callers, current => current.GetProperty("failing").GetInt32() >= 1);
+        var askedOnce = _factory.Runner.JobPrompts.Count(text => text.Contains(machine, StringComparison.Ordinal));
+        await RunAndWaitAsync(callers, current => current.GetProperty("waiting").GetInt32() >= 0);
+        _factory.Runner.JobPrompts.Count(text => text.Contains(machine, StringComparison.Ordinal)).Should().Be(askedOnce, "it failed too often: it is left alone");
+
+        // A person says the cause is gone: it is tried again, and works.
+        failing = false;
+        var retried = await callers.Admin.PostAsJsonAsync("/api/v1/consolidation/retry", new { }, Token);
+        (await retried.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("retried").GetInt32().Should().BeGreaterThanOrEqualTo(1);
+        var status = await RunAndWaitAsync(callers, current => current.GetProperty("failing").GetInt32() == 0);
+
+        status.GetProperty("failing").GetInt32().Should().Be(0);
+        _factory.Runner.JobPrompts.Count(text => text.Contains(machine, StringComparison.Ordinal)).Should().Be(askedOnce + 1);
+
+        // A conversation that failed and then grew by a lot is tried again by itself.
+        var other = Callers.Unique("pc");
+        await SendAsync(callers, other, session, 0, ("user", $"Another thing for {other}."), ("assistant", "Yes."));
+        failing = true;
+        _factory.Runner.JobBehaviour = (_, prompt, job) =>
+        {
+            if (failing && prompt.Contains(other, StringComparison.Ordinal))
+            {
+                job.Ended(true, "The login of the subscription is not valid.");
+                throw new InvalidOperationException("after the end");
+            }
+
+            return Task.CompletedTask;
+        };
+        await RunAndWaitAsync(callers, current => current.GetProperty("failing").GetInt32() >= 1);
+        failing = false;
+        await SendAsync(callers, other, session, 2, Enumerable.Range(0, 250).Select(index => ("user", $"More about {other}, point {index}.")).ToArray());
+        await RunAndWaitAsync(callers, current => current.GetProperty("failing").GetInt32() == 0);
+
+        _factory.Runner.JobPrompts.Count(text => text.Contains(other, StringComparison.Ordinal)).Should().BeGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
     public async Task should_start_one_run_when_asked_twice_at_once_and_answer_that_one_is_going_on_to_the_second()
     {
         var callers = await Callers.ForAsync(_factory);
@@ -227,6 +282,18 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
     }
 
     [Fact]
+    public async Task should_give_the_role_of_the_consolidation_to_nobody_and_not_list_it()
+    {
+        var callers = await Callers.ForAsync(_factory);
+
+        var roles = await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/roles", Token);
+        var created = await callers.Admin.PostAsJsonAsync("/api/v1/accounts", new { name = Callers.Unique("robot"), kind = "Service", role = "Consolidator" }, Token);
+
+        roles.EnumerateArray().Select(role => role.GetProperty("name").GetString()).Should().NotContain("Consolidator");
+        created.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task should_let_the_people_who_may_look_at_the_status_and_those_who_manage_sources_run_it()
     {
         var callers = await Callers.ForAsync(_factory);
@@ -234,6 +301,7 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
         (await callers["Operator"].GetAsync("/api/v1/consolidation", Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await callers["Reader"].GetAsync("/api/v1/consolidation", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await callers["Reader"].PostAsJsonAsync("/api/v1/consolidation/run", new { }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await callers["Reader"].PostAsJsonAsync("/api/v1/consolidation/retry", new { }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await callers.Anonymous.GetAsync("/api/v1/consolidation", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

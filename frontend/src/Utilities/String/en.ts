@@ -160,6 +160,8 @@ const en = {
   ConsolidationStarted: 'It runs in the background: the counts above change as it goes.',
   ConsolidationRunning: 'A run is going on.',
   ConsolidateNow: 'Consolidate what waits now',
+  ConsolidationRetry: 'Try the {count} conversation(s) that failed again',
+  ConsolidationRetried: '{count} conversation(s) will be tried again at the next pass.',
   ConfigurationError: 'Could not read the configuration.',
   ConfigurationHelp:
     'Describe the sources in a YAML document and keep it in a repository: it can be applied here, through the API, or given to Mnemarr as a file. What a document owns is managed by it and cannot be changed by hand. A section that is not in the document is left alone.',

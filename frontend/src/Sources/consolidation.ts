@@ -47,3 +47,12 @@ export function useConsolidateNow() {
       }),
   });
 }
+
+/** Gives the conversations that failed too often their tries back: the next pass tries them again. */
+export function useRetryFailed() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend<{ retried: number }>('POST', '/consolidation/retry', {}),
+    onSuccess: () => client.invalidateQueries({ predicate: (query) => isApiPath(query, '/consolidation') }),
+  });
+}

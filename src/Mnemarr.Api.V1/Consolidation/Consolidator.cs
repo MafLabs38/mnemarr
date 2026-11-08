@@ -56,6 +56,9 @@ public sealed class Consolidator
 
     public bool Enabled => _options.Value.Enabled;
 
+    /// <summary>Gives the conversations that failed too often their tries back: the next pass tries them again. Returns how many.</summary>
+    public int RetryFailed() => _store.ResetFailures(_options.Value.MaxTries);
+
     public ConsolidationStatus Status()
     {
         var options = _options.Value;
@@ -163,6 +166,12 @@ public sealed class Consolidator
         var record = _input.Find(machine, session) ?? throw new RejectedException(Problem.NotFound, "There is no such conversation.");
         var options = _options.Value;
         var state = _store.Find(machine, session) ?? new ConsolidationRecord(machine, session, 0, 0, 0, 0, null, _clock.GetUtcNow());
+        if (state.Tries >= options.MaxTries && record.Lines > state.LinesDone + IConsolidationStore.RetryAfterGrowth)
+        {
+            // It failed too often, and has grown a lot since: what failed was another text, so it starts again with its tries.
+            state = state with { Tries = 0 };
+        }
+
         var turns = _input.Turns(record);
         var excerpt = ConsolidationExcerpts.Take(turns, state.TurnsDone, options.MaxChars);
         if (string.IsNullOrWhiteSpace(excerpt.Text))

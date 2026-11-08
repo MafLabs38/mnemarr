@@ -245,7 +245,7 @@ public sealed class ChatAccessFixture : IDisposable
     [Fact]
     public void should_give_a_job_the_hands_of_the_consolidation_account_and_no_other()
     {
-        var consolidation = _h.Robot("consolidation", Roles.Consolidator);
+        var consolidation = _h.Service.CreateSystem("consolidation", Roles.Consolidator, "test");
         var job = ChatAccess.JobPrefix + NewId();
 
         var identity = _subject.Authenticate(_subject.Mint(consolidation.Id, job));
@@ -253,7 +253,7 @@ public sealed class ChatAccessFixture : IDisposable
         identity.Should().NotBeNull();
         identity!.ConversationId.Should().Be(job);
         identity.Principal.Permissions.Should().BeEquivalentTo(Roles.Find(Roles.Consolidator)!.Permissions);
-        identity.Principal.Permissions.Should().NotContain([Permissions.SourcesManage, Permissions.ChatUse, Permissions.AccountsManage]);
+        identity.Principal.Permissions.Should().NotContain([Permissions.SourcesManage, Permissions.ChatUse, Permissions.AccountsManage, Permissions.ConversationsRead], "the job reads no conversation: it works on the excerpt it is given");
     }
 
     [Fact]
@@ -270,7 +270,7 @@ public sealed class ChatAccessFixture : IDisposable
     [Fact]
     public void should_stop_a_job_token_when_the_consolidation_account_is_disabled_or_given_another_role_and_refuse_a_chat_token_to_it()
     {
-        var consolidation = _h.Robot("consolidation", Roles.Consolidator);
+        var consolidation = _h.Service.CreateSystem("consolidation", Roles.Consolidator, "test");
         var job = _subject.Mint(consolidation.Id, ChatAccess.JobPrefix + NewId());
         var asked = _subject.Mint(consolidation.Id, NewId());
         _subject.Authenticate(job).Should().NotBeNull();

@@ -24,8 +24,8 @@ maintainer's rule: the subscription, a light model (Haiku), small uses, a cap.
    from its events how many notes the model wrote or changed and whether it failed, and deletes it. Only a count and a short reason are kept: nothing that was said.
 4. **The runner's job policy: notes, and nothing else, with nobody to ask.** For a `job` conversation the runner answers each permission request itself: Mnemarr's reads and `create_note`,
    `update_note`, `append_to_note`, `rename_note` run; everything else (including `delete_note`) is refused; there is never a card.
-5. **The model acts as an account of its own, and the server holds it to the memory vault.** The account `consolidation` (a service account with the role `Consolidator`: read notes and conversations, write notes, nothing
-   else; no key, no password) is made when needed. Each run has a token of this account (the token of ADR 0035, with the id `job:<runner conversation>`; it lasts for the run and is revoked after), valid
+5. **The model acts as an account of its own, and the server holds it to the memory vault.** The account `consolidation` (a service account with the role `Consolidator`: read notes, write notes, **no conversation**: it is given the excerpt it works on, and cannot be made to read or copy the others; no key, no
+   password) is made when needed. The role is one of Mnemarr itself: no person gives it to an account, and it is not listed. Each run has a token of this account (the token of ADR 0035, with the id `job:<runner conversation>`; it lasts for the run and is revoked after), valid
    on the MCP server only. For such a caller the MCP server offers the reads and the four note tools, whatever the switches `WriteTools` and `SourceTools` say (turning the consolidation on is the consent), and
    **refuses a write outside the memory vault** ("the consolidation writes in the memory vault only"): the model reads what people and assistants said, which is text from outside (a conversation can contain
    instructions), so the worst it can do is bounded by this, not by its obedience. The log says `consolidation (via job:<id>)`.
@@ -39,6 +39,8 @@ maintainer's rule: the subscription, a light model (Haiku), small uses, a cap.
 ## Consequences
 
 - **Conversations are sent to the model's provider**, already masked, when the consolidation is on. The operator accepts this by turning it on, as for the chat and the titles.
+- **What is consolidated becomes readable by those who read the memory vault** (D-14: the vault is the operator's readable memory, `Reader` included), while the conversations stay hidden from roles without `conversations.read`.
+  The decisions and lessons are the point; secrets are masked before the conversations are stored and the model is told to write none. An operator who does not want this keeps the consolidation off.
 - **It spends the subscription**, a little for each conversation (a light model, a bounded excerpt, 30 runs a day at most by default). Whether an unattended use of a subscription is covered by the provider's terms stays
   Q-19: the maintainer chose it knowing that; an API key remains a possible adapter.
 - A model can still write something wrong or banal in the memory vault. The notes carry their sources so that a person can check, the vault is a Git repository when the operator wants (a mistake is reverted), and a

@@ -15,7 +15,7 @@ public static class ConsolidationPrompt
     public static string Build(ConversationRecord record, string memorySource, string conversationsSource, ConsolidationExcerpt excerpt, int done, DateTimeOffset today)
     {
         var application = OneLine(record.Application, "unknown");
-        var notePath = OneLine(record.NotePath, "unknown");
+        var notePath = OneLine(record.NotePath, "unknown", MaxPathChars);
         var text = new StringBuilder();
         text.AppendLine(CultureInfo.InvariantCulture, $"You are the consolidation of Mnemarr. Turn the part of a conversation below into durable notes of the memory vault (the source \"{memorySource}\"), then stop.");
         text.AppendLine();
@@ -53,7 +53,7 @@ public static class ConsolidationPrompt
     /// A value that came from a collector, put in the instructions as one plain line: no line break or control character, no backtick, no <c>---</c> that could close the front matter, bounded.
     /// The model is told what it does by Mnemarr, not by the name of an application.
     /// </summary>
-    public static string OneLine(string? value, string fallback)
+    public static string OneLine(string? value, string fallback, int maxChars = MaxValueChars)
     {
         var line = new string([.. (value ?? string.Empty).Select(character => char.IsControl(character) || character == '`' ? ' ' : character)]);
         while (line.Contains("---", StringComparison.Ordinal))
@@ -62,15 +62,18 @@ public static class ConsolidationPrompt
         }
 
         line = string.Join(' ', line.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        if (line.Length > MaxValueChars)
+        if (line.Length > maxChars)
         {
-            line = line[..MaxValueChars];
+            line = line[..maxChars];
         }
 
         return line.Length == 0 ? fallback : line;
     }
 
     private const int MaxValueChars = 80;
+
+    /// <summary>The path of a conversation note is made by Mnemarr: it is long enough to be whole.</summary>
+    private const int MaxPathChars = 400;
 
     /// <summary>A folder name for an application: lower case, plain characters, never empty.</summary>
     public static string Slug(string application)

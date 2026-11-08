@@ -76,4 +76,20 @@ public sealed class ConsolidationStoreFixture : IDisposable
         counts.Should().Be(new ConsolidationCounts(Waiting: 2, Done: 1, Failing: 1, Notes: 2, Today: 2));
         _store.LastFailure()!.Error.Should().Be("no login");
     }
+
+    [Fact]
+    public void should_give_the_tries_back_to_the_conversations_that_failed()
+    {
+        Conversation("bad", 10, Now.AddHours(-1));
+        Conversation("fine", 10, Now.AddHours(-1));
+        _store.Save(new ConsolidationRecord("pc", "bad", 0, 0, 0, 3, "failed", Now));
+        _store.Save(new ConsolidationRecord("pc", "fine", 10, 5, 1, 0, null, Now));
+        _store.Pending(Now, maxTries: 3, limit: 10).Select(item => item.Session).Should().BeEmpty();
+
+        var retried = _store.ResetFailures(maxTries: 3);
+
+        retried.Should().Be(1);
+        _store.Pending(Now, maxTries: 3, limit: 10).Select(item => item.Session).Should().Equal("bad");
+        _store.LastFailure().Should().BeNull();
+    }
 }

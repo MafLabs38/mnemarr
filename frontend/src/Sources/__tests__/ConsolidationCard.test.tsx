@@ -90,4 +90,22 @@ describe('ConsolidationCard', () => {
     expect(await screen.findByText(/3 conversation\(s\) wait/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Consolidate what waits now' })).not.toBeInTheDocument();
   });
+
+  it('offers to try again the conversations that failed, to the person who manages sources', async () => {
+    const fetchMock = stubApi((method, path) => {
+      if (method === 'GET' && path === '/consolidation') {
+        return { body: status({ failing: 2, lastFailure: 'No login.', lastFailureAt: '2026-11-08T10:00:00Z' }) };
+      }
+      if (method === 'POST' && path === '/consolidation/retry') {
+        return { body: { retried: 2 } };
+      }
+      return undefined;
+    });
+    renderWithProviders(<ConsolidationCard />, '/', admin);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Try the 2 conversation(s) that failed again' }));
+
+    expect(findCall(fetchMock, ([url]) => url === '/api/v1/consolidation/retry')).toBeDefined();
+    expect(await screen.findByText('2 conversation(s) will be tried again at the next pass.')).toBeInTheDocument();
+  });
 });

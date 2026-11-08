@@ -5,7 +5,7 @@ import { usePermissions } from 'Session/SessionContext';
 import { formatDateTime } from 'Utilities/Date/formatDateTime';
 import translate from 'Utilities/String/translate';
 
-import { type ConsolidationState, useConsolidateNow, useConsolidation } from './consolidation';
+import { type ConsolidationState, useConsolidateNow, useConsolidation, useRetryFailed } from './consolidation';
 import styles from './Sources.module.css';
 
 const notReady: Partial<Record<ConsolidationState, Parameters<typeof translate>[0]>> = {
@@ -19,6 +19,7 @@ export default function ConsolidationCard() {
   const { can } = usePermissions();
   const status = useConsolidation(can(permissions.systemRead));
   const consolidate = useConsolidateNow();
+  const retry = useRetryFailed();
   if (!status.data) {
     return null;
   }
@@ -29,6 +30,7 @@ export default function ConsolidationCard() {
     memoryVault,
     waiting,
     done,
+    failing,
     notes,
     today,
     perDay,
@@ -54,6 +56,12 @@ export default function ConsolidationCard() {
       {consolidate.error && <Alert>{consolidate.error.message}</Alert>}
       {consolidate.isSuccess && <output>{translate('ConsolidationStarted')}</output>}
       {state === 'running' && <output>{translate('ConsolidationRunning')}</output>}
+      {retry.isSuccess && <output>{translate('ConsolidationRetried', { count: retry.data.retried })}</output>}
+      {can(permissions.sourcesManage) && failing > 0 && (
+        <Button disabled={retry.isPending} onClick={() => retry.mutate()}>
+          {translate('ConsolidationRetry', { count: failing })}
+        </Button>
+      )}
       {can(permissions.sourcesManage) && state === 'ready' && (
         <Button disabled={consolidate.isPending || waiting === 0} onClick={() => consolidate.mutate()}>
           {translate('ConsolidateNow')}

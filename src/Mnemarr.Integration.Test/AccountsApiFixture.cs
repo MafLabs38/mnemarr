@@ -39,7 +39,7 @@ public sealed class AccountsApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
     {
         var roles = await _admin.GetFromJsonAsync<JsonElement>("/api/v1/roles", Token);
 
-        roles.EnumerateArray().Select(r => r.GetProperty("name").GetString()).Should().Equal("Admin", "Operator", "Reader", "Assistant", "Collector", "Monitor", "Consolidator");
+        roles.EnumerateArray().Select(r => r.GetProperty("name").GetString()).Should().Equal("Admin", "Operator", "Reader", "Assistant", "Collector", "Monitor");
         var reader = roles.EnumerateArray().Single(r => r.GetProperty("name").GetString() == "Reader");
         reader.GetProperty("permissions").EnumerateArray().Select(p => p.GetString()).Should().BeEquivalentTo("notes.read", "search", "chat.use");
     }

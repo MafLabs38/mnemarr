@@ -565,6 +565,7 @@ public sealed class ConsolidationFactory : MnemarrFactoryBase
         builder.UseSetting("Consolidation:Enabled", "true");
         builder.UseSetting("Consolidation:PassSeconds", "86400");
         builder.UseSetting("Consolidation:PollSeconds", "1");
+        builder.UseSetting("Consolidation:MaxTries", "1");
     }
 
     protected override void ConfigureServices(IServiceCollection services)

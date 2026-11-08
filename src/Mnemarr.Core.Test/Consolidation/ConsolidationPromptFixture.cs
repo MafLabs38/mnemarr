@@ -70,4 +70,16 @@ public sealed class ConsolidationPromptFixture
     {
         ConsolidationPrompt.OneLine(value, "fallback").Should().Be(expected);
     }
+
+    [Fact]
+    public void should_keep_the_whole_path_of_the_conversation_as_its_provenance()
+    {
+        var path = "machine-with-a-long-name/an-application-with-a-long-name/2026-11-08-" + new string('a', 36) + "-and-more.md";
+        var record = Record() with { NotePath = path };
+
+        var prompt = ConsolidationPrompt.Build(record, "memory", "conversations", new ConsolidationExcerpt("x", 1, 1), 0, Day);
+
+        path.Length.Should().BeGreaterThan(80);
+        prompt.Should().Contain($"  - conversations:{path}");
+    }
 }
