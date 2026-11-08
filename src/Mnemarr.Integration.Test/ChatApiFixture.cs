@@ -175,13 +175,34 @@ public sealed class ChatApiFixture : IClassFixture<ChatFactory>, IClassFixture<M
     }
 
     [Fact]
+    public async Task should_take_back_the_token_of_a_message_that_the_runner_refused()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var id = await StartAsync(callers["Reader"]);
+        var accepted = await SendAsync(callers["Reader"], id);
+        try
+        {
+            _factory.Runner.Refuses = HttpStatusCode.Conflict;
+            (await callers["Reader"].PostAsJsonAsync($"/api/v1/chat/conversations/{id}/messages", new { text = "again" }, Token)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        }
+        finally
+        {
+            _factory.Runner.Refuses = null;
+        }
+
+        var refused = JsonNode.Parse(_factory.Runner.Requests.Last(request => request.Path.EndsWith($"{id}/messages", StringComparison.Ordinal)).Body!)!["mcpToken"]!.GetValue<string>();
+        (await WithToken(refused).PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" }, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a refused message leaves no token behind");
+        (await WithToken(accepted).PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task should_stop_a_person_from_keeping_more_than_fifty_conversations()
     {
         var callers = await Callers.ForAsync(_factory);
         var name = Callers.Unique("collector-of-chats");
         await Callers.CreateAsync(callers.Admin, new { name, kind = "User", role = "Reader", password = Callers.Password });
         var person = await _factory.SignedInClientAsync(name, Callers.Password);
-        for (var count = 0; count < Mnemarr.Api.V1.Chat.ChatService.MaxConversationsPerPerson; count++)
+        for (var count = 0; count < Mnemarr.Core.Chat.AgentOptions.DefaultMaxConversationsPerPerson; count++)
         {
             await StartAsync(person);
         }
@@ -193,23 +214,7 @@ public sealed class ChatApiFixture : IClassFixture<ChatFactory>, IClassFixture<M
     }
 
     [Fact]
-    public async Task should_forget_the_conversations_that_the_runner_no_longer_has_with_their_tokens()
-    {
-        var callers = await Callers.ForAsync(_factory);
-        var id = await StartAsync(callers["Reader"]);
-        var token = await SendAsync(callers["Reader"], id);
-        (await RpcAsync(WithToken(token), "tools/list"))["result"].Should().NotBeNull();
-
-        _factory.Runner.Forget(id);
-        var listed = await callers["Reader"].GetFromJsonAsync<JsonElement>("/api/v1/chat/conversations", Token);
-
-        listed.EnumerateArray().Select(item => item.GetProperty("id").GetString()).Should().NotContain(id);
-        (await callers["Reader"].GetAsync($"/api/v1/chat/conversations/{id}", Token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await WithToken(token).PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/list" }, Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the model of a conversation that is gone has no hands");
-    }
-
-    [Fact]
-    public async Task should_answer_a_bad_gateway_when_the_stream_does_not_start_in_time()
+    public async Task should_answer_a_bad_gateway_when_the_request_for_the_stream_is_cancelled()
     {
         var callers = await Callers.ForAsync(_factory);
         var id = await StartAsync(callers["Reader"]);

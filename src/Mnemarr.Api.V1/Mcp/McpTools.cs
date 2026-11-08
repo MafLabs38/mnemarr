@@ -76,11 +76,11 @@ public sealed class McpTools
             McpArguments.Schema(SourceArg, PathArg, (VersionKey, Str, "The version you read.", false)), Permissions.NotesWrite, true),
     ];
 
-    /// <summary>The tools this caller is offered: what their permissions allow, the writing ones only if the operator turned them on.</summary>
     /// <summary>Every tool this server knows, for whoever may call it or not (the runner of the chat tells reads from writes by the name of a tool, and a test holds the two together).</summary>
     public static IEnumerable<McpTool> All => Notes.Concat(McpAdminTools.Definitions);
 
-    public IEnumerable<McpTool> Available(McpCaller caller) => Notes.Concat(McpAdminTools.Definitions).Where(tool => caller.Has(tool.Permission) && (!tool.Writes || _options.Value.WriteTools));
+    /// <summary>The tools this caller is offered: what their permissions allow, the writing ones only if the operator turned them on.</summary>
+    public IEnumerable<McpTool> Available(McpCaller caller) => All.Where(tool => caller.Has(tool.Permission) && (!tool.Writes || _options.Value.WriteTools));
 
     public async Task<JsonNode> CallAsync(string name, JsonElement arguments, McpCaller caller, CancellationToken cancellationToken)
     {

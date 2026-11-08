@@ -3,7 +3,7 @@ name: mnemarr-e2e
 services:
   # The assistant runner of the chat with a scripted model (tests/e2e/stack/fake-agent): the real runner, no CLI and no provider.
   agent:
-    image: node:22.18-bookworm-slim
+    image: node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
     command: ['node', '/fake/main.ts']
     volumes:
       - ../../../agent:/app:ro

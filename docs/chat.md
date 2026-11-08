@@ -69,7 +69,7 @@ OpenAI, Azure OpenAI, Ollama, vLLM, a gateway: anything that answers `/chat/comp
 
 - **What you say goes to the model's provider** (Anthropic, OpenAI, …), the conversation's notes included. Choose it knowing that; a local model keeps everything on your host.
 - **A subscription has limits** shared with your own use of Claude; a chat turn costs what a Claude Code turn costs.
-- **The runner and Mnemarr move together**: Mnemarr passes the runner's answers through to the panel, so update both images at once. Each person keeps 50 conversations at most: delete one to start another.
+- **The runner and Mnemarr move together**: Mnemarr passes the runner's answers through to the panel, so update both images at once. Each person keeps 50 conversations at most (`MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON`): delete one to start another. The runner deletes nothing to make room: at its own cap (`MNEMARR_AGENT_MAX_CONVERSATIONS`, 200) it refuses new conversations, so keep the number of people times the cap per person under it.
 - **No API key by default.** `CLAUDE_CODE_OAUTH_TOKEN` is the login of a Claude subscription. If you set `ANTHROPIC_API_KEY` on the runner instead, the CLI uses it and the usage is billed by the API; it is there for those who want it, and is not needed.
 - The conversations (what was said, the tool calls) are in the runner's volume; Mnemarr keeps whose they are. They are yours: another person does not see them.
 - **No chat in the interface?** The runner is off or not configured (no `MNEMARR__AGENT__URL`), or your role has no `chat.use`. **"The runner does not answer"**: check its address and that its secret equals Mnemarr's. **"has no credentials"**: the runner has no `CLAUDE_CODE_OAUTH_TOKEN` (or no OpenAI address).

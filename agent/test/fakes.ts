@@ -50,12 +50,17 @@ export class FakeAdapter implements AgentAdapter {
   readonly defaultModel = 'small';
   readonly credentialsHint = 'set the fake credentials';
   readonly processes: FakeProcess[] = [];
+  failNextStart = false;
 
   available(): boolean {
     return true;
   }
 
   start(options: StartOptions): AgentProcess {
+    if (this.failNextStart) {
+      this.failNextStart = false;
+      throw new Error('The CLI could not start.');
+    }
     const process = new FakeProcess(options);
     this.processes.push(process);
     return process;
@@ -81,8 +86,8 @@ export async function waitFor(condition: () => boolean, timeoutMs = 2000): Promi
   }
 }
 
-export async function newManager(maxSessions = 2, maxConversations?: number) {
-  const dataDir = mkdtempSync(join(tmpdir(), 'mnemarr-agent-test-'));
+export async function newManager(maxSessions = 2, maxConversations?: number, existingDir?: string) {
+  const dataDir = existingDir ?? mkdtempSync(join(tmpdir(), 'mnemarr-agent-test-'));
   const store = new ConversationStore(dataDir);
   await store.init();
   const adapter = new FakeAdapter();

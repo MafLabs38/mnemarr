@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { type ApiAnswer, findCall, readerSession, renderWithProviders, sentBody, stubApi } from '__tests__/render';
@@ -175,16 +175,15 @@ describe('ChatPanel', () => {
 
   it('sends on Enter, breaks the line on Shift+Enter, and keeps what was typed when the composition of a character is not over', async () => {
     const fetchMock = server({ conversations: [conversation] });
-    localStorage.setItem(
-      'mnemarr.chat',
-      JSON.stringify({ open: true, conversationId: 'c1', agent: 'claude-code', model: 'sonnet' }),
-    );
     resetChatStore({ open: true, conversationId: 'c1', agent: 'claude-code', model: 'sonnet' });
     renderWithProviders(<Page>content</Page>);
     const box = await screen.findByLabelText('Your message');
 
     await userEvent.type(box, 'one{Shift>}{Enter}{/Shift}two');
     expect(box).toHaveValue('one\ntwo');
+    // The Enter that ends the composition of a character (a Japanese or Chinese input method) is not a send.
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/v1/chat/conversations/c1/messages')).toBe(false);
     await userEvent.type(box, '{Enter}');
 
     const message = await vi.waitFor(() =>
@@ -318,7 +317,7 @@ describe('ChatPanel', () => {
         seq: 1,
         at,
         type: 'text',
-        text: 'A **bold** word <img src=x onerror=alert(1)> and [a link](https://example.org/page) or [a script](javascript:alert(1)).',
+        text: 'A **bold** word <img src=x onerror=alert(1)> and [a link](https://example.org/page) [data](https://example.org/p?q=secret) or [a script](javascript:alert(1)).',
       }),
     );
 
@@ -329,6 +328,7 @@ describe('ChatPanel', () => {
     expect(link).toHaveAttribute('rel', 'noreferrer noopener');
     expect(link).toHaveAttribute('title', 'https://example.org/page');
     expect(log).toHaveTextContent('a link (example.org)');
+    expect(log).toHaveTextContent('data (example.org/…?…)');
     expect(log.querySelector('a[href^="javascript"]')).toBeNull();
   });
 });

@@ -17,6 +17,14 @@ public sealed class AgentOptions
     /// <summary>Sent to the runner as a bearer token. Never returned by the API, never logged.</summary>
     public string? Secret { get; set; }
 
+    public const int DefaultMaxConversationsPerPerson = 50;
+
+    /// <summary>
+    /// How many conversations a person keeps (MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON). The runner has one cap for everybody (MNEMARR_AGENT_MAX_CONVERSATIONS) and refuses new conversations
+    /// when it is full, so this times the number of people should stay under it.
+    /// </summary>
+    public int MaxConversationsPerPerson { get; set; } = DefaultMaxConversationsPerPerson;
+
     public bool Enabled => !string.IsNullOrWhiteSpace(Url);
 }
 
@@ -39,6 +47,11 @@ public sealed class AgentOptionsValidator : IValidateOptions<AgentOptions>
         if (options.Secret is null || options.Secret.Trim().Length < AgentOptions.MinimumSecretLength)
         {
             errors.Add($"Agent:Secret must be at least {AgentOptions.MinimumSecretLength} characters when Agent:Url is set (MNEMARR__AGENT__SECRET, for example openssl rand -hex 32).");
+        }
+
+        if (options.MaxConversationsPerPerson is < 1 or > 1000)
+        {
+            errors.Add("Agent:MaxConversationsPerPerson must be between 1 and 1000 (MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON).");
         }
 
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);

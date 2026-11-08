@@ -82,31 +82,21 @@ public sealed class ChatTokenLifetimeFixture : IClassFixture<ChatFactory>
     }
 
     [Fact]
-    public async Task should_keep_the_earlier_tokens_of_a_conversation_alive_when_a_message_is_sent_again()
+    public async Task should_forget_the_conversations_the_runner_no_longer_has_with_their_tokens()
     {
         var (person, _) = await PersonAsync();
-        var (conversation, first) = await SendAsync(person);
-        _factory.Clock.Advance(TimeSpan.FromMinutes(20));
+        var (conversation, token) = await SendAsync(person);
+        (await ToolsAsync(token)).Should().Be(HttpStatusCode.OK);
+        _factory.Runner.Forget(conversation);
 
-        await SendAsync(person, conversation);
-        _factory.Clock.Advance(TimeSpan.FromMinutes(20));
+        // Just made: a list asked for before it existed must not take it away.
+        (await person.GetFromJsonAsync<JsonElement>("/api/v1/chat/conversations", Token)).GetArrayLength().Should().Be(0);
+        (await ToolsAsync(token)).Should().Be(HttpStatusCode.OK, "it is younger than the grace");
 
-        (await ToolsAsync(first)).Should().Be(HttpStatusCode.OK, "a process that the runner started with the first token is still running");
-    }
+        _factory.Clock.Advance(ChatAccess.NewConversationGrace + TimeSpan.FromMinutes(1));
+        var signedAgain = await PersonAsync();
+        _ = await signedAgain.Client.GetFromJsonAsync<JsonElement>("/api/v1/chat/conversations", Token);
 
-    [Fact]
-    public async Task should_stop_a_token_twelve_hours_after_it_was_made_however_often_the_conversation_goes_on()
-    {
-        var (person, _) = await PersonAsync();
-        var (conversation, first) = await SendAsync(person);
-
-        // The person comes back every 25 minutes: their session lives on, and so does the conversation's token, until its twelve hours are over.
-        for (var step = 0; step < 30; step++)
-        {
-            _factory.Clock.Advance(TimeSpan.FromMinutes(25));
-            await SendAsync(person, conversation);
-        }
-
-        (await ToolsAsync(first)).Should().Be(HttpStatusCode.Unauthorized, "the token is older than twelve hours");
+        (await ToolsAsync(token)).Should().Be(HttpStatusCode.Unauthorized, "the model of a conversation that is gone has no hands");
     }
 }

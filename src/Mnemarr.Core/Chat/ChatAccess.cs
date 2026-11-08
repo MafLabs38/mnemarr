@@ -24,6 +24,9 @@ public sealed class ChatAccess
     public static readonly TimeSpan TokenLifetime = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan TokenMaxLifetime = TimeSpan.FromHours(12);
 
+    /// <summary>A conversation that was just registered is not forgotten for not being in a list that was asked for before it existed.</summary>
+    public static readonly TimeSpan NewConversationGrace = TimeSpan.FromMinutes(2);
+
     private readonly IDatabase _database;
     private readonly IAccountStore _accounts;
     private readonly TimeProvider _clock;
@@ -89,7 +92,8 @@ public sealed class ChatAccess
         var gone = new List<string>();
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT id FROM chat_conversations";
+            command.CommandText = "SELECT id FROM chat_conversations WHERE created_at < $recent";
+            command.Parameters.AddWithValue("$recent", (_clock.GetUtcNow() - NewConversationGrace).ToString("O"));
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
@@ -132,6 +136,13 @@ public sealed class ChatAccess
             ("$absolute", (now + TokenMaxLifetime).ToString("O")));
         transaction.Commit();
         return token;
+    }
+
+    /// <summary>Takes a token back (a message that the runner refused has no use for the one made for it).</summary>
+    public void Revoke(string token)
+    {
+        using var connection = _database.Open();
+        Execute(connection, "DELETE FROM chat_tokens WHERE token_hash = $hash", ("$hash", SecretHash.Of(token)));
     }
 
     /// <summary>The person and the conversation behind a token, with the person's permissions as they are now; null when the token is unknown or expired, or the person is disabled or gone.</summary>

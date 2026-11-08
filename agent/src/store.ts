@@ -52,7 +52,11 @@ export class ConversationStore {
         continue;
       }
       try {
-        conversations.push(JSON.parse(await readFile(join(this.dir, name), 'utf8')) as Conversation);
+        const conversation = JSON.parse(await readFile(join(this.dir, name), 'utf8')) as Partial<Conversation>;
+        // A file that parses but is not a conversation of that name (damaged, or put there) is skipped like a damaged one.
+        if (conversation.id === id && Array.isArray(conversation.events)) {
+          conversations.push(conversation as Conversation);
+        }
       } catch {
         // A damaged file is skipped, never fatal.
       }

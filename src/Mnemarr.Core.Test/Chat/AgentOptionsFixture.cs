@@ -34,4 +34,15 @@ public sealed class AgentOptionsFixture
     {
         new AgentOptionsValidator().Validate(null, new AgentOptions { Url = "http://agent:8489", Secret = secret }).Succeeded.Should().Be(valid);
     }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(50, true)]
+    [InlineData(1000, true)]
+    [InlineData(1001, false)]
+    public void should_keep_the_conversations_of_a_person_between_one_and_a_thousand(int cap, bool valid)
+    {
+        new AgentOptionsValidator().Validate(null, new AgentOptions { Url = "http://agent:8489", Secret = Secret, MaxConversationsPerPerson = cap }).Succeeded.Should().Be(valid);
+    }
 }

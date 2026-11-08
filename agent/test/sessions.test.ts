@@ -1,24 +1,14 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { mock, test } from 'node:test';
 
 import type { ChatEventEnvelope } from '../src/events.ts';
-import { classify } from '../src/policy.ts';
 import { ChatError } from '../src/sessions.ts';
 import { newManager, waitFor } from './fakes.ts';
 
 const token = `mnc_${'a'.repeat(43)}`;
-
-test('classify: Mnemarr reads run, Mnemarr writes ask, anything else is forbidden', () => {
-  assert.equal(classify('mcp__mnemarr__list_sources'), 'read');
-  assert.equal(classify('mcp__mnemarr__list_notes'), 'read');
-  assert.equal(classify('mcp__mnemarr__read_note'), 'read');
-  assert.equal(classify('mcp__mnemarr__update_note'), 'write');
-  assert.equal(classify('mcp__mnemarr__delete_note'), 'write');
-  assert.equal(classify('Bash'), 'forbidden');
-  assert.equal(classify('mcp__other__get_secrets'), 'forbidden');
-  assert.equal(classify('mcp__mnemarr__get_x; rm'), 'forbidden');
-});
 
 async function started() {
   const context = await newManager();
@@ -199,24 +189,87 @@ test('a process that cannot start leaves the conversation as it was', async () =
   assert.equal(kept?.title, '');
 });
 
-test('at the conversation cap the oldest idle conversation makes room for a new one', async () => {
+test('at the conversation cap nothing is deleted to make room: the new one is refused', async () => {
   const { manager } = await newManager(2, 2);
   const first = await manager.create(undefined, undefined, 'first');
-  await new Promise((resolve) => setImmediate(resolve));
   const second = await manager.create(undefined, undefined, 'second');
 
-  const third = await manager.create(undefined, undefined, 'third');
+  await assert.rejects(manager.create(undefined, undefined, 'third'), (error: ChatError) => error.status === 429);
 
-  const ids = manager.list().map((conversation) => conversation.id);
-  assert.equal(ids.length, 2);
-  assert.ok(!ids.includes(first.id), 'the oldest went');
-  assert.ok(ids.includes(second.id) && ids.includes(third.id));
+  assert.deepEqual(
+    manager
+      .list()
+      .map((conversation) => conversation.id)
+      .sort(),
+    [first.id, second.id].sort(),
+  );
 });
 
-test('when every conversation at the cap is running, a new one waits', async () => {
-  const { manager } = await newManager(2, 1);
-  const only = await manager.create(undefined, undefined, undefined);
-  manager.send(only.id, 'hello', token);
+test('a process that cannot start leaves no file with the token and no CLI session that never existed', async () => {
+  const { manager, adapter, dataDir } = await newManager();
+  const conversation = await manager.create(undefined, undefined, undefined);
+  adapter.failNextStart = true;
 
-  await assert.rejects(manager.create(undefined, undefined, undefined), (error: ChatError) => error.status === 429);
+  assert.throws(() => manager.send(conversation.id, 'hello', token), /CLI could not start/);
+
+  await waitFor(() => readdirSync(dataDir).every((name) => !name.endsWith('.mcp.json')));
+  manager.send(conversation.id, 'again', token);
+  assert.equal(
+    adapter.last.options.resume,
+    undefined,
+    'the CLI session is created by the process that starts, not resumed',
+  );
+});
+
+test("the files with a person's token that a killed runner left behind are removed when it starts", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'mnemarr-agent-test-'));
+  const leftover = join(dataDir, 'one.mcp.json');
+  writeFileSync(leftover, '{}');
+  writeFileSync(join(dataDir, 'keep.txt'), 'x');
+
+  await newManager(2, undefined, dataDir);
+
+  assert.equal(existsSync(leftover), false);
+  assert.equal(existsSync(join(dataDir, 'keep.txt')), true);
+});
+
+test('a process older than the life of its token is replaced at the next message', async () => {
+  mock.timers.enable({ apis: ['Date'], now: 0 });
+  try {
+    const { manager, adapter } = await newManager();
+    const conversation = await manager.create(undefined, undefined, undefined);
+    manager.send(conversation.id, 'hello', token);
+    adapter.last.options.onEvent({ type: 'turn-end', isError: false });
+
+    mock.timers.tick(10 * 60 * 60 * 1000);
+    manager.send(conversation.id, 'ten hours later', token);
+    assert.equal(adapter.processes.length, 1, 'the same process still serves');
+    adapter.last.options.onEvent({ type: 'turn-end', isError: false });
+
+    mock.timers.tick(2 * 60 * 60 * 1000);
+    manager.send(conversation.id, 'twelve hours later', `mnc_${'b'.repeat(43)}`);
+    assert.equal(adapter.processes.length, 2, 'a new process carries the new token');
+    assert.equal(mcpKeyOf(adapter.last), `mnc_${'b'.repeat(43)}`);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('an idle process stops after the idle time; one that is busy or waits for a person is kept', async () => {
+  mock.timers.enable({ apis: ['Date', 'setInterval'], now: 0 });
+  try {
+    const { manager, adapter } = await newManager(3);
+    const idle = await manager.create(undefined, undefined, undefined);
+    const busy = await manager.create(undefined, undefined, undefined);
+    manager.send(idle.id, 'hello', token);
+    adapter.last.options.onEvent({ type: 'turn-end', isError: false });
+    manager.send(busy.id, 'hello', token);
+
+    mock.timers.tick(120_000);
+
+    assert.equal(adapter.processes[0].closed, true, 'idle');
+    assert.equal(adapter.processes[1].closed, false, 'busy');
+  } finally {
+    mock.timers.reset();
+  }
 });

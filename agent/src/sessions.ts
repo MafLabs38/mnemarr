@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { AdapterEvent, AgentAdapter, AgentProcess } from './adapters/adapter.ts';
@@ -48,6 +48,7 @@ interface Active {
   pending: Map<string, PendingPermission>;
   mcpConfigFile: string;
   stopping: boolean;
+  startedAt: number;
 }
 
 export interface ConversationSummary {
@@ -66,6 +67,8 @@ type Listener = (event: ChatEventEnvelope) => void;
 
 const maxTitleLength = 80;
 const killAfterInterruptMs = 5000;
+/** A process holds the token it was started with, which Mnemarr ends 12 hours after it made it: one that is older than this is replaced at the next message. */
+const maxProcessAgeMs = 11 * 60 * 60 * 1000;
 
 function titleOf(text: string): string {
   const line = text.trim().split('\n')[0].trim();
@@ -91,6 +94,13 @@ export class SessionManager {
   }
 
   async init(): Promise<void> {
+    // The configuration files of processes hold a person's token and are removed when the process ends: those that a killed runner left behind go now.
+    await mkdir(this.options.runDir, { recursive: true, mode: 0o700 });
+    for (const name of await readdir(this.options.runDir)) {
+      if (name.endsWith('.mcp.json')) {
+        await rm(join(this.options.runDir, name), { force: true });
+      }
+    }
     for (const conversation of await this.store.loadAll()) {
       this.conversations.set(conversation.id, conversation);
     }
@@ -126,7 +136,7 @@ export class SessionManager {
   ): Promise<ConversationSummary> {
     const adapter = this.adapter(agentId ?? [...this.adapters.keys()][0]);
     const chosen = this.model(adapter, model);
-    await this.makeRoomForAConversation();
+    this.checkRoomForAConversation();
     const now = this.now();
     const conversation: Conversation = {
       id: randomUUID(),
@@ -142,17 +152,11 @@ export class SessionManager {
     return this.summary(conversation);
   }
 
-  /** At the cap, the least recently updated conversation that is not running goes; when every one runs, the new one waits (429). */
-  private async makeRoomForAConversation(): Promise<void> {
+  /** At the cap, nothing is deleted to make room: the conversations belong to different people, and only they decide (429). */
+  private checkRoomForAConversation(): void {
     const cap = this.options.maxConversations ?? defaultMaxConversations;
-    while (this.conversations.size >= cap) {
-      const oldest = [...this.conversations.values()]
-        .filter((conversation) => !this.active.has(conversation.id))
-        .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0];
-      if (!oldest) {
-        throw new ChatError(429, `${cap} conversations are running or kept: delete one first.`);
-      }
-      await this.delete(oldest.id);
+    if (this.conversations.size >= cap) {
+      throw new ChatError(429, `The runner keeps ${cap} conversations: delete one first.`);
     }
   }
 
@@ -180,8 +184,8 @@ export class SessionManager {
     if (current?.busy) {
       throw new ChatError(409, 'A turn is running: wait for it or stop it.');
     }
-    if (current && current.model !== chosen) {
-      // Another model: the next process resumes the same CLI session with it.
+    if (current && (current.model !== chosen || Date.now() - current.startedAt > maxProcessAgeMs)) {
+      // Another model, or a token that is about to end: the next process resumes the same CLI session with it.
       this.stop(id);
       current = undefined;
     }
@@ -289,40 +293,48 @@ export class SessionManager {
     const mcpConfigFile = join(this.options.runDir, `${conversation.id}.${randomUUID()}.mcp.json`);
     this.writeMcpConfig(mcpConfigFile, mcpToken);
     const sessionId = conversation.agentSessionId ? undefined : randomUUID();
-    if (sessionId) {
-      conversation.agentSessionId = sessionId;
-    }
     const id = conversation.id;
     // Filled right after start: the exit callback needs to know which process it was.
     const holder: { active?: Active } = {};
-    const process = adapter.start({
-      model,
-      resume: sessionId ? undefined : conversation.agentSessionId,
-      sessionId: sessionId ?? conversation.agentSessionId ?? randomUUID(),
-      workDir: this.options.workDir,
-      mcpConfigFile,
-      onEvent: (event) => this.onAdapterEvent(id, event),
-      onExit: () => {
-        const active = holder.active;
-        if (active && this.active.get(id) === active) {
-          this.active.delete(id);
-          if (active.busy && !active.stopping) {
-            this.emit(id, { type: 'error', message: 'The agent stopped before the end of the turn.' });
-            this.emit(id, { type: 'turn-end', isError: true });
+    let process: AgentProcess;
+    try {
+      process = adapter.start({
+        model,
+        resume: sessionId ? undefined : conversation.agentSessionId,
+        sessionId: sessionId ?? conversation.agentSessionId ?? randomUUID(),
+        workDir: this.options.workDir,
+        mcpConfigFile,
+        onEvent: (event) => this.onAdapterEvent(id, event),
+        onExit: () => {
+          const active = holder.active;
+          if (active && this.active.get(id) === active) {
+            this.active.delete(id);
+            if (active.busy && !active.stopping) {
+              this.emit(id, { type: 'error', message: 'The agent stopped before the end of the turn.' });
+              this.emit(id, { type: 'turn-end', isError: true });
+            }
+            for (const pending of active.pending.values()) {
+              this.emit(id, {
+                type: 'permission-resolved',
+                requestId: pending.requestId,
+                approved: false,
+                reason: 'cancelled',
+              });
+            }
+            this.emit(id, { type: 'status', state: 'stopped' });
           }
-          for (const pending of active.pending.values()) {
-            this.emit(id, {
-              type: 'permission-resolved',
-              requestId: pending.requestId,
-              approved: false,
-              reason: 'cancelled',
-            });
-          }
-          this.emit(id, { type: 'status', state: 'stopped' });
-        }
-        rm(mcpConfigFile, { force: true }).catch(() => undefined);
-      },
-    });
+          // Best effort: a file that cannot be removed now is removed when the runner starts again.
+          rm(mcpConfigFile, { force: true }).catch(() => undefined);
+        },
+      });
+    } catch (error) {
+      // Nothing is left behind by a process that did not start: not its file with the token, not a CLI session that never existed.
+      void rm(mcpConfigFile, { force: true });
+      throw error;
+    }
+    if (sessionId) {
+      conversation.agentSessionId = sessionId;
+    }
     const active: Active = {
       process,
       model,
@@ -331,6 +343,7 @@ export class SessionManager {
       pending: new Map(),
       mcpConfigFile,
       stopping: false,
+      startedAt: Date.now(),
     };
     holder.active = active;
     this.active.set(id, active);
@@ -362,7 +375,7 @@ export class SessionManager {
       case 'session':
         if (conversation.agentSessionId !== event.agentSessionId) {
           conversation.agentSessionId = event.agentSessionId;
-          this.store.save(conversation).catch(() => undefined);
+          void this.store.save(conversation);
         }
         return;
       case 'permission-request':
@@ -425,7 +438,7 @@ export class SessionManager {
     if (!transientTypes.has(event.type)) {
       conversation.events.push(envelope);
       conversation.updatedAt = envelope.at;
-      this.store.save(conversation).catch(() => undefined);
+      void this.store.save(conversation);
     }
     for (const listener of this.listeners.get(id) ?? []) {
       listener(envelope);

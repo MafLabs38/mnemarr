@@ -292,7 +292,7 @@ export function childEnvironment(source: NodeJS.ProcessEnv, configDir: string, h
   };
 }
 
-class ClaudeCodeProcess implements AgentProcess {
+export class ClaudeCodeProcess implements AgentProcess {
   private buffer = '';
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly options: StartOptions;

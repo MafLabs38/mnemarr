@@ -75,9 +75,9 @@ public static class MnemarrClaims
         return user.FindFirstValue(Via) is { } via ? $"{name} (via {via})" : name;
     }
 
-    /// <summary>The account behind a signed-in caller, as the claims say it (the permissions are not repeated: they are the claims').</summary>
+    /// <summary>The account behind a signed-in caller, as the claims say it (the permissions are not repeated: they are the claims'). A caller whose kind the claims do not say is taken for a service, the narrower of the two.</summary>
     public static Mnemarr.Core.Accounts.Account Person(this ClaimsPrincipal user) =>
-        new(user.AccountId() ?? Guid.Empty, user.Identity?.Name ?? AuditActors.Unknown, Enum.TryParse<AccountKind>(user.FindFirstValue(Kind), out var kind) ? kind : AccountKind.User, user.FindFirstValue(ClaimTypes.Role) ?? string.Empty, true, DateTimeOffset.UnixEpoch);
+        new(user.AccountId() ?? Guid.Empty, user.Identity?.Name ?? AuditActors.Unknown, Enum.TryParse<AccountKind>(user.FindFirstValue(Kind), out var kind) ? kind : AccountKind.Service, user.FindFirstValue(ClaimTypes.Role) ?? string.Empty, true, DateTimeOffset.UnixEpoch);
 
     public static Guid? AccountId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(Account), out var id) ? id : null;

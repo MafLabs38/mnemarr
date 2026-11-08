@@ -57,10 +57,34 @@ public sealed class ChatAccessFixture : IDisposable
         _subject.Register(kept, alice);
         _subject.Register(gone, alice);
         var token = _subject.Mint(alice.Id, gone);
+        _h.Clock.Advance(ChatAccess.NewConversationGrace + TimeSpan.FromSeconds(1));
 
         _subject.Keep(new HashSet<string> { kept });
 
         _subject.OwnedBy(alice.Id).Should().Equal(kept);
+        _subject.Authenticate(token).Should().BeNull();
+    }
+
+    [Fact]
+    public void should_not_forget_a_conversation_that_was_made_after_the_list_was_asked_for()
+    {
+        var alice = _h.Reader("alice");
+        var id = NewId();
+        _subject.Register(id, alice);
+
+        _subject.Keep(new HashSet<string>());
+
+        _subject.CanAccess(id, alice.Id).Should().BeTrue("the runner's list was asked for before it existed");
+    }
+
+    [Fact]
+    public void should_take_a_token_back()
+    {
+        var alice = _h.Reader("alice");
+        var token = _subject.Mint(alice.Id, NewId());
+
+        _subject.Revoke(token);
+
         _subject.Authenticate(token).Should().BeNull();
     }
 

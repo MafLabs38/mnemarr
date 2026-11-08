@@ -106,7 +106,7 @@ function start(openai: Listening, mcp: Listening, options: { resume?: string; st
     stateDir: options.state ?? join(dir, 'state'),
   });
   const events: AdapterEvent[] = [];
-  let exited: number | null | undefined;
+  const exits: (number | null)[] = [];
   const process = adapter.start({
     model: 'model-a',
     resume: options.resume,
@@ -120,9 +120,9 @@ function start(openai: Listening, mcp: Listening, options: { resume?: string; st
         process.answer(event.requestId, { allow: true, input: event.input });
       }
     },
-    onExit: (code) => (exited = code),
+    onExit: (code) => exits.push(code),
   });
-  return { adapter, process, events, exited: () => exited, state: join(dir, 'state') };
+  return { adapter, process, events, exits, state: join(dir, 'state') };
 }
 
 const ended = (events: AdapterEvent[]) => events.some((event) => event.type === 'turn-end');
@@ -194,38 +194,45 @@ test('a tool the model asks for is shown, run by the MCP server with the key, an
   assert.equal((run.events.at(-1) as { type: string }).type, 'turn-end');
 });
 
-test('a change waits for the person: approved, it runs with the arguments unchanged; rejected, the model is told and nothing runs', async () => {
-  for (const approve of [true, false]) {
-    let round = 0;
-    const openai = await listen((_, response) =>
-      sse(response, round++ === 0 ? toolCall('call_w', 'update_note', { path: 'a.md' }) : words('Done.')),
-    );
-    const mcp = await mcpServer();
-    const run = start(openai, mcp);
+async function changeWaitsForThePerson(approve: boolean) {
+  let round = 0;
+  const openai = await listen((_, response) =>
+    sse(response, round++ === 0 ? toolCall('call_w', 'update_note', { path: 'a.md' }) : words('Done.')),
+  );
+  const mcp = await mcpServer();
+  const run = start(openai, mcp);
 
-    run.process.send('Change a.md');
-    await waitFor(() => run.events.some((event) => event.type === 'permission-request'));
-    assert.equal(
-      mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
-      false,
-      'nothing runs while it waits',
-    );
-    const decision: PermissionDecision = approve
-      ? { allow: true, input: { path: 'a.md' } }
-      : { allow: false, message: 'The operator rejected this change.' };
-    run.process.answer('call_w', decision);
-    await waitFor(() => ended(run.events));
+  run.process.send('Change a.md');
+  await waitFor(() => run.events.some((event) => event.type === 'permission-request'));
+  assert.equal(
+    mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+    false,
+    'nothing runs while it waits',
+  );
+  const decision: PermissionDecision = approve
+    ? { allow: true, input: { path: 'a.md' } }
+    : { allow: false, message: 'The operator rejected this change.' };
+  run.process.answer('call_w', decision);
+  await waitFor(() => ended(run.events));
+  return {
+    ran: mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+    result: run.events.find((event) => event.type === 'tool-result') as { isError: boolean; summary: string },
+  };
+}
 
-    assert.equal(
-      mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
-      approve,
-    );
-    const result = run.events.find((event) => event.type === 'tool-result') as { isError: boolean; summary: string };
-    assert.equal(result.isError, !approve);
-    if (!approve) {
-      assert.match(result.summary, /rejected/);
-    }
-  }
+test('an approved change runs with the arguments as they were shown', async () => {
+  const { ran, result } = await changeWaitsForThePerson(true);
+
+  assert.equal(ran, true);
+  assert.equal(result.isError, false);
+});
+
+test('a rejected change does not run and the model is told so', async () => {
+  const { ran, result } = await changeWaitsForThePerson(false);
+
+  assert.equal(ran, false);
+  assert.equal(result.isError, true);
+  assert.match(result.summary, /rejected/);
 });
 
 test('stopping a turn rejects what waits and ends the turn as an error', async () => {
@@ -334,5 +341,5 @@ test('closing the process reports its exit once', async () => {
   run.process.close();
   run.process.close();
 
-  assert.equal(run.exited(), 0);
+  assert.deepEqual(run.exits, [0]);
 });

@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Chat;
 
@@ -20,12 +21,14 @@ public sealed partial class ChatService
     private readonly AgentRunnerClient _runner;
     private readonly ChatAccess _access;
     private readonly ILogger<ChatService> _logger;
+    private readonly int _maxConversationsPerPerson;
 
-    public ChatService(AgentRunnerClient runner, ChatAccess access, ILogger<ChatService> logger)
+    public ChatService(AgentRunnerClient runner, ChatAccess access, IOptions<AgentOptions> options, ILogger<ChatService> logger)
     {
         _runner = runner;
         _access = access;
         _logger = logger;
+        _maxConversationsPerPerson = options.Value.MaxConversationsPerPerson;
     }
 
     [GeneratedRegex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")]
@@ -38,39 +41,84 @@ public sealed partial class ChatService
     public async Task<AgentRunnerResponse> ListAsync(ChatCaller caller, CancellationToken cancellationToken)
     {
         var response = await _runner.SendAsync(HttpMethod.Get, "v1/conversations", null, cancellationToken);
-        if (response is not { StatusCode: StatusCodes.Status200OK, Json: { } json } || JsonNode.Parse(json) is not JsonArray all)
+        if (response is not { StatusCode: StatusCodes.Status200OK, Json: { } json } || ParseList(json) is not { } all)
         {
-            return response;
+            return response.StatusCode == StatusCodes.Status200OK ? Malformed : response;
         }
 
-        // The runner's list is what exists: what Mnemarr keeps of a conversation that is gone (the runner makes room, or its volume was lost) goes with it.
-        var existing = all.OfType<JsonObject>().Select(item => item["id"]?.GetValue<string>() ?? string.Empty).ToHashSet(StringComparer.Ordinal);
-        _access.Keep(existing);
+        // The runner's list is what exists: what Mnemarr keeps of a conversation that is gone (the runner is full, or its volume was lost) goes with it.
+        _access.Keep(all.Select(item => item.Id).ToHashSet(StringComparer.Ordinal));
         var mine = _access.OwnedBy(caller.Account.Id);
         var visible = new JsonArray();
-        foreach (var item in all.OfType<JsonObject>().Where(item => mine.Contains(item["id"]?.GetValue<string>() ?? string.Empty)))
+        foreach (var item in all.Where(item => mine.Contains(item.Id)))
         {
-            visible.Add(item.DeepClone());
+            visible.Add(item.Node.DeepClone());
         }
 
         return new AgentRunnerResponse(StatusCodes.Status200OK, visible.ToJsonString());
     }
 
-    /// <summary>How many conversations a person may keep: the runner has one cap for everybody, and one person must not fill it with theirs and push out the others'.</summary>
-    public const int MaxConversationsPerPerson = 50;
+    private static AgentRunnerResponse Malformed => new(StatusCodes.Status502BadGateway, """{"title":"The assistant runner answered something Mnemarr does not understand: are the two images of the same version?"}""");
+
+    /// <summary>The conversations of the runner's list, or null when it is not a list of objects that each have an id.</summary>
+    private static List<(string Id, JsonObject Node)>? ParseList(string json)
+    {
+        try
+        {
+            if (JsonNode.Parse(json) is not JsonArray all)
+            {
+                return null;
+            }
+
+            var items = new List<(string, JsonObject)>();
+            foreach (var node in all)
+            {
+                if (node is not JsonObject item || item["id"] is not JsonValue value || !value.TryGetValue<string>(out var id))
+                {
+                    return null;
+                }
+
+                items.Add((id, item));
+            }
+
+            return items;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ParseId(string json)
+    {
+        try
+        {
+            return JsonNode.Parse(json) is JsonObject { } item && item["id"] is JsonValue value && value.TryGetValue<string>(out var id) ? id : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Starts a conversation and records its owner; when that fails, the runner's conversation is removed so that none is left without an owner.</summary>
     public async Task<AgentRunnerResponse> CreateAsync(object request, ChatCaller caller, CancellationToken cancellationToken)
     {
-        if (_access.OwnedBy(caller.Account.Id).Count >= MaxConversationsPerPerson)
+        // Two creations at the same time may both pass this check: the cap is there to keep one person from filling the runner, and one over is no harm.
+        if (_access.OwnedBy(caller.Account.Id).Count >= _maxConversationsPerPerson)
         {
-            return new AgentRunnerResponse(StatusCodes.Status429TooManyRequests, $$"""{"title":"You keep {{MaxConversationsPerPerson}} conversations: delete one first."}""");
+            return new AgentRunnerResponse(StatusCodes.Status429TooManyRequests, $$"""{"title":"You keep {{_maxConversationsPerPerson}} conversations: delete one first."}""");
         }
 
         var response = await _runner.SendAsync(HttpMethod.Post, "v1/conversations", request, cancellationToken);
-        if (response is not { StatusCode: StatusCodes.Status201Created, Json: { } json } || JsonNode.Parse(json)?["id"]?.GetValue<string>() is not { } id)
+        if (response is not { StatusCode: StatusCodes.Status201Created, Json: { } json })
         {
             return response;
+        }
+
+        if (ParseId(json) is not { } id)
+        {
+            return Malformed;
         }
 
         try
@@ -100,8 +148,26 @@ public sealed partial class ChatService
     }
 
     /// <summary>Sends the message with a token tied to the person and the conversation, which the model's calls to the MCP server carry.</summary>
-    public Task<AgentRunnerResponse> SendAsync(string id, string text, string? model, ChatCaller caller, CancellationToken cancellationToken) =>
-        _runner.SendAsync(HttpMethod.Post, $"v1/conversations/{id}/messages", new { Text = text, Model = model, McpToken = _access.Mint(caller.Account.Id, id) }, cancellationToken);
+    public async Task<AgentRunnerResponse> SendAsync(string id, string text, string? model, ChatCaller caller, CancellationToken cancellationToken)
+    {
+        var token = _access.Mint(caller.Account.Id, id);
+        try
+        {
+            var response = await _runner.SendAsync(HttpMethod.Post, $"v1/conversations/{id}/messages", new { Text = text, Model = model, McpToken = token }, cancellationToken);
+            if (response.StatusCode >= 300)
+            {
+                // A message that the runner refused (a turn is running, the runner is full) starts no process: its token is of no use and must not pile up.
+                _access.Revoke(token);
+            }
+
+            return response;
+        }
+        catch
+        {
+            _access.Revoke(token);
+            throw;
+        }
+    }
 
     private async Task TryRemoveAsync(string id)
     {

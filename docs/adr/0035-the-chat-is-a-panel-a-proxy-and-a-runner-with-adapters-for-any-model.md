@@ -26,7 +26,7 @@ conversations do (no pay-per-use key), and it must not depend on Claude: someone
    conversation: 30 minutes from the last message, 12 hours at most, valid on the MCP server **and nowhere else**, with no permission of its own: what it may do is the person's
    role **as it is now**, read at each call, so a person who loses the role or the account loses the chat's hands at once. The audit records `alice (via chat:<id>)`. A new permission
    `chat.use` goes to Admin, Operator and Reader; the roles of services have none, and a key of a service cannot use the chat even with a role that has it: the chat is for people. A conversation belongs to the person who
-   started it; another person's is "not found". A person keeps 50 conversations at most (the runner's cap is one for everybody, and one person must not fill it), and the runner carries
+   started it; another person's is "not found". A person keeps 50 conversations at most (`MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON`; the runner's cap is one for everybody, it deletes nothing to make room and answers 429 when it is full, so this times the number of people should stay under it), and the runner carries
    no key of its own to the MCP server: a message without the token Mnemarr minted for it reaches nothing.
 5. **What the model can look after.** The MCP server gains the tools that look after Mnemarr: `get_status`, `create_source`, `update_source`, `delete_source`, `index_source`,
    `sync_source` (with an optional Git repository), and `request_collector_enrolment` moves beside them. Those that change something are offered only when the operator turned the
@@ -44,4 +44,6 @@ conversations do (no pay-per-use key), and it must not depend on Claude: someone
 - A subscription has usage limits shared with the maintainer's own use; a chat turn costs what a Claude Code turn does.
 - The model sees what the person's role lets them see, conversations included when the role reads them; nothing is filtered for the model that is not for the person.
 - The chat does not know Portarr: what the infrastructure is today is for Portarr's MCP server (a second server for the agent is not now).
+- Mnemarr's own chat is not captured into its conversations pipeline (D-16) for now: what is said in the chat stays in the runner's volume. The natural path is for the runner to post finished turns to `/api/v1/ingest`, through the API (D-02).
+- The readiness probe (`/health/ready`) reports the chat: degraded with `agent-unreachable`, `agent-secret-refused` or `agent-no-credentials`, so that a companion that watches Mnemarr sees what a person would learn by opening the panel.
 - Not now: a second MCP server for the agent, Codex and Copilot adapters, a real provider for the OpenAI adapter, attachments, the limit of a conversation to some sources, retention of the runner's history.

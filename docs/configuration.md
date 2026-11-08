@@ -49,6 +49,7 @@ The chat needs an optional second container, the assistant runner; see [the chat
 |---|---|---|
 | `MNEMARR__AGENT__URL` | empty | The address of the runner, for example `http://mnemarr-agent:8489`. Empty: the chat is off, its endpoints answer 404 and the interface shows none. |
 | `MNEMARR__AGENT__SECRET` | empty | The secret shared with the runner, 32 characters or more (the start fails otherwise). Never returned, never logged. |
+| `MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON` | `50` | How many conversations a person keeps (1 to 1000). The runner has its own cap for everybody and deletes nothing to make room: this times the number of people should stay under it. |
 
 The tools with which the chat changes notes and sources are the MCP writing tools: `MNEMARR__MCP__WRITETOOLS=true`.
 

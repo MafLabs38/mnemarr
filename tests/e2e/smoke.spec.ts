@@ -368,6 +368,7 @@ test.describe('smoke @smoke', () => {
 
     await card.getByRole('button', { name: 'Approve' }).click();
     await expect(panel.getByText(`Done: I added it to ${source}.`)).toBeVisible();
+    expect((await api.get(note)).status()).toBe(200);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
     // Written as the person, and the log says it was the chat.
