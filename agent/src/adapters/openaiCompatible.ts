@@ -208,7 +208,27 @@ class OpenAiProcess implements AgentProcess {
     }
   }
 
+  /**
+   * A turn that stopped early (the person interrupted, the process closed) can leave tool calls without their results; the API refuses such a history
+   * ("tool_calls must be followed by tool messages") and so would every later turn. Each call that has no result gets one that says it did not run.
+   */
+  private answerDanglingToolCalls(): void {
+    const index = this.messages.findLastIndex((message) => message.role === 'assistant');
+    const last = this.messages[index];
+    const calls = last?.role === 'assistant' ? (last.tool_calls ?? []) : [];
+    const answered = new Set(
+      this.messages
+        .slice(index + 1)
+        .filter((message) => message.role === 'tool')
+        .map((message) => (message.role === 'tool' ? message.tool_call_id : undefined)),
+    );
+    for (const call of calls.filter((candidate) => !answered.has(candidate.id))) {
+      this.messages.push({ role: 'tool', tool_call_id: call.id, content: rejectedByAbort });
+    }
+  }
+
   private endTurn(isError: boolean, usage: Usage, started: number): void {
+    this.answerDanglingToolCalls();
     this.save();
     this.options.onEvent({ type: 'turn-end', isError, usage: { ...usage, durationMs: Date.now() - started } });
   }

@@ -139,7 +139,12 @@ export class SessionManager {
     model: string | undefined,
     title: string | undefined,
   ): Promise<ConversationSummary> {
-    const adapter = this.adapter(agentId ?? [...this.adapters.keys()][0]);
+    // Without a choice, the first agent that can run: an operator with only an OpenAI-compatible API does not get a Claude Code that cannot.
+    const adapter = this.adapter(
+      agentId ??
+        [...this.adapters.values()].find((candidate) => candidate.available())?.id ??
+        [...this.adapters.keys()][0],
+    );
     const chosen = this.model(adapter, model);
     this.checkRoomForAConversation();
     const now = this.now();

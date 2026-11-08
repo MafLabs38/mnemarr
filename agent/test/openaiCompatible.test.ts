@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -379,4 +379,38 @@ test('forgetting a session removes its history from the disk', async () => {
   await run.adapter.forget('aaaaaaaa-0000-4000-8000-000000000001');
 
   assert.equal(existsSync(file), false);
+});
+
+test('a turn that stops while tools wait leaves a history the API accepts: every call has a result', async () => {
+  const openai = await listen((_, response) =>
+    sse(response, [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_a', function: { name: 'update_note', arguments: '{}' } },
+                { index: 1, id: 'call_b', function: { name: 'delete_note', arguments: '{}' } },
+              ],
+            },
+          },
+        ],
+      },
+    ]),
+  );
+  const run = start(openai, await mcpServer());
+  run.process.send('Change two notes');
+  await waitFor(() => run.events.some((event) => event.type === 'permission-request'));
+
+  run.process.interrupt();
+  await waitFor(() => ended(run.events));
+
+  const saved = JSON.parse(readFileSync(join(run.state, 'aaaaaaaa-0000-4000-8000-000000000001.json'), 'utf8')) as {
+    role: string;
+    tool_call_id?: string;
+  }[];
+  assert.deepEqual(
+    saved.filter((message) => message.role === 'tool').map((message) => message.tool_call_id),
+    ['call_a', 'call_b'],
+  );
 });

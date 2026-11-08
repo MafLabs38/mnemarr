@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { mock, test } from 'node:test';
 
 import type { ChatEventEnvelope } from '../src/events.ts';
-import { ChatError } from '../src/sessions.ts';
-import { newManager, waitFor } from './fakes.ts';
+import { ChatError, SessionManager } from '../src/sessions.ts';
+import { ConversationStore } from '../src/store.ts';
+import { FakeAdapter, newManager, waitFor } from './fakes.ts';
 
 const token = `mnc_${'a'.repeat(43)}`;
 
@@ -333,4 +334,28 @@ test('a change that nobody answers is rejected after the delay, so that it does 
     [false],
   );
   assert.ok(events.some((event) => event.type === 'permission-resolved' && !event.approved));
+});
+
+test('without a choice a conversation goes to the first agent that can run', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'mnemarr-agent-test-'));
+  const store = new ConversationStore(dataDir);
+  await store.init();
+  class Unavailable extends FakeAdapter {
+    override readonly id = 'first-but-without-credentials';
+    override available(): boolean {
+      return false;
+    }
+  }
+  const usable = new FakeAdapter();
+  const manager = new SessionManager([new Unavailable(), usable], store, {
+    maxSessions: 2,
+    idleTimeoutMs: 60_000,
+    workDir: dataDir,
+    runDir: dataDir,
+    mnemarrMcpUrl: 'http://mnemarr.example:8383/mcp',
+  });
+
+  const conversation = await manager.create(undefined, undefined, undefined);
+
+  assert.equal(conversation.agent, usable.id);
 });

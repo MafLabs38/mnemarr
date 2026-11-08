@@ -41,7 +41,7 @@ export class FakeProcess implements AgentProcess {
 }
 
 export class FakeAdapter implements AgentAdapter {
-  readonly id = 'fake';
+  readonly id: string = 'fake';
   readonly name = 'Fake CLI';
   readonly models = [
     { id: 'small', label: 'Small' },
