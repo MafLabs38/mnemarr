@@ -90,6 +90,7 @@ public sealed class EndpointsFixture
         "api/v1/pairings/{id:guid}/reject",
         "api/v1/roles",
         "api/v1/search",
+        "api/v1/search/status",
         "api/v1/sources",
         "api/v1/sources",
         "api/v1/sources/kinds",

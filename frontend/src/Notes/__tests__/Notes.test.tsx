@@ -484,6 +484,7 @@ describe('Notes', () => {
         heading: 'Images',
         snippet: 'Une image est faite de couches.',
         score: 1.2,
+        match: 'both',
       },
     ];
     const answerSearch = (path: string): ApiAnswer | undefined => {
@@ -515,13 +516,80 @@ describe('Notes', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?q=couches', expect.anything());
     });
 
+    it('says how far the search by meaning is while the passages are read', async () => {
+      const status = { state: 'ready', model: 'm', passages: 472, computed: 120, reason: null };
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      expect(await within(region).findByText(/120 of 472 passages are read/)).toBeInTheDocument();
+    });
+
+    it.each([
+      ['keywords', 'matched by its words'],
+      ['meaning', 'matched by its meaning'],
+      ['both', 'matched by its words and its meaning'],
+    ] as const)('says why a hit is there: %s', async (match, label) => {
+      server(noteWith('# x'), (path) =>
+        path.startsWith('/search?q=couches') ? { body: [{ ...hits[0], match }] } : answerSearch(path),
+      );
+      renderWithProviders(<Notes />, '/notes', readerSession);
+
+      const region = await search('couches');
+
+      expect(await within(region).findByText(label)).toBeInTheDocument();
+    });
+
+    it.each([
+      ['off', 0, 0],
+      ['starting', 0, 0],
+      ['ready', 472, 472],
+    ])('says nothing of the search by meaning when it is %s', async (state, passages, computed) => {
+      server(noteWith('# x'), (path) =>
+        path === '/search/status' ? { body: { state, model: 'm', passages, computed, reason: null } } : undefined,
+      );
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      await within(region).findByLabelText('Search the notes');
+      expect(within(region).queryByRole('alert')).not.toBeInTheDocument();
+      expect(within(region).queryByText(/catching up/)).not.toBeInTheDocument();
+    });
+
+    it('shows no banner and still searches when the state of the search by meaning cannot be read', async () => {
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { status: 500 } : answerSearch(path)));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+
+      const region = await search('couches');
+
+      expect(await within(region).findByRole('link', { name: 'Docker' })).toBeInTheDocument();
+      expect(within(region).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('tells a person that the search is by words only when the model cannot be loaded', async () => {
+      const status = {
+        state: 'failed',
+        model: 'm',
+        passages: 0,
+        computed: 0,
+        reason: 'The model could not be loaded.',
+      };
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      expect(await within(region).findByRole('alert')).toHaveTextContent(
+        'by words only: The model could not be loaded.',
+      );
+    });
+
     it('says when nothing is found, and asks for nothing while nothing is typed', async () => {
       const fetchMock = server(noteWith('# x'), answerSearch);
       renderWithProviders(<Notes />, '/notes', readerSession);
       const region = await screen.findByRole('region', { name: 'Search' });
 
       await userEvent.click(within(region).getByRole('button', { name: 'Search' }));
-      expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/v1/search'))).toBe(false);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/v1/search?'))).toBe(false);
       await search('zzz');
 
       expect(await within(region).findByText('Nothing found.')).toBeInTheDocument();

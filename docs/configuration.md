@@ -41,6 +41,21 @@ See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each pr
 
 Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not indexed. A pass lists the folder and reads only the notes whose size or last write time changed, so a vault on a share is not read in full every interval; `POST /api/v1/sources/{id}/index?rebuild=true` reads everything. The folder of a source is checked against the roots again before every scan, and a link anywhere between the root and the folder is refused. If a scan fails (the folder was unmounted, or is outside the roots now), the source shows why (`lastError`) and `/health/ready` is degraded with the reason `source-unreadable`; its old notes stay searchable. `POST /api/v1/sources/{id}/index?rebuild=true` cuts every note again. The mode of a source is its write switch: read-only unless you turn writing on. Forgetting a source in the interface forgets its index, never its files.
 
+## Search by meaning (`Embeddings`)
+
+The notes and the conversations are also searched by meaning, with a model that runs on this host (ADR 0034). The image carries the model and the library and sets the two paths; a build without them leaves the feature off.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__EMBEDDINGS__MODELFOLDER` | the image sets it | The folder with `model.onnx` and `tokenizer.json`. Empty: the search by meaning is off and nothing is computed. The files are checked against pinned SHA-256 before they are loaded. |
+| `MNEMARR__EMBEDDINGS__EXTENSIONPATH` | the image sets it | The `sqlite-vec` library (`vec0.so`). Required when a model folder is given. |
+| `MNEMARR__EMBEDDINGS__MODEL` | `granite-embedding-97m-multilingual-r2` | The model; only the listed ones are supported, and today there is one. Another one needs its files in `MODELFOLDER`. A change computes every passage again in the background. |
+| `MNEMARR__EMBEDDINGS__THREADS` | `2` | CPU threads of the model (1 to 64). The first run over a long history takes about a second per ten passages on two threads. |
+| `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together (1 to 64). |
+| `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |
+| `MNEMARR__EMBEDDINGS__IDLESECONDS` | `15` | How long it waits when everything is computed before it looks again (1 to 3600). |
+| `MNEMARR__EMBEDDINGS__MAXDISTANCE` | the model's (`0.2` for the default one) | The cosine distance beyond which a passage is not an answer by meaning. Empty: the one measured for the model. Set it only to override, and measure. |
+
 ## Git sources (`Git`)
 
 A source can be the checkout of a Git repository ([ADR 0022](adr/0022-git-sources-are-cloned-and-pulled-in-process-over-https.md)): declare it with a `repository` (an `https` address, optionally a branch and the name of a credential) and a folder inside the roots, where it is cloned. Mnemarr clones into a folder that does not exist or is empty, then fast-forwards; it never merges, never forces, and reports a checkout that has diverged or has uncommitted changes without touching it. SSH is not supported.

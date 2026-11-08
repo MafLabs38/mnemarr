@@ -118,6 +118,35 @@ describe('LinkMachine', () => {
     });
   });
 
+  it.each([
+    ['This is not my computer', /Refused\./],
+    ['Link this computer', /Linked as gaming-pc/],
+  ])(
+    'tells what the person did (%s) even when the list no longer holds the request, which is what answering it does',
+    async (button, told) => {
+      // Once the request is answered the server no longer lists it: the form that was showing it is replaced, and what the person did is still told.
+      let answered = false;
+      stubApi((method, path) => {
+        if (method === 'GET' && path === '/pairings') {
+          return { body: answered ? [] : [pairing] };
+        }
+        if (method === 'POST' && (path === '/pairings/p1/approve' || path === '/pairings/p1/reject')) {
+          answered = true;
+          return { body: pairing };
+        }
+        return { body: [] };
+      });
+      renderWithProviders(<LinkMachine />, '/link?id=p1', readerSession);
+
+      if (button === 'Link this computer') {
+        await userEvent.type(await screen.findByLabelText(/Code of this request/), 'ABCD-EFGH-JKLM');
+      }
+      await userEvent.click(await screen.findByRole('button', { name: button }));
+
+      expect(await screen.findByText(told)).toBeInTheDocument();
+    },
+  );
+
   it('warns when the name chosen is a machine that exists already, because approving replaces its key', async () => {
     const existing: MachineItem = {
       machine: 'gaming-pc',

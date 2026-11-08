@@ -29,6 +29,8 @@ services:
       MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
       # The programs a machine installs, as the image carries them: fake files here, so that what the page offers can be fetched.
       MNEMARR__COLLECTORS__DOWNLOADFOLDER: /downloads
+      # The model reads the notes of the stack on one thread: the journeys run beside it on a small runner, and must not wait for it.
+      MNEMARR__EMBEDDINGS__THREADS: '1'
     configs:
       - source: admin_password
         target: /run/admin-password

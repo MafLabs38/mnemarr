@@ -127,6 +127,12 @@ const en = {
   Search: 'Search',
   SearchError: 'The search failed.',
   SearchTheNotes: 'Search the notes',
+  MatchKeywords: 'matched by its words',
+  MatchMeaning: 'matched by its meaning',
+  MatchBoth: 'matched by its words and its meaning',
+  MeaningFailed: 'The search by meaning does not work, so the search is by words only: {reason}',
+  MeaningCatchingUp:
+    'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
   SourceRoots: 'A source is a folder inside one of: {roots}',
   SourcesError: 'Could not read the sources.',
   Adopt: 'Take over',

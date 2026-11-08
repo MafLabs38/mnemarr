@@ -59,8 +59,24 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet build src/Mnemarr.sln --configuration Release
+      # The search by meaning (ADR 0034) is tried with the real model and the real vector library, on the documentation of the project as notes: both are fetched at their
+      # pinned version and checked by checksum, and the model (390 MB) is kept between runs.
+      - name: Cache the model of the search by meaning
+        id: model
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .cache/model
+          key: embeddings-model-${{ hashFiles('tools/native/fetch-model.sh') }}
+      - name: Fetch the model and the vector library
+        run: |
+          [ -f .cache/model/model.onnx ] || tools/native/fetch-model.sh .cache/model
+          tools/native/fetch-vector-library.sh linux-x86_64 .cache/vec
       # Exit code 8 means "no test matched the filter" in a project: expected, each project holds one kind.
       - name: Unit tests
+        env:
+          MNEMARR_TEST_MODEL: ${{ github.workspace }}/.cache/model
+          MNEMARR_TEST_VECTOR_LIBRARY: ${{ github.workspace }}/.cache/vec/vec0.so
+          MNEMARR_TEST_DOCS: ${{ github.workspace }}/docs
         run: >
           dotnet test --solution src/Mnemarr.sln --configuration Release --no-build --
           --filter-not-trait "Category=Integration" --ignore-exit-code 8

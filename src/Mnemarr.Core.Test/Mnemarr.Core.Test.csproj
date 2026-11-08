@@ -18,6 +18,8 @@
   <ItemGroup>
     <!-- The samples that the masking of the collector (Rust) is run against too (Q-27). -->
     <None Include="..\..\tests\masking\samples.json" Link="masking\samples.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- What the tools of the embeddings model give for a few texts: the tokenizer and the provider of Mnemarr are compared with it (reference.py makes it). -->
+    <None Include="Embeddings\reference.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mnemarr.Core\Mnemarr.Core.csproj" />

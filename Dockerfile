@@ -14,6 +14,20 @@ RUN corepack enable && yarn install --frozen-lockfile
 COPY frontend ./frontend
 RUN yarn build
 
+# The search by meaning (ADR 0034): the vector library for the target architecture and the model, each fetched at a pinned version and verified by checksum.
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS native
+RUN apk add --no-cache bash curl
+COPY tools/native /tools/native
+# The model is the same for every architecture and the largest download: it comes before the architecture, so that a multi-architecture build has one layer of it.
+RUN /tools/native/fetch-model.sh /out/models/granite-embedding-97m-multilingual-r2
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+      amd64) system=linux-x86_64 ;; \
+      arm64) system=linux-aarch64 ;; \
+      *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && /tools/native/fetch-vector-library.sh "$system" /out/sqlite-vec
+
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS backend
 ARG VERSION=0.0.0-dev
 WORKDIR /build
@@ -32,6 +46,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:c89a6a61f494f20a
 WORKDIR /app
 COPY --from=backend /app ./
 COPY --from=frontend /build/_output/UI ./wwwroot
+# The model and the vector library are part of the image, so that a first start needs no network (ADR 0034). Owned by root and read-only for the application.
+COPY --from=native /out/models /models
+COPY --from=native /out/sqlite-vec /opt/sqlite-vec
 # The programs a machine installs (ADR 0027 §12, ADR 0029): the CI puts here the ones it built and tested for this commit; a build without them
 # (a developer's `docker build`) serves none, and the page of the machines then offers no line to run.
 # Owned by root and read-only for the application: the programs it serves are not something it can change.
@@ -40,6 +57,8 @@ COPY collector-programs /collector-programs
 COPY --from=backend --chown=1654:1654 /config /config
 ENV MNEMARR__DATAFOLDER=/config
 ENV MNEMARR__COLLECTORS__DOWNLOADFOLDER=/collector-programs
+ENV MNEMARR__EMBEDDINGS__MODELFOLDER=/models/granite-embedding-97m-multilingual-r2
+ENV MNEMARR__EMBEDDINGS__EXTENSIONPATH=/opt/sqlite-vec/vec0.so
 # The base image sets ASPNETCORE_HTTP_PORTS=8080, which the Urls setting of appsettings.json overrides with a warning at every start.
 ENV ASPNETCORE_HTTP_PORTS=
 # The app user of the chiseled image, stated so that nothing reads this image as running as root.

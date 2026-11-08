@@ -60,10 +60,12 @@ function Answer({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    approve.mutate(
-      { id: pairing.id, machine: name, kind, code, takeOver },
-      { onSuccess: () => onDone({ kind: 'linked', name }) },
-    );
+    // The answer is told through the promise and not through an option of the call: answering the request takes it out of the list, which replaces this form, and an
+    // option of a call is dropped when the component that made it is gone. (A failure is shown by the form while it is there.)
+    approve
+      .mutateAsync({ id: pairing.id, machine: name, kind, code, takeOver })
+      .then(() => onDone({ kind: 'linked', name }))
+      .catch(() => undefined);
   }
 
   return (
@@ -112,7 +114,12 @@ function Answer({
         </Button>
         <Button
           disabled={busy}
-          onClick={() => reject.mutate(pairing.id, { onSuccess: () => onDone({ kind: 'rejected' }) })}
+          onClick={() => {
+            reject
+              .mutateAsync(pairing.id)
+              .then(() => onDone({ kind: 'rejected' }))
+              .catch(() => undefined);
+          }}
           variant="danger"
         >
           {translate('LinkReject')}
