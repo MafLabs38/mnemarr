@@ -27,13 +27,13 @@ public sealed class AccountsController : ControllerBase
     public IReadOnlyList<RoleResource> GetRoles() => [.. Roles.All.Where(role => !role.System).Select(RoleResource.From)];
 
     [HttpGet("accounts")]
-    public IReadOnlyList<AccountResource> GetAccounts() => [.. _store.List().Select(AccountResource.From)];
+    public IReadOnlyList<AccountResource> GetAccounts() => [.. _store.List().Where(account => !account.IsSystem).Select(AccountResource.From)];
 
     [HttpGet("accounts/{id:guid}")]
     [ProducesResponseType<AccountResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public ActionResult<AccountResource> GetAccount(Guid id) =>
-        _store.Get(id) is { } account ? AccountResource.From(account) : NotFound();
+        _store.Get(id) is { IsSystem: false } account ? AccountResource.From(account) : NotFound();
 
     [HttpPost("accounts")]
     [ProducesResponseType<AccountResource>(StatusCodes.Status201Created)]

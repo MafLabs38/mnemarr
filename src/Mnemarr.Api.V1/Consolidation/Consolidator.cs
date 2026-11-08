@@ -186,14 +186,12 @@ public sealed class Consolidator
         var written = 0;
         try
         {
-            written = await _job.RunAsync(ConsolidationPrompt.Build(record, vault.Name, SourceCatalog.ConversationsName, excerpt, state.TurnsDone, _clock.GetUtcNow()), cancellationToken);
-            _store.CountRun(_clock.GetUtcNow());
+            written = await _job.RunAsync(ConsolidationPrompt.Build(record, vault.Name, SourceCatalog.ConversationsName, excerpt, state.TurnsDone, _clock.GetUtcNow()), () => _store.CountRun(_clock.GetUtcNow()), cancellationToken);
             Volatile.Write(ref _problem, null);
         }
         catch (ConsolidationFailureException ex)
         {
             failure = ex.Message;
-            _store.CountRun(_clock.GetUtcNow());
             Volatile.Write(ref _problem, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)

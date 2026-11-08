@@ -13,7 +13,6 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Api.V1.Mcp;
 
-/// <summary>Who is calling a tool: what they may reach, the name their changes are written under, the permissions they hold, and the address they reached Mnemarr at.</summary>
 /// <summary>Who calls a tool: what they may see, the name the log records, what their permissions are, where the server is, and whether it is a job.</summary>
 /// <param name="Scope">The sources the caller may touch.</param>
 /// <param name="Name">The name the audit log records.</param>

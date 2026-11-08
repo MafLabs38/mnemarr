@@ -17,6 +17,9 @@ public sealed record Account(Guid Id, string Name, AccountKind Kind, string Role
     public static Account Placeholder(string name) => new(Guid.Empty, name, AccountKind.User, Roles.Reader, false, DateTimeOffset.UnixEpoch);
 
     /// <summary>What the role of the account gives it, now. A role that no longer exists gives nothing.</summary>
+    /// <summary>An account of Mnemarr itself (the consolidation): people do not list it, change it, delete it or give it keys; turning the setting off stops it.</summary>
+    public bool IsSystem => Roles.Find(Role)?.System == true;
+
     public IReadOnlySet<string> Permissions => Roles.Find(Role)?.Permissions ?? NoPermissions;
 
     private static readonly IReadOnlySet<string> NoPermissions = new HashSet<string>(StringComparer.Ordinal);

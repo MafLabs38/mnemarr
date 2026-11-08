@@ -65,8 +65,7 @@ public sealed class AccountService
         lock (_administrators)
         {
             var account = Existing(id);
-            // A role of Mnemarr itself stays what it is (the account can be disabled), and is given to nobody.
-            CheckRole(role, account.Kind, allowSystemRole: role == account.Role);
+            CheckRole(role, account.Kind);
             KeepOneAdmin(account, stillAdmin: enabled && role == Roles.Admin);
             if (!_accounts.Update(id, role, enabled))
             {

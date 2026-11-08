@@ -23,7 +23,7 @@ public interface IConsolidationStore
 
     ConsolidationCounts Counts(DateTimeOffset dayStart, int maxTries);
 
-    /// <summary>Gives the conversations that failed too often their tries back, so that the next pass tries them again. Returns how many.</summary>
+    /// <summary>Gives the conversations that failed <paramref name="maxTries"/> times their tries back, so that the next pass tries them again. Returns how many.</summary>
     int ResetFailures(int maxTries);
 
     /// <summary>A run of the model, whatever came of it: what the day's cap counts (a conversation read in several runs, or tried again, costs each time).</summary>
@@ -35,6 +35,7 @@ public interface IConsolidationStore
 
 public sealed class SqliteConsolidationStore : IConsolidationStore
 {
+    private const string TriesParameter = "$tries";
     private const string Columns = "machine, session, lines_done, turns_done, notes, tries, error, last_at";
     private readonly IDatabase _database;
 
@@ -68,7 +69,7 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
         command.Parameters.AddWithValue("$lines", record.LinesDone);
         command.Parameters.AddWithValue("$turns", record.TurnsDone);
         command.Parameters.AddWithValue("$notes", record.Notes);
-        command.Parameters.AddWithValue("$tries", record.Tries);
+        command.Parameters.AddWithValue(TriesParameter, record.Tries);
         command.Parameters.AddWithValue("$error", (object?)record.Error ?? DBNull.Value);
         command.Parameters.AddWithValue("$at", StorageText.Format(record.LastAt));
         command.ExecuteNonQuery();
@@ -87,7 +88,7 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
             ORDER BY c.updated_at LIMIT $limit
             """;
         command.Parameters.AddWithValue("$idle", StorageText.Format(idleBefore));
-        command.Parameters.AddWithValue("$tries", maxTries);
+        command.Parameters.AddWithValue(TriesParameter, maxTries);
         command.Parameters.AddWithValue("$growth", IConsolidationStore.RetryAfterGrowth);
         command.Parameters.AddWithValue("$limit", limit);
         using var reader = command.ExecuteReader();
@@ -112,7 +113,7 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
               (SELECT coalesce(SUM(notes), 0) FROM consolidations),
               (SELECT coalesce(SUM(runs), 0) FROM consolidation_days WHERE day = $day)
             """;
-        command.Parameters.AddWithValue("$tries", maxTries);
+        command.Parameters.AddWithValue(TriesParameter, maxTries);
         command.Parameters.AddWithValue("$day", DayKey(dayStart));
         using var reader = command.ExecuteReader();
         reader.Read();
@@ -123,7 +124,8 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE consolidations SET tries = 0, error = NULL WHERE error IS NOT NULL";
+        command.CommandText = "UPDATE consolidations SET tries = 0, error = NULL WHERE error IS NOT NULL AND tries >= $tries";
+        command.Parameters.AddWithValue(TriesParameter, maxTries);
         return command.ExecuteNonQuery();
     }
 

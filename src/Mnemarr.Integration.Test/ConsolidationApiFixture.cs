@@ -291,6 +291,8 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
 
         roles.EnumerateArray().Select(role => role.GetProperty("name").GetString()).Should().NotContain("Consolidator");
         created.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var accounts = await callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/accounts", Token);
+        accounts.EnumerateArray().Select(account => account.GetProperty("name").GetString()).Should().NotContain("consolidation", "the account of Mnemarr is not listed, so that nobody changes it or gives it a key");
     }
 
     [Fact]

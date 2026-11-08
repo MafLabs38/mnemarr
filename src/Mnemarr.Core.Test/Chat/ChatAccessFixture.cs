@@ -276,9 +276,9 @@ public sealed class ChatAccessFixture : IDisposable
         _subject.Authenticate(job).Should().NotBeNull();
         _subject.Authenticate(asked).Should().BeNull("the chat is for people");
 
-        _h.Service.Update(consolidation.Id, Roles.Consolidator, enabled: false, "test");
+        _h.Accounts.Update(consolidation.Id, Roles.Consolidator, enabled: false);
         _subject.Authenticate(job).Should().BeNull();
-        _h.Service.Update(consolidation.Id, Roles.Reader, enabled: true, "test");
+        _h.Accounts.Update(consolidation.Id, Roles.Reader, enabled: true);
         _subject.Authenticate(job).Should().BeNull("the role is not the consolidation's any more");
     }
 }

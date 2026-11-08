@@ -49,8 +49,8 @@ public sealed class ConsolidationJob
     /// <summary>Whether there is an assistant runner to give the job to.</summary>
     public bool RunnerConfigured => _agent.Value.Enabled;
 
-    /// <summary>Gives the prompt to a model and returns how many notes it wrote or changed. Throws <see cref="ConsolidationFailureException"/> when the job fails, and <see cref="HttpRequestException"/> when the runner cannot be reached.</summary>
-    public async Task<int> RunAsync(string prompt, CancellationToken cancellationToken)
+    /// <summary>Gives the prompt to a model (calling <paramref name="asked"/> once the runner has accepted the job) and returns how many notes it wrote or changed. Throws <see cref="ConsolidationFailureException"/> when the job fails, and <see cref="HttpRequestException"/> when the runner cannot be reached.</summary>
+    public async Task<int> RunAsync(string prompt, Action asked, CancellationToken cancellationToken)
     {
         var options = _options.Value;
         var created = await _runner.SendAsync(HttpMethod.Post, "v1/conversations", new { agent = string.IsNullOrEmpty(options.Agent) ? null : options.Agent, model = options.Model, title = "consolidation", policy = "job" }, cancellationToken);
@@ -69,6 +69,8 @@ public sealed class ConsolidationJob
                 throw new ConsolidationFailureException(Refused(sent.StatusCode, "send the job"));
             }
 
+            // The runner has the job: the model will be asked, whatever comes of it, and the day's cap counts it.
+            asked();
             return await WaitAsync(id, cancellationToken);
         }
         finally
