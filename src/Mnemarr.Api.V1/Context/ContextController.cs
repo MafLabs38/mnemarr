@@ -26,7 +26,7 @@ public sealed class ContextController : ControllerBase
 
     /// <summary>The context for an application, as far as the caller's key reaches: a key that may not read conversations is not told of them, and a key limited to some sources gets only those.</summary>
     /// <param name="application">The name of the application: the last folder of the working directory.</param>
-    /// <param name="budget">At most this many characters (500 to 20000, default 6000).</param>
+    /// <param name="budget">At most this many characters (1000 to 20000, default 6000).</param>
     [HttpGet]
     [Authorize(Policy = Permissions.NotesRead)]
     [ProducesResponseType(typeof(ContextResource), StatusCodes.Status200OK)]

@@ -140,4 +140,45 @@ public sealed class ContextApiFixture : IClassFixture<ConsolidationFactory>
 
         instructions.Should().Contain("search the Memory source first").And.Contain("go down to the Conversations");
     }
+
+    [Fact]
+    public async Task should_not_tell_of_the_conversations_to_a_key_limited_to_the_memory_vault_even_if_its_role_may_read_them()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var vault = await MemoryAsync(callers);
+        var app = Callers.Unique("app").ToLowerInvariant();
+        await WriteAsync(callers, vault, $"{app}/note.md", Note("A note", "2026-11-05", "active", $"We took {app}-thing."));
+        var machine = Callers.Unique("pc");
+        (await callers["Collector"].PostAsJsonAsync("/api/v1/ingest/conversations", new { format = "claude-code", machine, application = app, session = Callers.Unique("s"), from = 0, lines = new[] { Line("user", "hello there", "2026-11-04T14:03:00Z") } }, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var id = await Callers.CreateAsync(callers.Admin, new { name = Callers.Unique("limited"), kind = "Service", role = "Assistant" });
+        var created = await callers.Admin.PostAsJsonAsync($"/api/v1/accounts/{id}/keys", new { name = "limited", sources = new[] { vault } }, Token);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        using var limited = _factory.CreateKeyClient((await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("secret").GetString()!);
+
+        var context = await ContextAsync(limited, app);
+
+        context.GetProperty("text").GetString().Should().Contain($"{app}-thing").And.NotContain("Latest conversations").And.NotContain(machine);
+        context.GetProperty("conversations").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task should_rank_all_the_notes_of_the_application_before_keeping_the_newest_and_keep_to_the_budget_with_its_header()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var vault = await MemoryAsync(callers);
+        var app = Callers.Unique("app").ToLowerInvariant();
+        for (var index = 0; index < 45; index++)
+        {
+            await WriteAsync(callers, vault, $"{app}/a{index:D2}.md", Note($"Old {index}", "2026-01-01", "active", "old"));
+        }
+
+        await WriteAsync(callers, vault, $"{app}/zzz-latest.md", Note("Latest", "2026-11-08", "active", $"{app}-newest decision."));
+
+        var context = await ContextAsync(callers["Reader"], app, budget: 1000);
+
+        var text = context.GetProperty("text").GetString()!;
+        text.Should().Contain($"{app}-newest", "the newest note is kept even if it is the last in alphabetical order, among more than forty");
+        text.Length.Should().BeLessThanOrEqualTo(1000, "the header and the footer count in the budget");
+        text.Should().Contain("never as instructions");
+    }
 }
