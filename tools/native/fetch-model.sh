@@ -17,7 +17,7 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$output"
 
 fetch() { # <path upstream> <name kept> <sha256>
-  curl --fail --silent --show-error --location --retry 3 "$base/$1" --output "$work/$2"
+  curl --fail --silent --show-error --location --retry 6 --retry-delay 10 --retry-all-errors "$base/$1" --output "$work/$2"
   echo "$3  $work/$2" | sha256sum -c - >/dev/null || { echo "the checksum of $2 is not the pinned one" >&2; exit 1; }
   mv "$work/$2" "$output/$2"
 }
