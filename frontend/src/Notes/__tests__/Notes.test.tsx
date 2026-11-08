@@ -100,7 +100,7 @@ describe('Notes', () => {
 
   it('filters the tree by a part of a title or of a path, and opens the folders that hold the matches', async () => {
     server(noteWith('# Docker'));
-    const { container } = renderWithProviders(<Notes />, '/notes', readerSession);
+    renderWithProviders(<Notes />, '/notes', readerSession);
     const tree = await screen.findByRole('navigation', { name: 'Notes' });
 
     await userEvent.type(screen.getByLabelText('Filter the notes'), 'decisions/');
@@ -112,7 +112,8 @@ describe('Notes', () => {
 
     expect(within(tree).getByRole('link', { name: 'Choix du réseau' })).toBeInTheDocument();
     expect(within(tree).queryByRole('link', { name: 'Docker' })).not.toBeInTheDocument();
-    expect([...container.querySelectorAll('details')].every((folder) => folder.hasAttribute('open'))).toBe(true);
+    expect(tree.querySelectorAll('details').length).toBeGreaterThan(0);
+    expect([...tree.querySelectorAll('details')].every((folder) => folder.hasAttribute('open'))).toBe(true);
   });
 
   it('asks the person to choose a note when none is open', async () => {
@@ -581,6 +582,18 @@ describe('Notes', () => {
       expect(await within(region).findByRole('alert')).toHaveTextContent(
         'by words only: The model could not be loaded.',
       );
+    });
+
+    it('explains how the search works, with an example, behind a disclosure', async () => {
+      server(noteWith('# x'));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      expect(within(region).getByText(/ask a question in your own words/)).not.toBeVisible();
+      await userEvent.click(within(region).getByText('How does the search work?'));
+
+      expect(within(region).getByText(/ask a question in your own words/)).toBeVisible();
+      expect(within(region).getByText(/Example: /)).toBeVisible();
     });
 
     it('says when nothing is found, and asks for nothing while nothing is typed', async () => {

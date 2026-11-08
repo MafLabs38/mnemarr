@@ -126,6 +126,11 @@ const en = {
   UnresolvedLink: 'No note of this name that you may read',
   Search: 'Search',
   SearchError: 'The search failed.',
+  SearchHowTitle: 'How does the search work?',
+  SearchHowText:
+    'It looks for your words and for what you mean. Type keywords, or ask a question in your own words: the notes about it are found even when they use other words. When the model that reads the meaning is not available, the search is by words only.',
+  SearchHowExample:
+    'Example: "how do I get my data back after a crash?" finds the note about restoring from a snapshot, though that note never says "crash". Each result says whether it matched by its words, by its meaning, or both.',
   SearchTheNotes: 'Search the notes',
   MatchKeywords: 'matched by its words',
   MatchMeaning: 'matched by its meaning',
