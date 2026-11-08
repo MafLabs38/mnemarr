@@ -36,8 +36,6 @@ const disallowedBuiltIns = [
   'TodoWrite',
 ];
 
-
-
 /** The command line of one process. Exported for the tests: it is the security boundary of the CLI. */
 export function buildArgs(options: Pick<StartOptions, 'model' | 'resume' | 'sessionId' | 'mcpConfigFile'>): string[] {
   return [

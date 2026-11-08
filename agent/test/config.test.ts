@@ -64,15 +64,38 @@ test('a model behind an OpenAI-compatible API is a second agent, set by its addr
     ],
     defaultModel: 'llama3.1',
   });
-  assert.equal(loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'https://api.example/v1', MNEMARR_AGENT_OPENAI_MODELS: 'gpt-4.1', MNEMARR_AGENT_OPENAI_KEY: ' sk-x ' }).openai?.apiKey, 'sk-x');
+  assert.equal(
+    loadConfig({
+      ...base,
+      MNEMARR_AGENT_OPENAI_URL: 'https://api.example/v1',
+      MNEMARR_AGENT_OPENAI_MODELS: 'gpt-4.1',
+      MNEMARR_AGENT_OPENAI_KEY: ' sk-x ',
+    }).openai?.apiKey,
+    'sk-x',
+  );
 });
 
 test('an OpenAI-compatible address with no model names, a bad address, or a default that is not offered stops the start', () => {
-  assert.throws(() => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'http://x/v1' }), /MNEMARR_AGENT_OPENAI_MODELS is required/);
-  assert.throws(() => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'ftp://x', MNEMARR_AGENT_OPENAI_MODELS: 'm' }), /http\(s\) address/);
   assert.throws(
-    () => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'http://x/v1', MNEMARR_AGENT_OPENAI_MODELS: 'm', MNEMARR_AGENT_OPENAI_DEFAULT_MODEL: 'other' }),
+    () => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'http://x/v1' }),
+    /MNEMARR_AGENT_OPENAI_MODELS is required/,
+  );
+  assert.throws(
+    () => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'ftp://x', MNEMARR_AGENT_OPENAI_MODELS: 'm' }),
+    /http\(s\) address/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        ...base,
+        MNEMARR_AGENT_OPENAI_URL: 'http://x/v1',
+        MNEMARR_AGENT_OPENAI_MODELS: 'm',
+        MNEMARR_AGENT_OPENAI_DEFAULT_MODEL: 'other',
+      }),
     /not one of MNEMARR_AGENT_OPENAI_MODELS/,
   );
-  assert.throws(() => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'http://x/v1', MNEMARR_AGENT_OPENAI_MODELS: 'Bad Name' }), /not a model name/);
+  assert.throws(
+    () => loadConfig({ ...base, MNEMARR_AGENT_OPENAI_URL: 'http://x/v1', MNEMARR_AGENT_OPENAI_MODELS: 'Bad Name' }),
+    /not a model name/,
+  );
 });

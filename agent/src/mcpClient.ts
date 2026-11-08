@@ -76,8 +76,7 @@ export class McpClient {
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     const body = (await response.json().catch(() => undefined)) as
-      | { result?: unknown; error?: { message?: string } }
-      | undefined;
+      { result?: unknown; error?: { message?: string } } | undefined;
     if (!response.ok || body?.error) {
       throw new Error(body?.error?.message ?? `Mnemarr's MCP server answered ${response.status}.`);
     }

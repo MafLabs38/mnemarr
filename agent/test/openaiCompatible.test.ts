@@ -17,7 +17,9 @@ interface Listening {
   requests: { path: string; headers: IncomingMessage['headers']; body: unknown }[];
 }
 
-async function listen(handler: (request: { path: string; body: any }, response: ServerResponse) => void): Promise<Listening> {
+async function listen(
+  handler: (request: { path: string; body: any }, response: ServerResponse) => void,
+): Promise<Listening> {
   const requests: Listening['requests'] = [];
   const server = createServer((request, response) => {
     let text = '';
@@ -35,15 +37,25 @@ async function listen(handler: (request: { path: string; body: any }, response: 
 }
 
 const tools = [
-  { name: 'search', description: 'Searches the notes.', inputSchema: { type: 'object', properties: { query: { type: 'string' } } } },
+  {
+    name: 'search',
+    description: 'Searches the notes.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+  },
   { name: 'update_note', description: 'Changes a note.', inputSchema: { type: 'object', properties: {} } },
 ];
 
 /** A fake MCP server: tools/list, and tools/call answering what the test says. */
-async function mcpServer(result: { content: { type: string; text: string }[]; isError?: boolean } = { content: [{ type: 'text', text: 'a note says so' }] }) {
+async function mcpServer(
+  result: { content: { type: string; text: string }[]; isError?: boolean } = {
+    content: [{ type: 'text', text: 'a note says so' }],
+  },
+) {
   return listen(({ body }, response) => {
     response.setHeader('Content-Type', 'application/json');
-    response.end(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: body.method === 'tools/list' ? { tools } : result }));
+    response.end(
+      JSON.stringify({ jsonrpc: '2.0', id: body.id, result: body.method === 'tools/list' ? { tools } : result }),
+    );
   });
 }
 
@@ -62,7 +74,11 @@ const words = (content: string, usage = { prompt_tokens: 12, completion_tokens: 
 ];
 
 const toolCall = (id: string, name: string, args: unknown) => [
-  { choices: [{ delta: { tool_calls: [{ index: 0, id, function: { name, arguments: JSON.stringify(args).slice(0, 8) } }] } }] },
+  {
+    choices: [
+      { delta: { tool_calls: [{ index: 0, id, function: { name, arguments: JSON.stringify(args).slice(0, 8) } }] } },
+    ],
+  },
   { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: JSON.stringify(args).slice(8) } }] } }] },
 ];
 
@@ -71,7 +87,15 @@ function start(openai: Listening, mcp: Listening, options: { resume?: string; st
   const mcpConfigFile = join(dir, 'mcp.json');
   writeFileSync(
     mcpConfigFile,
-    JSON.stringify({ mcpServers: { mnemarr: { type: 'http', url: `${mcp.url}/mcp`, headers: { 'X-Api-Key': 'mnm_secret', 'X-Mnemarr-Origin': 'chat:c1' } } } }),
+    JSON.stringify({
+      mcpServers: {
+        mnemarr: {
+          type: 'http',
+          url: `${mcp.url}/mcp`,
+          headers: { 'X-Api-Key': 'mnm_secret', 'X-Mnemarr-Origin': 'chat:c1' },
+        },
+      },
+    }),
   );
   const adapter = new OpenAiCompatibleAdapter({
     baseUrl: `${openai.url}/v1/`,
@@ -123,8 +147,14 @@ test('a plain answer streams as words, then as one block, with the usage', async
     run.events.filter((event) => event.type === 'text-delta').map((event) => (event as { text: string }).text),
     ['Hello', ' there'],
   );
-  assert.deepEqual(run.events.find((event) => event.type === 'text'), { type: 'text', text: 'Hello there' });
-  const end = run.events.find((event) => event.type === 'turn-end') as { isError: boolean; usage: { inputTokens: number; outputTokens: number } };
+  assert.deepEqual(
+    run.events.find((event) => event.type === 'text'),
+    { type: 'text', text: 'Hello there' },
+  );
+  const end = run.events.find((event) => event.type === 'turn-end') as {
+    isError: boolean;
+    usage: { inputTokens: number; outputTokens: number };
+  };
   assert.equal(end.isError, false);
   assert.deepEqual([end.usage.inputTokens, end.usage.outputTokens], [12, 3]);
   const sent = openai.requests[0];
@@ -140,7 +170,9 @@ test('a plain answer streams as words, then as one block, with the usage', async
 
 test('a tool the model asks for is shown, run by the MCP server with the key, and its result given back to the model', async () => {
   let round = 0;
-  const openai = await listen((_, response) => sse(response, round++ === 0 ? toolCall('call_1', 'search', { query: 'backup' }) : words('The note says so.')));
+  const openai = await listen((_, response) =>
+    sse(response, round++ === 0 ? toolCall('call_1', 'search', { query: 'backup' }) : words('The note says so.')),
+  );
   const mcp = await mcpServer();
   const run = start(openai, mcp);
 
@@ -150,7 +182,10 @@ test('a tool the model asks for is shown, run by the MCP server with the key, an
   const call = run.events.find((event) => event.type === 'tool-call') as { name: string; input: unknown };
   assert.equal(call.name, 'mcp__mnemarr__search');
   assert.deepEqual(call.input, { query: 'backup' });
-  assert.deepEqual(run.events.find((event) => event.type === 'tool-result'), { type: 'tool-result', id: 'call_1', isError: false, summary: 'a note says so' });
+  assert.deepEqual(
+    run.events.find((event) => event.type === 'tool-result'),
+    { type: 'tool-result', id: 'call_1', isError: false, summary: 'a note says so' },
+  );
   const called = mcp.requests.find((request) => (request.body as { method: string }).method === 'tools/call');
   assert.deepEqual((called?.body as { params: unknown }).params, { name: 'search', arguments: { query: 'backup' } });
   assert.equal(called?.headers['x-api-key'], 'mnm_secret');
@@ -163,18 +198,29 @@ test('a tool the model asks for is shown, run by the MCP server with the key, an
 test('a change waits for the person: approved, it runs with the arguments unchanged; rejected, the model is told and nothing runs', async () => {
   for (const approve of [true, false]) {
     let round = 0;
-    const openai = await listen((_, response) => sse(response, round++ === 0 ? toolCall('call_w', 'update_note', { path: 'a.md' }) : words('Done.')));
+    const openai = await listen((_, response) =>
+      sse(response, round++ === 0 ? toolCall('call_w', 'update_note', { path: 'a.md' }) : words('Done.')),
+    );
     const mcp = await mcpServer();
     const run = start(openai, mcp);
 
     run.process.send('Change a.md');
     await waitFor(() => run.events.some((event) => event.type === 'permission-request'));
-    assert.equal(mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'), false, 'nothing runs while it waits');
-    const decision: PermissionDecision = approve ? { allow: true, input: { path: 'a.md' } } : { allow: false, message: 'The operator rejected this change.' };
+    assert.equal(
+      mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+      false,
+      'nothing runs while it waits',
+    );
+    const decision: PermissionDecision = approve
+      ? { allow: true, input: { path: 'a.md' } }
+      : { allow: false, message: 'The operator rejected this change.' };
     run.process.answer('call_w', decision);
     await waitFor(() => ended(run.events));
 
-    assert.equal(mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'), approve);
+    assert.equal(
+      mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+      approve,
+    );
     const result = run.events.find((event) => event.type === 'tool-result') as { isError: boolean; summary: string };
     assert.equal(result.isError, !approve);
     if (!approve) {
@@ -194,7 +240,10 @@ test('stopping a turn rejects what waits and ends the turn as an error', async (
   await waitFor(() => ended(run.events));
 
   assert.equal((run.events.find((event) => event.type === 'turn-end') as { isError: boolean }).isError, true);
-  assert.equal(mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'), false);
+  assert.equal(
+    mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+    false,
+  );
 });
 
 test('a model that never stops asking for tools is stopped after a bounded number of rounds', async () => {
@@ -206,7 +255,10 @@ test('a model that never stops asking for tools is stopped after a bounded numbe
   await waitFor(() => ended(run.events), 5000);
 
   assert.equal(openai.requests.length, maxRounds);
-  assert.equal(run.events.some((event) => event.type === 'error'), true);
+  assert.equal(
+    run.events.some((event) => event.type === 'error'),
+    true,
+  );
 });
 
 test('a refused key or an API that fails is said in words, without the key', async () => {
@@ -228,7 +280,22 @@ test('a refused key or an API that fails is said in words, without the key', asy
 test('arguments that are not JSON are told to the model instead of reaching the MCP server', async () => {
   let round = 0;
   const openai = await listen((_, response) =>
-    sse(response, round++ === 0 ? [{ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_b', function: { name: 'search', arguments: '{not json' } }] } }] }] : words('Sorry.')),
+    sse(
+      response,
+      round++ === 0
+        ? [
+            {
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [{ index: 0, id: 'call_b', function: { name: 'search', arguments: '{not json' } }],
+                  },
+                },
+              ],
+            },
+          ]
+        : words('Sorry.'),
+    ),
   );
   const mcp = await mcpServer();
   const run = start(openai, mcp);
@@ -236,7 +303,10 @@ test('arguments that are not JSON are told to the model instead of reaching the 
   run.process.send('Hi');
   await waitFor(() => ended(run.events));
 
-  assert.equal(mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'), false);
+  assert.equal(
+    mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+    false,
+  );
   assert.equal((run.events.find((event) => event.type === 'tool-result') as { isError: boolean }).isError, true);
 });
 

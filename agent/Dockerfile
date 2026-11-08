@@ -8,7 +8,8 @@ FROM node:22.18-bookworm-slim
 
 # The agent CLIs. Pin the version you validated; adapters for other CLIs add theirs here.
 ARG CLAUDE_CODE_VERSION=2.1.63
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+# No install script of any package runs (the CLI is a bundle of JavaScript: it needs none).
+RUN npm install -g --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && npm cache clean --force
 
 WORKDIR /app

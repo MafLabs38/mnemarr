@@ -43,7 +43,12 @@ test('a message starts one process with a fresh session id, and titles the conve
 test('a write waits for the operator; approving answers allow with the same input', async () => {
   const { manager, process, id, events } = await started();
   const input = { section: 'providers', id: 'object-storage', notes: 'x', version: '0123456789abcdef' };
-  process.options.onEvent({ type: 'permission-request', requestId: 'r1', toolName: 'mcp__mnemarr__update_note', input });
+  process.options.onEvent({
+    type: 'permission-request',
+    requestId: 'r1',
+    toolName: 'mcp__mnemarr__update_note',
+    input,
+  });
 
   assert.deepEqual(process.answers, []);
   assert.equal(manager.get(id).pendingPermissions, 1);

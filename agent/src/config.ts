@@ -40,7 +40,9 @@ export function parseModels(
   return value.split(',').map((entry) => {
     const [id, ...label] = entry.trim().split(':');
     if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(id)) {
-      throw new Error(`${variable}: '${entry.trim()}' is not a model name (a short lowercase id, optionally id:Label).`);
+      throw new Error(
+        `${variable}: '${entry.trim()}' is not a model name (a short lowercase id, optionally id:Label).`,
+      );
     }
     return { id, label: label.join(':').trim() || id };
   });
@@ -52,6 +54,43 @@ function integer(value: string | undefined, fallback: number, min: number, max: 
     throw new Error(`Expected an integer between ${min} and ${max}, got '${value}'.`);
   }
   return parsed;
+}
+
+/** The OpenAI-compatible agent, when its address is given: what is wrong with it is added to `errors`, so that the start says everything at once. */
+function loadOpenAi(env: NodeJS.ProcessEnv, errors: string[]): RunnerConfig['openai'] {
+  const url = env.MNEMARR_AGENT_OPENAI_URL?.trim();
+  if (!url) {
+    return undefined;
+  }
+  if (!/^https?:\/\/[^\s/]+(\/\S*)?$/.test(url)) {
+    errors.push(
+      'MNEMARR_AGENT_OPENAI_URL must be an http(s) address, e.g. https://api.openai.com/v1 or http://ollama:11434/v1.',
+    );
+  }
+  let models: { id: string; label: string }[] | undefined;
+  try {
+    models = parseModels(env.MNEMARR_AGENT_OPENAI_MODELS, 'MNEMARR_AGENT_OPENAI_MODELS');
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
+  if (!models) {
+    errors.push(
+      'MNEMARR_AGENT_OPENAI_MODELS is required with MNEMARR_AGENT_OPENAI_URL: the model names the API accepts, e.g. gpt-4.1,gpt-4.1-mini:Mini.',
+    );
+    return undefined;
+  }
+  const defaultModel = env.MNEMARR_AGENT_OPENAI_DEFAULT_MODEL?.trim() || models[0]?.id;
+  if (!defaultModel || !models.some((model) => model.id === defaultModel)) {
+    errors.push(`MNEMARR_AGENT_OPENAI_DEFAULT_MODEL '${defaultModel}' is not one of MNEMARR_AGENT_OPENAI_MODELS.`);
+    return undefined;
+  }
+  return {
+    baseUrl: url,
+    apiKey: env.MNEMARR_AGENT_OPENAI_KEY?.trim() || undefined,
+    name: env.MNEMARR_AGENT_OPENAI_NAME?.trim() || 'OpenAI-compatible',
+    models,
+    defaultModel,
+  };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): RunnerConfig {
@@ -80,35 +119,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): RunnerConfig {
   if (defaultModel && models && !models.some((model) => model.id === defaultModel)) {
     errors.push(`MNEMARR_AGENT_DEFAULT_MODEL '${defaultModel}' is not one of MNEMARR_AGENT_MODELS.`);
   }
-  let openai: RunnerConfig['openai'];
-  const openaiUrl = env.MNEMARR_AGENT_OPENAI_URL?.trim();
-  if (openaiUrl) {
-    if (!/^https?:\/\/[^\s/]+(\/[^\s]*)?$/.test(openaiUrl)) {
-      errors.push('MNEMARR_AGENT_OPENAI_URL must be an http(s) address, e.g. https://api.openai.com/v1 or http://ollama:11434/v1.');
-    }
-    let openaiModels: { id: string; label: string }[] | undefined;
-    try {
-      openaiModels = parseModels(env.MNEMARR_AGENT_OPENAI_MODELS, 'MNEMARR_AGENT_OPENAI_MODELS');
-    } catch (error) {
-      errors.push((error as Error).message);
-    }
-    if (!openaiModels) {
-      errors.push('MNEMARR_AGENT_OPENAI_MODELS is required with MNEMARR_AGENT_OPENAI_URL: the model names the API accepts, e.g. gpt-4.1,gpt-4.1-mini:Mini.');
-    }
-    const openaiDefault = env.MNEMARR_AGENT_OPENAI_DEFAULT_MODEL?.trim() || openaiModels?.[0]?.id;
-    if (openaiModels && openaiDefault && !openaiModels.some((model) => model.id === openaiDefault)) {
-      errors.push(`MNEMARR_AGENT_OPENAI_DEFAULT_MODEL '${openaiDefault}' is not one of MNEMARR_AGENT_OPENAI_MODELS.`);
-    }
-    if (openaiModels && openaiDefault) {
-      openai = {
-        baseUrl: openaiUrl,
-        apiKey: env.MNEMARR_AGENT_OPENAI_KEY?.trim() || undefined,
-        name: env.MNEMARR_AGENT_OPENAI_NAME?.trim() || 'OpenAI-compatible',
-        models: openaiModels,
-        defaultModel: openaiDefault,
-      };
-    }
-  }
+  const openai = loadOpenAi(env, errors);
   if (errors.length > 0) {
     throw new Error(errors.join('\n'));
   }

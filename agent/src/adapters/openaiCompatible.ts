@@ -11,13 +11,7 @@ import { summarize, type Usage } from '../events.ts';
 import { McpClient, type McpEndpoint, type McpTool, readEndpoint } from '../mcpClient.ts';
 import { serverName } from '../policy.ts';
 import { systemPrompt } from '../prompt.ts';
-import type {
-  AgentAdapter,
-  AgentProcess,
-  ModelOption,
-  PermissionDecision,
-  StartOptions,
-} from './adapter.ts';
+import type { AgentAdapter, AgentProcess, ModelOption, PermissionDecision, StartOptions } from './adapter.ts';
 
 export interface OpenAiSettings {
   /** The API's base address, e.g. `https://api.openai.com/v1` or `http://ollama:11434/v1`. */
@@ -44,7 +38,11 @@ interface ToolCall {
 
 type Message =
   | { role: 'system' | 'user'; content: string }
-  | { role: 'assistant'; content: string | null; tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[] }
+  | {
+      role: 'assistant';
+      content: string | null;
+      tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+    }
   | { role: 'tool'; tool_call_id: string; content: string };
 
 interface Round {
@@ -216,7 +214,9 @@ class OpenAiProcess implements AgentProcess {
       signal,
     });
     if (!response.ok || !response.body) {
-      throw new Error(`The model's API answered ${response.status}${response.status === 401 ? ' (is the key right?)' : ''}.`);
+      throw new Error(
+        `The model's API answered ${response.status}${response.status === 401 ? ' (is the key right?)' : ''}.`,
+      );
     }
     return this.read(response.body);
   }
@@ -247,7 +247,12 @@ class OpenAiProcess implements AgentProcess {
       return;
     }
     let parsed: {
-      choices?: { delta?: { content?: string | null; tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[] } }[];
+      choices?: {
+        delta?: {
+          content?: string | null;
+          tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[];
+        };
+      }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     try {

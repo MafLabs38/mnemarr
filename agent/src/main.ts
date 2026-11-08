@@ -49,9 +49,7 @@ async function main(): Promise<void> {
   ];
   // A model behind an OpenAI-compatible API, when its address is given: the same panel, the same policy, another model.
   if (config.openai) {
-    adapters.push(
-      new OpenAiCompatibleAdapter({ ...config.openai, stateDir: join(config.dataDir, 'openai') }),
-    );
+    adapters.push(new OpenAiCompatibleAdapter({ ...config.openai, stateDir: join(config.dataDir, 'openai') }));
   }
   const manager = new SessionManager(adapters, store, {
     maxSessions: config.maxSessions,

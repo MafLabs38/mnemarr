@@ -179,20 +179,12 @@ export default function ChatPanel() {
       ) : null}
 
       <p className={styles.scope}>{translate(chatCanWrite(status.data) ? 'ChatScope' : 'ChatScopeReadOnly')}</p>
-      {status.data.reachable ? null : (
-        <p className={styles.notice} role="status">
-          {translate('ChatUnreachable')}
-        </p>
-      )}
+      {status.data.reachable ? null : <output className={styles.notice}>{translate('ChatUnreachable')}</output>}
       {current && !current.available ? (
-        <p className={styles.notice} role="status">
-          {translate('ChatNoCredentials', { agent: current.name })}
-        </p>
+        <output className={styles.notice}>{translate('ChatNoCredentials', { agent: current.name })}</output>
       ) : null}
       {status.data.reachable && !chatCanWrite(status.data) ? (
-        <p className={styles.notice} role="status">
-          {translate('ChatReadOnlyHint')}
-        </p>
+        <output className={styles.notice}>{translate('ChatReadOnlyHint')}</output>
       ) : null}
       {failure ? (
         <Alert>{translate('ChatRequestFailed', { status: failure instanceof ApiError ? failure.status : 0 })}</Alert>

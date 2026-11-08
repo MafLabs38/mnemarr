@@ -10,12 +10,12 @@ import type {
   AgentProcess,
   PermissionDecision,
   StartOptions,
-} from '/app/src/adapters/adapter.ts';
-import { loadConfig } from '/app/src/config.ts';
-import { McpClient, readEndpoint } from '/app/src/mcpClient.ts';
-import { createRunnerServer } from '/app/src/server.ts';
-import { SessionManager } from '/app/src/sessions.ts';
-import { ConversationStore } from '/app/src/store.ts';
+} from '../app/src/adapters/adapter.ts';
+import { loadConfig } from '../app/src/config.ts';
+import { McpClient, readEndpoint } from '../app/src/mcpClient.ts';
+import { createRunnerServer } from '../app/src/server.ts';
+import { SessionManager } from '../app/src/sessions.ts';
+import { ConversationStore } from '../app/src/store.ts';
 
 class ScriptedProcess implements AgentProcess {
   private readonly waiting = new Map<string, (decision: PermissionDecision) => void>();
