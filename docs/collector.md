@@ -155,6 +155,17 @@ It looks under the home of **the user it runs as**, found the way Claude Code fi
 
 A collector that sends nothing says why: on the Machines page, under the count of conversations, a machine with none shows **what its last pass found** ("the folder of its conversations is not there", "the folder is there but holds no conversation file", and whether conversations of Claude Code exist in the home of another user of the computer), without any path.
 
+## Memory without being asked (built, ADR 0037)
+
+At the start of a session, Claude Code can be told what the memory knows of the project, without anybody asking. It is on purpose and per machine:
+
+1. In Mnemarr, make a **service account** for it (Accounts): the role *Assistant* if it should be told of the latest conversations too, *Reader* if the consolidated notes are enough. Make a **key** for it (limit it to the memory vault if you want). This key reads; the ingest key of the collector reads nothing.
+2. Put the key, alone, in a file named `read-key` in the folder of the collector (`mnemarr-collector destinations` shows the Mnemarr; the folder is the one that holds `destinations.json`; or `read-key.<name of the Mnemarr>`).
+3. Run `mnemarr-collector context-hook`: it adds the hook to the settings of Claude Code (a copy of the file as it was is kept as `settings.json.mnemarr-backup`, the rest is untouched). `mnemarr-collector context-hook --remove` takes it away.
+4. Try it: `mnemarr-collector context --application NAME` prints what the memory knows of an application (the last folder of the working directory). With `MNEMARR_DEBUG=1` it says why it prints nothing.
+
+The hook never gets in your way: no key, no answer within 5 seconds, or nothing known of the project, and the session starts as it would have.
+
 ## See that it works
 
 - The **Machines** page (and `GET /api/v1/collectors`) shows each machine: its kind, its state (**online**, **away** when an intermittent machine sleeps, **silent** when an always-on machine has not been heard from, **failing** when a pass reported an error, **refused** when it was revoked, **waiting** before its first pass), when it was last seen, the version of its collector and how many conversations it sent. It tells something about the conversations, so it needs the right to read them (`conversations.read`: `Admin` and `Assistant`).

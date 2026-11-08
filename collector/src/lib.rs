@@ -8,6 +8,7 @@ pub mod browser;
 pub mod collect;
 pub mod computer;
 pub mod config;
+pub mod context;
 pub mod control;
 pub mod destinations;
 pub mod embedded;
@@ -43,6 +44,14 @@ pub struct Options {
     pub no_tray: bool,
     /// Also write what it says to this file (a collector started in the background has no terminal).
     pub log_file: Option<String>,
+    /// `context`: the application to ask about (else the working directory the hook gives, else the current folder).
+    pub application: Option<String>,
+    /// `context`: how many characters at most.
+    pub budget: Option<u32>,
+    /// `context`: `text` (default) or `claude-hook`.
+    pub format: Option<String>,
+    /// `context-hook`: take the hook away instead of adding it.
+    pub remove: bool,
     /// Accept an address of Mnemarr that is plain `http://`: the key is then sent without encryption. For a network the person trusts (a sandbox at home).
     pub allow_insecure_http: bool,
 }
@@ -113,6 +122,10 @@ pub enum Command {
     Start(Options),
     /// Stop it now. It starts again with the next session if it is installed.
     Stop(Options),
+    /// Print what the memory knows of an application, for the hook that runs at the start of a session of an assistant (D-12).
+    Context(Options),
+    /// Add (or with `--remove` take away) the hook of Claude Code that runs `context` at the start of a session.
+    ContextHook(Options),
     /// Look for a newer version at the Mnemarr it sends to and apply it, or say how updates are set (ADR 0032).
     Update(UpdateOptions),
     /// Say whether it runs, and whether it starts with the session.
@@ -159,6 +172,8 @@ mnemarr-collector pause [--minutes N]  be quiet for N minutes (default: until re
 mnemarr-collector resume            stop being quiet\n    \
 mnemarr-collector uninstall         stop it and stop it starting with your session (the machine stays joined)\n    \
 mnemarr-collector update [--check] [--auto on|off]\n                                        look for a newer version at the Mnemarr it sends to and apply it (--check: only\n                                        look); --auto says whether it applies updates by itself (installed with the installer)\n    \
+mnemarr-collector context [--application NAME] [--budget N] [--format text|claude-hook]\n                                        print what the memory knows of an application (for the hook at the start of a session)\n    \
+mnemarr-collector context-hook [--remove]\n                                        add to Claude Code (or take away) the hook that runs it at the start of a session\n    \
 mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
 mnemarr-collector once [OPTIONS]    one pass, then stop\n    \
 mnemarr-collector [--version | --help]\n\n\
@@ -207,6 +222,8 @@ where
         "pause" => return Ok(Command::Pause(options(args)?)),
         "resume" => return Ok(Command::Resume(options(args)?)),
         "update" => return Ok(Command::Update(update_options(args)?)),
+        "context" => return Ok(Command::Context(options(args)?)),
+        "context-hook" => return Ok(Command::ContextHook(options(args)?)),
         other => return Err(unexpected(other)),
     };
     match args.next() {
@@ -353,6 +370,10 @@ where
             options.no_tray = true;
             continue;
         }
+        if flag == "--remove" {
+            options.remove = true;
+            continue;
+        }
         let Some(value) = args.next() else {
             return Err(UsageError(format!("{flag} needs a value")));
         };
@@ -364,6 +385,15 @@ where
             "--projects" => options.projects = Some(value),
             "--state" => options.state = Some(value),
             "--log-file" => options.log_file = Some(value),
+            "--application" => options.application = Some(value),
+            "--format" => options.format = Some(value),
+            "--budget" => {
+                options.budget = Some(value.parse().map_err(|_| {
+                    UsageError(format!(
+                        "--budget needs a number of characters, not {value}"
+                    ))
+                })?);
+            }
             "--minutes" => {
                 options.pause_minutes = Some(value.parse().map_err(|_| {
                     UsageError(format!("--minutes needs a number of minutes, not {value}"))
@@ -418,6 +448,34 @@ mod tests {
     }
 
     #[test]
+    fn should_read_the_options_of_context_and_of_its_hook() {
+        let Ok(Command::Context(options)) = parse([
+            "context",
+            "--application",
+            "oter-iptv",
+            "--budget",
+            "4000",
+            "--format",
+            "claude-hook",
+        ]) else {
+            panic!("context");
+        };
+        assert_eq!(
+            (
+                options.application.as_deref(),
+                options.budget,
+                options.format.as_deref()
+            ),
+            (Some("oter-iptv"), Some(4000), Some("claude-hook"))
+        );
+        let Ok(Command::ContextHook(options)) = parse(["context-hook", "--remove"]) else {
+            panic!("context-hook");
+        };
+        assert!(options.remove);
+        assert!(parse(["context", "--budget", "many"]).is_err());
+    }
+
+    #[test]
     fn should_read_the_options_of_run_and_once() {
         let expected = Options {
             server: Some("https://mnemarr.example".to_string()),
@@ -430,6 +488,10 @@ mod tests {
             log_file: None,
             pause_minutes: None,
             no_tray: false,
+            application: None,
+            budget: None,
+            format: None,
+            remove: false,
             allow_insecure_http: false,
         };
         let arguments = [

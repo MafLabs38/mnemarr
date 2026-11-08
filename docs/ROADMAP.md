@@ -79,14 +79,16 @@
 - The runbook to add a machine, to back up and to restore ([runbook](runbook.md)); a consistent snapshot of the database and a brake on the public endpoints ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)).
 - **The MVP is vertical 1, vertical 2 (2a and 2b at least) and vertical 3.** The order is 2a, 2b, 3, then 2c: exposing the ingest to the Internet waits for keys that are bound to their machine.
 
-### 4. The other assistants
+### 4. The other assistants — **in the test phase**
+
+> Decided with the maintainer on 2026-11-08: not before the three products (Mnemarr, Portarr, Orchestrarr) each run as an MVP. Then comes a professional installation test on two VMs with fake histories, and the interoperability (GitHub Copilot instead of Claude Code, Codex, Gemini) is done in that phase, with the readers tried against real files and the start-of-session hook of each.
 
 *Demo: a conversation held in GitHub Copilot (VS Code and CLI) is found over MCP like one held in Claude Code; the same for Codex CLI and Gemini CLI.*
 
 - One reader and one parser per assistant, behind the contract of [the formats](conversation-formats.md), each tried against real files; a reader that could not be tried is marked untested.
 - **First, the interface of the parsers** (decided with the maintainer on 2026-11-05, raised by the architecture review four times): `IConversationParser { Format; Turns(lines) }` registered in DI, the ingestor choosing by format and refusing a format no parser handles, roles normalised in `Turn`, the Claude Code particulars (sub-agents, noise tags) moved into its parser. It waits for the second reader so that it is shaped by two cases, not one.
 
-### 5. Memory without being asked
+### 5. Memory without being asked — **built** ([ADR 0037](adr/0037-an-assistant-is-told-what-the-memory-knows-when-it-opens-a-session.md))
 
 *Demo: open a new session in a project and the assistant already knows what happened there.*
 

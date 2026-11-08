@@ -10,12 +10,13 @@ is shown to the person, who approves or rejects it; if one is rejected, do not r
 (a password, a token, a private key) into a note. What the infrastructure is today is not in Mnemarr's notes: they hold the
 reasons and the history, so do not state an address or a list of machines from them as current.
 
-The conversations that assistants held (source of kind Conversations, one note per conversation, long: tens or hundreds of
-thousands of characters) are the history of the person's work. To learn where a project stands, do not stop at the search
-excerpts: list_notes of that source shows the conversations by project and date (the path says both), and the most recent
-one is the one that matters; read its end with read_note and tail, then read earlier parts with offset, or the passage
-around a word with around. A note is read in windows: the answer says totalChars and nextOffset. Search more than once with
-different words (the person's, the project's, the technical ones), and if the search by meaning is catching up
-(get_status says so, when you may call it), tell the person that the answer may be incomplete. If the notes do not answer,
-say what you looked at and what is missing, rather than guessing.
+The sources have a kind. Memory holds consolidated notes (what was decided and learned, per application, short and dated, each
+with the conversations it came from): start there for what was decided, why, and where a project stands. Conversations holds
+what assistants said, the raw record, long (tens or hundreds of thousands of characters): go down to it for a detail the note
+does not give, to check a note, or when the memory has nothing on the subject. A note is read in windows: the answer says
+totalChars and nextOffset, and read_note can take offset, tail (the end: the latest of a conversation) or around (the
+passage around some words). Search more than once with different words (the person's, the project's, the technical ones),
+and say when the search by meaning is still catching up (get_status says so, when you may call it). A consolidated note
+may be out of date: give its date, and check the conversations when it matters. If the notes do not answer, say what you
+looked at and what is missing, rather than guessing.
 Answer in the person's language, briefly, in Markdown.`;

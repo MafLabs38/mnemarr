@@ -62,7 +62,7 @@ public sealed class McpTools
     private static readonly McpTool[] Notes =
     [
         new("list_sources", "The sources of notes you may use: their name, kind, whether notes can be written in them, and how many notes they hold.", McpArguments.Schema(), Permissions.NotesRead, false),
-        new("search", "Searches the notes by words and, when the host has the model, by meaning (the question may use other words than the note; the best matches first, each with how it matched: keywords, meaning or both). Optionally within one source or one topic (the first folder of a note).",
+        new("search", "Searches the notes by words and, when the host has the model, by meaning (the question may use other words than the note; the best matches first, each with the kind of its source and how it matched: keywords, meaning or both). A hit of kind Memory is a consolidated note (what was decided and learned, short and dated, with the conversations it came from); a hit of kind Conversations is the raw record. Start from Memory, go down to Conversations for a detail or to check. Optionally within one source or one topic (the first folder of a note).",
             McpArguments.Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note.", false), ("limit", "integer", "At most this many hits (1 to 25, default 10).", false)),
             Permissions.Search, false),
         new("list_notes", "Lists notes (source, path, title), of one source or carrying one tag.", McpArguments.Schema(OptionalSourceArg, ("tag", Str, "A tag, without #.", false)), Permissions.NotesRead, false),
@@ -150,8 +150,9 @@ public sealed class McpTools
     {
         var limit = Math.Clamp(McpArguments.Integer(arguments, "limit") ?? 10, 1, 25);
         Guid? source = McpArguments.Optional(arguments, SourceKey) is null ? null : SourceId(arguments, scope);
+        var kinds = _catalog.List(scope).ToDictionary(known => known.Id, known => known.Kind.ToString());
         return _search.Search(new SearchRequest(McpArguments.Text(arguments, "query"), source, McpArguments.Optional(arguments, "topic"), limit), scope)
-            .Select(hit => new { source = hit.SourceName, path = hit.Path, title = hit.Title, heading = hit.Heading, snippet = hit.Snippet, match = hit.Match }).ToList();
+            .Select(hit => new { source = hit.SourceName, kind = kinds.GetValueOrDefault(hit.SourceId, string.Empty), path = hit.Path, title = hit.Title, heading = hit.Heading, snippet = hit.Snippet, match = hit.Match }).ToList();
     }
 
     private object ListNotes(JsonElement arguments, SourceScope scope)
