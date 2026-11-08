@@ -4,15 +4,18 @@
 #   docker build -t mnemarr-agent agent/
 #
 # Node 22 runs the TypeScript sources directly (type stripping): no build step, no runtime dependency.
-# The base image is pinned by its digest (node 22.18, bookworm-slim); a change of it is a pull request like any other.
-FROM node:22.18-bookworm-slim@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+# The base image is pinned by its digest alone (node 22.18, bookworm-slim); a change of it is a pull request like any other.
+FROM node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
 
-# The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI and of everything it
-# needs are fixed there; adapters for other CLIs add theirs). No install script of any package runs: the CLI is a bundle
-# of JavaScript and needs none.
+# The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI, of its native binary and of
+# everything else are fixed there; adapters for other CLIs add theirs). No install script of any package runs. The one
+# step the CLI needs from its own installer (copying the native binary of this platform over the placeholder of
+# bin/claude.exe) is run by hand: it only picks and copies a file, it downloads nothing.
 WORKDIR /opt/cli
 COPY cli/package.json cli/package-lock.json ./
-RUN npm ci --ignore-scripts --omit=dev \
+RUN npm ci --ignore-scripts \
+ && node node_modules/@anthropic-ai/claude-code/install.cjs \
+ && rm -rf node_modules/@anthropic-ai/claude-code-*-musl \
  && npm cache clean --force
 ENV PATH="/opt/cli/node_modules/.bin:${PATH}"
 
