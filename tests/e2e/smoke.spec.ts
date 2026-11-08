@@ -278,6 +278,18 @@ test.describe('smoke @smoke', () => {
     await agent.dispose();
   });
 
+  test('an operator sees where the consolidation stands, and why it cannot write while the memory vault is read-only', async ({
+    page,
+  }) => {
+    await signIn(page, '/sources');
+
+    const card = page.getByRole('region', { name: 'Consolidation' });
+    await expect(card.getByText(/The memory vault is read-only/)).toBeVisible();
+    await expect(card.getByText(/conversation\(s\) wait/)).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Consolidate what waits now' })).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+
   test('an operator declares a folder of notes, indexes it and finds a note by its words', async ({ page }) => {
     const name = unique('demo');
     await signIn(page, '/sources');
@@ -776,7 +788,8 @@ test.describe('smoke @smoke', () => {
     await page.getByLabel('New path').fill(`${name}/Renamed.md`);
     await page.getByRole('form', { name: 'Rename' }).getByRole('button', { name: 'Rename' }).click();
     await expect(page.getByText(`${name} · ${name}/Renamed.md`)).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Second' })).toBeVisible();
+    // The folder is shared by the sources of the earlier attempts of this test: only the backlink of this attempt's source counts.
+    await expect(page.getByRole('region', { name: 'Backlinks' }).locator(`a[href*="${name}"]`)).toHaveText('Second');
     const id = (await created.json()).id as string;
     const link = await api.get(`/api/v1/notes/${id}/${name}/Second.md`);
     expect((await link.json()).raw).toContain('[[Renamed#Part One]]');

@@ -29,7 +29,12 @@ public sealed class AccountService
         _clock = clock;
     }
 
-    public Account Create(string name, AccountKind kind, string role, string? password, string actor)
+    public Account Create(string name, AccountKind kind, string role, string? password, string actor) => CreateAccount(name, kind, role, password, actor, allowSystemRole: false);
+
+    /// <summary>The service account of Mnemarr itself, with a role that no person gives (the consolidation).</summary>
+    public Account CreateSystem(string name, string role, string actor) => CreateAccount(name, AccountKind.Service, role, null, actor, allowSystemRole: true);
+
+    private Account CreateAccount(string name, AccountKind kind, string role, string? password, string actor, bool allowSystemRole)
     {
         name = name.Trim();
         if (!AccountNames.IsValid(name))
@@ -37,7 +42,7 @@ public sealed class AccountService
             throw Invalid($"A name is 2 to {AccountNames.MaxLength} letters, digits, dots, dashes or underscores, and starts with a letter or a digit.");
         }
 
-        CheckRole(role, kind);
+        CheckRole(role, kind, allowSystemRole);
         string? hash = null;
         if (kind == AccountKind.User)
         {
@@ -162,9 +167,19 @@ public sealed class AccountService
         }
     }
 
-    private static void CheckRole(string role, AccountKind kind)
+    private static void CheckRole(string role, AccountKind kind, bool allowSystemRole = false)
     {
         var known = Roles.Find(role) ?? throw Invalid($"'{role}' is not a role.");
+        if (known.System)
+        {
+            if (!allowSystemRole)
+            {
+                throw Invalid($"The role {role} belongs to Mnemarr itself: it is given to nobody.");
+            }
+
+            return;
+        }
+
         if (kind == AccountKind.User ? !known.ForUsers : !known.ForServices)
         {
             throw Invalid($"The role {role} is not for a {(kind == AccountKind.User ? "user" : "service account")}.");

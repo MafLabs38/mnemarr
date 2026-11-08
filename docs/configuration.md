@@ -127,6 +127,25 @@ A snapshot holds what the database held that day: **what you delete from Mnemarr
 
 When the last snapshot failed, or none has been taken for more than twice the interval, `/health/ready` says **degraded** with the reason `backup-failing` or `backup-late` (it stays 200: the application works).
 
+## Consolidation into the memory vault (`Consolidation`)
+
+Turns the conversations into short notes of the memory vault ([ADR 0036](adr/0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md)). **Off by default**: turning it on sends the conversations (already masked) to the model of the assistant runner and spends your subscription, a little for each conversation. It needs `MNEMARR__AGENT__URL` (the runner) and a memory vault whose mode is **ReadWrite** (the Sources page; a vault that is read-only is only read).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__CONSOLIDATION__ENABLED` | `false` | Whether conversations are turned into notes. |
+| `MNEMARR__CONSOLIDATION__MODEL` | `haiku` | The model of the job: a light one is enough to write notes. |
+| `MNEMARR__CONSOLIDATION__IDLEMINUTES` | `30` | A conversation is consolidated once nothing was added to it for this long (1 to 1440). |
+| `MNEMARR__CONSOLIDATION__PASSSECONDS` | `300` | How often the job looks for conversations to consolidate. |
+| `MNEMARR__CONSOLIDATION__PERPASS` | `3` | Conversations consolidated by one pass (1 to 20). |
+| `MNEMARR__CONSOLIDATION__PERDAY` | `30` | Times the model is asked in a day, UTC (1 to 1000): the cost of a day is bounded (a conversation read in several runs, or tried again, costs each time). |
+| `MNEMARR__CONSOLIDATION__AGENT` | empty | The agent of the runner that does the job (`claude-code`, `openai`); empty: the first that can run. The default model is a Claude one: with another agent, set `MODEL` too. |
+| `MNEMARR__CONSOLIDATION__MAXCHARS` | `40000` | What one run reads of a conversation (2000 to 100000); a long conversation is read in several runs. |
+| `MNEMARR__CONSOLIDATION__MAXTRIES` | `3` | A conversation that failed this often is left alone until it has grown by 200 lines. |
+| `MNEMARR__CONSOLIDATION__TIMEOUTMINUTES` | `10` | A run that lasts longer is stopped. |
+
+The status is on the Sources page (and `GET /api/v1/consolidation`); the readiness probe says `consolidation-*` (degraded) when it is on and cannot work.
+
 ## Titles of conversations (`Titles`)
 
 A conversation is titled by its first sentence, or by what a person types. A model can write a better title and a short summary ([ADR 0028](adr/0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md)). **It is off by default, and turning it on sends the start and the end of conversations (the secrets already masked) to the provider of the model.**

@@ -32,7 +32,7 @@ public sealed class McpController : ControllerBase
         _installs = installs;
     }
 
-    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission), _installs.Server(Request));
+    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission), _installs.Server(Request), User.IsJob());
 
     [HttpPost]
     [Consumes("application/json")]

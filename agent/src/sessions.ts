@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 import type { AdapterEvent, AgentAdapter, AgentProcess } from './adapters/adapter.ts';
 import { type ChatEvent, type ChatEventEnvelope, transientTypes } from './events.ts';
-import { cancelledMessage, classify, forbiddenMessage, rejectedMessage, serverName } from './policy.ts';
+import { cancelledMessage, classify, forbiddenMessage, jobMayCall, rejectedMessage, serverName } from './policy.ts';
 import type { Conversation, ConversationStore } from './store.ts';
 
 export class ChatError extends Error {
@@ -64,6 +64,7 @@ export interface ConversationSummary {
   running: boolean;
   busy: boolean;
   pendingPermissions: number;
+  policy: 'chat' | 'job';
 }
 
 type Listener = (event: ChatEventEnvelope) => void;
@@ -138,6 +139,7 @@ export class SessionManager {
     agentId: string | undefined,
     model: string | undefined,
     title: string | undefined,
+    policy: 'chat' | 'job' = 'chat',
   ): Promise<ConversationSummary> {
     // Without a choice, the first agent that can run: an operator with only an OpenAI-compatible API does not get a Claude Code that cannot.
     const adapter = this.adapter(
@@ -153,6 +155,7 @@ export class SessionManager {
       title: title ? titleOf(title) : '',
       agent: adapter.id,
       model: chosen,
+      policy,
       createdAt: now,
       updatedAt: now,
       events: [],
@@ -417,6 +420,16 @@ export class SessionManager {
     if (!active) {
       return;
     }
+    if (this.conversations.get(id)?.policy === 'job') {
+      // Unattended: nobody is there to approve. What a job may call runs, anything else is refused, and there is never a card.
+      active.process.answer(
+        request.requestId,
+        jobMayCall(request.toolName)
+          ? { allow: true, input: request.input }
+          : { allow: false, message: forbiddenMessage },
+      );
+      return;
+    }
     switch (classify(request.toolName)) {
       case 'read':
         active.process.answer(request.requestId, { allow: true, input: request.input });
@@ -518,6 +531,7 @@ export class SessionManager {
       running: Boolean(active),
       busy: Boolean(active?.busy),
       pendingPermissions: active?.pending.size ?? 0,
+      policy: conversation.policy ?? 'chat',
     };
   }
 

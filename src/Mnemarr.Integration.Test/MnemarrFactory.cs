@@ -505,9 +505,113 @@ public sealed class ChatFactory : MnemarrFactoryBase
     }
 }
 
+/// <summary>A job of the stand-in runner (the consolidation): whether it is busy, and the events of what the model did, as the real runner tells them.</summary>
+public sealed class FakeJob
+{
+    public volatile bool Busy;
+
+    public List<System.Text.Json.Nodes.JsonNode> Events { get; } = [];
+
+    /// <summary>The model called a tool of Mnemarr, and it answered (an error or not).</summary>
+    public void Called(string id, string tool, bool isError)
+    {
+        lock (Events)
+        {
+            Events.Add(new System.Text.Json.Nodes.JsonObject { ["type"] = "tool-call", ["id"] = id, ["name"] = "mcp__mnemarr__" + tool, ["input"] = new System.Text.Json.Nodes.JsonObject() });
+            Events.Add(new System.Text.Json.Nodes.JsonObject { ["type"] = "tool-result", ["id"] = id, ["isError"] = isError, ["summary"] = string.Empty });
+        }
+    }
+
+    public void Ended(bool isError, string? message = null)
+    {
+        lock (Events)
+        {
+            if (message is not null)
+            {
+                Events.Add(new System.Text.Json.Nodes.JsonObject { ["type"] = "error", ["message"] = message });
+            }
+
+            Events.Add(new System.Text.Json.Nodes.JsonObject { ["type"] = "turn-end", ["isError"] = isError });
+        }
+
+        Busy = false;
+    }
+
+    public System.Text.Json.Nodes.JsonArray Snapshot()
+    {
+        lock (Events)
+        {
+            return new System.Text.Json.Nodes.JsonArray([.. Events.Select(node => node.DeepClone())]);
+        }
+    }
+}
+
+/// <summary>
+/// An application with the consolidation on (ADR 0036) and a runner that is a stand-in in the process: a job is given to a script that calls the MCP server the way a model would. The memory
+/// vault and the conversations are made by the tests.
+/// </summary>
+public sealed class ConsolidationFactory : MnemarrFactoryBase
+{
+    public ConsolidationFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    public FakeRunner Runner { get; } = new();
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Consolidation:Enabled", "true");
+        builder.UseSetting("Consolidation:PassSeconds", "86400");
+        builder.UseSetting("Consolidation:PollSeconds", "1");
+        builder.UseSetting("Consolidation:MaxTries", "1");
+    }
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.PostConfigure<Mnemarr.Core.Chat.AgentOptions>(options =>
+        {
+            options.Url = "http://runner.example:8489";
+            options.Secret = new string('s', 40);
+        });
+        services.AddHttpClient<Mnemarr.Api.V1.Chat.AgentRunnerClient>().ConfigurePrimaryHttpMessageHandler(() => Runner);
+    }
+}
+
 /// <summary>A runner that is not one: it keeps every request and answers the conversations it has made.</summary>
 public sealed class FakeRunner : HttpMessageHandler
 {
+    private readonly Dictionary<string, FakeJob> _jobs = [];
+    private readonly List<string> _jobPrompts = [];
+
+    /// <summary>What the stand-in does when a job is given its message: it gets the token of the run, and the prompt; it may call the MCP server as a model would, and say how it went on the job.</summary>
+    public Func<string, string, FakeJob, Task>? JobBehaviour { get; set; }
+
+    /// <summary>The prompts the jobs were given.</summary>
+    public IReadOnlyList<string> JobPrompts
+    {
+        get
+        {
+            lock (_jobPrompts)
+            {
+                return [.. _jobPrompts];
+            }
+        }
+    }
+
+    /// <summary>How many jobs the runner still holds (a job is removed when it is done).</summary>
+    public int JobsHeld
+    {
+        get
+        {
+            lock (_jobs)
+            {
+                return _jobs.Count;
+            }
+        }
+    }
+
     private readonly List<(HttpMethod Method, string Path, string? Body, string? Authorization)> _requests = [];
     private readonly HashSet<string> _conversations = [];
     private readonly HashSet<string> _headerNames = [];
@@ -588,6 +692,11 @@ public sealed class FakeRunner : HttpMessageHandler
         }
 
         var path = request.RequestUri!.AbsolutePath;
+        if (HandleJob(request, path, body) is { } jobAnswer)
+        {
+            return jobAnswer;
+        }
+
         if (path == "/v1/agents")
         {
             return Json(HttpStatusCode.OK, AgentsJson);
@@ -636,6 +745,87 @@ public sealed class FakeRunner : HttpMessageHandler
         }
 
         return Json(HttpStatusCode.Accepted, "{}");
+    }
+
+    private HttpResponseMessage? HandleJob(HttpRequestMessage request, string path, string? body)
+    {
+        const string collection = "/v1/conversations";
+        if (request.Method == HttpMethod.Post && path == collection && body is not null && System.Text.Json.Nodes.JsonNode.Parse(body)?["policy"]?.GetValue<string>() == "job")
+        {
+            var id = Guid.NewGuid().ToString();
+            lock (_jobs)
+            {
+                _jobs[id] = new FakeJob();
+            }
+
+            return Json(HttpStatusCode.Created, $$"""{"id":"{{id}}","title":"consolidation","agent":"claude-code","model":"haiku","policy":"job","createdAt":"2026-11-08T00:00:00Z","updatedAt":"2026-11-08T00:00:00Z","running":false,"busy":false,"pendingPermissions":0}""");
+        }
+
+        if (!path.StartsWith(collection + "/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var rest = path[(collection.Length + 1)..].Split('/');
+        FakeJob? job;
+        lock (_jobs)
+        {
+            _jobs.TryGetValue(rest[0], out job);
+        }
+
+        if (job is null)
+        {
+            return null;
+        }
+
+        if (request.Method == HttpMethod.Delete && rest.Length == 1)
+        {
+            lock (_jobs)
+            {
+                _jobs.Remove(rest[0]);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
+
+        if (request.Method == HttpMethod.Get && rest.Length == 1)
+        {
+            var state = new System.Text.Json.Nodes.JsonObject { ["id"] = rest[0], ["busy"] = job.Busy, ["events"] = job.Snapshot() };
+            return Json(HttpStatusCode.OK, state.ToJsonString());
+        }
+
+        if (request.Method == HttpMethod.Post && rest is [_, "messages"] && body is not null)
+        {
+            var message = System.Text.Json.Nodes.JsonNode.Parse(body)!;
+            var token = message["mcpToken"]!.GetValue<string>();
+            var prompt = message["text"]!.GetValue<string>();
+            lock (_jobPrompts)
+            {
+                _jobPrompts.Add(prompt);
+            }
+
+            job.Busy = true;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (JobBehaviour is { } behaviour)
+                    {
+                        await behaviour(token, prompt, job);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    job.Ended(true, exception.GetType().Name);
+                    return;
+                }
+
+                job.Ended(false);
+            });
+            return Json(HttpStatusCode.Accepted, "{}");
+        }
+
+        return null;
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string json) => new(status) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };

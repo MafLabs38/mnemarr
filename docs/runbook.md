@@ -47,6 +47,17 @@ Mnemarr also searches by meaning, with a model that runs on this host (the image
 - **To change the model or its settings**, set the variables of the configuration; a change of model reads every passage again in the background.
 - It uses about 1 GB of memory and two CPU threads while it reads. Lower `MNEMARR__EMBEDDINGS__THREADS` on a small host, or leave `MNEMARR__EMBEDDINGS__MODELFOLDER` empty to turn it off.
 
+## The consolidation
+
+Turns conversations into notes of the memory vault ([ADR 0036](adr/0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md), [configuration](configuration.md)). **Is it working?** The Sources page has a *Consolidation* card (what waits, what is done, notes written, the last failure and its reason); `GET /api/v1/consolidation` says the same, and `/health/ready` is degraded with a `consolidation-*` reason when it is on and cannot work.
+
+- **Nothing happens**: it is off (`MNEMARR__CONSOLIDATION__ENABLED`), the runner is missing (`MNEMARR__AGENT__URL`), or the memory vault is read-only (turn writing on for it on the Sources page). The card says which.
+- **Who wrote this note?** The log says `consolidation (via job:<id>)`; the note's front matter lists the conversations it came from. A wrong note is corrected like any note (a person with `notes.write`, or the chat), or reverted when the vault is a Git repository.
+- **Stop it now**: set `MNEMARR__CONSOLIDATION__ENABLED=false` and restart (notes already written stay). The account `consolidation` belongs to Mnemarr: it is not listed under Accounts and nobody changes it or gives it a key; its tokens last for one run and the setting is the switch.
+- **It costs the subscription**: at most `PERPASS` conversations per pass and `PERDAY` runs of the model per day (UTC), each bounded by `MAXCHARS`. Lower them, or the model, if your own use of Claude is cut short.
+- **A conversation keeps failing**: after `MAXTRIES` failures it is left alone (the probe says `consolidation-failing`) until it has grown by 200 lines. When the cause is gone (a login renewed, the runner back), **Try the conversations that failed again** on the card (`POST /api/v1/consolidation/retry`).
+- **A conversation is never consolidated again from the start**: Mnemarr keeps how many turns were read.
+
 ## The chat
 
 An optional runner gives the interface a chat ([the chat](chat.md)). **Is it up?** The chat icon shows at the right of the header and the panel says *The assistant runner does not answer* when it does not. A runner that restarts keeps the conversations (its volume) and resumes them at the next message; a change that waited for approval when it stopped shows *Cancelled*.

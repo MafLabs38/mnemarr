@@ -7,8 +7,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { ChatError, type SessionManager } from './sessions.ts';
 import { idPattern } from './store.ts';
 
-const maxBodyBytes = 64 * 1024;
+const maxBodyBytes = 512 * 1024;
 export const maxMessageLength = 20_000;
+/** A job (the consolidation) is given its instructions and an excerpt of a conversation in one message: Mnemarr cuts the excerpt, the runner bounds the message. */
+export const maxJobMessageLength = 150_000;
 const keepAliveMs = 15_000;
 const requestIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
 const namePattern = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -126,7 +128,14 @@ async function collection({ manager, request, response, method }: Call): Promise
   }
   const body = await readJson(request);
   const title = typeof body.title === 'string' ? body.title.slice(0, 200) : undefined;
-  send(response, 201, await manager.create(optionalName(body, 'agent'), optionalName(body, 'model'), title));
+  if (body.policy !== undefined && body.policy !== 'chat' && body.policy !== 'job') {
+    throw new ChatError(400, "policy is 'chat' or 'job'.");
+  }
+  send(
+    response,
+    201,
+    await manager.create(optionalName(body, 'agent'), optionalName(body, 'model'), title, body.policy),
+  );
 }
 
 /** /v1/conversations/{id}: read or delete one conversation. */
@@ -151,8 +160,9 @@ function events({ manager, request, response, url }: Call, id: string): void {
 async function message({ manager, request, response }: Call, id: string): Promise<void> {
   const body = await readJson(request);
   const text = typeof body.text === 'string' ? body.text : '';
-  if (text.trim().length === 0 || text.length > maxMessageLength) {
-    throw new ChatError(400, `text must be 1 to ${maxMessageLength} characters.`);
+  const limit = manager.get(id).policy === 'job' ? maxJobMessageLength : maxMessageLength;
+  if (text.trim().length === 0 || text.length > limit) {
+    throw new ChatError(400, `text must be 1 to ${limit} characters.`);
   }
   manager.send(id, text, requiredMcpToken(body), optionalName(body, 'model'));
   send(response, 202, { accepted: true });

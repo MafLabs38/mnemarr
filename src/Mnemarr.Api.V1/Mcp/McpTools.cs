@@ -13,8 +13,13 @@ using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Api.V1.Mcp;
 
-/// <summary>Who is calling a tool: what they may reach, the name their changes are written under, the permissions they hold, and the address they reached Mnemarr at.</summary>
-public sealed record McpCaller(SourceScope Scope, string Name, Func<string, bool> Has, string Server = "");
+/// <summary>Who calls a tool: what they may see, the name the log records, what their permissions are, where the server is, and whether it is a job.</summary>
+/// <param name="Scope">The sources the caller may touch.</param>
+/// <param name="Name">The name the audit log records.</param>
+/// <param name="Has">Whether the caller holds a permission.</param>
+/// <param name="Server">The address of this Mnemarr, as the caller reached it.</param>
+/// <param name="Job">The caller is a job (the consolidation, ADR 0036) and not a person or a key: it reads, and writes notes in the memory vault only.</param>
+public sealed record McpCaller(SourceScope Scope, string Name, Func<string, bool> Has, string Server = "", bool Job = false);
 
 /// <summary>A tool offered to assistants: its name, what it is for, the shape of its arguments, the permission it needs, and whether it writes.</summary>
 public sealed record McpTool(string Name, string Description, JsonObject Schema, string Permission, bool Writes);
@@ -80,11 +85,28 @@ public sealed class McpTools
     public static IEnumerable<McpTool> All => Notes.Concat(McpAdminTools.Definitions);
 
     /// <summary>The tools this caller is offered: what their permissions allow, the writing ones only if the operator turned them on.</summary>
-    public IEnumerable<McpTool> Available(McpCaller caller) => All.Where(tool => caller.Has(tool.Permission) && Offered(tool));
+    public IEnumerable<McpTool> Available(McpCaller caller) => All.Where(tool => caller.Has(tool.Permission) && Offered(tool, caller));
 
-    /// <summary>The tools that read are always offered; those that write need the operator's switch, and those that look after sources need their own as well.</summary>
-    private bool Offered(McpTool tool) =>
-        !tool.Writes || (_options.Value.WriteTools && (tool.Permission != Permissions.SourcesManage || _options.Value.SourceTools));
+    /// <summary>
+    /// The tools that read are always offered; those that write need the operator's switch, and those that look after sources need their own as well. A job (the consolidation) is offered the tools
+    /// that change a note, whatever those switches say (the operator turned the consolidation on), and nothing that removes or looks after sources.
+    /// </summary>
+    private bool Offered(McpTool tool, McpCaller caller) =>
+        caller.Job
+            ? !tool.Writes || JobTools.Contains(tool.Name)
+            : !tool.Writes || (_options.Value.WriteTools && (tool.Permission != Permissions.SourcesManage || _options.Value.SourceTools));
+
+    /// <summary>The tools that change a note and that a job may call: it never removes a note.</summary>
+    private static readonly HashSet<string> JobTools = new(["create_note", "update_note", "append_to_note", "rename_note"], StringComparer.Ordinal);
+
+    /// <summary>A job writes in the memory vault and nowhere else, whatever its token could reach: the model reads what people said, which is not to be trusted.</summary>
+    private void HoldJobToTheMemoryVault(JsonElement arguments, McpCaller caller)
+    {
+        if (_catalog.Get(SourceId(arguments, caller.Scope), caller.Scope).Kind != SourceKind.Memory)
+        {
+            throw new RejectedException(Problem.Forbidden, "The consolidation writes in the memory vault only.");
+        }
+    }
 
     public async Task<JsonNode> CallAsync(string name, JsonElement arguments, McpCaller caller, CancellationToken cancellationToken)
     {
@@ -93,6 +115,11 @@ public sealed class McpTools
         if (McpAdminTools.Handles(tool.Name))
         {
             return JsonSerializer.SerializeToNode(await _admin.CallAsync(tool.Name, arguments, caller, cancellationToken), Json) ?? new JsonObject();
+        }
+
+        if (caller.Job && tool.Writes)
+        {
+            HoldJobToTheMemoryVault(arguments, caller);
         }
 
         var actor = new NoteActor(caller.Scope, caller.Name);

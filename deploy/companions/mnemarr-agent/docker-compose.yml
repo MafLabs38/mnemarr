@@ -6,6 +6,7 @@ services:
       MNEMARR__AGENT__SECRET: ${AGENT_SECRET}                  # 32 characters or more: openssl rand -hex 32
       MNEMARR__MCP__WRITETOOLS: 'true'                         # lets the chat change notes, with the person's approval
       MNEMARR__MCP__SOURCETOOLS: 'true'                        # and declare, change and forget sources (every assistant key of an Operator role gets these too)
+      # MNEMARR__CONSOLIDATION__ENABLED: 'true'                # turns the conversations into notes of the memory vault (ADR 0036): off by default, see docs/configuration.md
   mnemarr-agent:
     image: ghcr.io/<owner>/mnemarr-agent:<tag>
     restart: unless-stopped

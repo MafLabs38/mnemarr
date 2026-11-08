@@ -52,6 +52,8 @@ services:
       MNEMARR__AGENT__SECRET: e2e-agent-secret-0123456789abcdef0123456789
       MNEMARR__MCP__WRITETOOLS: 'true'
       MNEMARR__MCP__SOURCETOOLS: 'true'
+      # The consolidation is on, and the memory vault of the stack is read-only (a mount): the page must say so, and nothing is sent to the runner.
+      MNEMARR__CONSOLIDATION__ENABLED: 'true'
       # The model reads the notes of the stack on one thread: the journeys run beside it on a small runner, and must not wait for it.
       MNEMARR__EMBEDDINGS__THREADS: '1'
     configs:

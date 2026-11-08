@@ -258,6 +258,24 @@ public static class Schema
         """
         ALTER TABLE machines ADD COLUMN watching TEXT;
         """,
+        // 20: the consolidation (ADR 0036): how far each conversation was turned into notes of the memory vault (the lines held and the turns read), how many times it failed, and why.
+        """
+        CREATE TABLE consolidations (
+            machine TEXT NOT NULL,
+            session TEXT NOT NULL,
+            lines_done INTEGER NOT NULL DEFAULT 0,
+            turns_done INTEGER NOT NULL DEFAULT 0,
+            notes INTEGER NOT NULL DEFAULT 0,
+            tries INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            last_at TEXT NOT NULL,
+            PRIMARY KEY (machine, session)
+        );
+        CREATE TABLE consolidation_days (
+            day TEXT NOT NULL PRIMARY KEY,
+            runs INTEGER NOT NULL
+        );
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

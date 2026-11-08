@@ -29,6 +29,17 @@ export const knownReadTools = ['search', 'list_sources', 'list_notes', 'read_not
   (tool) => `mcp__${serverName}__${tool}`,
 );
 
+/**
+ * What an unattended job (the consolidation of the conversations into the memory vault) may change: notes, and nothing else. No removal: a note that is
+ * wrong is replaced by a correct one, and the server refuses anything outside the memory vault as well.
+ */
+export const jobWriteTools = ['create_note', 'update_note', 'append_to_note', 'rename_note'];
+
+/** Whether an unattended job may call this tool without anybody to approve: Mnemarr's reads, and the note tools of {@link jobWriteTools}. */
+export function jobMayCall(toolName: string): boolean {
+  return classify(toolName) === 'read' || jobWriteTools.includes(shortToolName(toolName));
+}
+
 export const rejectedMessage = 'The operator rejected this change. Do not retry it; ask what they want instead.';
 export const forbiddenMessage = 'Only Mnemarr tools are available in this chat.';
 export const cancelledMessage = 'The operator stopped this turn.';

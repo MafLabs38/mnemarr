@@ -145,6 +145,23 @@ const en = {
   Apply: 'Apply',
   Change: 'Change',
   ConfigurationAsCode: 'Configuration as code',
+  Consolidation: 'Consolidation',
+  ConsolidationOff:
+    'Off. The conversations stay as they are; nothing turns them into notes of the memory vault. To turn it on, see Consolidation in the configuration (it needs the assistant runner and a memory vault open for writing, and it sends the conversations, already masked, to the model of the runner).',
+  ConsolidationOn:
+    'A model ({model}) reads the new turns of each conversation that was left alone for a while and writes notes in the memory vault {vault}, with the link to the conversation.',
+  ConsolidationCounts:
+    '{waiting} conversation(s) wait · {done} done · {notes} note(s) written or changed · {today} of {perDay} runs today',
+  ConsolidationNoRunner: 'The consolidation is on but there is no assistant runner: set MNEMARR__AGENT__URL.',
+  ConsolidationNoMemoryVault: 'There is no memory vault to write in.',
+  ConsolidationMemoryVaultReadOnly:
+    'The memory vault is read-only: turn writing on for it, above, so that the consolidation can write in it.',
+  ConsolidationLastFailure: 'A conversation could not be consolidated at {at}: {error} It is tried again later.',
+  ConsolidationStarted: 'It runs in the background: the counts above change as it goes.',
+  ConsolidationRunning: 'A run is going on.',
+  ConsolidateNow: 'Consolidate what waits now',
+  ConsolidationRetry: 'Try the {count} conversation(s) that failed again',
+  ConsolidationRetried: '{count} conversation(s) will be tried again at the next pass.',
   ConfigurationError: 'Could not read the configuration.',
   ConfigurationHelp:
     'Describe the sources in a YAML document and keep it in a repository: it can be applied here, through the API, or given to Mnemarr as a file. What a document owns is managed by it and cannot be changed by hand. A section that is not in the document is left alone.',

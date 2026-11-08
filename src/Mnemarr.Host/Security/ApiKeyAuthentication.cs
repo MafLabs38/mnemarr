@@ -85,7 +85,7 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
             return AuthenticateResult.Fail("The key is not valid.");
         }
 
-        var claims = MnemarrClaims.Identity(identity.Principal, ApiKeyHeader.Scheme, new Claim(MnemarrClaims.Via, $"chat:{identity.ConversationId}"));
+        var claims = MnemarrClaims.Identity(identity.Principal, ApiKeyHeader.Scheme, new Claim(MnemarrClaims.Via, identity.ConversationId.StartsWith(ChatAccess.JobPrefix, StringComparison.Ordinal) ? identity.ConversationId : $"chat:{identity.ConversationId}"));
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(claims), ApiKeyHeader.Scheme));
     }
 }

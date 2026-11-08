@@ -68,6 +68,9 @@ public static class MnemarrClaims
             : new SourceScope((IReadOnlyList<Guid>?)null, hidden);
     }
 
+    /// <summary>Whether the caller is a job (the consolidation) with the token of a run, and not a person or a key.</summary>
+    public static bool IsJob(this ClaimsPrincipal user) => user.FindFirstValue(Via)?.StartsWith("job:", StringComparison.Ordinal) == true;
+
     /// <summary>The name the audit log records for whoever is acting: the person, and the chat when it is the chat's model that acts with their token.</summary>
     public static string ActorName(this ClaimsPrincipal user)
     {
