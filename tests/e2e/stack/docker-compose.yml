@@ -27,6 +27,9 @@ services:
       # A folder of notes the application may write, for each browser of the tests (they run in parallel in one stack).
       - /work/chromium:uid=1654,gid=1654
       - /work/firefox:uid=1654,gid=1654
+      # The folder of the chat's journey, of its own: a source that shared the folder of another journey would index its notes too, and show in their backlinks.
+      - /work/chromium-chat:uid=1654,gid=1654
+      - /work/firefox-chat:uid=1654,gid=1654
     # The first administrator, as a real deployment gives it: a name and the password in a mounted file (a test-only value).
     environment:
       MNEMARR__AUTH__ADMINUSER: admin

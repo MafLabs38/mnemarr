@@ -346,7 +346,7 @@ test.describe('smoke @smoke', () => {
     const words = unique('chat').replaceAll('-', '');
     const api = await signedInRequest(playwright, baseURL ?? '');
     const created = await api.post('/api/v1/sources', {
-      data: { name: source, kind: 'Knowledge', mode: 'ReadWrite', path: `/work/${testInfo.project.name}` },
+      data: { name: source, kind: 'Knowledge', mode: 'ReadWrite', path: `/work/${testInfo.project.name}-chat` },
     });
     expect(created.status()).toBe(201);
     const id = ((await created.json()) as { id: string }).id;
