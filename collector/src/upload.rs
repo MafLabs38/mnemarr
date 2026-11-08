@@ -1,5 +1,6 @@
 //! Sends a batch of lines to Mnemarr (ADR 0024).
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -57,6 +58,8 @@ pub struct Heartbeat<'a> {
     pub can_update: bool,
     /// Why the last attempt to update failed, when it did: a short sentence for the machines page.
     pub update_note: Option<String>,
+    /// What the last pass found where it looks for conversations: a sentence with no path, for the machines page.
+    pub watching: Option<&'a str>,
 }
 
 /// Where batches are sent: Mnemarr, or whatever a test puts in its place.
@@ -66,6 +69,11 @@ pub trait Uploader {
     /// The sign of life at the end of a pass. A test that does not look at it need not say anything.
     fn heartbeat(&self, _beat: &Heartbeat<'_>) -> Result<(), UploadError> {
         Ok(())
+    }
+
+    /// How many lines of each conversation (by session) the server holds for this machine; `None` when the server cannot say (an older one).
+    fn positions(&self, _machine: &str) -> Result<Option<HashMap<String, u64>>, UploadError> {
+        Ok(None)
     }
 }
 
@@ -111,6 +119,21 @@ impl HttpUploader {
         }
     }
 
+    /// Asks for a document with the key, and gives back the status and the body of the answer.
+    fn get(&self, path: &str) -> Result<(u16, String), UploadError> {
+        let mut response = self
+            .agent
+            .get(format!("{}/{path}", self.base))
+            .header("X-Api-Key", &self.key)
+            .call()
+            .map_err(|error| UploadError::Later(error.to_string()))?;
+        let status = response.status().as_u16();
+        let text = response.body_mut().read_to_string().map_err(|error| {
+            UploadError::Later(format!("reading the answer of the server: {error}"))
+        })?;
+        Ok((status, text))
+    }
+
     /// Posts a document with the key, and gives back the status and the body of the answer.
     fn post(&self, path: &str, body: Value) -> Result<(u16, String), UploadError> {
         let mut response = self
@@ -123,6 +146,18 @@ impl HttpUploader {
         let text = response.body_mut().read_to_string().unwrap_or_default();
         Ok((status, text))
     }
+}
+
+/// A machine name in a query: the names Mnemarr accepts are letters, digits, dots, hyphens and underscores, which need no escape; anything else is escaped.
+fn encode(text: &str) -> String {
+    text.bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' => {
+                (byte as char).to_string()
+            }
+            other => format!("%{other:02X}"),
+        })
+        .collect()
 }
 
 /// A status that is not a success, as the collector tells it: a later pass tries again, or the server will not take this.
@@ -163,6 +198,28 @@ impl Uploader for HttpUploader {
         }
     }
 
+    fn positions(&self, machine: &str) -> Result<Option<HashMap<String, u64>>, UploadError> {
+        let (status, text) = self.get(&format!("positions?machine={}", encode(machine)))?;
+        match status {
+            200 => {}
+            // A Mnemarr that does not know this question is older than the collector: nothing to compare with.
+            404 | 405 => return Ok(None),
+            _ => return Err(failure(status, &text)),
+        }
+        let list: Value =
+            serde_json::from_str(&text).map_err(|error| UploadError::Later(error.to_string()))?;
+        let mut held = HashMap::new();
+        for entry in list.as_array().into_iter().flatten() {
+            if let (Some(session), Some(lines)) = (
+                entry.get("session").and_then(Value::as_str),
+                entry.get("lines").and_then(Value::as_u64),
+            ) {
+                held.insert(session.to_string(), lines);
+            }
+        }
+        Ok(Some(held))
+    }
+
     fn heartbeat(&self, beat: &Heartbeat<'_>) -> Result<(), UploadError> {
         let (status, text) = self.post(
             "heartbeat",
@@ -177,6 +234,7 @@ impl Uploader for HttpUploader {
                 "intervalSeconds": beat.interval_seconds,
                 "canUpdate": beat.can_update,
                 "updateNote": beat.update_note,
+                "watching": beat.watching,
             }),
         )?;
         if status == 200 || status == 204 {
@@ -410,6 +468,7 @@ mod tests {
                 interval_seconds: 30,
                 can_update: false,
                 update_note: None,
+                watching: Some("Claude Code: 3 conversations found"),
             })
             .unwrap();
 
@@ -431,8 +490,39 @@ mod tests {
                 "intervalSeconds": 30,
                 "canUpdate": false,
                 "updateNote": null,
+                "watching": "Claude Code: 3 conversations found",
             })
         );
+    }
+
+    #[test]
+    fn should_ask_what_the_server_holds_and_take_a_server_that_does_not_know_for_one_that_cannot_say()
+     {
+        let (address, handle) = serve_once(
+            "200 OK",
+            r#"[{"session":"s1","lines":3},{"session":"s2","lines":0}]"#,
+        );
+        let held = HttpUploader::new(&address, "the-key")
+            .positions("pc-1")
+            .unwrap()
+            .unwrap();
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("GET /api/v1/ingest/positions?machine=pc-1 "));
+        assert!(request.to_ascii_lowercase().contains("x-api-key: the-key"));
+        assert_eq!((held.get("s1"), held.get("s2")), (Some(&3), Some(&0)));
+
+        let (address, handle) = serve_once("404 Not Found", "{}");
+        assert_eq!(
+            HttpUploader::new(&address, "k").positions("pc").unwrap(),
+            None
+        );
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn should_escape_what_a_name_could_break_in_a_query() {
+        assert_eq!(encode("pc-1.local_x"), "pc-1.local_x");
+        assert_eq!(encode("a b&c"), "a%20b%26c");
     }
 
     #[test]
@@ -446,6 +536,7 @@ mod tests {
             interval_seconds: 30,
             can_update: false,
             update_note: None,
+            watching: None,
         };
         let (address, handle) = serve_once("401 Unauthorized", "{\"title\":\"no\"}");
         assert!(matches!(
@@ -487,6 +578,7 @@ mod tests {
                 update_note: Some(
                     "none of the Mnemarr it sends to is reached over HTTPS".to_string(),
                 ),
+                watching: None,
             })
             .unwrap();
 

@@ -139,12 +139,38 @@ fn bootstrap(
     (field("server"), field("machine"), insecure)
 }
 
+/// The home of the user, as Claude Code finds it: Claude Code is a Node program and asks the system, which on Windows is `USERPROFILE` (a `HOME` that Git for Windows
+/// or another tool sets can name any folder, and the conversations are not there) and elsewhere `HOME`.
+pub fn home_dir(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    let (first, second) = if cfg!(windows) {
+        ("USERPROFILE", "HOME")
+    } else {
+        ("HOME", "USERPROFILE")
+    };
+    get(first)
+        .filter(|home| !home.trim().is_empty())
+        .or_else(|| get(second).filter(|home| !home.trim().is_empty()))
+        .map(PathBuf::from)
+}
+
+/// The folder of the configuration of Claude Code: the one it was told (`CLAUDE_CONFIG_DIR`), else `.claude` in the home.
+pub fn claude_dir(get: &dyn Fn(&str) -> Option<String>, home: Option<&PathBuf>) -> Option<PathBuf> {
+    get("CLAUDE_CONFIG_DIR")
+        .filter(|dir| !dir.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".claude")))
+}
+
 /// The conversations of Claude Code: where it was said, else under the home of the user.
-fn projects_dir(options: &Options, home: Option<&PathBuf>) -> Result<PathBuf, UsageError> {
+fn projects_dir(
+    options: &Options,
+    get: &dyn Fn(&str) -> Option<String>,
+    home: Option<&PathBuf>,
+) -> Result<PathBuf, UsageError> {
     match &options.projects {
         Some(path) => Ok(PathBuf::from(path)),
-        None => home
-            .map(|home| home.join(".claude").join("projects"))
+        None => claude_dir(get, home)
+            .map(|dir| dir.join("projects"))
             .ok_or_else(|| {
                 UsageError(
                     "the conversations of Claude Code cannot be found: give --projects".to_string(),
@@ -230,10 +256,8 @@ pub fn resolve_all(
             "this machine is not linked to a Mnemarr: run `mnemarr-collector link`".to_string(),
         ));
     }
-    let home = get("HOME")
-        .or_else(|| get("USERPROFILE"))
-        .map(PathBuf::from);
-    let projects = projects_dir(options, home.as_ref())?;
+    let home = home_dir(get);
+    let projects = projects_dir(options, get, home.as_ref())?;
     let states = state_dir(get, home.as_ref());
     let interval = Duration::from_secs(options.interval_seconds.unwrap_or(30).max(1));
     let mut configs = Vec::new();
@@ -312,9 +336,7 @@ pub fn resolve(
                 )
             })?,
     };
-    let home = get("HOME")
-        .or_else(|| get("USERPROFILE"))
-        .map(PathBuf::from);
+    let home = home_dir(get);
     let machine = options
         .machine
         .clone()
@@ -332,7 +354,7 @@ pub fn resolve(
             "'{machine}' is not a name of machine that the server accepts: letters, digits, dots, hyphens and underscores, up to 50 characters, starting with a letter or a digit. Give another with --machine or MNEMARR_MACHINE"
         )));
     }
-    let projects = projects_dir(options, home.as_ref())?;
+    let projects = projects_dir(options, get, home.as_ref())?;
     let state = match &options.state {
         Some(path) => PathBuf::from(path),
         None => state_dir(get, home.as_ref())
@@ -854,5 +876,64 @@ mod tests {
 
         assert!(resolve(&Options::default(), &get, &said).is_ok());
         assert!(resolve(&Options::default(), &get, &not_said).is_err());
+    }
+
+    #[test]
+    fn should_find_the_home_the_way_the_system_of_the_user_does() {
+        let get = |name: &str| match name {
+            "HOME" => Some("/git-bash/home".to_string()),
+            "USERPROFILE" => Some("C:\\Users\\me".to_string()),
+            _ => None,
+        };
+        let home = home_dir(&get).unwrap();
+
+        // On Windows the profile of the user, as Claude Code (a Node program) asks for it; elsewhere HOME.
+        if cfg!(windows) {
+            assert_eq!(home, PathBuf::from("C:\\Users\\me"));
+        } else {
+            assert_eq!(home, PathBuf::from("/git-bash/home"));
+        }
+        let empty = |name: &str| (name == "HOME").then(String::new);
+        assert_eq!(home_dir(&empty), None);
+    }
+
+    #[test]
+    fn should_follow_the_configuration_folder_that_claude_code_was_told() {
+        let home = PathBuf::from("/h");
+        let none = |_: &str| None;
+        assert_eq!(
+            claude_dir(&none, Some(&home)),
+            Some(PathBuf::from("/h/.claude"))
+        );
+        let told =
+            |name: &str| (name == "CLAUDE_CONFIG_DIR").then(|| "/elsewhere/claude".to_string());
+        assert_eq!(
+            claude_dir(&told, Some(&home)),
+            Some(PathBuf::from("/elsewhere/claude"))
+        );
+        assert_eq!(
+            claude_dir(&told, None),
+            Some(PathBuf::from("/elsewhere/claude"))
+        );
+        assert_eq!(claude_dir(&none, None), None);
+    }
+
+    #[test]
+    fn should_use_the_other_variable_when_the_first_is_empty_or_blank() {
+        let only_profile = |name: &str| match name {
+            "HOME" => Some("  ".to_string()),
+            "USERPROFILE" => Some("C:\\Users\\me".to_string()),
+            _ => None,
+        };
+        assert_eq!(
+            home_dir(&only_profile),
+            Some(PathBuf::from("C:\\Users\\me"))
+        );
+        let only_home = |name: &str| match name {
+            "HOME" => Some("/home/me".to_string()),
+            "USERPROFILE" => Some(String::new()),
+            _ => None,
+        };
+        assert_eq!(home_dir(&only_home), Some(PathBuf::from("/home/me")));
     }
 }

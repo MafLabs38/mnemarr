@@ -41,6 +41,15 @@ public sealed class IngestController : ControllerBase
         _collectors = collectors;
     }
 
+    /// <summary>The position the server holds for each conversation of the machine, so that a collector whose memory of what it sent is wrong sends again what the server lacks.</summary>
+    [HttpGet("positions")]
+    [Authorize(Policy = Permissions.IngestWrite)]
+    public IReadOnlyList<IngestPosition> Positions([FromQuery] string machine)
+    {
+        var sender = _collectors.Authorize(User.AccountId(), machine);
+        return _ingestor.Positions(sender.Machine);
+    }
+
     [HttpPost("conversations")]
     [Authorize(Policy = Permissions.IngestWrite)]
     [RequestSizeLimit(MaxRequestBytes)]

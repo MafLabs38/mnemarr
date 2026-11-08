@@ -108,4 +108,4 @@
 
 ## Not now
 
-The reader and editor of notes beyond what exists, more kinds of sources, retention policies, the chat panel, the assistant runner for chat. They come after the MVP, in the order the use shows.
+The reader and editor of notes beyond what exists, more kinds of sources, retention policies. The chat panel and the assistant runner are built ([ADR 0035](adr/0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md), [the chat](chat.md)); next for them: a second MCP server for the agent (Portarr, for what the infrastructure is today), Codex and Copilot adapters, a real provider for the OpenAI-compatible one. They come after the MVP, in the order the use shows.

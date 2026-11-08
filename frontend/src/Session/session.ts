@@ -25,6 +25,7 @@ export const permissions = {
   conversationsRead: 'conversations.read',
   conversationsWrite: 'conversations.write',
   collectorsManage: 'collectors.manage',
+  chatUse: 'chat.use',
 } as const;
 
 /** The session, or null when nobody is signed in (the API answers 401). Any other failure is an error. */

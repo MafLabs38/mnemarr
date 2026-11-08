@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Audit;
 using Mnemarr.Core.Backup;
+using Mnemarr.Core.Chat;
 using Mnemarr.Core.Collectors;
 using Mnemarr.Core.Configuration;
 using Mnemarr.Core.Conversations;
@@ -30,6 +31,9 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<MnemarrOptions>().Bind(configuration).ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISystemStatusService, SystemStatusService>();
+        services.AddOptions<AgentOptions>().Bind(configuration.GetSection(AgentOptions.SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AgentOptions>, AgentOptionsValidator>();
+        services.AddSingleton<ChatAccess>();
 
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection("Auth")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();

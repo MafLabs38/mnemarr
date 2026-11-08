@@ -10,6 +10,7 @@ const aliases = [
   '__tests__',
   'Accounts',
   'App',
+  'Chat',
   'Components',
   'Helpers',
   'Login',

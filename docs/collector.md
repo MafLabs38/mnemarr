@@ -8,6 +8,7 @@ It is **not part of Mnemarr's container**: it is an external helper that talks t
 
 ## What it does and does not do
 
+- It **checks its memory against the server**: at start, and about every hour, it asks the server how many lines it holds of each conversation (`GET /api/v1/ingest/positions`). A server that was emptied, restored from an older backup, or from which the machine was deleted holds less than the collector believes it sent: the collector goes back to where the server is and sends again what is missing, with nothing to do by hand.
 - It sends **only new lines**, by position. Stop it, start it, lose the network: nothing is lost and nothing is sent twice (the conversation file is its queue; `state.json` says how far each file was sent).
 - It masks secrets **before** a line leaves the machine (private keys, tokens, `sk-` keys, credentials in addresses, `PASSWORD=…` assignments). The server masks again.
 - It has an **ingest-only key**: it can add conversations and cannot read any memory.
@@ -145,6 +146,14 @@ mnemarr-collector run \
 `run` collects for ever (a pass every 30 seconds, `--interval` to change it); `once` makes one pass and stops. What is not given comes from the environment (`MNEMARR_SERVER`, `MNEMARR_COLLECTOR_KEY`, `MNEMARR_MACHINE`) or from the usual places (`~/.claude/projects` for the conversations, `~/.local/state/mnemarr-collector/state.json` for the position). A key made by hand for a `Collector` account belongs to no machine, and the server refuses it unless `MNEMARR__INGEST__REQUIREENROLMENT` is off (a sandbox).
 
 The first run sends the whole history of the machine: it can take a few minutes for a large one, and is safe to interrupt.
+
+## Where it looks, and which assistants it reads
+
+**Today only Claude Code is read** (`~/.claude/projects/<project>/<session>.jsonl`, `%USERPROFILE%\.claude\projects` on Windows): that folder is **where Claude Code itself keeps its conversations, whatever the folder of your project is** (`L:\Workspace\...` or any other), so there is nothing to set when the collector runs as the same user as Claude Code. Codex, Copilot and Gemini are designed ([formats](conversation-formats.md), roadmap vertical 4) and not built yet.
+
+It looks under the home of **the user it runs as**, found the way Claude Code finds it (`USERPROFILE` on Windows, `HOME` elsewhere; a `HOME` set by Git for Windows or another tool does not count there), or in `CLAUDE_CONFIG_DIR` when Claude Code was told another folder. Conversations held under another user, inside WSL (a Linux home of its own), in a dev container or on another machine are not seen: run a collector there too (a machine is a computer and an environment: one collector per place where Claude Code runs).
+
+A collector that sends nothing says why: on the Machines page, under the count of conversations, a machine with none shows **what its last pass found** ("the folder of its conversations is not there", "the folder is there but holds no conversation file", and whether conversations of Claude Code exist in the home of another user of the computer), without any path.
 
 ## See that it works
 

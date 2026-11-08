@@ -1,3 +1,4 @@
+import ChatPanel from 'Chat/ChatPanel';
 import type { ReactNode } from 'react';
 
 import translate from 'Utilities/String/translate';
@@ -20,6 +21,7 @@ export default function Page({ children }: Readonly<PageProps>) {
       <div className={styles.main}>
         <PageSidebar />
         {children}
+        <ChatPanel />
       </div>
     </div>
   );

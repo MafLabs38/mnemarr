@@ -15,6 +15,9 @@ public static class MnemarrClaims
     public const string Scoped = "mnemarr:scoped";
     public const string Permission = "permission";
 
+    /// <summary>Through what the caller acts, when it is not directly: <c>chat:&lt;conversation&gt;</c> for the tools that the chat's model uses with a person's token (ADR 0035).</summary>
+    public const string Via = "mnemarr:via";
+
     /// <summary>The claims that carry what a principal may do: its role, its permissions, and the sources a key is limited to.</summary>
     public static IEnumerable<Claim> For(AccessPrincipal principal)
     {
@@ -65,8 +68,16 @@ public static class MnemarrClaims
             : new SourceScope((IReadOnlyList<Guid>?)null, hidden);
     }
 
-    /// <summary>The name the audit log records for whoever is acting.</summary>
-    public static string ActorName(this ClaimsPrincipal user) => user.Identity?.Name ?? AuditActors.Unknown;
+    /// <summary>The name the audit log records for whoever is acting: the person, and the chat when it is the chat's model that acts with their token.</summary>
+    public static string ActorName(this ClaimsPrincipal user)
+    {
+        var name = user.Identity?.Name ?? AuditActors.Unknown;
+        return user.FindFirstValue(Via) is { } via ? $"{name} (via {via})" : name;
+    }
+
+    /// <summary>The account behind a signed-in caller, as the claims say it (the permissions are not repeated: they are the claims'). A caller whose kind the claims do not say is taken for a service, the narrower of the two.</summary>
+    public static Mnemarr.Core.Accounts.Account Person(this ClaimsPrincipal user) =>
+        new(user.AccountId() ?? Guid.Empty, user.Identity?.Name ?? AuditActors.Unknown, Enum.TryParse<AccountKind>(user.FindFirstValue(Kind), out var kind) ? kind : AccountKind.Service, user.FindFirstValue(ClaimTypes.Role) ?? string.Empty, true, DateTimeOffset.UnixEpoch);
 
     public static Guid? AccountId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(Account), out var id) ? id : null;

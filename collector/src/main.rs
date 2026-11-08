@@ -123,6 +123,7 @@ fn heartbeat(
         can_update: updater().installed(),
         update_note: updater().note(),
         pending_lines: report.pending_lines,
+        watching: report.watching.as_deref(),
         error: error.as_deref(),
         paused,
         interval_seconds,

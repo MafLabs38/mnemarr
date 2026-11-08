@@ -36,7 +36,10 @@ function MachineRow({
           {machine.error && <p className={styles.error}>{machine.error}</p>}
         </td>
         <td>{machine.lastSeen ? formatDateTime(machine.lastSeen) : translate('NeverSeen')}</td>
-        <td>{machine.conversations}</td>
+        <td>
+          {machine.conversations}
+          {machine.conversations === 0 && machine.watching && <p className={styles.hint}>{machine.watching}</p>}
+        </td>
         <td>
           {machine.version ?? ''}
           {machine.updateTo ? (

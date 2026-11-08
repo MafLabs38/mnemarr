@@ -1,0 +1,15 @@
+{
+  "name": "mnemarr-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Runs an agent CLI headless behind Mnemarr's chat panel; its only tool is Mnemarr's MCP server",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test test/*.test.ts"
+  }
+}

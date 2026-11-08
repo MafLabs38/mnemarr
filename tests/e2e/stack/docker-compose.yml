@@ -1,6 +1,21 @@
 # The stack the end-to-end tests run against: the image built from this repository, with an empty data folder.
 name: mnemarr-e2e
 services:
+  # The assistant runner of the chat with a scripted model (tests/e2e/stack/fake-agent): the real runner, no CLI and no provider.
+  agent:
+    image: node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+    command: ['node', '/fake/main.ts']
+    volumes:
+      - ../../../agent:/app:ro
+      - ./fake-agent:/fake:ro
+    tmpfs:
+      - /data
+    environment:
+      MNEMARR_AGENT_SECRET: e2e-agent-secret-0123456789abcdef0123456789
+      MNEMARR_MCP_URL: http://mnemarr:8383/mcp
+      MNEMARR_AGENT_DATA: /data
+      # Every journey of both browsers may leave a conversation that waits for its person: room for all of them.
+      MNEMARR_AGENT_MAX_SESSIONS: '20'
   mnemarr:
     build:
       context: ../../..
@@ -12,6 +27,9 @@ services:
       # A folder of notes the application may write, for each browser of the tests (they run in parallel in one stack).
       - /work/chromium:uid=1654,gid=1654
       - /work/firefox:uid=1654,gid=1654
+      # The folder of the chat's journey, of its own: a source that shared the folder of another journey would index its notes too, and show in their backlinks.
+      - /work/chromium-chat:uid=1654,gid=1654
+      - /work/firefox-chat:uid=1654,gid=1654
     # The first administrator, as a real deployment gives it: a name and the password in a mounted file (a test-only value).
     environment:
       MNEMARR__AUTH__ADMINUSER: admin
@@ -29,6 +47,11 @@ services:
       MNEMARR__CONFIG__FILE: /config-as-code/mnemarr.yaml
       # The programs a machine installs, as the image carries them: fake files here, so that what the page offers can be fetched.
       MNEMARR__COLLECTORS__DOWNLOADFOLDER: /downloads
+      # The chat, with a runner whose model is a script: the writing tools are on so that it can change a note, with the person's approval.
+      MNEMARR__AGENT__URL: http://agent:8489
+      MNEMARR__AGENT__SECRET: e2e-agent-secret-0123456789abcdef0123456789
+      MNEMARR__MCP__WRITETOOLS: 'true'
+      MNEMARR__MCP__SOURCETOOLS: 'true'
       # The model reads the notes of the stack on one thread: the journeys run beside it on a small runner, and must not wait for it.
       MNEMARR__EMBEDDINGS__THREADS: '1'
     configs:

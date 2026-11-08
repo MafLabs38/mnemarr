@@ -26,6 +26,8 @@ export interface MachineItem {
   updateTo: string | null;
   /** Why the last attempt of the collector to update failed, when it did (ADR 0032). */
   updateNote: string | null;
+  /** What the collector found where it looks for conversations: why a machine that is online sends nothing (a sentence with no path). */
+  watching: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */

@@ -40,6 +40,8 @@ pub struct Report {
     pub unreadable: Vec<String>,
     /// The lines of the batch that could not go because the server could not be reached or refused the key: what the collector still has to send, as far as it knows.
     pub pending_lines: u64,
+    /// What this pass found where it looks, in a sentence with no path: so that a machine that sends nothing says why (the folder is not there, or has no conversation).
+    pub watching: Option<String>,
 }
 
 /// Reads the conversations of a machine and sends them.
@@ -68,7 +70,9 @@ impl<U: Uploader> Collector<U> {
     /// One pass over every conversation: what is new in each is sent, and `state` says how far each has been sent.
     pub fn pass(&self, state: &mut State) -> Report {
         let mut report = Report::default();
+        self.reconcile_when_due(state);
         let files = conversation_files(&self.projects);
+        report.watching = Some(watching_sentence(&self.projects, files.len()));
         if !files.is_empty() {
             // What was said of files that are gone is not kept for ever.
             let present: std::collections::HashSet<String> = files
@@ -85,6 +89,52 @@ impl<U: Uploader> Collector<U> {
             }
         }
         report
+    }
+
+    /// How many passes go by between two comparisons of what the collector believes it sent with what the server holds (a pass is thirty seconds by default).
+    const CHECK_EVERY_PASSES: u32 = 120;
+    const RETRY_AFTER_PASSES: u32 = 4;
+
+    fn reconcile_when_due(&self, state: &mut State) {
+        if state.check_in > 0 {
+            state.check_in -= 1;
+            return;
+        }
+        match self.uploader.positions(&self.machine) {
+            Ok(known) => {
+                state.check_in = Self::CHECK_EVERY_PASSES;
+                if let Some(held) = known {
+                    let _ = self.reconcile(state, &held);
+                }
+            }
+            // A server that cannot be asked (away, refusing the key, answering something else) is asked again soon, not at every pass.
+            Err(_) => state.check_in = Self::RETRY_AFTER_PASSES,
+        }
+    }
+
+    /// The positions kept here are what the server said it held. A server that was emptied, or from which this machine was deleted, holds less: the files go back to
+    /// where the server is, and what it lacks is sent again. Returns how many files went back.
+    pub fn reconcile(
+        &self,
+        state: &mut State,
+        held: &std::collections::HashMap<String, u64>,
+    ) -> usize {
+        let mut back = 0;
+        for (name, file) in &mut state.files {
+            let path = Path::new(name);
+            let session = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let server = held.get(&session).copied().unwrap_or(0);
+            if file.lines > server {
+                let (offset, lines) = offset_after(path, server);
+                file.offset = offset;
+                file.lines = lines;
+                back += 1;
+            }
+        }
+        back
     }
 
     fn send_file(
@@ -322,6 +372,72 @@ fn project_name(path: &Path) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+/// What the collector found where it looks for the conversations of Claude Code, with no path (the folder is the one of the user it runs as, `.claude/projects`
+/// in their home unless it was told another): a machine that sends nothing must say whether it is because there is nothing, or because it looks elsewhere than where the
+/// conversations are (another user, a Linux system in WSL, a container).
+pub fn watching_sentence(projects: &Path, files: usize) -> String {
+    watching_sentence_among(projects, files, &users_folder())
+}
+
+/// The same, with the folder that holds the homes of the users of the computer given (a test gives its own).
+pub fn watching_sentence_among(projects: &Path, files: usize, homes: &Path) -> String {
+    if files > 0 {
+        return match files {
+            1 => "Claude Code: 1 conversation found".to_string(),
+            count => format!("Claude Code: {count} conversations found"),
+        };
+    }
+    let elsewhere = homes_with_conversations(homes, projects);
+    let also = if elsewhere > 0 {
+        format!(
+            "; conversations of Claude Code exist in the home of {elsewhere} other user(s) of this computer: the collector must run as the user who holds them"
+        )
+    } else {
+        String::new()
+    };
+    if projects.is_dir() {
+        let folders = fs::read_dir(projects)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.path().is_dir())
+                    .count()
+            })
+            .unwrap_or(0);
+        format!(
+            "Claude Code: the folder is there ({folders} project folder(s)) but holds no conversation file{also}"
+        )
+    } else {
+        format!(
+            "Claude Code: the folder of its conversations (.claude/projects in the home of the user the collector runs as, or CLAUDE_CONFIG_DIR) is not there; conversations held in WSL or in a container are not seen{also}"
+        )
+    }
+}
+
+/// Where the homes of the users of this computer are.
+fn users_folder() -> PathBuf {
+    if cfg!(windows) {
+        let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+        PathBuf::from(format!("{drive}\\Users"))
+    } else if cfg!(target_os = "macos") {
+        PathBuf::from("/Users")
+    } else {
+        PathBuf::from("/home")
+    }
+}
+
+/// How many homes under `homes` (other than the one the collector looks in) hold conversations of Claude Code. A home that cannot be read is not counted.
+fn homes_with_conversations(homes: &Path, projects: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(homes) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path().join(".claude").join("projects"))
+        .filter(|candidate| candidate != projects && !conversation_files(candidate).is_empty())
+        .count()
+}
+
 /// The conversations of a machine: the `.jsonl` files directly in each project folder (what a sub-agent said is in a folder of its own and is
 /// left out), oldest first.
 pub fn conversation_files(projects: &Path) -> Vec<PathBuf> {
@@ -360,6 +476,8 @@ mod tests {
         calls: RefCell<Vec<(u64, usize)>>,
         applications: RefCell<Vec<String>>,
         down: RefCell<Option<UploadError>>,
+        held: RefCell<Option<std::collections::HashMap<String, u64>>>,
+        positions_fail: RefCell<bool>,
     }
 
     impl Fake {
@@ -369,11 +487,23 @@ mod tests {
                 calls: RefCell::new(Vec::new()),
                 applications: RefCell::new(Vec::new()),
                 down: RefCell::new(None),
+                held: RefCell::new(None),
+                positions_fail: RefCell::new(false),
             }
         }
     }
 
     impl Uploader for &Fake {
+        fn positions(
+            &self,
+            _machine: &str,
+        ) -> Result<Option<std::collections::HashMap<String, u64>>, UploadError> {
+            if *self.positions_fail.borrow() {
+                return Err(UploadError::Later("away".to_string()));
+            }
+            Ok(self.held.borrow().clone())
+        }
+
         fn send(&self, batch: &Batch<'_>) -> Result<Reply, UploadError> {
             if let Some(error) = self.down.borrow_mut().take() {
                 return Err(error);
@@ -484,6 +614,85 @@ mod tests {
         assert_eq!(back.pending_lines, 0);
         assert_eq!(back.lines_sent, 2);
         assert_eq!(fake.taken.borrow().len(), 2);
+    }
+
+    #[test]
+    fn should_send_again_what_the_server_lacks_when_it_was_emptied_or_the_machine_deleted() {
+        let workspace = Workspace::new("emptied");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+        assert_eq!(fake.taken.borrow().len(), 2);
+
+        // The server loses everything it held of this machine; the collector still believes it sent it all.
+        fake.taken.borrow_mut().clear();
+        *fake.held.borrow_mut() = Some(std::collections::HashMap::new());
+        let quiet = collector.pass(&mut state);
+        assert_eq!(quiet.lines_sent, 0, "the check is not due yet");
+        state.check_in = 0;
+        let again = collector.pass(&mut state);
+
+        assert_eq!(again.lines_sent, 2);
+        assert_eq!(fake.taken.borrow().len(), 2);
+    }
+
+    #[test]
+    fn should_leave_the_state_alone_when_the_server_holds_more_and_resend_a_session_it_does_not_know()
+     {
+        let workspace = Workspace::new("more");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+
+        let mut held = std::collections::HashMap::new();
+        held.insert("session-1".to_string(), 50);
+        assert_eq!(collector.reconcile(&mut state, &held), 0);
+        assert_eq!(state.files.values().next().unwrap().lines, 2);
+        held.clear();
+        assert_eq!(collector.reconcile(&mut state, &held), 1);
+        assert_eq!(state.files.values().next().unwrap().lines, 0);
+    }
+
+    #[test]
+    fn should_ask_again_soon_when_the_server_cannot_say_and_not_for_a_while_when_it_cannot_compare()
+    {
+        let workspace = Workspace::new("asks");
+        fs::write(workspace.file(), "{\"a\":1}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+
+        // An older server answers that it cannot say: the question is not repeated for a long time.
+        collector.pass(&mut state);
+        assert_eq!(state.check_in, Collector::<&Fake>::CHECK_EVERY_PASSES);
+
+        // A server that fails to answer is asked again after a few passes, not at every pass.
+        *fake.positions_fail.borrow_mut() = true;
+        state.check_in = 0;
+        collector.pass(&mut state);
+        assert_eq!(state.check_in, Collector::<&Fake>::RETRY_AFTER_PASSES);
+    }
+
+    #[test]
+    fn should_keep_what_the_server_holds_and_go_back_only_where_it_holds_less() {
+        let workspace = Workspace::new("compare");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+
+        let mut held = std::collections::HashMap::new();
+        held.insert("session-1".to_string(), 3);
+        assert_eq!(collector.reconcile(&mut state, &held), 0);
+        held.insert("session-1".to_string(), 1);
+        assert_eq!(collector.reconcile(&mut state, &held), 1);
+        let file = state.files.values().next().unwrap();
+        assert_eq!((file.lines, file.offset), (1, 8));
     }
 
     #[test]
@@ -821,5 +1030,61 @@ mod tests {
 
         assert_eq!(state.files.len(), 1);
         assert!(!state.files.contains_key("/gone/old.jsonl"));
+    }
+
+    #[test]
+    fn should_say_what_it_found_where_it_looks_without_a_path() {
+        let nothing = std::env::temp_dir().join("mnemarr-collector-not-there-at-all");
+        let no_homes = std::env::temp_dir().join("mnemarr-collector-no-homes-at-all");
+        let missing = watching_sentence_among(&nothing, 0, &no_homes);
+        assert!(missing.contains("is not there"), "{missing}");
+        assert!(missing.contains("WSL"), "{missing}");
+        assert!(
+            !missing.contains("mnemarr-collector-not-there"),
+            "no path: {missing}"
+        );
+
+        let folder = Workspace::new("watching");
+        let folder = folder.0.clone();
+        assert!(
+            watching_sentence_among(&folder, 0, &no_homes).contains("holds no conversation file")
+        );
+        assert_eq!(
+            watching_sentence_among(&folder, 1, &no_homes),
+            "Claude Code: 1 conversation found"
+        );
+        assert_eq!(
+            watching_sentence_among(&folder, 12, &no_homes),
+            "Claude Code: 12 conversations found"
+        );
+    }
+
+    #[test]
+    fn should_say_where_else_conversations_are_when_this_user_has_none() {
+        let homes = std::env::temp_dir().join(format!("mnemarr-homes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&homes);
+        let mine = homes.join("me").join(".claude").join("projects");
+        let theirs = homes
+            .join("zoe")
+            .join(".claude")
+            .join("projects")
+            .join("-work");
+        fs::create_dir_all(&mine).unwrap();
+        fs::create_dir_all(&theirs).unwrap();
+        fs::write(theirs.join("session.jsonl"), "{}\n").unwrap();
+
+        let sentence = watching_sentence_among(&mine, 0, &homes);
+
+        assert!(
+            sentence.contains("holds no conversation file"),
+            "{sentence}"
+        );
+        assert!(sentence.contains("1 other user(s)"), "{sentence}");
+        assert!(!sentence.contains("zoe"), "no name: {sentence}");
+        assert_eq!(
+            watching_sentence_among(&mine, 3, &homes),
+            "Claude Code: 3 conversations found"
+        );
+        let _ = fs::remove_dir_all(&homes);
     }
 }

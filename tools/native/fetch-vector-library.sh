@@ -21,7 +21,7 @@ esac
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 archive="sqlite-vec-${version}-loadable-${system}.tar.gz"
-curl --fail --silent --show-error --location --retry 3 \
+curl --fail --silent --show-error --location --retry 6 --retry-delay 10 --retry-all-errors \
   "https://github.com/asg017/sqlite-vec/releases/download/v${version}/${archive}" --output "$work/$archive"
 echo "${sha256}  $work/$archive" | sha256sum -c - >/dev/null || { echo "the checksum of $archive is not the pinned one" >&2; exit 1; }
 tar -xzf "$work/$archive" -C "$work"

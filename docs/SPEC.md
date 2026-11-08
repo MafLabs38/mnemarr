@@ -106,6 +106,7 @@ Everything is **automatic**: capture, consolidation and indexing involve no manu
 | ✅ D-52 | **The collector is installed by an installer and updates itself from the Mnemarr it sends to (Velopack).** One installer for everybody with no secret, per user, in the list of installed applications with an uninstaller, the program on the PATH and started with the session; a Mnemarr serves the installer and the feed of updates it was built with; the collector asks all the Mnemarr it sends to, takes the newest version over HTTPS (or from this computer) and applies it between two passes; the page says *Update available*; the CI packages it and tries install, update and uninstall on Windows. Answers Q-40; realises D-51 §6–7 | [0032](adr/0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md) |
 | ✅ D-53 | **The page of approval fills in the code from the address the computer opens; taking over a machine that already joined needs its name written.** From the list of requests the code is still typed. The proof that the person looked at the computer is traded for the ease the maintainer asked for; an address sent by a stranger shows a request the person did not make, hence the name check for a known machine. Refines D-50 and D-51; the guard is in the API | [0033](adr/0033-the-page-of-approval-fills-in-the-code-from-the-address-and-a-known-machine-is-taken-over-by-writing-its-name.md) |
 | ✅ D-54 | **Search by meaning is built: the model runs on the host (ONNX Runtime), the vectors are kept by `sqlite-vec` and follow the chunks, and search merges words and meaning by reciprocal rank.** Computed in the background and resumable; shown only if near enough (0.2, measured); off without a model folder, degraded with the reason when it fails, and search goes on by words; the library and the model are pinned, checked and in the image. Realises D-25, D-26, D-30, D-31 | [0034](adr/0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md) |
+| ✅ D-55 | **The chat is built: a panel, a proxy and an optional runner with an adapter for each kind of model** (Claude Code on the subscription, any OpenAI-compatible API). The model's only tool is Mnemarr's MCP server and acts as the person with a short-lived token (the log says *via chat*); reads run, everything else waits for their approval; the tools that look after sources and machines join the MCP server. Builds D-21 | [0035](adr/0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md) |
 
 ---
 
@@ -221,11 +222,11 @@ All 🟡 until validated. Identifiers are provisional.
 | F-AUTH-04 | Audit log of sign-ins and of changes to accounts and keys (D-36) |
 | F-UI-01 | Minimal *arr-style UI that consumes the REST API and only configures the brain (D-18): sources, agents and their credentials, language-model and embeddings providers, schedules, retention, masking rules |
 | F-UI-03 | Notes reader: tree, rendered note, wikilinks across sources, backlinks, tags, search; obeys permissions (D-37). It is also an editor for whoever may write notes: edit with a preview, create, move (links follow), remove (D-43) |
-| F-UI-02 | Chat panel that operates Mnemarr through its MCP tools ("index the data now"); same principle as Portarr's chat (D-21) |
+| F-UI-02 | Chat panel that operates Mnemarr through its MCP tools ("declare a source", "add this to my notes"). Built (D-55) |
 | F-API-01 | REST API covering every capability, documented with OpenAPI (D-19) |
-| F-MCP-03 | Administration tools: status, trigger pull, indexing, consolidation; settings changes behind a separate switch (D-20) |
+| F-MCP-03 | Administration tools: status, declare, change and forget a source, read it again, pull a Git source, enrol a machine. Built (D-55); consolidation joins with its vertical; settings are not changed by tools (they are the environment and configuration as code) |
 | F-MCP-04 | Memory tool to correct or retire a wrong memory (answers Q-18) |
-| F-RUN-01 | Assistant runner: headless agent CLI behind an adapter, chat policy and job policy (D-21, D-22) |
+| F-RUN-01 | Assistant runner: an adapter for each model (Claude Code, OpenAI-compatible), chat policy. Built (D-55); the job policy of consolidation (D-22) joins with it |
 | F-IMP-01 | One-shot import of an existing Markdown vault |
 
 ---

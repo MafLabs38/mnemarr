@@ -30,6 +30,12 @@ public static class Permissions
     /// <summary>Asking for the enrolment of a machine: harmless alone, since a person with <see cref="CollectorsManage"/> still has to approve it.</summary>
     public const string CollectorsRequest = "collectors.request";
 
+    /// <summary>
+    /// Using the chat (ADR 0035): talking to a model that uses Mnemarr's tools as the person does. It gives nothing by itself: what the model may do is what the person's role
+    /// allows, since it holds a token of that person, and every change waits for their approval.
+    /// </summary>
+    public const string ChatUse = "chat.use";
+
     public static IReadOnlyList<string> All { get; } =
-        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, ConversationsWrite, CollectorsManage, CollectorsRequest];
+        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, ConversationsWrite, CollectorsManage, CollectorsRequest, ChatUse];
 }

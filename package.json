@@ -12,13 +12,14 @@
   "scripts": {
     "start": "vite --config frontend/vite.config.ts",
     "build": "vite build --config frontend/vite.config.ts",
-    "typecheck": "tsc --noEmit -p frontend/tsconfig.json",
-    "lint": "eslint frontend tests/e2e",
-    "lint:fix": "eslint frontend tests/e2e --fix",
+    "typecheck": "tsc --noEmit -p frontend/tsconfig.json && tsc --noEmit -p agent/tsconfig.json",
+    "lint": "eslint frontend tests/e2e agent",
+    "lint:fix": "eslint frontend tests/e2e agent --fix",
     "stylelint": "stylelint \"frontend/**/*.css\"",
-    "format": "prettier --write \"frontend/**/*.{ts,tsx,css}\" \"tests/e2e/**/*.ts\"",
-    "format:check": "prettier --check \"frontend/**/*.{ts,tsx,css}\" \"tests/e2e/**/*.ts\"",
+    "format": "prettier --write \"frontend/**/*.{ts,tsx,css}\" \"tests/e2e/**/*.ts\" \"agent/**/*.ts\"",
+    "format:check": "prettier --check \"frontend/**/*.{ts,tsx,css}\" \"tests/e2e/**/*.ts\" \"agent/**/*.ts\"",
     "test": "vitest run --config frontend/vite.config.ts",
+    "test:agent": "node --test --test-timeout=30000 agent/test/*.test.ts",
     "e2e": "playwright test --config tests/e2e/playwright.config.ts"
   },
   "dependencies": {

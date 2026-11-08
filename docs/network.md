@@ -6,7 +6,7 @@
 
 | From | To | Port | Direction (seen from the first) | What for | Proof of identity |
 |---|---|---|---|---|---|
-| **A collector** (a workstation or a server) | Mnemarr | 443 (HTTPS) | **outbound** | `POST /api/v1/ingest/enrol`, `/ingest/pair` and `/ingest/pair/poll`, `/ingest/conversations`, `/ingest/heartbeat` | the key of the machine (`X-Api-Key`); for `enrol`, a one-time code; for `pair`, a secret of its own and the approval of a person |
+| **A collector** (a workstation or a server) | Mnemarr | 443 (HTTPS) | **outbound** | `POST /api/v1/ingest/enrol`, `/ingest/pair` and `/ingest/pair/poll`, `/ingest/conversations`, `/ingest/positions`, `/ingest/heartbeat` | the key of the machine (`X-Api-Key`); for `enrol`, a one-time code; for `pair`, a secret of its own and the approval of a person |
 | An assistant | Mnemarr | 443 (HTTPS) | outbound | `POST /mcp` | an API key of a service account |
 | A person | Mnemarr | 443 (HTTPS) | outbound | the interface and the API | a password (a cookie session), usually behind the proxy's single sign-on |
 | Mnemarr | a Git host | 443 (HTTPS) | outbound | the Git sources | a named token; only the hosts in `Git:Hosts` |

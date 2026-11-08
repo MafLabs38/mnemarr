@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -399,6 +400,22 @@ public sealed class McpWriteFactory : MnemarrFactoryBase
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting("Mcp:WriteTools", "true");
+        builder.UseSetting("Mcp:SourceTools", "true");
+    }
+}
+
+/// <summary>An application whose operator turned the MCP write tools on for notes only (<c>Mcp:WriteTools</c>, not <c>Mcp:SourceTools</c>).</summary>
+public sealed class McpNotesOnlyFactory : MnemarrFactoryBase
+{
+    public McpNotesOnlyFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Mcp:WriteTools", "true");
     }
 }
 
@@ -456,4 +473,170 @@ public sealed class UpdatesFactory : DownloadsFactory
             Directory.Delete(_updates, recursive: true);
         }
     }
+}
+
+/// <summary>
+/// An application with the chat on and a runner that is a stand-in in the process (ADR 0035): it records what Mnemarr sends it and answers what a real one answers. The MCP write tools are on,
+/// as the chat needs them to change anything.
+/// </summary>
+public sealed class ChatFactory : MnemarrFactoryBase
+{
+    public ChatFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    /// <summary>The stand-in for the runner.</summary>
+    public FakeRunner Runner { get; } = new();
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.PostConfigure<Mnemarr.Core.Chat.AgentOptions>(options =>
+        {
+            options.Url = "http://runner.example:8489";
+            options.Secret = new string('s', 40);
+        });
+        services.PostConfigure<McpOptions>(options =>
+        {
+            options.WriteTools = true;
+            options.SourceTools = true;
+        });
+        services.AddHttpClient<Mnemarr.Api.V1.Chat.AgentRunnerClient>().ConfigurePrimaryHttpMessageHandler(() => Runner);
+    }
+}
+
+/// <summary>A runner that is not one: it keeps every request and answers the conversations it has made.</summary>
+public sealed class FakeRunner : HttpMessageHandler
+{
+    private readonly List<(HttpMethod Method, string Path, string? Body, string? Authorization)> _requests = [];
+    private readonly HashSet<string> _conversations = [];
+    private readonly HashSet<string> _headerNames = [];
+
+    /// <summary>The names of the headers that reached the runner, from every request.</summary>
+    public IReadOnlySet<string> HeaderNames
+    {
+        get
+        {
+            lock (_headerNames)
+            {
+                return new HashSet<string>(_headerNames, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    /// <summary>What the runner answers to the list of its agents (the default has one that can run).</summary>
+    public string AgentsJson { get; set; } = """[{"id":"claude-code","name":"Claude Code","available":true,"defaultModel":"sonnet","models":[{"id":"sonnet","label":"Sonnet"}]}]""";
+
+    /// <summary>When true, the runner never starts to answer the stream (it ends as a cancelled call, as a timeout does).</summary>
+    public bool Stalls { get; set; }
+
+    /// <summary>Makes the runner forget a conversation, as it does when its volume is lost or room is made for new ones.</summary>
+    public void Forget(string id)
+    {
+        lock (_conversations)
+        {
+            _conversations.Remove(id);
+        }
+    }
+
+    public IReadOnlyList<(HttpMethod Method, string Path, string? Body, string? Authorization)> Requests
+    {
+        get
+        {
+            lock (_requests)
+            {
+                return [.. _requests];
+            }
+        }
+    }
+
+    /// <summary>When true, the runner does not answer.</summary>
+    public bool Down { get; set; }
+
+    /// <summary>The status the runner answers to every call, when it refuses (the shared secret is wrong, for example).</summary>
+    public HttpStatusCode? Refuses { get; set; }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+        lock (_requests)
+        {
+            _requests.Add((request.Method, request.RequestUri!.AbsolutePath, body, request.Headers.Authorization?.ToString()));
+        }
+
+        lock (_headerNames)
+        {
+            foreach (var header in request.Headers)
+            {
+                _headerNames.Add(header.Key);
+            }
+
+            foreach (var header in request.Content?.Headers ?? Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>())
+            {
+                _headerNames.Add(header.Key);
+            }
+        }
+
+        if (Down)
+        {
+            throw new HttpRequestException("The runner is down.");
+        }
+
+        if (Refuses is { } refusal)
+        {
+            return new HttpResponseMessage(refusal);
+        }
+
+        var path = request.RequestUri!.AbsolutePath;
+        if (path == "/v1/agents")
+        {
+            return Json(HttpStatusCode.OK, AgentsJson);
+        }
+
+        if (request.Method == HttpMethod.Post && path == "/v1/conversations")
+        {
+            var id = Guid.NewGuid().ToString();
+            lock (_conversations)
+            {
+                _conversations.Add(id);
+            }
+
+            return Json(HttpStatusCode.Created, $$"""{"id":"{{id}}","title":"","agent":"claude-code","model":"sonnet","createdAt":"2026-11-08T00:00:00Z","updatedAt":"2026-11-08T00:00:00Z","running":false,"busy":false,"pendingPermissions":0}""");
+        }
+
+        if (request.Method == HttpMethod.Get && path == "/v1/conversations")
+        {
+            string[] ids;
+            lock (_conversations)
+            {
+                ids = [.. _conversations];
+            }
+
+            return Json(HttpStatusCode.OK, "[" + string.Join(",", ids.Select(id => $$"""{"id":"{{id}}","title":"t","agent":"claude-code","model":"sonnet","createdAt":"2026-11-08T00:00:00Z","updatedAt":"2026-11-08T00:00:00Z","running":false,"busy":false,"pendingPermissions":0}""")) + "]");
+        }
+
+        if (request.Method == HttpMethod.Delete)
+        {
+            lock (_conversations)
+            {
+                _conversations.Remove(path[(path.LastIndexOf('/') + 1)..]);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
+
+        if (path.EndsWith("/events", StringComparison.Ordinal))
+        {
+            if (Stalls)
+            {
+                throw new TaskCanceledException("The runner did not answer in time.");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("id: 1\ndata: {\"type\":\"user\",\"text\":\"hi\",\"seq\":1}\n\n", System.Text.Encoding.UTF8, "text/event-stream") };
+        }
+
+        return Json(HttpStatusCode.Accepted, "{}");
+    }
+
+    private static HttpResponseMessage Json(HttpStatusCode status, string json) => new(status) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
 }
