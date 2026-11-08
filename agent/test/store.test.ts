@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -80,4 +80,43 @@ test('a save that fails is reported and never thrown', async () => {
 
   assert.equal(reports.length, 1);
   assert.match(reports[0], /Could not save conversation 2d5c2f1e/);
+});
+
+test('loading skips what is not a conversation of the name it has: another id, no events, damaged JSON, a name that is not an id', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mnemarr-store-test-'));
+  const store = new ConversationStore(dir);
+  await store.init();
+  const folder = join(dir, 'conversations');
+  const good = '3d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f';
+  writeFileSync(join(folder, `${good}.json`), JSON.stringify({ id: good, events: [] }));
+  writeFileSync(join(folder, '4d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f.json'), JSON.stringify({ id: good, events: [] }));
+  writeFileSync(
+    join(folder, '5d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f.json'),
+    JSON.stringify({ id: '5d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f' }),
+  );
+  writeFileSync(join(folder, '6d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f.json'), 'not json');
+  writeFileSync(join(folder, 'notes.json'), JSON.stringify({ id: 'notes', events: [] }));
+  mkdirSync(join(folder, 'sub'));
+
+  assert.deepEqual(
+    (await store.loadAll()).map((conversation) => conversation.id),
+    [good],
+  );
+});
+
+test('a saved conversation is read back, and removing it waits for the save that is pending', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mnemarr-store-test-'));
+  const store = new ConversationStore(dir);
+  await store.init();
+  const conversation = {
+    id: '7d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f',
+    title: 'kept',
+    events: [],
+  } as unknown as Conversation;
+
+  const saving = store.save(conversation);
+  await store.remove(conversation.id);
+  await saving;
+
+  assert.deepEqual(await store.loadAll(), []);
 });

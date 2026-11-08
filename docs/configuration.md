@@ -92,7 +92,7 @@ Assistants reach Mnemarr over the Model Context Protocol at `POST /mcp` ([ADR 00
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `MNEMARR__MCP__WRITETOOLS` | `false` | Whether the tools that write notes (`create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note`) are offered. Off by default, and an environment setting on purpose: neither the database nor the API can turn it on. A tool is only offered to a role that holds its permission, and a source that is read-only refuses writes whatever this says. |
+| `MNEMARR__MCP__WRITETOOLS` | `false` | Whether the tools that write notes (`create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note`) and the ones that look after sources (`create_source`, `update_source`, `delete_source`, `index_source`, `sync_source`) are offered. **Since the chat, turning it on for the notes also offers the source tools** to every key whose role holds `sources.manage` (Operator): do not turn it on for assistants you do not trust with that. Off by default, and an environment setting on purpose: neither the database nor the API can turn it on. A tool is only offered to a role that holds its permission, and a source that is read-only refuses writes whatever this says. |
 
 Tools that read: `list_sources`, `search`, `list_notes`, `read_note` (gives the `version` to send back with `update_note`), `list_tags`. A tool that asks: `request_collector_enrolment` (role `Assistant` or `Admin`) opens a request to add a machine and returns a one-time code and the command to run; it is of no use until a person who manages the collectors approves it in the interface.
 

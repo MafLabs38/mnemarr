@@ -261,15 +261,76 @@ test('an idle process stops after the idle time; one that is busy or waits for a
     const { manager, adapter } = await newManager(3);
     const idle = await manager.create(undefined, undefined, undefined);
     const busy = await manager.create(undefined, undefined, undefined);
+    const waiting = await manager.create(undefined, undefined, undefined);
     manager.send(idle.id, 'hello', token);
     adapter.last.options.onEvent({ type: 'turn-end', isError: false });
     manager.send(busy.id, 'hello', token);
+    manager.send(waiting.id, 'hello', token);
+    adapter.last.options.onEvent({
+      type: 'permission-request',
+      requestId: 'r1',
+      toolName: 'mcp__mnemarr__update_note',
+      input: {},
+    });
+    adapter.last.options.onEvent({ type: 'turn-end', isError: false });
 
     mock.timers.tick(120_000);
 
     assert.equal(adapter.processes[0].closed, true, 'idle');
     assert.equal(adapter.processes[1].closed, false, 'busy');
+    assert.equal(adapter.processes[2].closed, false, 'waits for a person');
   } finally {
     mock.timers.reset();
   }
+});
+
+test('the session of the CLI is recorded when it says so, not before: a process that dies first leaves nothing to resume', async () => {
+  const { manager, adapter } = await newManager();
+  const conversation = await manager.create(undefined, undefined, undefined);
+
+  manager.send(conversation.id, 'hello', token);
+  adapter.last.close();
+  manager.send(conversation.id, 'again', token);
+
+  assert.equal(adapter.last.options.resume, undefined, 'the first process never reported a session');
+  adapter.last.options.onEvent({ type: 'session', agentSessionId: adapter.last.options.sessionId, model: 'small' });
+  adapter.last.close();
+  manager.send(conversation.id, 'and again', token);
+  assert.equal(adapter.last.options.resume, adapter.processes[1].options.sessionId);
+});
+
+test('deleting a conversation also removes what the agent kept of it', async () => {
+  const { manager, adapter } = await newManager();
+  const conversation = await manager.create(undefined, undefined, undefined);
+  manager.send(conversation.id, 'hello', token);
+  adapter.last.options.onEvent({ type: 'session', agentSessionId: 'the-session', model: 'small' });
+
+  await manager.delete(conversation.id);
+
+  assert.deepEqual(adapter.forgotten, ['the-session']);
+});
+
+test('a change that nobody answers is rejected after the delay, so that it does not hold a process for everybody', async () => {
+  const { manager, adapter } = await newManager(2, undefined, undefined, 1);
+  const conversation = await manager.create(undefined, undefined, undefined);
+  const events: ChatEventEnvelope[] = [];
+  manager.subscribe(conversation.id, 0, (event) => events.push(event));
+  manager.send(conversation.id, 'change it', token);
+  adapter.last.options.onEvent({
+    type: 'permission-request',
+    requestId: 'r1',
+    toolName: 'mcp__mnemarr__update_note',
+    input: {},
+  });
+  assert.equal(manager.get(conversation.id).pendingPermissions, 1);
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  (manager as unknown as { sweep(): void }).sweep();
+
+  assert.equal(manager.get(conversation.id).pendingPermissions, 0);
+  assert.deepEqual(
+    adapter.last.answers.map((answer) => answer.decision.allow),
+    [false],
+  );
+  assert.ok(events.some((event) => event.type === 'permission-resolved' && !event.approved));
 });

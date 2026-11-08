@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,6 +9,7 @@ import type { AdapterEvent } from '../src/adapters/adapter.ts';
 import {
   buildArgs,
   childEnvironment,
+  ClaudeCodeAdapter,
   ClaudeCodeProcess,
   parseLine,
   permissionResponse,
@@ -137,8 +138,8 @@ function startFake(env: NodeJS.ProcessEnv) {
   const events: AdapterEvent[] = [];
   const exits: (number | null)[] = [];
   const process = new ClaudeCodeProcess(
-    fakeCli,
-    [],
+    globalThis.process.execPath,
+    [fakeCli],
     { ...env, PATH: globalThis.process.env.PATH, FAKE_CLAUDE_LOG: log },
     {
       model: 'sonnet',
@@ -200,4 +201,21 @@ test('a CLI that stops at once tells why, with the first line of what it said an
   const error = run.events.find((event) => event.type === 'error') as { message: string };
   assert.match(error.message, /stopped \(2\): boom: the login is not valid/);
   assert.doesNotMatch(error.message, /second line/);
+});
+
+test('forgetting a session removes its transcript from the CLI configuration directory, and only that one', async () => {
+  const configDir = mkdtempSync(join(tmpdir(), 'mnemarr-claude-config-'));
+  const folder = join(configDir, 'projects', '-data-workspace');
+  mkdirSync(folder, { recursive: true });
+  const session = '0d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f';
+  const other = '1d5c2f1e-7a3b-4c8d-9e0f-1a2b3c4d5e6f';
+  writeFileSync(join(folder, `${session}.jsonl`), '{}');
+  writeFileSync(join(folder, `${other}.jsonl`), '{}');
+  const adapter = new ClaudeCodeAdapter('claude', configDir, configDir, {});
+
+  await adapter.forget(session);
+  await adapter.forget('../../etc/passwd');
+
+  assert.equal(existsSync(join(folder, `${session}.jsonl`)), false);
+  assert.equal(existsSync(join(folder, `${other}.jsonl`)), true);
 });

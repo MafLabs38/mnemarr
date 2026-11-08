@@ -55,4 +55,6 @@ export interface AgentAdapter {
   /** What to set when `available()` is false, said to the person who tries to use the agent. */
   readonly credentialsHint: string;
   start(options: StartOptions): AgentProcess;
+  /** Removes what the agent kept of a conversation (its session) when the conversation is deleted. */
+  forget?(agentSessionId: string): Promise<void>;
 }

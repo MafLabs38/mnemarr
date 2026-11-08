@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -342,4 +342,41 @@ test('closing the process reports its exit once', async () => {
   run.process.close();
 
   assert.deepEqual(run.exits, [0]);
+});
+
+test("closing the process stops the turn that is going: nothing goes on with the person's token", async () => {
+  let round = 0;
+  const openai = await listen((_, response) =>
+    sse(response, round++ === 0 ? toolCall('call_c', 'update_note', { path: 'a.md' }) : words('late')),
+  );
+  const mcp = await mcpServer();
+  const run = start(openai, mcp);
+  run.process.send('Change a.md');
+  await waitFor(() => run.events.some((event) => event.type === 'permission-request'));
+
+  run.process.close();
+  await waitFor(() => ended(run.events));
+
+  assert.equal(
+    mcp.requests.some((request) => (request.body as { method: string }).method === 'tools/call'),
+    false,
+  );
+  assert.equal(
+    run.events.some((event) => event.type === 'text'),
+    false,
+    'the model is not asked again',
+  );
+});
+
+test('forgetting a session removes its history from the disk', async () => {
+  const openai = await listen((_, response) => sse(response, words('x')));
+  const run = start(openai, await mcpServer());
+  run.process.send('hello');
+  await waitFor(() => ended(run.events));
+  const file = join(run.state, 'aaaaaaaa-0000-4000-8000-000000000001.json');
+  assert.equal(existsSync(file), true);
+
+  await run.adapter.forget('aaaaaaaa-0000-4000-8000-000000000001');
+
+  assert.equal(existsSync(file), false);
 });

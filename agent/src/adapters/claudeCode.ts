@@ -5,6 +5,8 @@
 
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { readdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { summarize, type Usage } from '../events.ts';
 import { knownReadTools } from '../policy.ts';
@@ -425,6 +427,17 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
   available(): boolean {
     return Boolean(this.env.CLAUDE_CODE_OAUTH_TOKEN || this.env.ANTHROPIC_API_KEY);
+  }
+
+  /** The CLI keeps a transcript of each session under its configuration directory (`projects/<folder>/<session>.jsonl`): it goes with the conversation. */
+  async forget(agentSessionId: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/.test(agentSessionId)) {
+      return;
+    }
+    const projects = join(this.configDir, 'projects');
+    for (const folder of await readdir(projects).catch(() => [])) {
+      await rm(join(projects, folder, `${agentSessionId}.jsonl`), { force: true });
+    }
   }
 
   start(options: StartOptions): AgentProcess {

@@ -504,6 +504,9 @@ public sealed class FakeRunner : HttpMessageHandler
         }
     }
 
+    /// <summary>What the runner answers to the list of its agents (the default has one that can run).</summary>
+    public string AgentsJson { get; set; } = """[{"id":"claude-code","name":"Claude Code","available":true,"defaultModel":"sonnet","models":[{"id":"sonnet","label":"Sonnet"}]}]""";
+
     /// <summary>When true, the runner never starts to answer the stream (it ends as a cancelled call, as a timeout does).</summary>
     public bool Stalls { get; set; }
 
@@ -567,7 +570,7 @@ public sealed class FakeRunner : HttpMessageHandler
         var path = request.RequestUri!.AbsolutePath;
         if (path == "/v1/agents")
         {
-            return Json(HttpStatusCode.OK, """[{"id":"claude-code","name":"Claude Code","available":true,"defaultModel":"sonnet","models":[{"id":"sonnet","label":"Sonnet"}]}]""");
+            return Json(HttpStatusCode.OK, AgentsJson);
         }
 
         if (request.Method == HttpMethod.Post && path == "/v1/conversations")

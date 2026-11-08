@@ -65,6 +65,29 @@ public sealed class AgentHealthCheckFixture
     }
 
     [Fact]
+    public async Task should_say_degraded_when_the_runner_answers_but_no_agent_has_credentials()
+    {
+        var (check, runner, _) = Build();
+        runner.AgentsJson = """[{"id":"claude-code","name":"Claude Code","available":false,"defaultModel":"sonnet","models":[]}]""";
+
+        var result = await CheckAsync(check);
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Data[HealthReasons.Key].Should().Be("agent-no-credentials");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    public async Task should_say_unreachable_when_the_runner_answers_with_an_error(HttpStatusCode status)
+    {
+        var (check, runner, _) = Build();
+        runner.Refuses = status;
+
+        (await CheckAsync(check)).Data[HealthReasons.Key].Should().Be("agent-unreachable");
+    }
+
+    [Fact]
     public async Task should_ask_the_runner_once_in_half_a_minute()
     {
         var (check, runner, clock) = Build();

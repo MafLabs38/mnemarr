@@ -25,6 +25,8 @@ export interface SessionOptions {
   maxSessions: number;
   /** Conversations kept; the oldest idle one is deleted to make room for a new one (default 200). */
   maxConversations?: number;
+  /** How long a change waits for the person before it is rejected (default 15 minutes). */
+  permissionTimeoutMs?: number;
   idleTimeoutMs: number;
   /** Where the CLI runs: an empty directory. */
   workDir: string;
@@ -38,6 +40,7 @@ interface PendingPermission {
   requestId: string;
   toolName: string;
   input: unknown;
+  since: number;
 }
 
 interface Active {
@@ -69,6 +72,8 @@ const maxTitleLength = 80;
 const killAfterInterruptMs = 5000;
 /** A process holds the token it was started with, which Mnemarr ends 12 hours after it made it: one that is older than this is replaced at the next message. */
 const maxProcessAgeMs = 11 * 60 * 60 * 1000;
+/** A change that waits for a person is rejected after this long, so that cards nobody answers do not hold the runner's few processes for everybody. */
+const defaultPermissionTimeoutMs = 15 * 60 * 1000;
 
 function titleOf(text: string): string {
   const line = text.trim().split('\n')[0].trim();
@@ -161,11 +166,18 @@ export class SessionManager {
   }
 
   async delete(id: string): Promise<void> {
-    this.require(id);
+    const conversation = this.require(id);
     this.stop(id);
     this.conversations.delete(id);
     this.listeners.delete(id);
     await this.store.remove(id);
+    // What the agent keeps of its own (a transcript, a history of messages with whole tool results) goes with the conversation.
+    if (conversation.agentSessionId) {
+      await this.adapters
+        .get(conversation.agent)
+        ?.forget?.(conversation.agentSessionId)
+        .catch(() => undefined);
+    }
   }
 
   /**
@@ -332,9 +344,6 @@ export class SessionManager {
       rm(mcpConfigFile, { force: true }).catch(() => undefined); // best effort: it is removed at the next start otherwise
       throw error;
     }
-    if (sessionId) {
-      conversation.agentSessionId = sessionId;
-    }
     const active: Active = {
       process,
       model,
@@ -412,6 +421,7 @@ export class SessionManager {
           requestId: request.requestId,
           toolName: request.toolName,
           input: request.input,
+          since: Date.now(),
         });
         this.emit(id, {
           type: 'permission',
@@ -478,7 +488,13 @@ export class SessionManager {
 
   private sweep(): void {
     const limit = Date.now() - this.options.idleTimeoutMs;
+    const waitedTooLong = Date.now() - (this.options.permissionTimeoutMs ?? defaultPermissionTimeoutMs);
     for (const [id, active] of this.active) {
+      for (const pending of active.pending.values()) {
+        if (pending.since < waitedTooLong) {
+          this.answer(id, pending.requestId, false);
+        }
+      }
       if (!active.busy && active.pending.size === 0 && active.lastActive < limit) {
         this.stop(id);
       }

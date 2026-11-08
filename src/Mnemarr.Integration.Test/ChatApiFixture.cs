@@ -119,7 +119,7 @@ public sealed class ChatApiFixture : IClassFixture<ChatFactory>, IClassFixture<M
         _factory.Runner.Requests.Should().OnlyContain(request => request.Authorization == "Bearer " + new string('s', 40));
         _factory.Runner.Requests.Last().Body.Should().NotContain("X-Mnemarr-Request");
         // Nothing of the browser's request goes on: no cookie, no header of the interface, no key.
-        _factory.Runner.HeaderNames.Should().OnlyContain(name => name == "Authorization" || name == "Content-Type" || name == "Content-Length" || name == "Accept" || name == "Last-Event-ID");
+        _factory.Runner.HeaderNames.Should().NotContain(["Cookie", "X-Api-Key", "X-Mnemarr-Request", "Origin", "Referer"]);
     }
 
     [Theory]

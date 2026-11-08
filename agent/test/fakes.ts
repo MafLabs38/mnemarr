@@ -51,6 +51,12 @@ export class FakeAdapter implements AgentAdapter {
   readonly credentialsHint = 'set the fake credentials';
   readonly processes: FakeProcess[] = [];
   failNextStart = false;
+  readonly forgotten: string[] = [];
+
+  forget(agentSessionId: string): Promise<void> {
+    this.forgotten.push(agentSessionId);
+    return Promise.resolve();
+  }
 
   available(): boolean {
     return true;
@@ -86,7 +92,12 @@ export async function waitFor(condition: () => boolean, timeoutMs = 2000): Promi
   }
 }
 
-export async function newManager(maxSessions = 2, maxConversations?: number, existingDir?: string) {
+export async function newManager(
+  maxSessions = 2,
+  maxConversations?: number,
+  existingDir?: string,
+  permissionTimeoutMs?: number,
+) {
   const dataDir = existingDir ?? mkdtempSync(join(tmpdir(), 'mnemarr-agent-test-'));
   const store = new ConversationStore(dataDir);
   await store.init();
@@ -98,6 +109,7 @@ export async function newManager(maxSessions = 2, maxConversations?: number, exi
     runDir: dataDir,
     mnemarrMcpUrl: 'http://mnemarr.example:8383/mcp',
     maxConversations,
+    permissionTimeoutMs,
   });
   await manager.init();
   return { manager, adapter, store, dataDir };

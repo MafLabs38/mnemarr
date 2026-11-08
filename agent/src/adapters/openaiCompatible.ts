@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { summarize, type Usage } from '../events.ts';
@@ -88,6 +89,14 @@ export class OpenAiCompatibleAdapter implements AgentAdapter {
   start(options: StartOptions): AgentProcess {
     return new OpenAiProcess(this.settings, options);
   }
+
+  async forget(agentSessionId: string): Promise<void> {
+    await rm(stateFileOf(this.settings.stateDir, agentSessionId), { force: true });
+  }
+}
+
+function stateFileOf(stateDir: string, session: string): string {
+  return join(stateDir, `${session.replaceAll(/[^A-Za-z0-9-]/g, '')}.json`);
 }
 
 class OpenAiProcess implements AgentProcess {
@@ -108,7 +117,7 @@ class OpenAiProcess implements AgentProcess {
     mkdirSync(settings.stateDir, { recursive: true, mode: 0o700 });
     // A conversation is its session id: a process that starts later for the same id takes its messages back.
     const session = options.resume ?? options.sessionId;
-    this.stateFile = join(settings.stateDir, `${session.replaceAll(/[^A-Za-z0-9-]/g, '')}.json`);
+    this.stateFile = stateFileOf(settings.stateDir, session);
     this.messages = this.load();
     queueMicrotask(() => options.onEvent({ type: 'session', agentSessionId: session, model: options.model }));
   }
@@ -137,6 +146,8 @@ class OpenAiProcess implements AgentProcess {
   }
 
   close(): void {
+    // A turn that is still going stops with the process: its calls would go on with the person's token otherwise.
+    this.interrupt();
     this.finish(0);
   }
 
