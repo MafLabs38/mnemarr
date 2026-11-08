@@ -329,7 +329,7 @@ export class SessionManager {
       });
     } catch (error) {
       // Nothing is left behind by a process that did not start: not its file with the token, not a CLI session that never existed.
-      void rm(mcpConfigFile, { force: true });
+      rm(mcpConfigFile, { force: true }).catch(() => undefined); // best effort: it is removed at the next start otherwise
       throw error;
     }
     if (sessionId) {
@@ -375,7 +375,7 @@ export class SessionManager {
       case 'session':
         if (conversation.agentSessionId !== event.agentSessionId) {
           conversation.agentSessionId = event.agentSessionId;
-          void this.store.save(conversation);
+          this.store.save(conversation); // never rejects: a failure is reported by the store
         }
         return;
       case 'permission-request':
@@ -438,7 +438,7 @@ export class SessionManager {
     if (!transientTypes.has(event.type)) {
       conversation.events.push(envelope);
       conversation.updatedAt = envelope.at;
-      void this.store.save(conversation);
+      this.store.save(conversation); // never rejects: a failure is reported by the store
     }
     for (const listener of this.listeners.get(id) ?? []) {
       listener(envelope);
