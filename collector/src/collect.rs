@@ -70,6 +70,7 @@ impl<U: Uploader> Collector<U> {
     /// One pass over every conversation: what is new in each is sent, and `state` says how far each has been sent.
     pub fn pass(&self, state: &mut State) -> Report {
         let mut report = Report::default();
+        self.reconcile_when_due(state);
         let files = conversation_files(&self.projects);
         report.watching = Some(watching_sentence(&self.projects, files.len()));
         if !files.is_empty() {
@@ -88,6 +89,48 @@ impl<U: Uploader> Collector<U> {
             }
         }
         report
+    }
+
+    /// How many passes go by between two comparisons of what the collector believes it sent with what the server holds (a pass is thirty seconds by default).
+    const CHECK_EVERY_PASSES: u32 = 120;
+
+    fn reconcile_when_due(&self, state: &mut State) {
+        if state.check_in > 0 {
+            state.check_in -= 1;
+            return;
+        }
+        // A server that cannot be asked now is asked at the next pass.
+        if let Ok(known) = self.uploader.positions(&self.machine) {
+            state.check_in = Self::CHECK_EVERY_PASSES;
+            if let Some(held) = known {
+                let _ = self.reconcile(state, &held);
+            }
+        }
+    }
+
+    /// The positions kept here are what the server said it held. A server that was emptied, or from which this machine was deleted, holds less: the files go back to
+    /// where the server is, and what it lacks is sent again. Returns how many files went back.
+    pub fn reconcile(
+        &self,
+        state: &mut State,
+        held: &std::collections::HashMap<String, u64>,
+    ) -> usize {
+        let mut back = 0;
+        for (name, file) in &mut state.files {
+            let path = Path::new(name);
+            let session = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let server = held.get(&session).copied().unwrap_or(0);
+            if file.lines > server {
+                let (offset, lines) = offset_after(path, server);
+                file.offset = offset;
+                file.lines = lines;
+                back += 1;
+            }
+        }
+        back
     }
 
     fn send_file(
@@ -429,6 +472,7 @@ mod tests {
         calls: RefCell<Vec<(u64, usize)>>,
         applications: RefCell<Vec<String>>,
         down: RefCell<Option<UploadError>>,
+        held: RefCell<Option<std::collections::HashMap<String, u64>>>,
     }
 
     impl Fake {
@@ -438,11 +482,19 @@ mod tests {
                 calls: RefCell::new(Vec::new()),
                 applications: RefCell::new(Vec::new()),
                 down: RefCell::new(None),
+                held: RefCell::new(None),
             }
         }
     }
 
     impl Uploader for &Fake {
+        fn positions(
+            &self,
+            _machine: &str,
+        ) -> Result<Option<std::collections::HashMap<String, u64>>, UploadError> {
+            Ok(self.held.borrow().clone())
+        }
+
         fn send(&self, batch: &Batch<'_>) -> Result<Reply, UploadError> {
             if let Some(error) = self.down.borrow_mut().take() {
                 return Err(error);
@@ -553,6 +605,46 @@ mod tests {
         assert_eq!(back.pending_lines, 0);
         assert_eq!(back.lines_sent, 2);
         assert_eq!(fake.taken.borrow().len(), 2);
+    }
+
+    #[test]
+    fn should_send_again_what_the_server_lacks_when_it_was_emptied_or_the_machine_deleted() {
+        let workspace = Workspace::new("emptied");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+        assert_eq!(fake.taken.borrow().len(), 2);
+
+        // The server loses everything it held of this machine; the collector still believes it sent it all.
+        fake.taken.borrow_mut().clear();
+        *fake.held.borrow_mut() = Some(std::collections::HashMap::new());
+        let quiet = collector.pass(&mut state);
+        assert_eq!(quiet.lines_sent, 0, "the check is not due yet");
+        state.check_in = 0;
+        let again = collector.pass(&mut state);
+
+        assert_eq!(again.lines_sent, 2);
+        assert_eq!(fake.taken.borrow().len(), 2);
+    }
+
+    #[test]
+    fn should_keep_what_the_server_holds_and_go_back_only_where_it_holds_less() {
+        let workspace = Workspace::new("compare");
+        fs::write(workspace.file(), "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n").unwrap();
+        let fake = Fake::new();
+        let collector = collector(&workspace, &fake);
+        let mut state = State::default();
+        collector.pass(&mut state);
+
+        let mut held = std::collections::HashMap::new();
+        held.insert("session-1".to_string(), 3);
+        assert_eq!(collector.reconcile(&mut state, &held), 0);
+        held.insert("session-1".to_string(), 1);
+        assert_eq!(collector.reconcile(&mut state, &held), 1);
+        let file = state.files.values().next().unwrap();
+        assert_eq!((file.lines, file.offset), (1, 8));
     }
 
     #[test]

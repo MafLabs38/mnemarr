@@ -8,6 +8,7 @@ It is **not part of Mnemarr's container**: it is an external helper that talks t
 
 ## What it does and does not do
 
+- It **checks its memory against the server**: at start, and about every hour, it asks the server how many lines it holds of each conversation (`GET /api/v1/ingest/positions`). A server that was emptied, restored from an older backup, or from which the machine was deleted holds less than the collector believes it sent: the collector goes back to where the server is and sends again what is missing, with nothing to do by hand.
 - It sends **only new lines**, by position. Stop it, start it, lose the network: nothing is lost and nothing is sent twice (the conversation file is its queue; `state.json` says how far each file was sent).
 - It masks secrets **before** a line leaves the machine (private keys, tokens, `sk-` keys, credentials in addresses, `PASSWORD=…` assignments). The server masks again.
 - It has an **ingest-only key**: it can add conversations and cannot read any memory.

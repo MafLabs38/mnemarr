@@ -82,6 +82,7 @@ public sealed class EndpointsFixture
         "api/v1/ingest/installer/{platform}",
         "api/v1/ingest/pair",
         "api/v1/ingest/pair/poll",
+        "api/v1/ingest/positions",
         @"api/v1/ingest/updates/{name:regex(^releases\.[A-Za-z0-9._-]+\.json$)}",
         "api/v1/ingest/updates/{name}",
         "api/v1/notes",

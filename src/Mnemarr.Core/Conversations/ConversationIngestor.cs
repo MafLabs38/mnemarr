@@ -14,6 +14,9 @@ public sealed record IngestBatch(string Format, string Machine, string Applicati
 /// <summary>What was taken of a batch: how many lines, and the position of the next line the server wants (what the collector resumes from).</summary>
 public sealed record IngestResult(long Next, int Accepted);
 
+/// <summary>How many lines of a conversation the server holds: where a collector must resume from.</summary>
+public sealed record IngestPosition(string Session, long Lines);
+
 /// <summary>
 /// Takes what a collector sends (ADR 0024): checks it, masks the secrets again (D-10), keeps the raw lines, writes the conversation as a note of
 /// the Conversations source and reads it into the index at once, so that an assistant can find it right away. Sending a batch again changes
@@ -47,6 +50,9 @@ public sealed partial class ConversationIngestor
         _store = store;
         _clock = clock;
     }
+
+    /// <summary>What the server holds of each conversation of a machine: a collector compares it with what it believes it sent (a server that was emptied, or a machine that was deleted, holds less).</summary>
+    public IReadOnlyList<IngestPosition> Positions(string machine) => [.. _store.OfMachine(machine).Select(record => new IngestPosition(record.Session, record.Lines))];
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SafeName();
