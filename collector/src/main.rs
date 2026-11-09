@@ -716,10 +716,27 @@ fn context(options: &Options) -> ExitCode {
             None => return quiet("--format is text or claude-hook"),
         },
     };
-    let Some(application) = options.application.clone().or_else(application_of_session) else {
+    // A hook is given its input and ends it; a run by hand with --application is not waited for.
+    let input = if options.application.is_some() {
+        String::new()
+    } else {
+        hook_input()
+    };
+    let Some(application) = options
+        .application
+        .clone()
+        .or_else(|| application_of_session(&input))
+    else {
         return quiet("no application: give --application");
     };
-    match mnemarr_collector::context::fetch(&destination, &key, &application, options.budget) {
+    let session = mnemarr_collector::context::session_of_hook_input(&input);
+    match mnemarr_collector::context::fetch(
+        &destination,
+        &key,
+        &application,
+        options.budget,
+        session.as_deref(),
+    ) {
         Ok(text) if !text.trim().is_empty() => {
             write_stdout(&mnemarr_collector::context::render(&text, format));
             ExitCode::SUCCESS
@@ -729,19 +746,25 @@ fn context(options: &Options) -> ExitCode {
     }
 }
 
-/// The application of the session that started the hook: the working directory in the JSON it was given on its input, else the current folder.
-fn application_of_session() -> Option<String> {
+/// What the hook was given on its input (a JSON document), empty when it runs by hand in a terminal.
+fn hook_input() -> String {
     use std::io::{IsTerminal, Read};
-    if !io::stdin().is_terminal() {
-        let mut input = String::new();
-        if io::stdin()
+    let mut input = String::new();
+    if !io::stdin().is_terminal()
+        && io::stdin()
             .take(64 * 1024)
             .read_to_string(&mut input)
-            .is_ok()
-            && let Some(application) = mnemarr_collector::context::application_of_hook_input(&input)
-        {
-            return Some(application);
-        }
+            .is_err()
+    {
+        input.clear();
+    }
+    input
+}
+
+/// The application of the session that started the hook: the working directory in the JSON it was given on its input, else the current folder.
+fn application_of_session(input: &str) -> Option<String> {
+    if let Some(application) = mnemarr_collector::context::application_of_hook_input(input) {
+        return Some(application);
     }
     std::env::current_dir()
         .ok()

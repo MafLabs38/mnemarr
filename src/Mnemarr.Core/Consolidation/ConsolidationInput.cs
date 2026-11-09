@@ -19,4 +19,8 @@ public sealed class ConsolidationInput
     /// <summary>The turns of the conversation, in order; none for a format that has no reader.</summary>
     public IReadOnlyList<Turn> Turns(ConversationRecord record) =>
         ConversationFormats.Supports(record.Format) ? ConversationFormats.Turns(record.Format, _raw.Read(record.Machine, record.Session, record.Lines)) : [];
+
+    /// <summary>The turns of the last <paramref name="lines"/> lines of the conversation: what the end of it said, without reading the rest.</summary>
+    public IReadOnlyList<Turn> LastTurns(ConversationRecord record, int lines) =>
+        ConversationFormats.Supports(record.Format) ? ConversationFormats.Turns(record.Format, _raw.ReadLast(record.Machine, record.Session, record.Lines, lines)) : [];
 }

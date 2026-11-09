@@ -51,4 +51,34 @@ public sealed class RawConversationsFixture : IDisposable
         _raw.Read("pc", "s1", 6).Should().Equal("a", "b");
         _raw.Read("pc", "s1", 1).Should().Equal("a");
     }
+
+    [Fact]
+    public void should_read_only_the_last_lines_and_not_open_the_files_that_end_before_them()
+    {
+        _raw.Write("pc", "s1", 0, ["a", "b"]);
+        _raw.Write("pc", "s1", 2, ["c", "d"]);
+        _raw.Write("pc", "s1", 4, ["e"]);
+        // A file that cannot be read: if the files before the lines asked for were opened, this would throw.
+        File.WriteAllText(Directory.EnumerateFiles(Folder, "*.jsonl.gz").Order(StringComparer.Ordinal).First(), "not gzip");
+
+        _raw.ReadLast("pc", "s1", 5, 2).Should().Equal("d", "e");
+        _raw.ReadLast("pc", "s1", 5, 3).Should().Equal("c", "d", "e");
+        _raw.ReadLast("pc", "s1", 4, 1).Should().Equal("d");
+    }
+
+    [Fact]
+    public void should_read_the_last_lines_of_a_conversation_that_was_made_one_file()
+    {
+        for (var position = 0; position < RawConversations.CompactAfter; position++)
+        {
+            _raw.Write("pc", "s1", position, [$"line {position}"]);
+        }
+
+        _raw.CompactIfNeeded("pc", "s1", RawConversations.CompactAfter);
+
+        Directory.EnumerateFiles(Folder, "*.jsonl.gz").Should().ContainSingle();
+        _raw.ReadLast("pc", "s1", RawConversations.CompactAfter, 2).Should().Equal($"line {RawConversations.CompactAfter - 2}", $"line {RawConversations.CompactAfter - 1}");
+        _raw.ReadLast("pc", "s1", 3, 10).Should().Equal("line 0", "line 1", "line 2");
+        _raw.ReadLast("pc", "nothing", 5, 2).Should().BeEmpty();
+    }
 }
