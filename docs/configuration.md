@@ -196,6 +196,7 @@ Anything that is not a person (an assistant, a collector, a companion such as Po
 | A companion that watches the status of the system | `Monitor` (`system.read` only) |
 | An assistant that reads and searches notes | `Reader` |
 | An assistant that also writes notes | `Assistant` |
+| The start-of-session hook of an assistant ([connect Claude](user/connect-claude.md)) | `Assistant` for the thread and the end of the last conversation (`Reader` gives the thread only). With the writing tools on, an `Assistant` key can also write notes: make a key for the hook of its own |
 | A collector that sends conversations (later) | `Collector` |
 
 Send the key as `X-Api-Key: <key>` or `Authorization: Bearer <key>`. It is shown **once**, when it is created, and only a hash of it is kept: if it is lost, create another and revoke the old one. A key can be limited to some sources and can expire. `/health/live` and `/health/ready` need no key.
