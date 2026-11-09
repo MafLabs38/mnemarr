@@ -54,5 +54,9 @@ pack of every start.
   indented after its first line, so that a pasted page or a quoted message cannot pass for another turn or section of the pack. The budget bounds the pack; the parts keep their own caps (the tail 2 500
   characters, the thread about 4 000), so a larger budget does not enlarge them.
 - The thread has no `sources:` list: it is a rolling digest of many conversations, and the notes it points to carry their own provenance. A person who corrects it knows the date it was updated.
+- **An application is the last folder of the working directory**: two unrelated projects with the same folder name (`api`, `app`) share one thread and each is told the end of the other's conversation. The limit is
+  known and was there for the notes; a disambiguator (an alias set on the collector) comes if it bites.
+- **Nothing on the status page says that the thread stopped being updated**: the pack carries its date (`updated ...`), which is how an assistant and a person see it. A freshness line on the consolidation
+  card is a follow-up in the roadmap.
 - **Not now**: a thread per branch or per task within an application (a thread is per application), a thread for assistants other than Claude Code (they come with their readers, vertical 4), a tool "resume"
   that an assistant calls on request (the hook already gives it), merging the threads of two applications.

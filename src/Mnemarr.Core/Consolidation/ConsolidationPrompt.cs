@@ -60,7 +60,7 @@ public static class ConsolidationPrompt
     private static void AppendThread(StringBuilder text, string application, string session, DateTimeOffset today)
     {
         var path = $"{Slug(application)}/{ThreadFileName}";
-        text.AppendLine(CultureInfo.InvariantCulture, $"The THREAD. `{path}` is the digest that a new session of this application is told when it opens, so that it knows where the work stood without reading the old conversation. It is NOT a durable note: it says where things are now, not what is true for ever. Read it first (read_note; if it does not exist, create it with create_note), then write it again with update_note and the version you read.");
+        text.AppendLine(CultureInfo.InvariantCulture, $"The THREAD. `{path}` is the digest that a new session of this application is told when it opens, so that it knows where the work stood without reading the old conversation. It is NOT a durable note: it says where things are now, not what is true for ever. Read it first (read_note; if it does not exist, create it with create_note), then write it again with update_note and the version you read. If update_note says that the note changed since you read it (another run wrote it), read it again and redo the update on what is there: never drop what the other run wrote.");
         text.AppendLine("```");
         text.AppendLine("---");
         text.AppendLine(CultureInfo.InvariantCulture, $"application: {application}");

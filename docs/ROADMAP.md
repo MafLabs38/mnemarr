@@ -116,6 +116,7 @@
 - Vertical 5's pack did not answer the need (durable notes and one-line titles say what is known, not where the work was). It is replaced: a **thread** per application (a note of the memory vault, written by the consolidation, the last session in detail, the earlier ones condensed, bounded in size) and **the end of the last conversation** (immediate, no model).
 - The consolidation follows the person (idle 5 minutes, a pass each minute, a higher daily cap). The hook passes the session id. What only the old pack used is removed.
 - Not now: a thread per branch or task, other assistants (vertical 4), an on-request "resume" tool.
+- Follow-up: a freshness line for the thread on the consolidation card of the status page (today only the date in the pack says that it stopped being updated).
 
 ## Not now
 

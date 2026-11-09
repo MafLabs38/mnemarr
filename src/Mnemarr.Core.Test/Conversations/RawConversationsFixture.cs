@@ -76,6 +76,7 @@ public sealed class RawConversationsFixture : IDisposable
 
         _raw.CompactIfNeeded("pc", "s1", RawConversations.CompactAfter);
 
+        Directory.EnumerateFiles(Folder, "*.jsonl.gz").Should().ContainSingle();
         _raw.ReadLast("pc", "s1", RawConversations.CompactAfter, 2).Should().Equal($"line {RawConversations.CompactAfter - 2}", $"line {RawConversations.CompactAfter - 1}");
         _raw.ReadLast("pc", "s1", 3, 10).Should().Equal("line 0", "line 1", "line 2");
         _raw.ReadLast("pc", "nothing", 5, 2).Should().BeEmpty();
