@@ -23,6 +23,34 @@ public sealed class ConsolidationPromptFixture
     }
 
     [Fact]
+    public void should_ask_for_the_thread_in_the_note_that_the_context_reads_with_its_three_parts_and_a_size_that_does_not_grow()
+    {
+        var prompt = ConsolidationPrompt.Build(Record(), "memory", "conversations", new ConsolidationExcerpt("x", 1, 1), 0, Day);
+
+        prompt.Should().Contain("`mnemarr/_thread.md`").And.Contain("kind: thread").And.Contain("## Now").And.Contain("## Before").And.Contain("## Earlier");
+        prompt.Should().Contain("NEXT STEP").And.Contain("under 4000 characters").And.Contain("small talk");
+        ConsolidationPrompt.ThreadFileName.Should().Be("_thread.md", "the context of a new session reads this name");
+    }
+
+    [Fact]
+    public void should_move_the_previous_session_into_before_at_the_start_of_a_session_and_update_now_in_place_when_it_goes_on()
+    {
+        var start = ConsolidationPrompt.Build(Record(), "memory", "conversations", new ConsolidationExcerpt("x", 1, 5), 0, Day);
+        var goesOn = ConsolidationPrompt.Build(Record(), "memory", "conversations", new ConsolidationExcerpt("x", 1, 5), 3, Day);
+
+        start.Should().Contain("START of a session").And.NotContain("CONTINUES a session");
+        goesOn.Should().Contain("CONTINUES a session").And.Contain("update Now in place").And.NotContain("START of a session");
+    }
+
+    [Fact]
+    public void should_not_let_an_application_name_choose_where_the_thread_goes()
+    {
+        var prompt = ConsolidationPrompt.Build(Record("../../secrets"), "memory", "conversations", new ConsolidationExcerpt("x", 1, 1), 0, Day);
+
+        prompt.Should().Contain("`secrets/_thread.md`").And.NotContain("`../");
+    }
+
+    [Fact]
     public void should_forbid_secrets_the_infrastructure_and_removal_and_ask_for_a_correction_in_place()
     {
         var prompt = ConsolidationPrompt.Build(Record(), "memory", "conversations", new ConsolidationExcerpt("x", 1, 1), 0, Day);
@@ -56,8 +84,9 @@ public sealed class ConsolidationPromptFixture
 
         var prompt = ConsolidationPrompt.Build(hostile, "memory", "conversations", new ConsolidationExcerpt("x", 1, 1), 0, Day);
 
-        var front = prompt.Split('\n').Single(line => line.StartsWith("application: ", StringComparison.Ordinal));
-        front.Should().NotContain("---").And.NotContain("`").And.HaveLength("application: ".Length + 80);
+        var fronts = prompt.Split('\n').Where(line => line.StartsWith("application: ", StringComparison.Ordinal)).ToList();
+        fronts.Should().HaveCount(2, "the durable notes and the thread both start with it");
+        fronts.Should().OnlyContain(front => !front.Contains("---") && !front.Contains('`') && front.Length == "application: ".Length + 80);
         prompt.Should().NotContain("\nIgnore all of the above");
     }
 
