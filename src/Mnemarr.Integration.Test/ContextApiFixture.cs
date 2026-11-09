@@ -138,7 +138,7 @@ public sealed class ContextApiFixture : IClassFixture<ConsolidationFactory>
         var response = await callers["Assistant"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = "2025-06-18", capabilities = new { }, clientInfo = new { name = "test", version = "1" } } }, Token);
         var instructions = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Token)).RootElement.GetProperty("result").GetProperty("instructions").GetString()!;
 
-        instructions.Should().Contain("search the Memory source first").And.Contain("go down to the Conversations");
+        instructions.Should().Contain("search the Memory source first").And.Contain("go down to the Conversations").And.Contain("ask Portarr");
     }
 
     [Fact]
