@@ -55,4 +55,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md#development-setup) for the development set
 
 ## License
 
-GPL-3.0, like the *arr apps (to be confirmed in the spec, question Q-20).
+Mnemarr is free software under the **GNU General Public License, version 3 or (at your option) any later version** (GPL-3.0-or-later), like Portarr and Orchestrarr. The text is in [LICENSE](LICENSE); every package of this repository declares it (`GPL-3.0-or-later`).
