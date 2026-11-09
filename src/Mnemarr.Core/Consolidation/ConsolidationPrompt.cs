@@ -39,7 +39,7 @@ public static class ConsolidationPrompt
         text.AppendLine("   Keep the `sources:` already there and add this conversation; the title is a heading `# ...` that names the subject. Sections: Decisions, Lessons, Facts, History (only those that have content), each item short and dated when the date matters.");
         text.AppendLine("5. Write in the language the conversation was held in. Be brief: a note is read in a minute.");
         text.AppendLine();
-        AppendThread(text, application, done, today);
+        AppendThread(text, application, SessionLabel(record), today);
         text.AppendLine();
         text.AppendLine(CultureInfo.InvariantCulture, $"Your last answer is one line: what you wrote or updated (paths), or \"nothing to keep\" when the part is only small talk. The conversation is the application \"{application}\"; this is turn {done + 1} to {done + excerpt.Taken} of {excerpt.Total}{(excerpt.Remaining(done) > 0 ? ", the rest is for a later run" : string.Empty)}.");
         text.AppendLine();
@@ -55,7 +55,7 @@ public static class ConsolidationPrompt
     /// The second duty of a run (ADR 0038): the thread of the application, a note of its own that is a rolling digest. A new session is told it at its start, so that the work resumes where it stood
     /// without the old conversation being read; it must stay short whatever the age of the project, which is why the older the content, the shorter it is kept.
     /// </summary>
-    private static void AppendThread(StringBuilder text, string application, int done, DateTimeOffset today)
+    private static void AppendThread(StringBuilder text, string application, string session, DateTimeOffset today)
     {
         var path = $"{Slug(application)}/{ThreadFileName}";
         text.AppendLine(CultureInfo.InvariantCulture, $"The THREAD. `{path}` is the digest that a new session of this application is told when it opens, so that it knows where the work stood without reading the old conversation. It is NOT a durable note: it says where things are now, not what is true for ever. Read it first (read_note; if it does not exist, create it with create_note), then write it again with update_note and the version you read.");
@@ -66,19 +66,20 @@ public static class ConsolidationPrompt
         text.AppendLine(CultureInfo.InvariantCulture, $"updated: {today:yyyy-MM-dd}");
         text.AppendLine("---");
         text.AppendLine("# Thread");
-        text.AppendLine("## Now (date of the session)");
+        text.AppendLine(CultureInfo.InvariantCulture, $"## Now (date, session {session})");
         text.AppendLine("## Before");
         text.AppendLine("## Earlier");
         text.AppendLine("```");
         text.AppendLine("- **Now**: the session that this part of the conversation belongs to, in about 1500 characters: the goal, where the work stands (what is done, what is half done), what was decided and why, what is open or blocked, and the NEXT STEP, concrete enough to resume from. Names of files, branches and pull requests that the next session will need are worth keeping; the steps of a debugging are not.");
-        text.AppendLine(done == 0
-            ? "- This part is the START of a session. Move the previous Now into Before, condensed to one to three lines with its date, newest first, and write the new Now."
-            : "- This part CONTINUES a session already in the thread: update Now in place (it is the same session), do not add a second one to Before.");
+        text.AppendLine(CultureInfo.InvariantCulture, $"- This part belongs to the session `{session}`. Look at the heading of Now. If it names this session, the work goes on: update Now in place and do not add a line to Before. If it names another session (or the note is new), this is another session now: move the previous Now into Before, condensed to one to three lines with its date, newest first, and write the new Now under the heading `## Now (date, session {session})`.");
         text.AppendLine("- **Before**: the sessions before, newest first, one to three lines each, dated. When there are more than about eight, fold the oldest into Earlier.");
         text.AppendLine("- **Earlier**: one short paragraph for what is older and still matters. It shrinks each time: drop what is finished, obsolete, or already in a durable note (the durable notes are found by search).");
         text.AppendLine("- The whole note stays under 4000 characters, whatever the age of the project: if it grows, condense the oldest first. Never write a secret, nor an address or a list of machines as they are today. Same language as the conversation.");
         text.AppendLine("- If this part is only small talk or a question with no work in it, leave the thread as it is.");
     }
+
+    /// <summary>A short, plain name for a session in the thread, so that the model can tell whether the Now of the thread is this session or another.</summary>
+    internal static string SessionLabel(ConversationRecord record) => OneLine(record.Session, "unknown", 8);
 
     /// <summary>The name of the thread in the folder of an application (read by the context of a new session).</summary>
     public const string ThreadFileName = "_thread.md";

@@ -33,13 +33,13 @@ public sealed class ConsolidationPromptFixture
     }
 
     [Fact]
-    public void should_move_the_previous_session_into_before_at_the_start_of_a_session_and_update_now_in_place_when_it_goes_on()
+    public void should_tell_the_session_so_that_now_is_updated_in_place_for_the_same_session_and_moved_into_before_for_another()
     {
-        var start = ConsolidationPrompt.Build(Record(), "memory", "conversations", new ConsolidationExcerpt("x", 1, 5), 0, Day);
-        var goesOn = ConsolidationPrompt.Build(Record(), "memory", "conversations", new ConsolidationExcerpt("x", 1, 5), 3, Day);
+        var prompt = ConsolidationPrompt.Build(Record() with { Session = "a261bbf4-4361-47cc-823c-396e95f8b6eb" }, "memory", "conversations", new ConsolidationExcerpt("x", 1, 5), 3, Day);
 
-        start.Should().Contain("START of a session").And.NotContain("CONTINUES a session");
-        goesOn.Should().Contain("CONTINUES a session").And.Contain("update Now in place").And.NotContain("START of a session");
+        prompt.Should().Contain("## Now (date, session a261bbf4)").And.Contain("belongs to the session `a261bbf4`");
+        prompt.Should().Contain("update Now in place").And.Contain("move the previous Now into Before");
+        prompt.Should().NotContain("a261bbf4-4361", "a short label is enough, and the whole name is not the model's to copy");
     }
 
     [Fact]
