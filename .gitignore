@@ -83,3 +83,4 @@ pr.diff
 
 # Browser-tool snapshots of the dev instance: they hold real host names and codes.
 .playwright-mcp/
+.cache

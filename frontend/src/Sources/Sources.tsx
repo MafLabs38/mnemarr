@@ -7,6 +7,7 @@ import PageHeading from 'Components/Page/PageHeading';
 import translate from 'Utilities/String/translate';
 
 import ConfigurationCard from './ConfigurationCard';
+import ConsolidationCard from './ConsolidationCard';
 import KindSection from './KindSection';
 import { useSourceKinds, useSources } from './sources';
 
@@ -28,6 +29,9 @@ export default function Sources() {
         {kinds.data &&
           sources.data &&
           kinds.data.map((kind) => <KindSection key={kind.kind} kind={kind} sources={sources.data} />)}
+        <Card title={translate('Consolidation')}>
+          <ConsolidationCard />
+        </Card>
         <Card title={translate('ConfigurationAsCode')}>
           <ConfigurationCard />
         </Card>

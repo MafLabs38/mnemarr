@@ -10,7 +10,14 @@ public static class ApiV1ServiceCollectionExtensions
     public static IServiceCollection AddMnemarrApiV1(this IServiceCollection services)
     {
         services.AddSingleton<Collectors.InstallCommands>();
+        services.AddSingleton<Mcp.McpAdminTools>();
         services.AddSingleton<Mcp.McpTools>();
+        // The runner is a sibling container whose address can change when it is recreated: connections are renewed every two minutes.
+        services.AddHttpClient<Chat.AgentRunnerClient>().ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(2) });
+        services.AddSingleton<Chat.ChatService>();
+        services.AddSingleton<Consolidation.ConsolidationJob>();
+        services.AddSingleton<Consolidation.Consolidator>();
+        services.AddHostedService<Consolidation.ConsolidationService>();
         services.AddMnemarrRateLimits();
         services.AddControllers(options => options.Filters.Add<RejectedFilter>()).AddApplicationPart(typeof(SystemController).Assembly);
         return services;

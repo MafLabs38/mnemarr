@@ -23,11 +23,13 @@ public sealed class EnrolmentService
     private readonly IEnrolmentStore _enrolments;
     private readonly MachineAccounts _accounts;
     private readonly EnrolmentThrottle _throttle;
+    private readonly MachineJoining _joining;
     private readonly IAuditLog _audit;
     private readonly TimeProvider _clock;
 
-    public EnrolmentService(IMachineStore machines, IEnrolmentStore enrolments, MachineAccounts accounts, EnrolmentThrottle throttle, IAuditLog audit, TimeProvider clock)
+    public EnrolmentService(IMachineStore machines, IEnrolmentStore enrolments, MachineAccounts accounts, MachineJoining joining, EnrolmentThrottle throttle, IAuditLog audit, TimeProvider clock)
     {
+        _joining = joining;
         _machines = machines;
         _enrolments = enrolments;
         _accounts = accounts;
@@ -139,7 +141,15 @@ public sealed class EnrolmentService
     /// Exchanges a code for the key of a machine. Anonymous: the code is all that is needed, so a wrong one is counted and the count is
     /// limited for the whole server, and every failure gets the same words.
     /// </summary>
-    public EnrolledMachine Exchange(string? code, string? machine)
+    public async Task<EnrolledMachine> ExchangeAsync(string? code, string? machine, string? computerId, CancellationToken cancellationToken)
+    {
+        var joined = Exchange(code, machine, computerId);
+        // A computer that was known under another name: what it sent is filed under the name it has now (best effort, after the key was given).
+        await _joining.FileConversationsAsync(joined, cancellationToken);
+        return joined;
+    }
+
+    private EnrolledMachine Exchange(string? code, string? machine, string? computerId)
     {
         lock (_accounts.Gate)
         {
@@ -147,19 +157,17 @@ public sealed class EnrolmentService
             _throttle.Check(now);
             var normalised = EnrolmentCodes.Normalise(code);
             var enrolment = normalised is null ? null : _enrolments.FindByCodeHash(EnrolmentCodes.Hash(normalised));
-            if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal) || !_enrolments.Use(enrolment.Id))
+            if (enrolment is not { State: EnrolmentState.Approved } || enrolment.IsExpired(now) || !string.Equals(enrolment.Machine, machine, StringComparison.Ordinal))
             {
                 _throttle.Failed(now);
                 _audit.Append(AuditActors.Unknown, "collector.enrol-refused", MachineNames.IsValid(machine) ? machine! : "(not a valid name)");
                 throw new RejectedException(Problem.Invalid, NotValid);
             }
 
-            // The machine joins again: a person approved it, so the key it had is replaced, and a machine that was revoked is back.
-            var account = _accounts.ForJoining(_machines.Get(enrolment.Machine), enrolment.Machine, enrolment.RequestedBy);
-            var key = _accounts.NewKey(account, now, enrolment.RequestedBy);
-            _machines.Enrol(new Machine(enrolment.Machine, enrolment.Kind, account.Id, now, null, null, 0, null, null));
-            _audit.Append(AuditActors.Unknown, "collector.enrolled", enrolment.Machine, MachineKinds.Name(enrolment.Kind));
-            return new EnrolledMachine(key, enrolment.Machine, enrolment.Kind);
+            // The join comes first and the code is used up after it: a join that cannot be done leaves the code as it was, so that the key is not lost.
+            var joined = _joining.Join(enrolment.Machine, enrolment.Kind, enrolment.RequestedBy, now, computerId);
+            _enrolments.Use(enrolment.Id);
+            return joined;
         }
     }
 

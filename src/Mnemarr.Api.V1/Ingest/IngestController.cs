@@ -41,13 +41,22 @@ public sealed class IngestController : ControllerBase
         _collectors = collectors;
     }
 
+    /// <summary>The position the server holds for each conversation of the machine, so that a collector whose memory of what it sent is wrong sends again what the server lacks.</summary>
+    [HttpGet("positions")]
+    [Authorize(Policy = Permissions.IngestWrite)]
+    public IReadOnlyList<IngestPosition> Positions([FromQuery] string machine)
+    {
+        var sender = _collectors.Authorize(User.AccountId(), machine);
+        return _ingestor.Positions(sender.Machine);
+    }
+
     [HttpPost("conversations")]
     [Authorize(Policy = Permissions.IngestWrite)]
     [RequestSizeLimit(MaxRequestBytes)]
     public async Task<IngestResultResource> Conversations(IngestConversationRequest request, CancellationToken cancellationToken)
     {
-        _collectors.Authorize(User.AccountId(), request.Machine);
-        var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, request.Machine, request.Application, request.Session, request.From, request.Lines, User.ActorName()), cancellationToken);
+        var sender = _collectors.Authorize(User.AccountId(), request.Machine);
+        var result = await _ingestor.IngestAsync(new IngestBatch(request.Format, sender.Machine, request.Application, request.Session, request.From, request.Lines, User.ActorName(), sender.ComputerId), cancellationToken);
         return new IngestResultResource(result.Next, result.Accepted);
     }
 }

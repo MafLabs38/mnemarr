@@ -391,3 +391,15 @@
   gap: 10px;
   max-width: 560px;
 }
+
+.hitMatch {
+  margin: 2px 0 0;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+  font-style: italic;
+}
+
+.meaningState {
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}

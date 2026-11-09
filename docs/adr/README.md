@@ -33,3 +33,11 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0027](0027-machines-join-with-a-code-hold-a-key-bound-to-their-name-and-say-they-are-alive.md) | Machines join with a code, hold a key bound to their name, and say they are alive | D-47 |
 | [0028](0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md) | The title of a conversation is its own: the first sentence, a model's, or a person's | D-48 |
 | [0029](0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md) | Mnemarr runs for real: programs in the image, snapshots of the database, brakes on the public endpoints | D-49 |
+| [0030](0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md) | A collector sends to several Mnemarr, and links to one by asking and being approved | D-50 |
+| [0031](0031-a-machine-is-a-computer-not-a-name-it-is-deleted-in-two-ways-and-installed-once-for-everyone.md) | A machine is a computer, not a name; it is deleted in two ways; the collector is installed once, for everyone | D-51 |
+| [0032](0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md) | The collector is installed by an installer and updates itself from the Mnemarr it sends to | D-52 |
+| [0033](0033-the-page-of-approval-fills-in-the-code-from-the-address-and-a-known-machine-is-taken-over-by-writing-its-name.md) | The page of approval fills in the code from the address, and a known machine is taken over by writing its name | D-53 |
+| [0034](0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md) | Search by meaning is computed on the host and merged with the words by rank | D-54 |
+| [0035](0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md) | The chat is a panel, a proxy and a runner, with an adapter for each kind of model | D-55 |
+| [0036](0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md) | The consolidation reads the new turns and writes notes of the memory vault as an account of its own, through the runner | D-56 |
+| [0037](0037-an-assistant-is-told-what-the-memory-knows-when-it-opens-a-session.md) | An assistant is told what the memory knows when it opens a session | D-57 |

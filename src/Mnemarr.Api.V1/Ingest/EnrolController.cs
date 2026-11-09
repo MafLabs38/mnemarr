@@ -5,7 +5,7 @@ using Mnemarr.Core.Collectors;
 namespace Mnemarr.Api.V1.Ingest;
 
 /// <summary>The code a person gave the machine, and the name it was made for.</summary>
-public sealed record EnrolRequest(string? Code, string? Machine);
+public sealed record EnrolRequest(string? Code, string? Machine, string? ComputerId = null);
 
 /// <summary>What a machine is given when it joins: its key (shown once), its name and its kind.</summary>
 public sealed record EnrolResult(string Key, string Machine, string Kind);
@@ -32,9 +32,10 @@ public sealed class EnrolController : ControllerBase
     [HttpPost]
     [AllowAnonymous]
     [RequestSizeLimit(MaxRequestBytes)]
-    public EnrolResult Enrol(EnrolRequest request)
+    public async Task<EnrolResult> Enrol(EnrolRequest request, CancellationToken cancellationToken)
     {
-        var enrolled = _enrolments.Exchange(request.Code, request.Machine);
+        var enrolled = await _enrolments.ExchangeAsync(request.Code, request.Machine, request.ComputerId, cancellationToken);
+
         return new EnrolResult(enrolled.Key, enrolled.Machine, MachineKinds.Name(enrolled.Kind));
     }
 }

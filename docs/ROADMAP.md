@@ -47,9 +47,22 @@
 - **The person stays in control of a background process** (asked by the maintainer on 2026-11-05): on Windows and macOS an icon in the notification area says that it runs, shows its state, and offers *Pause* (for an hour, or until resumed), *Resume*, *Open Mnemarr* and *Quit*; on a server without a screen the same through `pause`, `resume` and `status`. A paused collector keeps sending its heartbeat, marked paused, so that Mnemarr shows **paused** and not "silent". The pause survives a restart. New dependencies for the icon are a decision of the pull request.
 - The collector never prevents sleep and costs the machine nothing it would notice.
 
+#### Linking: several Mnemarr and linking by asking ([ADR 0030](adr/0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md), built)
+
+*Demo: a computer that already has the collector is linked to a second Mnemarr from its icon, in a few clicks, without reinstalling: both receive its conversations.*
+
+- The collector sends every conversation to every destination (each with its own key, name and positions); `link` (by asking, or with a code), `unlink`, `destinations`; the icon's **Link to a Mnemarr…** and its menu of Mnemarr; the page that answers a computer that asks, and the list of those that wait. Not now: finding computers by mDNS, per-destination reader settings (2c), macOS and Linux icons.
+
 #### Follow-ups of running it for real
 
 - A **static Linux program** (musl), so that any distribution runs it, and **aarch64** programs for Linux and macOS (the image carries x86_64 only); the **release version** passed into the collector build and shown per machine (a collector older than its server is visible); a **`resend`** command for a collector after a restore of the server.
+
+#### The installer and the updates of the collector ([ADR 0032](adr/0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md), built for Windows)
+
+- **Built:** a Velopack installer for Windows (per user, no administrator rights, in the list of installed applications with an uninstaller, the program on the PATH and started with the session), one file for every machine with no secret in it, which opens the page that links the computer; each Mnemarr serves the installer and the feed of updates it was built with; the collector asks all the Mnemarr it sends to, takes the newest version over HTTPS (or from this computer), downloads it in the background and applies it between two passes; `update`, the icon, `status`; the page says *Update available: X*; the CI packages it and **installs, updates and uninstalls it on a real Windows runner**.
+- **The reinstall of a machine that exists** (built, ADR 0031 §8: *Manage → Reinstall*), for what has no installer.
+- **Next, for the installer:** who may update a collector (Q-41: marked destinations or signed packages); the **Linux** self-updating AppImage and **macOS** (the Rust SDK and `vpk` support both: what is left is a systemd user unit and the first run on a system with no icon); **delta packages** (the CI keeps the previous packages of a release so that an update is a few hundred kilobytes); the **icon** of the installer and of the entry in the list of applications; **code signing** (the installer shows Windows' warning at the first run).
+- **Smaller follow-ups of the review of the machines vertical.** The heartbeat answers with the machine's current name so that a renamed collector rewrites its own configuration (until then the old name is kept as an alias); the address of the approval page has a setting of its own for a Mnemarr whose collectors reach a host that publishes only the ingest prefix; the program hash is streamed and could use `ring::digest`, already in the build through the TLS library, instead of a hand-written SHA-256 (a direct dependency is the maintainer's decision); the "sending right now" window of ADR 0031 follows the collector's own pass interval.
 
 #### 2c. Configuration from the server
 
@@ -66,33 +79,35 @@
 - The runbook to add a machine, to back up and to restore ([runbook](runbook.md)); a consistent snapshot of the database and a brake on the public endpoints ([ADR 0029](adr/0029-mnemarr-runs-for-real-programs-in-the-image-snapshots-of-the-database-and-brakes-on-the-public-endpoints.md)).
 - **The MVP is vertical 1, vertical 2 (2a and 2b at least) and vertical 3.** The order is 2a, 2b, 3, then 2c: exposing the ingest to the Internet waits for keys that are bound to their machine.
 
-### 4. The other assistants
+### 4. The other assistants — **in the test phase**
+
+> Decided with the maintainer on 2026-11-08: not before the three products (Mnemarr, Portarr, Orchestrarr) each run as an MVP. Then comes a professional installation test on two VMs with fake histories, and the interoperability (GitHub Copilot instead of Claude Code, Codex, Gemini) is done in that phase, with the readers tried against real files and the start-of-session hook of each.
 
 *Demo: a conversation held in GitHub Copilot (VS Code and CLI) is found over MCP like one held in Claude Code; the same for Codex CLI and Gemini CLI.*
 
 - One reader and one parser per assistant, behind the contract of [the formats](conversation-formats.md), each tried against real files; a reader that could not be tried is marked untested.
 - **First, the interface of the parsers** (decided with the maintainer on 2026-11-05, raised by the architecture review four times): `IConversationParser { Format; Turns(lines) }` registered in DI, the ingestor choosing by format and refusing a format no parser handles, roles normalised in `Turn`, the Claude Code particulars (sub-agents, noise tags) moved into its parser. It waits for the second reader so that it is shaped by two cases, not one.
 
-### 5. Memory without being asked
+### 5. Memory without being asked — **built** ([ADR 0037](adr/0037-an-assistant-is-told-what-the-memory-knows-when-it-opens-a-session.md))
 
 *Demo: open a new session in a project and the assistant already knows what happened there.*
 
 - Start-of-session context (D-12) from the recent conversations and notes of the application, within a budget, wired by the install with the operator's consent.
 - A read key per machine, separate from the ingest key (Q-26).
 
-### 6. Consolidation: conversations become durable notes
+### 6. Consolidation: conversations become durable notes — **built** ([ADR 0036](adr/0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md))
 
 *Demo: after a day of work, the memory vault holds notes of what was decided and learned, linked to the conversations.*
 
 - A background job (through the assistant runner, ADR 0007) reads new conversations and writes or updates notes per application, supersedes the contradicted ones, keeps provenance (D-17). The **summary title** of each conversation is built already ([ADR 0028](adr/0028-the-title-of-a-conversation-is-its-own-written-by-a-model-or-typed-by-a-person.md)).
-- Needs a decision on what pays for it (a subscription through the CLI, or an API key); it costs per conversation.
+- Paid by the subscription through the runner, a light model, bounded per pass and per day. Follow-ups: a pause when the subscription's limit is near, a second pass that merges and prunes the vault, tuning on real conversations.
 
 ### 7. Search by meaning
 
 *Demo: ask with other words than the note's and still find it.*
 
-- Embeddings computed locally, vectors in `sqlite-vec`, hybrid with the keyword search (ADR 0012).
+- Embeddings computed locally, vectors in `sqlite-vec`, hybrid with the keyword search (ADR 0012). **Built** ([ADR 0034](adr/0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md)): the model and the library are in the image, the passages are computed in the background, search merges words and meaning, and the notes page says where it is. Follow-ups: another model (`multilingual-e5-small`), vectors for titles alone, a bigger evaluation on conversations, the health page of F-HLT-01 (it will reuse the report of the indexer, not a third view), a version of the text that is embedded.
 
 ## Not now
 
-The reader and editor of notes beyond what exists, more kinds of sources, retention policies, the chat panel, the assistant runner for chat. They come after the MVP, in the order the use shows.
+The reader and editor of notes beyond what exists, more kinds of sources, retention policies. The chat panel and the assistant runner are built ([ADR 0035](adr/0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md), [the chat](chat.md)); next for them: a second MCP server for the agent (Portarr, for what the infrastructure is today), Codex and Copilot adapters, a real provider for the OpenAI-compatible one. They come after the MVP, in the order the use shows.

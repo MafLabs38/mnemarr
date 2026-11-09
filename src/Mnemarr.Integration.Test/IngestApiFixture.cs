@@ -40,7 +40,9 @@ public sealed class IngestApiFixture : IClassFixture<MnemarrFactory>
         var found = await callers["Assistant"].GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}", Token);
         found.EnumerateArray().Select(hit => hit.GetProperty("path").GetString()).Distinct().Should().ContainSingle().Which.Should().StartWith($"{machine}/mnemarr/2026-11-04-");
         var mcp = await callers["Assistant"].PostAsJsonAsync("/mcp", new { jsonrpc = "2.0", id = 1, method = "tools/call", @params = new { name = "search", arguments = new { query = word } } }, Token);
-        (await mcp.Content.ReadAsStringAsync(Token)).Should().Contain($"{machine}/mnemarr/2026-11-04-");
+        var mcpText = await mcp.Content.ReadAsStringAsync(Token);
+        mcpText.Should().Contain($"{machine}/mnemarr/2026-11-04-");
+        mcpText.Should().Contain("match", "the tool says how each hit matched");
     }
 
     [Fact]

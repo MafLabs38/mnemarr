@@ -30,6 +30,8 @@ pub struct State {
     /// Which server and machine these positions are for. Positions are what a server holds, so they are only good for the one that was sent to:
     /// a machine that joins again under another name, or a server that was emptied, is a new beginning.
     pub identity: Option<String>,
+    /// Passes left before the positions are compared with what the server holds (0: at the next pass). Not kept: a collector that starts compares at once.
+    pub check_in: u32,
 }
 
 impl State {
@@ -62,7 +64,11 @@ impl State {
             .get("identity")
             .and_then(Value::as_str)
             .map(str::to_string);
-        Self { files, identity }
+        Self {
+            files,
+            identity,
+            check_in: 0,
+        }
     }
 
     /// Says which server and machine this state is for. When it was for another (or for none, as in a state kept by an older collector), it starts

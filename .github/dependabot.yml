@@ -74,6 +74,30 @@ updates:
       prefix: "chore"
       include: "scope"
 
+  # The assistant runner (ADR 0035) is its own image: its base image is pinned by digest, and the agent CLI it carries by a lockfile.
+  # It holds the credentials of the model, so a new version is not taken at once either.
+  - package-ecosystem: "docker"
+    directory: "/agent"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/agent/cli"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "develop"

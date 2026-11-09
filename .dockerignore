@@ -13,6 +13,7 @@ collector/target
 docs
 tests
 deploy
+agent
 *.md
 .data
 .sonarlint

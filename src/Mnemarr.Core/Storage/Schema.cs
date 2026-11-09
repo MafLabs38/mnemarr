@@ -177,6 +177,105 @@ public static class Schema
         ALTER TABLE conversations ADD COLUMN summary TEXT;
         ALTER TABLE conversations ADD COLUMN title_tries INTEGER NOT NULL DEFAULT 0;
         """,
+        // 9: the machines that ask to be linked (ADR 0030): a short code and a secret of their own, kept as hashes, and the name a person chose when they approved.
+        """
+        CREATE TABLE pairings (
+            id TEXT NOT NULL PRIMARY KEY,
+            hostname TEXT NOT NULL,
+            state TEXT NOT NULL,
+            machine TEXT,
+            kind TEXT,
+            user_code_hash TEXT NOT NULL UNIQUE,
+            device_hash TEXT NOT NULL UNIQUE,
+            requested_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            approved_by TEXT
+        );
+        """,
+        // 10: a machine is a computer (ADR 0031): the hash of the identifier the system made for itself, kept with the machine, and sent with a request to be linked.
+        """
+        ALTER TABLE machines ADD COLUMN computer_id TEXT;
+        CREATE UNIQUE INDEX machines_by_computer ON machines (computer_id) WHERE computer_id IS NOT NULL;
+        ALTER TABLE pairings ADD COLUMN computer_id TEXT;
+        """,
+        // 11: which program a machine runs (the system it is for, and the hash of the program), so that a person is told when this Mnemarr carries another (ADR 0031 §7).
+        """
+        ALTER TABLE machines ADD COLUMN platform TEXT;
+        ALTER TABLE machines ADD COLUMN program TEXT;
+        """,
+        // 12: the computer a conversation came from (the identifier of the machine that sent it, when it had one): a conversation is only taken over by the same computer (ADR 0031 §4).
+        """
+        ALTER TABLE conversations ADD COLUMN computer_id TEXT;
+        """,
+        // 13: the names a machine had before it was renamed (a collector goes on sending the name in its own configuration, and its key is what says who it is), and a lookup of a conversation by its session.
+        """
+        CREATE TABLE machine_aliases (
+            alias TEXT NOT NULL PRIMARY KEY,
+            machine TEXT NOT NULL
+        );
+        CREATE INDEX conversations_by_session ON conversations (session);
+        """,
+        // 14: how often a collector makes a pass, as it says it: a machine is taken to be sending while its last sign of life is younger than three passes (ADR 0031 §3).
+        """
+        ALTER TABLE machines ADD COLUMN interval_seconds INTEGER;
+        """,
+        // 15: whether a collector was installed with the installer and can replace itself: only those are told that an update is available (ADR 0032).
+        """
+        ALTER TABLE machines ADD COLUMN can_update INTEGER NOT NULL DEFAULT 0;
+        """,
+        // 16: why the last attempt of a collector to update failed, when it did: said on the machines page, so that nobody has to log in to the machine to know (ADR 0032).
+        """
+        ALTER TABLE machines ADD COLUMN update_note TEXT;
+        """,
+        // 17: which model computed the vector of a chunk (ADR 0034): a chunk that goes takes its row with it, and a chunk with no row, or a row of another model, is computed again.
+        """
+        CREATE TABLE chunk_embeddings (
+            chunk_id INTEGER NOT NULL PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
+            model TEXT NOT NULL
+        );
+        CREATE INDEX chunk_embeddings_by_model ON chunk_embeddings (model);
+        """,
+        // 18: the chat (ADR 0035): the conversations of the chat belong to a person (the runner keeps their content), and the runner reaches the MCP server with a token that belongs
+        // to a person and a conversation and expires: only its hash is kept.
+        """
+        CREATE TABLE chat_conversations (
+            id TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            owner_name TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX chat_conversations_by_account ON chat_conversations (account_id);
+        CREATE TABLE chat_tokens (
+            token_hash TEXT NOT NULL PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            absolute_expires_at TEXT NOT NULL
+        );
+        CREATE INDEX chat_tokens_by_conversation ON chat_tokens (conversation_id);
+        """,
+        // 19: what a collector found where it looks for conversations (a sentence with no path), so that a machine that sends nothing says why on the machines page.
+        """
+        ALTER TABLE machines ADD COLUMN watching TEXT;
+        """,
+        // 20: the consolidation (ADR 0036): how far each conversation was turned into notes of the memory vault (the lines held and the turns read), how many times it failed, and why.
+        """
+        CREATE TABLE consolidations (
+            machine TEXT NOT NULL,
+            session TEXT NOT NULL,
+            lines_done INTEGER NOT NULL DEFAULT 0,
+            turns_done INTEGER NOT NULL DEFAULT 0,
+            notes INTEGER NOT NULL DEFAULT 0,
+            tries INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            last_at TEXT NOT NULL,
+            PRIMARY KEY (machine, session)
+        );
+        CREATE TABLE consolidation_days (
+            day TEXT NOT NULL PRIMARY KEY,
+            runs INTEGER NOT NULL
+        );
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

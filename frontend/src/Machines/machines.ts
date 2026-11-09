@@ -20,6 +20,14 @@ export interface MachineItem {
   version: string | null;
   pendingLines: number;
   error: string | null;
+  /** This Mnemarr carries a program for the system of the machine, and it is not the one the machine runs (ADR 0031). */
+  programDiffers: boolean;
+  /** The version a machine that was installed with the installer can update to, when this Mnemarr carries a newer one (ADR 0032). */
+  updateTo: string | null;
+  /** Why the last attempt of the collector to update failed, when it did (ADR 0032). */
+  updateNote: string | null;
+  /** What the collector found where it looks for conversations: why a machine that is online sends nothing (a sentence with no path). */
+  watching: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */
@@ -41,6 +49,8 @@ export interface InstallLine {
   command: string;
   /** A program that already carries its setting, to open with a double click: where one is offered. */
   downloadUrl: string | null;
+  /** The installer, the same for every machine, with no code in it: it asks which Mnemarr to link to when it starts (ADR 0032). */
+  setupUrl: string | null;
 }
 
 /**
@@ -68,7 +78,7 @@ export const stateLook: Record<MachineState, { text: TranslationKey; kind: Kind 
 };
 
 /** The states change with the clock, not only with what a person does: the page asks again now and then. */
-const REFRESH_MS = 15_000;
+const REFRESH_MS = 5000;
 
 const isMachinesQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/collectors', '/enrolments');
 
@@ -145,6 +155,51 @@ export function useRevokeMachine() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (machine: string) => apiSend('DELETE', `/collectors/${encodeURIComponent(machine)}`),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+/** A machine is taken out of the list, revoked or not: what it sent stays, filed under its name (ADR 0031). */
+export function useRemoveMachine() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (machine: string) => apiSend('POST', `/collectors/${encodeURIComponent(machine)}/remove`),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+/** A machine, or a name that conversations came from, is given another name; what it sent is filed under it. */
+export function useRenameMachine() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (change: { machine: string; name: string }) =>
+      apiSend('POST', `/collectors/${encodeURIComponent(change.machine)}/rename`, { name: change.name }),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+/** What a merge did: how many conversations were filed under the other machine, and how many it held already. */
+export interface MergeResult {
+  moved: number;
+  alreadyThere: number;
+}
+
+/** What a machine sent is filed under another machine, and the first leaves the list, without any conversation made twice. */
+export function useMergeMachine() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (merge: { machine: string; into: string }) =>
+      apiSend<MergeResult>('POST', `/collectors/${encodeURIComponent(merge.machine)}/merge`, { into: merge.into }),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+/** A machine is deleted with every conversation it sent. It cannot be undone. */
+export function useEraseMachine() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (machine: string) =>
+      apiSend<{ conversations: number }>('POST', `/collectors/${encodeURIComponent(machine)}/erase`),
     onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
   });
 }

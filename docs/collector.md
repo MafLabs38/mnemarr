@@ -8,6 +8,7 @@ It is **not part of Mnemarr's container**: it is an external helper that talks t
 
 ## What it does and does not do
 
+- It **checks its memory against the server**: at start, and about every hour, it asks the server how many lines it holds of each conversation (`GET /api/v1/ingest/positions`). A server that was emptied, restored from an older backup, or from which the machine was deleted holds less than the collector believes it sent: the collector goes back to where the server is and sends again what is missing, with nothing to do by hand.
 - It sends **only new lines**, by position. Stop it, start it, lose the network: nothing is lost and nothing is sent twice (the conversation file is its queue; `state.json` says how far each file was sent).
 - It masks secrets **before** a line leaves the machine (private keys, tokens, `sk-` keys, credentials in addresses, `PASSWORD=…` assignments). The server masks again.
 - It has an **ingest-only key**: it can add conversations and cannot read any memory.
@@ -25,6 +26,33 @@ Each machine has a kind, declared in Mnemarr:
 | `always-on` | servers, virtual machines | after a threshold (30 minutes by default) Mnemarr says so: something is wrong |
 | `intermittent` | a workstation that sleeps or is switched off at night | never an alert: Mnemarr shows when it was last seen |
 
+## Send to several Mnemarr, and link another (built, ADR 0030)
+
+A collector is not tied to one Mnemarr: it keeps a list of **destinations** and sends every conversation to each of them, each with its own key, its own name
+for the machine and its own positions. A development instance and a production one both receive; one that is down does not hold the other back.
+
+| Command | What it does |
+|---|---|
+| `mnemarr-collector link [--server URL] [--name NAME]` | links this machine to a Mnemarr **by asking**: it shows an address to open (and opens it), a person approves there and names the machine, and the key comes to the collector by itself. `--no-browser` only prints the address |
+| `mnemarr-collector link --server URL --code CODE` | the same with a one-time code that a person made in Mnemarr (what the installers do) |
+| `mnemarr-collector destinations` | lists the Mnemarr this machine sends to |
+| `mnemarr-collector unlink NAME` | stops sending to that Mnemarr (what it received stays there; revoke the machine there to remove it for good) |
+
+On Windows, the icon has **Link to a Mnemarr…**: a page opens on this computer (it is served on the loopback address only, for a few minutes), you type the
+address of the Mnemarr, the page of that Mnemarr opens in the browser where you approve this computer and choose its name, and the local page tells you when
+it is done. **Linking a computer that already has a collector adds the Mnemarr; it does not replace the others**, whichever way you do it (the icon, `link`,
+the line of the page, or the downloaded program).
+
+A collector of an earlier version is read as a list of one destination, with the positions it had.
+
+## A machine is a computer, not a name (built, ADR 0031)
+
+The collector sends, when it joins a Mnemarr, an identifier of the computer: a SHA-256 hash of the identifier that the system made for itself at its own
+installation (`MachineGuid` on Windows, `/etc/machine-id` on Linux, the platform UUID on macOS), never the identifier itself. It survives removing the
+collector and installing it again. A Mnemarr that knows the computer keeps it as **the machine it already is**, whatever name you give: it takes the new
+name, what it sent is filed under it, and nothing is sent twice. The collector also sends it with each sign of life, so that a machine that joined before identifiers existed learns its own. A system that gives no identifier sends none, and the name is the identity, as before.
+Two computers cloned from one image share an identifier, so the second to join takes the first one's machine: remove the one that is not wanted, and name them apart.
+
 ## Join a machine (built, ADR 0027)
 
 1. In Mnemarr, open **Machines** and add the machine: its name (the one it will give itself) and its kind. Mnemarr shows, once, for the system you are on, a **Download** button (Windows) and **one line** to paste, each with a one-time code inside.
@@ -34,7 +62,7 @@ Each machine has a kind, declared in Mnemarr:
    irm 'https://mnemarr.homelab.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=my-laptop' | iex
    curl -fsSL 'https://mnemarr.homelab.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=my-laptop' | sh
    ```
-   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `~/.config/mnemarr-collector/key` (a file only your user can read; `%APPDATA%` on Windows) with the address and the name in `collector.json` beside it, and then `mnemarr-collector run`. Those two commands are also yours to run by hand when the program is already there.
+   It downloads the collector **from your Mnemarr**, verifies its checksum, joins the machine and starts collecting. Nothing has to be installed first. Under the hood it runs `mnemarr-collector enroll`, which exchanges the code for the key of this machine and keeps it in `key-<name>` in the folder of the collector (`~/.config/mnemarr-collector/`; `%APPDATA%` on Windows; a file only your user can read), with the Mnemarr it belongs to listed in `destinations.json` beside it (it is **added** to the Mnemarr the machine already sends to), and then `mnemarr-collector install`. Those two commands are also yours to run by hand when the program is already there.
 3. The line **installs and hands the window back**: the collector runs in the background, with no window, and starts with your session. The machine appears on the page as **waiting** until its first pass, then **online**.
 
 To see or control it afterwards (the same program, in the folder it was installed in):
@@ -56,9 +84,35 @@ On Windows it is in your own list of programs that start with your session (Task
 
 If the address of Mnemarr is plain `http://` (a sandbox), the page says that the key will travel without encryption, and the line makes the collector accept it (`--allow-insecure-http`). Over HTTPS there is nothing of the kind. A Mnemarr that carries no collector program (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`) shows only the command that joins a machine that has the program.
 
-The code works once, for 15 minutes, for that machine name. A machine that enrols again replaces its key (the old one stops working). To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
+A computer that already has the collector does not need this page: run `mnemarr-collector link --server https://mnemarr.homelab.example`, or use the icon (see above). It then appears in **Computers asking to be linked**, with a link to approve it.
+
+The code works once, for 15 minutes, for that machine name. A machine that enrols again in the same Mnemarr replaces its key there (the old one stops working); the other Mnemarr it sends to are not touched. To remove a machine, **revoke** it on the page: its key stops working at once, and it can join again with a new code.
 
 An assistant can ask for a machine over MCP (`request_collector_enrolment`): the request waits on the page until a person approves it.
+
+## Install it on Windows, and keep it up to date (built, ADR 0032)
+
+The usual way on a workstation is the **installer**. On the Machines page, *Add a machine* offers **Download the installer for Windows**; it is the same file for every machine and holds no code.
+
+1. Open it. Windows shows its warning once (the installer is not signed yet): *More info*, then *Run anyway*. It installs for you alone, without administrator rights, in `%LocalAppData%\MnemarrCollector`.
+2. The collector starts, with its icon near the clock, and **opens a page in your browser** where you give the address of your Mnemarr. The page shows a code and opens the page of Mnemarr, where you check that the code is the one on the computer, name the machine and approve it ([ADR 0030](adr/0030-a-collector-sends-to-several-mnemarr-and-links-to-one-by-asking-and-being-approved.md)). Nothing to copy by hand.
+3. It is now **in Windows' list of installed applications** (*Settings, Apps*), starts with your session, and `mnemarr-collector` is a command in a new terminal (a small `mnemarr-collector.cmd` at the root of its folder runs the program).
+4. **No console window ever opens**: the application the installer starts (`mnemarr-collector-app.exe`) is a program of windows, not of a console, so nothing is on the screen but the icon, and nothing can be closed by mistake. The commands typed in a terminal are the same program built for a console (`mnemarr-collector.exe`, next to it). What the collector says goes to its log, `collector.log` in its folder.
+5. If a Mnemarr **no longer accepts this computer** (the machine was removed there or its key was revoked), the icon turns red and the page to link again **opens by itself, once**, with that Mnemarr's address already in it, and the name this computer had there suggested again, so that it is the same machine and not a second one.
+
+**Updating.** The collector asks each Mnemarr it sends to, ninety seconds after it starts and then every four hours, for the newest version it carries, and takes **the newest of them** (a development and a production Mnemarr carry different builds; a build that is not a release is older than every release). It downloads it in the background and, by default, **applies it between two passes** and restarts: nothing is lost, its positions are kept after each pass. It takes an update only over HTTPS, or from this very computer, never over a plain `http://` address on a network.
+
+- *Check now, or apply a downloaded update*: the icon (**Check for updates**, then **Update to X: restart now**), or `mnemarr-collector update` (`--check` only looks).
+- *Apply by hand only*: `mnemarr-collector update --auto off` (and `--auto on` to go back). The update is then downloaded and waits.
+- When a collector cannot update (for example, every Mnemarr it sends to is reached over plain `http://`), the machines page says why under its version.
+- `mnemarr-collector status` says the version and where the update is at. The machines page says **Update available: X** for a collector installed this way that is older than the Mnemarr's.
+- A collector that was **not** installed with the installer (run by hand, from a build, from a downloaded program that carries a code) is not touched: `update` says so.
+
+**Removing it.** *Settings, Apps, Mnemarr collector, Uninstall*. It stops, no longer starts with your session and leaves the PATH. **The machine stays joined**: its keys and positions are in `%AppData%\mnemarr-collector`, which is not removed, so installing again finds them. To remove them as well, revoke the machine in Mnemarr and delete that folder.
+
+## Install it another way (ADR 0025, ADR 0027)
+
+The installer above is for Windows. **On Linux and macOS**, and on a machine with no screen, the line the page shows downloads the program and installs it as a user service; on a machine with no screen the download that carries a code joins it by itself. Linux and macOS installers that update themselves are in the [roadmap](ROADMAP.md).
 
 ## Install it (designed, ADR 0025)
 
@@ -92,6 +146,25 @@ mnemarr-collector run \
 `run` collects for ever (a pass every 30 seconds, `--interval` to change it); `once` makes one pass and stops. What is not given comes from the environment (`MNEMARR_SERVER`, `MNEMARR_COLLECTOR_KEY`, `MNEMARR_MACHINE`) or from the usual places (`~/.claude/projects` for the conversations, `~/.local/state/mnemarr-collector/state.json` for the position). A key made by hand for a `Collector` account belongs to no machine, and the server refuses it unless `MNEMARR__INGEST__REQUIREENROLMENT` is off (a sandbox).
 
 The first run sends the whole history of the machine: it can take a few minutes for a large one, and is safe to interrupt.
+
+## Where it looks, and which assistants it reads
+
+**Today only Claude Code is read** (`~/.claude/projects/<project>/<session>.jsonl`, `%USERPROFILE%\.claude\projects` on Windows): that folder is **where Claude Code itself keeps its conversations, whatever the folder of your project is** (`L:\Workspace\...` or any other), so there is nothing to set when the collector runs as the same user as Claude Code. Codex, Copilot and Gemini are designed ([formats](conversation-formats.md), roadmap vertical 4) and not built yet.
+
+It looks under the home of **the user it runs as**, found the way Claude Code finds it (`USERPROFILE` on Windows, `HOME` elsewhere; a `HOME` set by Git for Windows or another tool does not count there), or in `CLAUDE_CONFIG_DIR` when Claude Code was told another folder. Conversations held under another user, inside WSL (a Linux home of its own), in a dev container or on another machine are not seen: run a collector there too (a machine is a computer and an environment: one collector per place where Claude Code runs).
+
+A collector that sends nothing says why: on the Machines page, under the count of conversations, a machine with none shows **what its last pass found** ("the folder of its conversations is not there", "the folder is there but holds no conversation file", and whether conversations of Claude Code exist in the home of another user of the computer), without any path.
+
+## Memory without being asked (built, ADR 0037)
+
+At the start of a session, Claude Code can be told what the memory knows of the project, without anybody asking. It is on purpose and per machine:
+
+1. In Mnemarr, make a **service account** for it (Accounts): the role *Assistant* if it should be told of the latest conversations too, *Reader* if the consolidated notes are enough. Make a **key** for it (limit it to the memory vault if you want). This key reads; the ingest key of the collector reads nothing.
+2. Put the key, alone, in a file named `read-key` in the folder of the collector (`mnemarr-collector destinations` shows the Mnemarr; the folder is the one that holds `destinations.json`; or `read-key.<name of the Mnemarr>`).
+3. Run `mnemarr-collector context-hook`: it adds the hook to the settings of Claude Code (a copy of the file as it was is kept as `settings.json.mnemarr-backup`, the rest is untouched). `mnemarr-collector context-hook --remove` takes it away.
+4. Try it: `mnemarr-collector context --application NAME` prints what the memory knows of an application (the last folder of the working directory). With `MNEMARR_DEBUG=1` it says why it prints nothing.
+
+The hook never gets in your way: no key, no answer within 5 seconds, or nothing known of the project, and the session starts as it would have.
 
 ## See that it works
 

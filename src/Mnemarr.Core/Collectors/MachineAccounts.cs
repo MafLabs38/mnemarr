@@ -13,9 +13,11 @@ public sealed class MachineAccounts
     private readonly IAccountStore _accounts;
     private readonly AccountService _accountService;
     private readonly ApiKeyService _keys;
+    private readonly IMachineStore _machines;
 
-    public MachineAccounts(IAccountStore accounts, AccountService accountService, ApiKeyService keys)
+    public MachineAccounts(IAccountStore accounts, AccountService accountService, ApiKeyService keys, IMachineStore machines)
     {
+        _machines = machines;
         _accounts = accounts;
         _accountService = accountService;
         _keys = keys;
@@ -61,11 +63,20 @@ public sealed class MachineAccounts
 
     private Account New(string machine)
     {
+        // The account of a machine keeps the name it had when it was made, so a name that a machine had before it was renamed may be the name of its account:
+        // that name is free for a new machine, whose account then gets a number. An account of that name that belongs to no machine is somebody else's.
+        var all = _accounts.List();
         var name = AccountPrefix + machine;
-        if (_accounts.List().Any(account => string.Equals(account.Name, name, StringComparison.OrdinalIgnoreCase)))
+        var number = 2;
+        while (all.FirstOrDefault(account => string.Equals(account.Name, name, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {
-            // An account of that name that belongs to no machine is somebody else's: a person decides what to do with it.
-            throw new RejectedException(Problem.Conflict, $"An account named '{name}' exists already and belongs to no machine.");
+            if (_machines.GetByAccount(taken.Id) is null)
+            {
+                throw new RejectedException(Problem.Conflict, $"An account named '{name}' exists already and belongs to no machine.");
+            }
+
+            name = $"{AccountPrefix}{machine}-{number}";
+            number++;
         }
 
         return _accountService.Create(name, AccountKind.Service, Roles.Collector, password: null, actor: AuditActors.System);

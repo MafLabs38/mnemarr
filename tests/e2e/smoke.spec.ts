@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, type PlaywrightWorkerArgs, test } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 /** The administrator of the e2e stack (tests/e2e/stack/docker-compose.yml): a test-only value. */
 const ADMIN = { name: 'admin', password: 'e2e-admin-password' };
@@ -278,6 +278,18 @@ test.describe('smoke @smoke', () => {
     await agent.dispose();
   });
 
+  test('an operator sees where the consolidation stands, and why it cannot write while the memory vault is read-only', async ({
+    page,
+  }) => {
+    await signIn(page, '/sources');
+
+    const card = page.getByRole('region', { name: 'Consolidation' });
+    await expect(card.getByText(/The memory vault is read-only/)).toBeVisible();
+    await expect(card.getByText(/conversation\(s\) wait/)).toBeVisible();
+    await expect(card.getByRole('button', { name: 'Consolidate what waits now' })).toHaveCount(0);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+
   test('an operator declares a folder of notes, indexes it and finds a note by its words', async ({ page }) => {
     const name = unique('demo');
     await signIn(page, '/sources');
@@ -310,6 +322,76 @@ test.describe('smoke @smoke', () => {
     await declared.getByRole('button', { name: 'Delete' }).click();
     await declared.getByRole('button', { name: `Confirm: delete ${name}` }).click();
     await expect(page.getByRole('row', { name: new RegExp(name) })).toHaveCount(0);
+  });
+
+  test('a question asked in other words finds a note by its meaning, once the model has read it', async ({ page }) => {
+    test.setTimeout(150_000);
+    await signIn(page, '/notes');
+    const question = 'how is a container template assembled from stacked parts';
+    const search = page.getByRole('region', { name: 'Search' });
+    await search.getByLabel('Search the notes').fill(question);
+    // The notes of the stack are indexed and read by the model in the background, a few seconds after the start, and other journeys add their own meanwhile: the question
+    // is asked of the API until the note comes back by its meaning, and a model that never reads it says where it is.
+    await expect(async () => {
+      const hits = await (await page.request.get(`/api/v1/search?q=${encodeURIComponent(question)}`)).json();
+      const status = await (await page.request.get('/api/v1/search/status')).json();
+      expect(
+        hits.some((hit: { path: string; match: string }) => hit.path === 'docker.md' && hit.match !== 'keywords'),
+        JSON.stringify(status),
+      ).toBe(true);
+    }).toPass({ timeout: 120_000 });
+    await search.getByRole('button', { name: 'Search' }).click();
+    // Other journeys of the stack declare the same note under their own names: the note is found in whichever source, not in the first ten by luck.
+    await expect(search.getByText(/· docker\.md · Docker > Images/).first()).toBeVisible();
+    await expect(search.getByText(/matched by its (words and its )?meaning/).first()).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+
+  test('a person asks the chat to add a note, sees the change wait for them, approves it, and it is written as them, through the chat', async ({
+    page,
+    playwright,
+    baseURL,
+  }, testInfo) => {
+    test.setTimeout(90_000);
+    const source = unique('chat');
+    // One word that no other note has.
+    const words = unique('chat').replaceAll('-', '');
+    const api = await signedInRequest(playwright, baseURL ?? '');
+    const created = await api.post('/api/v1/sources', {
+      data: { name: source, kind: 'Knowledge', mode: 'ReadWrite', path: `/work/${testInfo.project.name}-chat` },
+    });
+    expect(created.status()).toBe(201);
+    const id = ((await created.json()) as { id: string }).id;
+    await signIn(page, '/notes');
+
+    await page.getByRole('button', { name: 'Chat' }).click();
+    const panel = page.getByRole('complementary', { name: 'Chat' });
+    await expect(panel.getByText(/Every change waits for your approval/)).toBeVisible();
+    await panel.getByLabel('Your message').fill(`add ${words} to ${source}`);
+    await panel.getByRole('button', { name: 'Send' }).click();
+
+    // The model reads, then proposes: nothing is written until the person says so.
+    const card = panel.getByRole('region', { name: 'Apply this change?' });
+    await expect(card).toBeVisible();
+    await expect(card.getByText('create_note')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    const note = `/api/v1/notes/${id}/${words}.md`;
+    expect((await api.get(note)).status()).toBe(404);
+
+    await card.getByRole('button', { name: 'Approve' }).click();
+    await expect(panel.getByText(`Done: I added it to ${source}.`)).toBeVisible();
+    expect((await api.get(note)).status()).toBe(200);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+    // Written as the person, and the log says it was the chat.
+    await expect(async () => {
+      const found = (await (await api.get('/api/v1/search?q=' + encodeURIComponent(words))).json()) as {
+        path: string;
+      }[];
+      expect(found.length).toBeGreaterThan(0);
+    }).toPass({ timeout: 30_000 });
+    const audit = (await (await api.get('/api/v1/audit?limit=100')).json()) as { actor: string }[];
+    expect(audit.some((entry) => /^admin \(via chat:[0-9a-f-]{36}\)$/.test(entry.actor))).toBe(true);
   });
 
   test('an operator declares a Git source, is told when the host is not allowed, and sees why a sync failed', async ({
@@ -482,6 +564,179 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Waiting for its first contact');
   });
 
+  test('a computer that asks to be linked is approved by a person who names it, and then gets its key once and shows in the machines', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const machine = unique('linked');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const started = await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC' } });
+    expect(started.status()).toBe(201);
+    const { userCode, deviceCode, verificationUrl } = (await started.json()) as {
+      userCode: string;
+      deviceCode: string;
+      verificationUrl: string;
+    };
+    expect(new URL(verificationUrl).pathname).toBe('/link');
+    const poll = async () => (await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).json();
+    expect((await poll()).state).toBe('pending');
+
+    // The person follows the address the computer shows, signs in, checks the name it gives itself, and names it.
+    await signIn(page, `/link?code=${encodeURIComponent(userCode)}`);
+    await expect(page.getByText('Gaming PC')).toBeVisible();
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.getByLabel(/Code of this request/).fill(userCode);
+    await page.getByLabel('Name in this Mnemarr').fill(machine);
+    await page.getByLabel('Kind').selectOption('always-on');
+    await page.getByRole('button', { name: 'Link this computer' }).click();
+    await expect(page.getByText(`Linked as ${machine}`)).toBeVisible();
+
+    const answer = await poll();
+    expect(answer).toMatchObject({ state: 'approved', machine, kind: 'always-on' });
+    expect(answer.key).toBeTruthy();
+    expect((await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).status()).toBe(400);
+    const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
+    expect((await key.post('/api/v1/ingest/heartbeat', { data: { version: '0.0.0', pendingLines: 0 } })).ok()).toBe(
+      true,
+    );
+
+    await page.getByRole('link', { name: 'See the machines' }).click();
+    await expect(page.getByRole('row', { name: new RegExp(machine) })).toContainText('Always on');
+  });
+
+  test('a computer that is waiting to be linked shows in the machines, and a person can refuse it', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const host = unique('refused-pc');
+    const { deviceCode } = (await (
+      await anonymous.post('/api/v1/ingest/pair', { data: { hostname: host } })
+    ).json()) as {
+      deviceCode: string;
+    };
+
+    await signIn(page, '/machines');
+    await page.getByRole('link', { name: `Review the request of ${host}` }).click();
+    await page.getByRole('button', { name: 'This is not my computer' }).click();
+    await expect(page.getByText('Refused.')).toBeVisible();
+
+    const answer = await (await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode } })).json();
+    expect(answer.state).toBe('rejected');
+    expect(answer.key).toBeNull();
+  });
+
+  test('the same computer that is linked again under another name is the machine it was: renamed, with what it sent, and nothing twice', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const first = unique('typo');
+    const second = unique('right');
+    const computerId = createHash('sha256').update(randomUUID()).digest('hex');
+    const admin = await signedInRequest(playwright, baseURL ?? '');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const code = (
+      (await (await admin.post('/api/v1/enrolments', { data: { machine: first, kind: 'intermittent' } })).json()) as {
+        code: string;
+      }
+    ).code;
+    const joined = (await (
+      await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine: first, computerId } })
+    ).json()) as { key: string };
+    expect(joined.key).toBeTruthy();
+    const line = JSON.stringify({
+      type: 'user',
+      timestamp: '2026-11-04T14:03:00Z',
+      message: { role: 'user', content: 'How do I rotate the tokens?' },
+    });
+    const batch = (machine: string) => ({
+      format: 'claude-code',
+      machine,
+      application: 'Mnemarr',
+      session: `s-${first}`,
+      from: 0,
+      lines: [line],
+    });
+    // The same computer asks to be linked again, and a person names it differently.
+    const started = (await (
+      await anonymous.post('/api/v1/ingest/pair', { data: { hostname: 'Gaming PC', computerId } })
+    ).json()) as { userCode: string; deviceCode: string };
+    await signIn(page, `/link?code=${encodeURIComponent(started.userCode)}`);
+    await expect(page.getByText(new RegExp(`says it is the machine ${first}`))).toBeVisible();
+    await page.getByLabel(/Code of this request/).fill(started.userCode);
+    await page.getByLabel(/To take over the machine/).fill(first);
+    await page.getByLabel('Name in this Mnemarr').fill(second);
+    await page.getByRole('button', { name: 'Link this computer' }).click();
+    await expect(page.getByText(`Linked as ${second}`)).toBeVisible();
+    const answer = await (
+      await anonymous.post('/api/v1/ingest/pair/poll', { data: { deviceCode: started.deviceCode } })
+    ).json();
+    expect(answer).toMatchObject({ state: 'approved', machine: second });
+
+    await page.getByRole('link', { name: 'See the machines' }).click();
+    await expect(page.getByRole('rowheader', { name: second, exact: true })).toBeVisible();
+    await expect(page.getByRole('rowheader', { name: first, exact: true })).toHaveCount(0);
+    const renewed = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': answer.key } });
+    expect((await renewed.post('/api/v1/ingest/conversations', { data: batch(second) })).ok()).toBe(true);
+    await page.reload();
+    await expect(page.getByRole('row', { name: new RegExp(second) })).toContainText('1');
+  });
+
+  test('a person merges a name into a machine without doubling a conversation, then deletes a machine with what it sent, after being asked', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const ghost = unique('ghost');
+    const machine = unique('pc');
+    const admin = await signedInRequest(playwright, baseURL ?? '');
+    const anonymous = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Mnemarr-Request': '1' } });
+    const line = JSON.stringify({
+      type: 'user',
+      timestamp: '2026-11-04T14:03:00Z',
+      message: { role: 'user', content: 'How do I rotate the tokens?' },
+    });
+    async function join(name: string, session: string) {
+      const code = (
+        (await (await admin.post('/api/v1/enrolments', { data: { machine: name, kind: 'intermittent' } })).json()) as {
+          code: string;
+        }
+      ).code;
+      const joined = (await (
+        await anonymous.post('/api/v1/ingest/enrol', { data: { code, machine: name } })
+      ).json()) as { key: string };
+      const key = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { 'X-Api-Key': joined.key } });
+      expect(
+        (
+          await key.post('/api/v1/ingest/conversations', {
+            data: { format: 'claude-code', machine: name, application: 'Mnemarr', session, from: 0, lines: [line] },
+          })
+        ).ok(),
+      ).toBe(true);
+    }
+    await join(ghost, `shared-${ghost}`);
+    await join(machine, `shared-${ghost}`);
+    expect((await admin.post(`/api/v1/collectors/${ghost}/remove`)).status()).toBe(204);
+
+    await signIn(page, '/machines');
+    const row = (name: string) => page.getByRole('row', { name: new RegExp(`^${name}`) });
+    await expect(row(ghost)).toContainText('No longer enrolled');
+    await page.getByRole('button', { name: `Manage ${ghost}` }).click();
+    await page.getByLabel('Merge into').selectOption(machine);
+    await page.getByRole('button', { name: 'Merge', exact: true }).click();
+    await expect(page.getByRole('rowheader', { name: ghost, exact: true })).toHaveCount(0);
+    await expect(row(machine)).toContainText('1');
+
+    await page.getByRole('button', { name: `Manage ${machine}` }).click();
+    await page.getByRole('button', { name: `Delete the machine ${machine} with its conversations` }).click();
+    await expect(page.getByText(/This cannot be undone/)).toBeVisible();
+    await page.getByRole('button', { name: `Delete ${machine} and its conversations now` }).click();
+    await expect(page.getByRole('rowheader', { name: machine, exact: true })).toHaveCount(0);
+  });
+
   test('an operator writes notes: creates one, edits it, links to it, renames it and the link follows, removes it', async ({
     page,
     playwright,
@@ -533,7 +788,8 @@ test.describe('smoke @smoke', () => {
     await page.getByLabel('New path').fill(`${name}/Renamed.md`);
     await page.getByRole('form', { name: 'Rename' }).getByRole('button', { name: 'Rename' }).click();
     await expect(page.getByText(`${name} · ${name}/Renamed.md`)).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Second' })).toBeVisible();
+    // The folder is shared by the sources of the earlier attempts of this test: only the backlink of this attempt's source counts.
+    await expect(page.getByRole('region', { name: 'Backlinks' }).locator(`a[href*="${name}"]`)).toHaveText('Second');
     const id = (await created.json()).id as string;
     const link = await api.get(`/api/v1/notes/${id}/${name}/Second.md`);
     expect((await link.json()).raw).toContain('[[Renamed#Part One]]');

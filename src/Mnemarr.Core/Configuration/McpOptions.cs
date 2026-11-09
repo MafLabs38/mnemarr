@@ -8,4 +8,10 @@ public sealed class McpOptions
     /// environment, not of the database or of the API: the door that decides whether an assistant may write must not be one the assistant can open.
     /// </summary>
     public bool WriteTools { get; set; }
+
+    /// <summary>
+    /// Whether the tools that look after sources (declare, change, forget, read again, pull) are offered as well, when <see cref="WriteTools"/> is on (ADR 0035, D-20). Off by default and
+    /// apart from the notes' switch: an operator who let assistants write notes has not thereby let them declare or forget sources.
+    /// </summary>
+    public bool SourceTools { get; set; }
 }

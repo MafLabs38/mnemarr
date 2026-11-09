@@ -17,6 +17,10 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   version: '0.1.0',
   pendingLines: 0,
   error: null,
+  programDiffers: false,
+  updateTo: null,
+  updateNote: null,
+  watching: null,
   ...over,
 });
 
@@ -56,6 +60,7 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
                 "irm 'http://mnemarr.example/api/v1/ingest/install.ps1?code=ABCD-EFGH-JKLM&machine=server-1' | iex",
               downloadUrl:
                 'http://mnemarr.example/api/v1/ingest/download/windows-x86_64?code=ABCD-EFGH-JKLM&machine=server-1',
+              setupUrl: 'http://mnemarr.example/api/v1/ingest/installer/windows-x86_64',
             },
             {
               system: 'unix',
@@ -63,6 +68,7 @@ function server(machines: MachineItem[], requests: EnrolmentItem[] = []) {
               command:
                 "curl -fsSL 'http://mnemarr.example/api/v1/ingest/install.sh?code=ABCD-EFGH-JKLM&machine=server-1' | sh",
               downloadUrl: null,
+              setupUrl: null,
             },
           ],
           insecure: true,
@@ -122,6 +128,24 @@ describe('Machines', () => {
     ).toBeInTheDocument();
   });
 
+  it('says why a machine that is online sends nothing: what its collector found where it looks', async () => {
+    server([
+      machine({
+        machine: 'quiet-pc',
+        conversations: 0,
+        watching: 'Claude Code: the folder of its conversations is not there',
+      }),
+      machine({ machine: 'busy-pc', conversations: 4, watching: 'Claude Code: 4 conversations found' }),
+    ]);
+
+    renderWithProviders(<Machines />);
+
+    const quiet = rowOf(await screen.findByRole('rowheader', { name: 'quiet-pc' }));
+    expect(within(quiet).getByText(/folder of its conversations is not there/)).toBeInTheDocument();
+    const busy = rowOf(screen.getByRole('rowheader', { name: 'busy-pc' }));
+    expect(within(busy).queryByText(/conversations found/)).not.toBeInTheDocument();
+  });
+
   it('says there is no machine yet, and how to add one', async () => {
     server([]);
 
@@ -152,6 +176,10 @@ describe('Machines', () => {
     );
     expect(sentBody(call)).toEqual({ machine: 'server-1', kind: 'always-on' });
     await userEvent.selectOptions(within(notice).getByLabelText('System'), 'windows');
+    expect(within(notice).getByRole('link', { name: 'Download the installer for Windows' })).toHaveAttribute(
+      'href',
+      'http://mnemarr.example/api/v1/ingest/installer/windows-x86_64',
+    );
     const download = within(notice).getByRole('link', { name: 'Download for Windows' });
     expect(download).toHaveAttribute(
       'href',

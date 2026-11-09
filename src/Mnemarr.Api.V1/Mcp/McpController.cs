@@ -32,7 +32,7 @@ public sealed class McpController : ControllerBase
         _installs = installs;
     }
 
-    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission), _installs.Server(Request));
+    private McpCaller Caller => new(User.Scope(), User.ActorName(), permission => User.HasClaim(MnemarrClaims.Permission, permission), _installs.Server(Request), User.IsJob());
 
     [HttpPost]
     [Consumes("application/json")]
@@ -101,7 +101,7 @@ public sealed class McpController : ControllerBase
             ["protocolVersion"] = asked is not null && Protocols.Contains(asked) ? asked : LatestProtocol,
             ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
             ["serverInfo"] = new JsonObject { ["name"] = "mnemarr", ["version"] = "1" },
-            ["instructions"] = "Mnemarr is long-term memory made of Markdown notes. Start with list_sources, then search or read; write only where a source says it is writable.",
+            ["instructions"] = "Mnemarr is long-term memory made of Markdown notes. Start with list_sources, then search or read; write only where a source says it is writable. The sources have a kind: Memory holds consolidated notes (what was decided and learned, per application, short, with the conversations they came from), Conversations holds what assistants said (the raw record, long; read it in windows with read_note offset, tail or around), Knowledge holds the operator's own notes. To learn what was decided or where a project stands, search the Memory source first (search with that source), then go down to the Conversations for a detail or to check a note. Mnemarr remembers the reasons and the history; it does not describe the infrastructure as it is today. For the current machines, addresses, versions and deployments, ask Portarr (its MCP server) when it is available, and treat any address or list of machines found in a note as possibly out of date.",
         };
     }
 

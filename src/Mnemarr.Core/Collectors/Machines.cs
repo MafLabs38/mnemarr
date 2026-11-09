@@ -83,10 +83,21 @@ public sealed record Machine(
     long PendingLines,
     string? Error,
     DateTimeOffset? RevokedAt,
-    bool Paused = false);
+    bool Paused = false,
+    string? ComputerId = null,
+    string? Platform = null,
+    string? Program = null,
+    int? IntervalSeconds = null,
+    bool CanUpdate = false,
+    string? UpdateNote = null,
+    string? Watching = null);
 
-/// <summary>What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet.</summary>
-public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false);
+/// <summary>
+/// What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet. <paramref name="Platform"/> and <paramref name="Program"/>:
+/// the system the collector is for and the hash of the program it runs. <paramref name="ComputerId"/>: the identifier of its computer.
+/// <paramref name="IntervalSeconds"/>: how often it makes a pass. <paramref name="CanUpdate"/>: it was installed with the installer and can replace itself. <paramref name="UpdateNote"/>: why its last attempt to update failed.
+/// </summary>
+public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null, bool CanUpdate = false, string? UpdateNote = null, string? Watching = null);
 
 public enum EnrolmentState
 {
@@ -121,8 +132,11 @@ public sealed record Enrolment(
 /// <summary>A new request and its code: the only time the code is available.</summary>
 public sealed record NewEnrolment(Enrolment Enrolment, string Code);
 
-/// <summary>What a machine is given when it joins: its key, shown once.</summary>
-public sealed record EnrolledMachine(string Key, string Machine, MachineKind Kind);
+/// <summary>The machine a key belongs to, under the name it has now, and the identifier of its computer when it has one (what an ingest is filed under).</summary>
+public sealed record Sender(string Machine, string? ComputerId);
+
+/// <summary>What a machine is given when it joins: its key (shown once), its name and its kind. <paramref name="RenamedFrom"/>: the computer was known under another name, which it now has: its conversations are to be filed under the new one.</summary>
+public sealed record EnrolledMachine(string Key, string Machine, MachineKind Kind, string? RenamedFrom = null);
 
 /// <summary>A machine as the page tells it: what it is, the state computed from the facts, and what it sent.</summary>
 public sealed record MachineStatus(
@@ -135,4 +149,9 @@ public sealed record MachineStatus(
     DateTimeOffset? EnrolledAt,
     string? Version,
     long PendingLines,
-    string? Error);
+    string? Error,
+    string? Platform = null,
+    string? Program = null,
+    bool CanUpdate = false,
+    string? UpdateNote = null,
+    string? Watching = null);

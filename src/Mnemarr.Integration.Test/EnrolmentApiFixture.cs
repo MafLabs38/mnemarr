@@ -39,6 +39,24 @@ public sealed class EnrolmentApiFixture : EnrolmentFixtureBase, IClassFixture<En
     }
 
     [Fact]
+    public async Task should_tell_a_machine_how_many_lines_it_holds_of_each_conversation_and_of_no_other_machine()
+    {
+        var callers = await Callers.ForAsync(_factory);
+        var machine = Callers.Unique("pc");
+        var code = (await AddAsync(callers.Admin, machine)).GetProperty("code").GetString();
+        var exchanged = await _factory.CreateBrowserClient().PostAsJsonAsync(Enrol, new { code, machine }, Token);
+        using var key = _factory.CreateKeyClient((await exchanged.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("key").GetString()!);
+        (await key.GetFromJsonAsync<JsonElement>($"/api/v1/ingest/positions?machine={machine}", Token)).GetArrayLength().Should().Be(0, "nothing was sent yet");
+        (await key.PostAsJsonAsync("/api/v1/ingest/conversations", Batch(machine, "s1", Line("hello there my friend"), Line("and a second line")), Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var held = await key.GetFromJsonAsync<JsonElement>($"/api/v1/ingest/positions?machine={machine}", Token);
+
+        held.EnumerateArray().Select(item => (item.GetProperty("session").GetString(), item.GetProperty("lines").GetInt64())).Should().Equal(("s1", 2L));
+        (await key.GetAsync("/api/v1/ingest/positions?machine=another-machine", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _factory.CreateBrowserClient().GetAsync($"/api/v1/ingest/positions?machine={machine}", Token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task should_give_the_same_answer_to_a_code_that_is_wrong_used_or_for_another_machine()
     {
         var callers = await Callers.ForAsync(_factory);

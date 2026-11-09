@@ -3,11 +3,14 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::destinations;
 use crate::{Options, UsageError};
 
-/// Everything a pass needs.
+/// Everything a pass needs, for one Mnemarr.
 #[derive(PartialEq, Eq)]
 pub struct Config {
+    /// What this destination is called here (the host of its address, unless a person named it).
+    pub name: String,
     pub server: String,
     pub key: String,
     pub machine: String,
@@ -20,6 +23,7 @@ pub struct Config {
 impl std::fmt::Debug for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Config")
+            .field("name", &self.name)
             .field("server", &self.server)
             .field("key", &"<hidden>")
             .field("machine", &self.machine)
@@ -135,6 +139,163 @@ fn bootstrap(
     (field("server"), field("machine"), insecure)
 }
 
+/// The home of the user, as Claude Code finds it: Claude Code is a Node program and asks the system, which on Windows is `USERPROFILE` (a `HOME` that Git for Windows
+/// or another tool sets can name any folder, and the conversations are not there) and elsewhere `HOME`.
+pub fn home_dir(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    let (first, second) = if cfg!(windows) {
+        ("USERPROFILE", "HOME")
+    } else {
+        ("HOME", "USERPROFILE")
+    };
+    get(first)
+        .filter(|home| !home.trim().is_empty())
+        .or_else(|| get(second).filter(|home| !home.trim().is_empty()))
+        .map(PathBuf::from)
+}
+
+/// The folder of the configuration of Claude Code: the one it was told (`CLAUDE_CONFIG_DIR`), else `.claude` in the home.
+pub fn claude_dir(get: &dyn Fn(&str) -> Option<String>, home: Option<&PathBuf>) -> Option<PathBuf> {
+    get("CLAUDE_CONFIG_DIR")
+        .filter(|dir| !dir.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(|home| home.join(".claude")))
+}
+
+/// The conversations of Claude Code: where it was said, else under the home of the user.
+fn projects_dir(
+    options: &Options,
+    get: &dyn Fn(&str) -> Option<String>,
+    home: Option<&PathBuf>,
+) -> Result<PathBuf, UsageError> {
+    match &options.projects {
+        Some(path) => Ok(PathBuf::from(path)),
+        None => claude_dir(get, home)
+            .map(|dir| dir.join("projects"))
+            .ok_or_else(|| {
+                UsageError(
+                    "the conversations of Claude Code cannot be found: give --projects".to_string(),
+                )
+            }),
+    }
+}
+
+/// The folder where the positions are kept: the usual place of the state of a user.
+pub fn state_dir(get: &dyn Fn(&str) -> Option<String>, home: Option<&PathBuf>) -> Option<PathBuf> {
+    get("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| get("LOCALAPPDATA").map(PathBuf::from))
+        .or_else(|| home.map(|home| home.join(".local").join("state")))
+        .map(|folder| folder.join("mnemarr-collector"))
+}
+
+/// Whether a destination can be used: its address is allowed, its machine name is one the server accepts, and its key can be read. The key is given back.
+pub fn check_destination(
+    dir: &std::path::Path,
+    destination: &destinations::Destination,
+) -> Result<String, UsageError> {
+    check_server(&destination.server, destination.insecure)?;
+    if !is_machine_name(&destination.machine) {
+        return Err(UsageError(format!(
+            "'{}' is not a name of machine that the server accepts",
+            destination.machine
+        )));
+    }
+    destinations::key_of(dir, destination).ok_or_else(|| {
+        UsageError(format!(
+            "the key of {} cannot be read: link it again",
+            destination.name
+        ))
+    })
+}
+
+/// What each destination that cannot be used says is wrong with it, by name: one that is left out of the passes is never left out in silence.
+pub fn problems(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+    let Some(dir) = config_dir(options.config_dir.as_deref(), get) else {
+        return Vec::new();
+    };
+    destinations::load(&dir)
+        .iter()
+        .filter_map(|destination| {
+            check_destination(&dir, destination)
+                .err()
+                .map(|error| (destination.name.clone(), error.0))
+        })
+        .collect()
+}
+
+/// Whether an address or a key was given, on the command line or in the environment: then it is one destination of its own and the list is left alone.
+pub fn sending_is_given(options: &Options, get: &dyn Fn(&str) -> Option<String>) -> bool {
+    options.server.is_some()
+        || options.key_file.is_some()
+        || get("MNEMARR_SERVER").is_some()
+        || get("MNEMARR_COLLECTOR_KEY").is_some()
+}
+
+/// Everything the passes need, for each Mnemarr this machine sends to (ADR 0030). When an address or a key is given (on the command line or in the
+/// environment) it is one destination of its own and the list is left alone, as `run --server …` always was; otherwise it is the list kept in the
+/// folder of the collector, read again at each pass so that linking another is taken into account without a restart. A destination whose address is
+/// not allowed, or whose key is gone, is left out and the others go on.
+pub fn resolve_all(
+    options: &Options,
+    get: &dyn Fn(&str) -> Option<String>,
+    read: &dyn Fn(&str) -> Option<String>,
+) -> Result<Vec<Config>, UsageError> {
+    if sending_is_given(options, get) {
+        return resolve(options, get, read).map(|config| vec![config]);
+    }
+    let Some(dir) = config_dir(options.config_dir.as_deref(), get) else {
+        return Err(UsageError(
+            "the folder of the collector cannot be found: give --config-dir".to_string(),
+        ));
+    };
+    // A list that cannot be read is said as that, not as "not linked": the person is sent to the right cause.
+    let listed =
+        destinations::load_for_change(&dir).map_err(|error| UsageError(error.to_string()))?;
+    if listed.is_empty() {
+        return Err(UsageError(
+            "this machine is not linked to a Mnemarr: run `mnemarr-collector link`".to_string(),
+        ));
+    }
+    let home = home_dir(get);
+    let projects = projects_dir(options, get, home.as_ref())?;
+    let states = state_dir(get, home.as_ref());
+    let interval = Duration::from_secs(options.interval_seconds.unwrap_or(30).max(1));
+    let mut configs = Vec::new();
+    let mut first_error = None;
+    for destination in listed {
+        let outcome = (|| {
+            let key = check_destination(&dir, &destination)?;
+            let state = match (&options.state, &states) {
+                (Some(path), _) if configs.is_empty() => PathBuf::from(path),
+                (_, Some(folder)) => folder.join(&destination.state_file),
+                _ => {
+                    return Err(UsageError(
+                        "the place to remember the position cannot be found: give --state"
+                            .to_string(),
+                    ));
+                }
+            };
+            Ok(Config {
+                name: destination.name.clone(),
+                server: destination.server.clone(),
+                key,
+                machine: destination.machine.clone(),
+                projects: projects.clone(),
+                state,
+                interval,
+            })
+        })();
+        match outcome {
+            Ok(config) => configs.push(config),
+            Err(error) => first_error = first_error.or(Some(error)),
+        }
+    }
+    match (configs.is_empty(), first_error) {
+        (true, Some(error)) => Err(error),
+        _ => Ok(configs),
+    }
+}
+
 /// Reads what is not given from the environment (`get`) and from the files the options name (`read`), so that a test needs neither.
 /// What is not given and not in the environment is what `enroll` left in the folder of the collector.
 pub fn resolve(
@@ -175,9 +336,7 @@ pub fn resolve(
                 )
             })?,
     };
-    let home = get("HOME")
-        .or_else(|| get("USERPROFILE"))
-        .map(PathBuf::from);
+    let home = home_dir(get);
     let machine = options
         .machine
         .clone()
@@ -195,24 +354,11 @@ pub fn resolve(
             "'{machine}' is not a name of machine that the server accepts: letters, digits, dots, hyphens and underscores, up to 50 characters, starting with a letter or a digit. Give another with --machine or MNEMARR_MACHINE"
         )));
     }
-    let projects = match &options.projects {
-        Some(path) => PathBuf::from(path),
-        None => home
-            .clone()
-            .map(|home| home.join(".claude").join("projects"))
-            .ok_or_else(|| {
-                UsageError(
-                    "the conversations of Claude Code cannot be found: give --projects".to_string(),
-                )
-            })?,
-    };
+    let projects = projects_dir(options, get, home.as_ref())?;
     let state = match &options.state {
         Some(path) => PathBuf::from(path),
-        None => get("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| get("LOCALAPPDATA").map(PathBuf::from))
-            .or_else(|| home.map(|home| home.join(".local").join("state")))
-            .map(|folder| folder.join("mnemarr-collector").join("state.json"))
+        None => state_dir(get, home.as_ref())
+            .map(|folder| folder.join("state.json"))
             .ok_or_else(|| {
                 UsageError(
                     "the place to remember the position cannot be found: give --state".to_string(),
@@ -220,6 +366,7 @@ pub fn resolve(
             })?,
     };
     Ok(Config {
+        name: destinations::name_for(&server),
         server,
         key,
         machine,
@@ -447,6 +594,135 @@ mod tests {
         }
     }
 
+    fn linked(name: &str) -> (std::path::PathBuf, impl Fn(&str) -> Option<String>) {
+        let dir =
+            std::env::temp_dir().join(format!("mnemarr-config-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let map: HashMap<String, String> = [
+            ("HOME", "/home/me".to_string()),
+            ("XDG_CONFIG_HOME", dir.to_str().unwrap().to_string()),
+            ("XDG_STATE_HOME", "/state".to_string()),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect();
+        (dir.join("mnemarr-collector"), move |key: &str| {
+            map.get(key).cloned()
+        })
+    }
+
+    #[test]
+    fn should_make_a_configuration_for_each_destination_with_its_own_positions() {
+        let (dir, get) = linked("two");
+        destinations::add(
+            &dir,
+            "https://prod.example",
+            "pc-prod",
+            false,
+            None,
+            "k-prod",
+        )
+        .unwrap();
+        destinations::add(
+            &dir,
+            "http://dev.lan:8384",
+            "pc-dev",
+            true,
+            Some("dev"),
+            "k-dev",
+        )
+        .unwrap();
+
+        let configs = resolve_all(&Options::default(), &get, &|_| None).unwrap();
+
+        assert_eq!(configs.len(), 2);
+        assert_eq!(
+            configs
+                .iter()
+                .map(|config| (
+                    config.name.as_str(),
+                    config.machine.as_str(),
+                    config.key.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("prod.example", "pc-prod", "k-prod"),
+                ("dev", "pc-dev", "k-dev")
+            ]
+        );
+        assert_ne!(configs[0].state, configs[1].state);
+        assert!(configs[0].state.starts_with("/state/mnemarr-collector"));
+        assert_eq!(
+            configs[0].projects,
+            PathBuf::from("/home/me/.claude/projects")
+        );
+    }
+
+    #[test]
+    fn should_leave_the_list_alone_when_an_address_or_a_key_is_given() {
+        let (dir, get) = linked("explicit");
+        destinations::add(
+            &dir,
+            "https://prod.example",
+            "pc-prod",
+            false,
+            None,
+            "k-prod",
+        )
+        .unwrap();
+        let options = Options {
+            server: Some("https://one-off.example".to_string()),
+            key_file: Some("/k".to_string()),
+            machine: Some("one-off".to_string()),
+            ..Options::default()
+        };
+
+        let configs = resolve_all(&options, &get, &|path| {
+            (path == "/k").then(|| "key".to_string())
+        })
+        .unwrap();
+
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].server, "https://one-off.example");
+    }
+
+    #[test]
+    fn should_say_to_link_when_the_machine_has_no_destination() {
+        let (_, get) = linked("none");
+
+        let error = resolve_all(&Options::default(), &get, &|_| None).unwrap_err();
+
+        assert!(error.0.contains("link"), "{error}");
+    }
+
+    #[test]
+    fn should_leave_out_a_destination_that_cannot_be_used_and_go_on_with_the_others() {
+        let (dir, get) = linked("partial");
+        destinations::add(&dir, "https://prod.example", "pc", false, None, "k-prod").unwrap();
+        let broken =
+            destinations::add(&dir, "https://broken.example", "pc", false, None, "k").unwrap();
+        std::fs::remove_file(dir.join(&broken.key_file)).unwrap();
+
+        let configs = resolve_all(&Options::default(), &get, &|_| None).unwrap();
+
+        assert_eq!(configs.len(), 1);
+        assert_eq!(configs[0].name, "prod.example");
+        destinations::remove(&dir, "prod.example").unwrap();
+        let error = resolve_all(&Options::default(), &get, &|_| None).unwrap_err();
+        assert!(error.0.contains("key of broken.example"), "{error}");
+    }
+
+    #[test]
+    fn should_refuse_a_plain_http_destination_that_was_not_accepted() {
+        let (dir, get) = linked("insecure");
+        destinations::add(&dir, "http://nas.lan:8384", "pc", false, None, "k").unwrap();
+
+        let error = resolve_all(&Options::default(), &get, &|_| None).unwrap_err();
+
+        assert!(error.0.contains("https"), "{error}");
+    }
+
     #[test]
     fn should_refuse_a_name_of_machine_that_the_server_would_refuse() {
         assert!(
@@ -600,5 +876,64 @@ mod tests {
 
         assert!(resolve(&Options::default(), &get, &said).is_ok());
         assert!(resolve(&Options::default(), &get, &not_said).is_err());
+    }
+
+    #[test]
+    fn should_find_the_home_the_way_the_system_of_the_user_does() {
+        let get = |name: &str| match name {
+            "HOME" => Some("/git-bash/home".to_string()),
+            "USERPROFILE" => Some("C:\\Users\\me".to_string()),
+            _ => None,
+        };
+        let home = home_dir(&get).unwrap();
+
+        // On Windows the profile of the user, as Claude Code (a Node program) asks for it; elsewhere HOME.
+        if cfg!(windows) {
+            assert_eq!(home, PathBuf::from("C:\\Users\\me"));
+        } else {
+            assert_eq!(home, PathBuf::from("/git-bash/home"));
+        }
+        let empty = |name: &str| (name == "HOME").then(String::new);
+        assert_eq!(home_dir(&empty), None);
+    }
+
+    #[test]
+    fn should_follow_the_configuration_folder_that_claude_code_was_told() {
+        let home = PathBuf::from("/h");
+        let none = |_: &str| None;
+        assert_eq!(
+            claude_dir(&none, Some(&home)),
+            Some(PathBuf::from("/h/.claude"))
+        );
+        let told =
+            |name: &str| (name == "CLAUDE_CONFIG_DIR").then(|| "/elsewhere/claude".to_string());
+        assert_eq!(
+            claude_dir(&told, Some(&home)),
+            Some(PathBuf::from("/elsewhere/claude"))
+        );
+        assert_eq!(
+            claude_dir(&told, None),
+            Some(PathBuf::from("/elsewhere/claude"))
+        );
+        assert_eq!(claude_dir(&none, None), None);
+    }
+
+    #[test]
+    fn should_use_the_other_variable_when_the_first_is_empty_or_blank() {
+        let only_profile = |name: &str| match name {
+            "HOME" => Some("  ".to_string()),
+            "USERPROFILE" => Some("C:\\Users\\me".to_string()),
+            _ => None,
+        };
+        assert_eq!(
+            home_dir(&only_profile),
+            Some(PathBuf::from("C:\\Users\\me"))
+        );
+        let only_home = |name: &str| match name {
+            "HOME" => Some("/home/me".to_string()),
+            "USERPROFILE" => Some(String::new()),
+            _ => None,
+        };
+        assert_eq!(home_dir(&only_home), Some(PathBuf::from("/home/me")));
     }
 }

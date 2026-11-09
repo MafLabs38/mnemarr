@@ -121,6 +121,49 @@ public sealed class RawConversations
         }
     }
 
+    /// <summary>
+    /// Files the lines of a conversation under another machine. Nothing is done when there are none. Lines under both names are not for this code to choose
+    /// between (a move that was stopped half way is finished by running it again, which finds them under the new name only): it says so, and nothing moves.
+    /// </summary>
+    public void Move(string machine, string session, string toMachine)
+    {
+        var from = FolderOf(machine, session);
+        var to = FolderOf(toMachine, session);
+        if (!Directory.Exists(from))
+        {
+            return;
+        }
+
+        if (Directory.Exists(to))
+        {
+            throw new IOException($"The lines of conversation {session} are kept under {machine} and under {toMachine}: nothing was moved.");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+        Directory.Move(from, to);
+        RemoveIfEmpty(Path.GetDirectoryName(from)!);
+    }
+
+    /// <summary>Deletes the lines of a conversation, and the folder of the machine when it is left empty.</summary>
+    public void Delete(string machine, string session)
+    {
+        var folder = FolderOf(machine, session);
+        if (Directory.Exists(folder))
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+
+        RemoveIfEmpty(Path.GetDirectoryName(folder)!);
+    }
+
+    private static void RemoveIfEmpty(string folder)
+    {
+        if (Directory.Exists(folder) && !Directory.EnumerateFileSystemEntries(folder).Any())
+        {
+            Directory.Delete(folder);
+        }
+    }
+
     /// <summary>The first <paramref name="count"/> lines of a conversation, in order. A batch that was written for a position that was never taken is not read.</summary>
     public IEnumerable<string> Read(string machine, string session, long count)
     {

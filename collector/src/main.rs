@@ -1,23 +1,30 @@
+use std::collections::HashMap;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::OnceLock;
 use std::thread;
 
+use mnemarr_collector::browser;
 use mnemarr_collector::collect::Collector;
 use mnemarr_collector::collect::Report;
 use mnemarr_collector::config::{
-    Config, check_server, config_dir, default_machine, is_machine_name, resolve,
+    Config, check_server, config_dir, default_machine, is_machine_name, resolve_all,
 };
 use mnemarr_collector::control;
+use mnemarr_collector::destinations;
 use mnemarr_collector::embedded::{self, Embedded};
-use mnemarr_collector::enrol;
+use mnemarr_collector::enrol::{self, LinkOutcome};
 use mnemarr_collector::service::{self, Installed, Started};
 use mnemarr_collector::setup;
 use mnemarr_collector::state::State;
 use mnemarr_collector::status::{self, Condition};
+use mnemarr_collector::update::{self, UpdateState, Updater};
 use mnemarr_collector::upload::{Heartbeat, HttpUploader, UploadError, Uploader};
-use mnemarr_collector::{Command, EnrollOptions, Options, VERSION, parse, usage};
+use mnemarr_collector::{
+    Command, EnrollOptions, LinkOptions, Options, UnlinkOptions, UpdateOptions, VERSION, parse,
+    usage,
+};
 
 /// Writes to standard output. A closed pipe (`--help | head`) is how a reader says it has enough, not a failure.
 fn write_stdout(text: &str) -> ExitCode {
@@ -35,6 +42,22 @@ fn write_stdout(text: &str) -> ExitCode {
     }
 }
 
+/// Whether this program was installed with the installer, and where an update is at: found out once.
+fn updater() -> &'static Updater {
+    static UPDATER: OnceLock<Updater> = OnceLock::new();
+    UPDATER.get_or_init(Updater::detect)
+}
+
+/// The version this program says it is: the one the installer knows when it was installed with it, otherwise the one it was built with.
+fn version_text() -> String {
+    updater().version().unwrap_or_else(|| VERSION.to_string())
+}
+
+/// How often an installed collector asks the Mnemarr it sends to for a newer version, and how long after it starts it first does (a minute and a half
+/// lets the first pass go through, and lets a computer that has just woken find its network).
+const CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(4 * 3600);
+const FIRST_CHECK: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// The file that what is said is also written to, for a collector started in the background.
 static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
 
@@ -51,10 +74,16 @@ fn say(text: &str) {
     }
 }
 
-fn configuration(options: &Options) -> Result<Config, ExitCode> {
+/// What a pass runs with, for each Mnemarr this machine sends to (ADR 0030), or why there is none.
+fn resolve_configs(options: &Options) -> Result<Vec<Config>, mnemarr_collector::UsageError> {
     let get = |name: &str| std::env::var(name).ok();
     let read = |path: &str| std::fs::read_to_string(path).ok();
-    resolve(options, &get, &read).map_err(|error| {
+    resolve_all(options, &get, &read)
+}
+
+/// The same, for a command that was just typed: what is wrong is said with the usage, and the command ends.
+fn configurations(options: &Options) -> Result<Vec<Config>, ExitCode> {
+    resolve_configs(options).map_err(|error| {
         let _ = writeln!(io::stderr(), "{error}\n\n{}", usage());
         ExitCode::from(2)
     })
@@ -85,13 +114,19 @@ fn heartbeat(
     collector: &Collector<HttpUploader>,
     report: &Report,
     paused: bool,
+    interval_seconds: u64,
 ) -> Result<(), UploadError> {
     let error = trouble(report);
+    let version = version_text();
     let beat = Heartbeat {
-        version: VERSION,
+        version: &version,
+        can_update: updater().installed(),
+        update_note: updater().note(),
         pending_lines: report.pending_lines,
+        watching: report.watching.as_deref(),
         error: error.as_deref(),
         paused,
+        interval_seconds,
     };
     let result = collector.uploader.heartbeat(&beat);
     if let Err(UploadError::Refused(status, reason)) = &result {
@@ -119,63 +154,105 @@ fn condition_after(report: &Report, beat: &Result<(), UploadError>, paused: bool
     trouble(report).map_or(Condition::Online, Condition::Problem)
 }
 
-/// One pass: what is new is sent, and the position reached is kept. Says whether the pass was done. When the person paused the collector, nothing is
-/// read or sent, and only the sign of life goes.
+/// One pass for one Mnemarr: what is new is sent, and the position reached is kept. Says whether the pass was done, and how that Mnemarr is. When the person
+/// paused the collector, nothing is read or sent, and only the sign of life goes.
 fn pass(
     collector: &Collector<HttpUploader>,
     config: &Config,
     state: &mut State,
     paused: bool,
-    condition: &status::Shared,
-) -> bool {
+) -> (bool, Condition) {
     let report = if paused {
         Report::default()
     } else {
         collector.pass(state)
     };
-    let beat = heartbeat(collector, &report, paused);
-    status::set(condition, condition_after(&report, &beat, paused));
+    let beat = heartbeat(collector, &report, paused, config.interval.as_secs());
+    let condition = condition_after(&report, &beat, paused);
     if paused {
-        return true;
+        return (true, condition);
     }
     if let Err(error) = state.save(&config.state) {
         say(&format!(
-            "cannot keep the position in {}: {error}",
+            "{}: cannot keep the position in {}: {error}",
+            config.name,
             config.state.display()
         ));
     }
     // A service that has nothing to say says nothing: a pass that sent something, or that went wrong, is written down.
     if report.lines_sent > 0 || report.stopped.is_some() || !report.refused.is_empty() {
         say(&format!(
-            "{} conversation(s), {} line(s) sent",
-            report.files, report.lines_sent
+            "{}: {} conversation(s), {} line(s) sent",
+            config.name, report.files, report.lines_sent
         ));
     }
     for refused in &report.refused {
-        say(&format!("refused: {refused}"));
+        say(&format!("{}: refused: {refused}", config.name));
     }
     for unreadable in &report.unreadable {
-        say(&format!("cannot read: {unreadable}"));
+        say(&format!("{}: cannot read: {unreadable}", config.name));
     }
     match &report.stopped {
         Some(reason) => {
-            say(&format!("stopped, a later pass will go on: {reason}"));
-            false
+            say(&format!(
+                "{}: stopped, a later pass will go on: {reason}",
+                config.name
+            ));
+            (false, condition)
         }
-        None => true,
+        None => (true, condition),
     }
 }
 
-/// Collects: a pass, a wait, a pass; for ever when asked to, else once. A pause the person asked for (from the icon or `pause`) is looked at before each pass.
+/// One pass over every Mnemarr: each has its own positions and its own sign of life, one that cannot be reached does not hold the others back, and what is
+/// read from the files is read again for each (a local read; the masking is the same).
+fn pass_all(
+    configs: &[Config],
+    states: &mut HashMap<String, State>,
+    paused: bool,
+    condition: &status::Shared,
+) -> bool {
+    let mut all_done = true;
+    let mut conditions = Vec::new();
+    for config in configs {
+        let state = states
+            .entry(config.name.clone())
+            .or_insert_with(|| State::load(&config.state));
+        if state.adopt(&format!("{}|{}", config.server, config.machine)) {
+            say(&format!(
+                "{}: starting from the beginning for this machine and this server: what was sent before was sent to another",
+                config.name
+            ));
+        }
+        let collector = Collector::new(
+            config.machine.clone(),
+            config.projects.clone(),
+            HttpUploader::new(&config.server, &config.key),
+        );
+        let (done, how) = pass(&collector, config, state, paused);
+        all_done &= done;
+        conditions.push((config.name.clone(), how));
+    }
+    status::set_all(condition, conditions, paused);
+    all_done
+}
+
+/// Collects: a pass, a wait, a pass; for ever when asked to, else once. A pause the person asked for (from the icon or `pause`) is looked at before each pass,
+/// and so is the list of Mnemarr: one that is linked while it runs is taken from the next pass on.
 fn collect_loop(
-    collector: Collector<HttpUploader>,
-    config: Config,
-    mut state: State,
+    options: &Options,
+    initial: Vec<Config>,
     dir: Option<PathBuf>,
     forever: bool,
     condition: status::Shared,
 ) -> ExitCode {
+    let mut states: HashMap<String, State> = HashMap::new();
+    let mut configs = initial;
     let mut was_paused = false;
+    let mut told_none = false;
+    let mut last_problem = String::new();
+    let mut told_problems: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut clock = UpdateClock::new();
     loop {
         let paused = dir
             .as_deref()
@@ -184,7 +261,22 @@ fn collect_loop(
             say(if paused { "paused" } else { "resumed" });
             was_paused = paused;
         }
-        let done = pass(&collector, &config, &mut state, paused, &condition);
+        let done = if configs.is_empty() {
+            if !told_none {
+                say(
+                    "this machine is not linked to any Mnemarr: link one from the icon, or with: mnemarr-collector link",
+                );
+                told_none = true;
+            }
+            status::set(
+                &condition,
+                Condition::Offline("not linked to a Mnemarr".to_string()),
+            );
+            false
+        } else {
+            told_none = false;
+            pass_all(&configs, &mut states, paused, &condition)
+        };
         if !forever {
             return if done {
                 ExitCode::SUCCESS
@@ -192,17 +284,113 @@ fn collect_loop(
                 ExitCode::from(1)
             };
         }
-        thread::sleep(config.interval);
+        if let Some(dir) = &dir {
+            keep_up_to_date(dir, &mut clock);
+        }
+        thread::sleep(
+            configs
+                .first()
+                .map_or(std::time::Duration::from_secs(30), |config| config.interval),
+        );
+        // The list is read again: a Mnemarr linked from the icon, or by `link`, is sent to from this pass on. What is wrong with it is said once.
+        match resolve_configs(options) {
+            Ok(fresh) => {
+                last_problem.clear();
+                configs = fresh;
+                // A destination that is left out while the others go on is said too, once, with the reason.
+                let get = |name: &str| std::env::var(name).ok();
+                for (name, reason) in mnemarr_collector::config::problems(options, &get) {
+                    if told_problems.insert(format!("{name}: {reason}")) {
+                        say(&format!("{name} is left out of the passes: {reason}"));
+                    }
+                }
+            }
+            Err(error) => {
+                if last_problem != error.0 {
+                    say(&error.0);
+                    last_problem = error.0;
+                }
+                configs.clear();
+            }
+        }
     }
+}
+
+/// When an installed collector next asks for an update. An update that could not be applied is no longer "ready": it is looked for again at the next check.
+struct UpdateClock {
+    next_check: std::time::Instant,
+}
+
+impl UpdateClock {
+    fn new() -> Self {
+        Self {
+            next_check: std::time::Instant::now() + FIRST_CHECK,
+        }
+    }
+}
+
+/// Between two passes, for a collector that was installed with the installer: an update that is ready is applied (unless the person chose to apply them by
+/// hand), and, now and then, each Mnemarr is asked for a newer version, apart from the passes. Positions are kept after each pass, so nothing is lost when the
+/// collector restarts to apply it. An update that waits is neither asked for again nor downloaded again; one that could not be applied is looked for again at the next check,
+/// not at every pass.
+fn keep_up_to_date(dir: &std::path::Path, clock: &mut UpdateClock) {
+    let updater = updater();
+    if !updater.installed() {
+        return;
+    }
+    let now = std::time::Instant::now();
+    if updater.ready() {
+        if update::load_settings(dir).auto {
+            say("applying the update: the collector restarts");
+            if let Err(error) = updater.apply() {
+                say(&format!("the update could not be applied: {error}"));
+            }
+        }
+        return;
+    }
+    if now >= clock.next_check {
+        clock.next_check = now + CHECK_EVERY;
+        let checker = updater.clone();
+        let listed = destinations::load(dir);
+        thread::spawn(move || match checker.check(&listed) {
+            UpdateState::Ready(version) => say(&format!("version {version} is downloaded")),
+            UpdateState::Failed(reason) => say(&format!("no update: {reason}")),
+            UpdateState::Blocked(why) => say(&format!("no update: {}", why.text())),
+            _ => {}
+        });
+    }
+}
+
+/// Whether this collector can be linked while it runs: it has an icon where a person does it, or it was installed with the installer (which opens the page
+/// that links it). A collector with neither, run as a service on a machine with no screen, that is linked to nothing is wrongly set up: it says so and ends.
+fn can_wait_to_be_linked(options: &Options) -> bool {
+    (cfg!(windows) && !options.no_tray) || updater().installed()
+}
+
+/// Whether the folder of the collector holds no destination, and nothing was given on the command line or in the environment to send to.
+fn nothing_linked(options: &Options) -> bool {
+    let get = |name: &str| std::env::var(name).ok();
+    !mnemarr_collector::config::sending_is_given(options, &get)
+        && config_dir(options.config_dir.as_deref(), &get)
+            .is_some_and(|dir| destinations::load(&dir).is_empty())
 }
 
 fn collect(options: &Options, forever: bool) -> ExitCode {
     if let Some(path) = &options.log_file {
         let _ = LOG_FILE.set(PathBuf::from(path));
     }
-    let config = match configuration(options) {
-        Ok(config) => config,
-        Err(code) => return code,
+    // A collector that was just installed is linked to nothing yet: it runs all the same, with its icon, which is where a person links it (a command that is
+    // run once has nothing to do, and says so).
+    let configs = if forever && nothing_linked(options) && can_wait_to_be_linked(options) {
+        say(
+            "this machine is not linked to any Mnemarr yet: link one from the icon, or with: mnemarr-collector link",
+        );
+        Vec::new()
+    } else {
+        match configurations(options) {
+            Ok(configs) => configs,
+            Err(code) => return code,
+        }
     };
     // One collector at a time for a machine: a second one, started by the session while one runs by hand, leaves it be.
     let _instance = if forever {
@@ -226,103 +414,146 @@ fn collect(options: &Options, forever: bool) -> ExitCode {
     } else {
         None
     };
-    let collector = Collector::new(
-        config.machine.clone(),
-        config.projects.clone(),
-        HttpUploader::new(&config.server, &config.key),
-    );
-    if !collector.masking_is_complete() {
-        say(
-            "a rule of the masking did not start: secrets are masked by the server alone until this is fixed",
+    if let Some(first) = configs.first() {
+        let probe = Collector::new(
+            first.machine.clone(),
+            first.projects.clone(),
+            HttpUploader::new(&first.server, &first.key),
         );
+        if !probe.masking_is_complete() {
+            say(
+                "a rule of the masking did not start: secrets are masked by the server alone until this is fixed",
+            );
+        }
     }
-    if config.server.starts_with("http://") && !mnemarr_collector::config::is_local(&config.server)
-    {
-        say("warning: the address of Mnemarr is plain http://: the key is sent without encryption");
+    for config in &configs {
+        if config.server.starts_with("http://")
+            && !mnemarr_collector::config::is_local(&config.server)
+        {
+            say(&format!(
+                "warning: {} is plain http://: the key is sent without encryption",
+                config.name
+            ));
+        }
+        say(&format!(
+            "{}: {} -> {} ({}) as {}",
+            version_text(),
+            config.projects.display(),
+            config.name,
+            config.server,
+            config.machine
+        ));
     }
-    let mut state = State::load(&config.state);
-    if state.adopt(&format!("{}|{}", config.server, config.machine)) {
-        say(
-            "starting from the beginning for this machine and this server: what was sent before was sent to another",
-        );
-    }
-    say(&format!(
-        "{VERSION}: {} -> {} as {}",
-        config.projects.display(),
-        config.server,
-        config.machine
-    ));
     let get = |name: &str| std::env::var(name).ok();
     let dir = config_dir(options.config_dir.as_deref(), &get);
+    if forever && let Some(folder) = &dir {
+        updater().remember_in(folder);
+    }
     let condition = status::shared();
     if forever && !options.no_tray && cfg!(windows) {
-        return collect_with_icon(collector, config, state, dir, condition);
+        return collect_with_icon(options, configs, dir, condition);
     }
-    collect_loop(collector, config, state, dir, forever, condition)
+    collect_loop(options, configs, dir, forever, condition)
 }
 
 /// Where there is no icon to show (anywhere but Windows for now), it collects as it would without one.
 #[cfg(not(windows))]
 fn collect_with_icon(
-    collector: Collector<HttpUploader>,
-    config: Config,
-    state: State,
+    options: &Options,
+    configs: Vec<Config>,
     dir: Option<PathBuf>,
     condition: status::Shared,
 ) -> ExitCode {
-    collect_loop(collector, config, state, dir, true, condition)
+    collect_loop(options, configs, dir, true, condition)
 }
 
 /// Collects in a thread of its own and shows the icon in this one. When the icon cannot be made (a session with no taskbar), it goes on without it.
 #[cfg(windows)]
 fn collect_with_icon(
-    collector: Collector<HttpUploader>,
-    config: Config,
-    state: State,
+    options: &Options,
+    configs: Vec<Config>,
     dir: Option<PathBuf>,
     condition: status::Shared,
 ) -> ExitCode {
-    let (shown_dir, server, machine) = (dir.clone(), config.server.clone(), config.machine.clone());
+    let shown_dir = dir.clone();
+    let known: Vec<(String, String)> = configs
+        .iter()
+        .map(|config| (config.name.clone(), config.server.clone()))
+        .collect();
     let shared = condition.clone();
-    let worker = thread::spawn(move || collect_loop(collector, config, state, dir, true, shared));
+    let worker_options = options.clone();
+    let worker = thread::spawn(move || collect_loop(&worker_options, configs, dir, true, shared));
     if let Some(folder) = shown_dir {
         // The icon never returns: *Quit* ends the program from inside. It only gives back an error, when it could not be made.
-        let Err(error) = mnemarr_collector::tray::run(folder, server, machine, condition);
+        let Err(error) = mnemarr_collector::tray::run(folder, known, condition, updater().clone());
         say(&format!("no icon in the notification area: {error}"));
     }
     worker.join().unwrap_or(ExitCode::from(1))
 }
 
-/// Joins this machine: the code a person approved is exchanged for the key of this machine, which is kept where only this user reads it.
-fn enroll(options: &EnrollOptions) -> ExitCode {
+/// The name this machine suggests for itself (or the one it was given), when it is one that Mnemarr accepts.
+fn machine_name(given: Option<&String>) -> Result<String, ExitCode> {
     let get = |name: &str| std::env::var(name).ok();
     let read = |path: &str| std::fs::read_to_string(path).ok();
-    let (Some(server), Some(code)) = (
-        options.server.clone().or_else(|| get("MNEMARR_SERVER")),
-        options.code.clone(),
-    ) else {
-        let _ = writeln!(
-            io::stderr(),
-            "enroll needs --server and --code\n\n{}",
-            usage()
-        );
-        return ExitCode::from(2);
-    };
-    let Some(machine) = options
-        .machine
-        .clone()
+    let Some(machine) = given
+        .cloned()
         .or_else(|| get("MNEMARR_MACHINE"))
         .or_else(|| default_machine(&get, &read))
     else {
         say("the name of this machine is needed: --machine or MNEMARR_MACHINE");
-        return ExitCode::from(2);
+        return Err(ExitCode::from(2));
     };
     if !is_machine_name(&machine) {
         say(&format!(
             "'{machine}' is not a name that Mnemarr accepts for a machine: give another with --machine"
         ));
-        return ExitCode::from(2);
+        return Err(ExitCode::from(2));
     }
+    Ok(machine)
+}
+
+/// Keeps what Mnemarr gave: this machine now also sends to it, with its own key.
+fn keep(
+    dir: &std::path::Path,
+    server: &str,
+    enrolled: &enrol::Enrolled,
+    insecure: bool,
+    name: Option<&str>,
+) -> ExitCode {
+    match destinations::add(
+        dir,
+        server,
+        &enrolled.machine,
+        insecure,
+        name,
+        &enrolled.key,
+    ) {
+        Ok(destination) => {
+            say(&format!(
+                "linked to {} ({}) as {}. It sends there from its next pass: if it is not running, start it with: mnemarr-collector install",
+                destination.name, destination.server, enrolled.machine
+            ));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&format!(
+                "linked, but the key could not be kept in {}: {error}. Link again.",
+                dir.display()
+            ));
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Links this machine to a Mnemarr, in addition to those it already sends to (ADR 0030). With a code a person made in Mnemarr it is exchanged for the key
+/// (what `enroll` always did); without, the machine asks, shows the address where a person approves it, and waits.
+fn link(options: &LinkOptions) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(server) = options.server.clone().or_else(|| get("MNEMARR_SERVER")) else {
+        let _ = writeln!(io::stderr(), "link needs --server\n\n{}", usage());
+        return ExitCode::from(2);
+    };
+    let server = server.trim_end_matches('/').to_string();
     if let Err(error) = check_server(&server, options.allow_insecure_http) {
         say(&error.to_string());
         return ExitCode::from(2);
@@ -331,25 +562,65 @@ fn enroll(options: &EnrollOptions) -> ExitCode {
         say("the place to keep the key cannot be found: give --config-dir");
         return ExitCode::from(2);
     };
-    match enrol::exchange(&server, &code, &machine) {
-        Ok(enrolled) => match enrol::save(&dir, &server, &enrolled, options.allow_insecure_http) {
-            Ok((key, _)) => {
-                say(&format!(
-                    "enrolled as {} ({}); the key is in {}. Start the collector with: mnemarr-collector run",
-                    enrolled.machine,
-                    enrolled.kind,
-                    key.display()
-                ));
-                ExitCode::SUCCESS
-            }
+    if let Some(code) = &options.code {
+        // With a code, the name is the one the code was made for: it has to be a name that Mnemarr accepts.
+        let machine = match machine_name(options.machine.as_ref()) {
+            Ok(machine) => machine,
+            Err(code) => return code,
+        };
+        return match enrol::exchange(&server, code, &machine) {
+            Ok(enrolled) => keep(
+                &dir,
+                &server,
+                &enrolled,
+                options.allow_insecure_http,
+                options.name.as_deref(),
+            ),
             Err(error) => {
-                say(&format!(
-                    "enrolled, but the key could not be kept in {}: {error}. The code is used: ask for another.",
-                    dir.display()
-                ));
+                say(&error.to_string());
                 ExitCode::from(1)
             }
-        },
+        };
+    }
+    // Asking, the machine only suggests what it is called, as it is: Mnemarr cleans it and the person who approves chooses the name.
+    let read = |path: &str| std::fs::read_to_string(path).ok();
+    let hostname = options
+        .machine
+        .clone()
+        .or_else(|| get("MNEMARR_MACHINE"))
+        .or_else(|| destinations::machine_known_at(&dir, &server))
+        .or_else(|| default_machine(&get, &read))
+        .unwrap_or_else(|| "this computer".to_string());
+    let show = |request: &enrol::PairingRequest| {
+        say(&format!(
+            "to link this computer, open {} and check that the code is {}",
+            request.verification_url, request.user_code
+        ));
+        if !options.no_browser && !browser::is_same_server(&server, &request.verification_url) {
+            say(
+                "(the address is not on the Mnemarr you typed, so it was not opened: check it before you open it)",
+            );
+        } else if !options.no_browser && !browser::open(&request.verification_url) {
+            say("(the browser could not be opened: open the address by hand)");
+        }
+        say("waiting for you to approve it in Mnemarr...");
+    };
+    match enrol::link_by_asking(&server, &hostname, &show, &thread::sleep) {
+        Ok(LinkOutcome::Linked(enrolled)) => keep(
+            &dir,
+            &server,
+            &enrolled,
+            options.allow_insecure_http,
+            options.name.as_deref(),
+        ),
+        Ok(LinkOutcome::Rejected) => {
+            say("a person refused this computer in Mnemarr");
+            ExitCode::from(1)
+        }
+        Ok(LinkOutcome::Expired) => {
+            say("nobody answered in time: ask again");
+            ExitCode::from(1)
+        }
         Err(error) => {
             say(&error.to_string());
             ExitCode::from(1)
@@ -357,9 +628,203 @@ fn enroll(options: &EnrollOptions) -> ExitCode {
     }
 }
 
+/// `enroll` is `link` with a code: it joins the machine to that Mnemarr, in addition to the others.
+fn enroll(options: &EnrollOptions) -> ExitCode {
+    if options.code.is_none() {
+        let _ = writeln!(
+            io::stderr(),
+            "enroll needs --server and --code (or use: mnemarr-collector link)\n\n{}",
+            usage()
+        );
+        return ExitCode::from(2);
+    }
+    link(&LinkOptions {
+        server: options.server.clone(),
+        code: options.code.clone(),
+        name: None,
+        machine: options.machine.clone(),
+        config_dir: options.config_dir.clone(),
+        allow_insecure_http: options.allow_insecure_http,
+        no_browser: true,
+    })
+}
+
+/// Stops sending to a Mnemarr. What it received stays there; to remove the machine for good, revoke it in that Mnemarr.
+fn unlink(options: &UnlinkOptions) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    let listed = destinations::load(&dir);
+    let Some(name) = &options.name else {
+        let names: Vec<&str> = listed
+            .iter()
+            .map(|destination| destination.name.as_str())
+            .collect();
+        say(&format!(
+            "unlink needs the name of a Mnemarr; this machine sends to: {}",
+            if names.is_empty() {
+                "none".to_string()
+            } else {
+                names.join(", ")
+            }
+        ));
+        return ExitCode::from(2);
+    };
+    match destinations::remove(&dir, name) {
+        Ok(true) => {
+            say(&format!(
+                "no longer sends to {name}. What it received stays there; to remove this machine from {name} for good, revoke it in that Mnemarr"
+            ));
+            ExitCode::SUCCESS
+        }
+        Ok(false) => {
+            say(&format!(
+                "this machine does not send to a Mnemarr called {name} (see: mnemarr-collector destinations)"
+            ));
+            ExitCode::from(1)
+        }
+        Err(error) => {
+            say(&format!("it could not be unlinked: {error}"));
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Lists the Mnemarr this machine sends to.
+/// The hook at the start of a session: prints what the memory knows of the application, and never gets in the way (every failure is silence and exit 0, unless `MNEMARR_DEBUG` is set).
+fn context(options: &Options) -> ExitCode {
+    let debug = std::env::var_os("MNEMARR_DEBUG").is_some();
+    let quiet = |why: &str| {
+        if debug {
+            say(&format!("context: {why}"));
+        }
+        ExitCode::SUCCESS
+    };
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        return quiet("the folder of the collector cannot be found");
+    };
+    let Some((destination, key)) = mnemarr_collector::context::reader_of(&dir) else {
+        return quiet("no read key (read-key in the folder of the collector)");
+    };
+    let format = match options.format.as_deref() {
+        None => mnemarr_collector::context::Format::Text,
+        Some(name) => match mnemarr_collector::context::Format::parse(name) {
+            Some(format) => format,
+            None => return quiet("--format is text or claude-hook"),
+        },
+    };
+    let Some(application) = options.application.clone().or_else(application_of_session) else {
+        return quiet("no application: give --application");
+    };
+    match mnemarr_collector::context::fetch(&destination, &key, &application, options.budget) {
+        Ok(text) if !text.trim().is_empty() => {
+            write_stdout(&mnemarr_collector::context::render(&text, format));
+            ExitCode::SUCCESS
+        }
+        Ok(_) => quiet("the memory knows nothing of this application"),
+        Err(error) => quiet(&error),
+    }
+}
+
+/// The application of the session that started the hook: the working directory in the JSON it was given on its input, else the current folder.
+fn application_of_session() -> Option<String> {
+    use std::io::{IsTerminal, Read};
+    if !io::stdin().is_terminal() {
+        let mut input = String::new();
+        if io::stdin()
+            .take(64 * 1024)
+            .read_to_string(&mut input)
+            .is_ok()
+            && let Some(application) = mnemarr_collector::context::application_of_hook_input(&input)
+        {
+            return Some(application);
+        }
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|folder| mnemarr_collector::context::last_folder(&folder.to_string_lossy()))
+}
+
+/// Adds the hook that runs `context` to the settings of Claude Code (a copy of the file as it was is kept beside it), or takes it away.
+fn context_hook(options: &Options) -> ExitCode {
+    use mnemarr_collector::context::{HookChange, change_settings_file, settings_path};
+    let get = |name: &str| std::env::var(name).ok();
+    let home = mnemarr_collector::config::home_dir(&get);
+    let Some(path) = settings_path(&get, home.as_ref()) else {
+        say("the settings of Claude Code cannot be found: set CLAUDE_CONFIG_DIR");
+        return ExitCode::from(2);
+    };
+    let program = match std::env::current_exe() {
+        Ok(program) => program,
+        Err(error) => {
+            say(&format!("this program cannot be found: {error}"));
+            return ExitCode::from(1);
+        }
+    };
+    let config_dir_part = options
+        .config_dir
+        .as_deref()
+        .map_or(String::new(), |dir| format!(" --config-dir \"{dir}\""));
+    let command = format!(
+        "\"{}\" context --format claude-hook{config_dir_part}",
+        program.display()
+    );
+    match change_settings_file(&path, &command, options.remove) {
+        Ok(change) => {
+            let said = match change {
+                HookChange::Added => {
+                    "added: Claude Code will tell your assistant what the memory knows at the start of a session"
+                }
+                HookChange::Updated => "updated: the hook now runs this program",
+                HookChange::AlreadyThere => "it was already there",
+                HookChange::Removed => "removed",
+                HookChange::NotThere => "there was none",
+            };
+            write_stdout(&format!("{said} ({})\n", path.display()));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&error);
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn list_destinations(options: &Options) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    let listed = destinations::load(&dir);
+    if listed.is_empty() {
+        let _ = writeln!(
+            io::stdout(),
+            "this machine does not send to any Mnemarr yet (run: mnemarr-collector link)"
+        );
+    }
+    for destination in listed {
+        let note = match mnemarr_collector::config::check_destination(&dir, &destination) {
+            Ok(_) => String::new(),
+            Err(error) => format!("  (cannot be used: {})", error.0),
+        };
+        let _ = writeln!(
+            io::stdout(),
+            "{}  {}  as {}{note}",
+            destination.name,
+            destination.server,
+            destination.machine
+        );
+    }
+    ExitCode::SUCCESS
+}
+
 /// The folder of the collector and the program to run, for the commands that run it in the background. The machine has to be joined first.
 fn background(options: &Options) -> Result<(std::path::PathBuf, std::path::PathBuf), ExitCode> {
-    configuration(options)?;
+    configurations(options)?;
     let get = |name: &str| std::env::var(name).ok();
     let (Some(dir), Ok(exe)) = (
         config_dir(options.config_dir.as_deref(), &get),
@@ -460,6 +925,118 @@ fn uninstall(options: &Options) -> ExitCode {
     }
 }
 
+/// What happens when the installed program is opened with nothing to say (the installer starts it so when it is done, the updater after an update): the
+/// entry that starts it with the session is made right (it points at the program that an update does not change), and the collector starts in the
+/// background. A person who clicks it again finds it running and nothing else happens.
+fn launch_installed() -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let (Some(dir), Ok(running)) = (config_dir(None, &get), std::env::current_exe()) else {
+        return ExitCode::from(1);
+    };
+    let exe = update::stable_exe(&running);
+    // What Velopack says about how it started this program: the very first time after the installation, or restarted after an update.
+    let first_run =
+        std::env::var("VELOPACK_FIRSTRUN").is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+    let after_update =
+        std::env::var("VELOPACK_RESTART").is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+    if cfg!(windows) {
+        if let Some(root) = exe.parent() {
+            let _ = update::write_shim(root);
+        }
+        // Starting with the session is made when the program is installed, and only then: a person who removed it (`uninstall`) does not find it back after an update.
+        if first_run {
+            let _ = service::register(&exe, None);
+        }
+    }
+    if after_update && !service::status(&dir).starts_with_session {
+        // It was not set to start with the session: an update does not start it.
+        return ExitCode::SUCCESS;
+    }
+    // The program that runs is the one the installer packs as the application: it is a program of windows, not of a console (tools/installer/pack.sh), so that
+    // starting it never opens a console that a person could close. The commands typed in a terminal are the other one, `mnemarr-collector.exe`, beside it.
+    match service::start(&dir, &running, None) {
+        Ok(Started::Started | Started::AlreadyRunning) => ExitCode::SUCCESS,
+        _ => ExitCode::from(1),
+    }
+}
+
+/// `update`: look for a newer version at the Mnemarr this machine sends to, and apply it; or, with `--auto`, say whether the collector applies updates itself.
+fn update_command(options: &UpdateOptions) -> ExitCode {
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        say("the folder of the collector cannot be found: give --config-dir");
+        return ExitCode::from(2);
+    };
+    if let Some(auto) = options.auto {
+        return match update::save_settings(&dir, &update::Settings { auto }) {
+            Ok(()) => {
+                say(if auto {
+                    "updates are applied by the collector itself, between two passes"
+                } else {
+                    "updates are downloaded and wait: apply them with `mnemarr-collector update` or from the icon"
+                });
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                say(&format!("the choice could not be kept: {error}"));
+                ExitCode::from(1)
+            }
+        };
+    }
+    let updater = updater();
+    if !updater.installed() {
+        say(&UpdateState::NotInstalled.text());
+        return ExitCode::from(1);
+    }
+    say(&format!(
+        "version {}: asking the Mnemarr this machine sends to...",
+        version_text()
+    ));
+    match updater.check(&destinations::load(&dir)) {
+        UpdateState::Ready(version) if options.check_only => {
+            say(&format!(
+                "version {version} is downloaded: apply it with `mnemarr-collector update`"
+            ));
+            ExitCode::SUCCESS
+        }
+        UpdateState::Ready(version) => {
+            say(&format!(
+                "applying version {version}: the collector restarts"
+            ));
+            match updater.apply() {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    say(&format!("it could not be applied: {error}"));
+                    ExitCode::from(1)
+                }
+            }
+        }
+        UpdateState::Failed(reason) => {
+            say(&format!("no update: {reason}"));
+            ExitCode::from(1)
+        }
+        UpdateState::Blocked(why) => {
+            say(&format!("no update: {}", why.text()));
+            ExitCode::from(1)
+        }
+        _ => {
+            say(&format!("up to date: version {}", version_text()));
+            ExitCode::SUCCESS
+        }
+    }
+}
+
+/// What `status` says of updates: where the running collector says its update is at, or, when none runs, that it is not known.
+fn update_line(dir: &std::path::Path) -> String {
+    let updater = updater();
+    if !updater.installed() {
+        return UpdateState::NotInstalled.text();
+    }
+    update::recorded_state(dir).unwrap_or_else(|| {
+        "not known (it is told by the running collector, which has not asked yet)".to_string()
+    })
+}
+
 /// Asks the collector to be quiet: for a while (`--minutes`), or until `resume`. It also stops the icon from showing "online": the running collector reads
 /// the same file.
 fn pause(options: &Options) -> ExitCode {
@@ -516,17 +1093,31 @@ fn status(options: &Options) -> ExitCode {
         say("the folder of the collector cannot be found: give --config-dir");
         return ExitCode::from(2);
     };
-    let joined = resolve(options, &get, &read).ok();
+    let joined = resolve_all(options, &get, &read).ok().unwrap_or_default();
     let state = service::status(&dir);
+    let machines = if joined.is_empty() {
+        "not joined (run: mnemarr-collector link)".to_string()
+    } else {
+        joined
+            .iter()
+            .map(|config| config.machine.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let servers = if joined.is_empty() {
+        "-".to_string()
+    } else {
+        joined
+            .iter()
+            .map(|config| format!("{} ({})", config.name, config.server))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     let _ = writeln!(
         io::stdout(),
-        "machine: {}\nserver: {}\nrunning: {}\nstarts with your session: {}\npaused: {}\nlog: {}",
-        joined
-            .as_ref()
-            .map_or("not joined (run: mnemarr-collector enroll)", |config| {
-                config.machine.as_str()
-            }),
-        joined.as_ref().map_or("-", |config| config.server.as_str()),
+        "machine: {machines}\nserver: {servers}\nversion: {}\nupdates: {}\nrunning: {}\nstarts with your session: {}\npaused: {}\nlog: {}",
+        version_text(),
+        update_line(&dir),
         state
             .running
             .map_or("no".to_string(), |pid| format!("yes (process {pid})")),
@@ -613,11 +1204,19 @@ fn carried() -> Option<(Embedded, Vec<u8>)> {
 }
 
 fn main() -> ExitCode {
+    // Started by the installer or the updater to do one of its tasks, it does it here and ends; otherwise this returns at once. The arguments of those tasks
+    // are always plain text: one that is not is left to the usage error below (the updater reads them as text and would panic).
+    if std::env::args_os().all(|argument| argument.to_str().is_some()) {
+        update::startup();
+    }
     // Arguments that are not valid UTF-8 are kept readable and end up as a usage error, never as a panic.
     let args: Vec<String> = std::env::args_os()
         .skip(1)
         .map(|argument| argument.to_string_lossy().into_owned())
         .collect();
+    if args.is_empty() && updater().installed() {
+        return launch_installed();
+    }
     if args.is_empty()
         && let Some((setting, program)) = carried()
     {
@@ -629,6 +1228,9 @@ fn main() -> ExitCode {
         Ok(Command::Run(options)) => collect(&options, true),
         Ok(Command::Once(options)) => collect(&options, false),
         Ok(Command::Enroll(options)) => enroll(&options),
+        Ok(Command::Link(options)) => link(&options),
+        Ok(Command::Unlink(options)) => unlink(&options),
+        Ok(Command::Destinations(options)) => list_destinations(&options),
         Ok(Command::Install(options)) => install(&options),
         Ok(Command::Uninstall(options)) => uninstall(&options),
         Ok(Command::Start(options)) => start(&options),
@@ -636,6 +1238,9 @@ fn main() -> ExitCode {
         Ok(Command::Status(options)) => status(&options),
         Ok(Command::Pause(options)) => pause(&options),
         Ok(Command::Resume(options)) => resume(&options),
+        Ok(Command::Context(options)) => context(&options),
+        Ok(Command::ContextHook(options)) => context_hook(&options),
+        Ok(Command::Update(options)) => update_command(&options),
         Err(error) => {
             // If even standard error is closed there is nobody left to tell.
             let _ = writeln!(io::stderr(), "{error}\n\n{}", usage());

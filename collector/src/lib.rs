@@ -4,11 +4,16 @@
 //! It remembers how far each file was sent (which is also its queue: a line that did not go is still in the file), so it can be stopped,
 //! or the server can be away, without losing anything.
 
+pub mod browser;
 pub mod collect;
+pub mod computer;
 pub mod config;
+pub mod context;
 pub mod control;
+pub mod destinations;
 pub mod embedded;
 pub mod enrol;
+pub mod link_page;
 pub mod mask;
 pub mod service;
 pub mod setup;
@@ -16,6 +21,7 @@ pub mod state;
 pub mod status;
 #[cfg(windows)]
 pub mod tray;
+pub mod update;
 pub mod upload;
 
 /// Version of this build, from the package metadata.
@@ -38,8 +44,24 @@ pub struct Options {
     pub no_tray: bool,
     /// Also write what it says to this file (a collector started in the background has no terminal).
     pub log_file: Option<String>,
+    /// `context`: the application to ask about (else the working directory the hook gives, else the current folder).
+    pub application: Option<String>,
+    /// `context`: how many characters at most.
+    pub budget: Option<u32>,
+    /// `context`: `text` (default) or `claude-hook`.
+    pub format: Option<String>,
+    /// `context-hook`: take the hook away instead of adding it.
+    pub remove: bool,
     /// Accept an address of Mnemarr that is plain `http://`: the key is then sent without encryption. For a network the person trusts (a sandbox at home).
     pub allow_insecure_http: bool,
+}
+
+/// What was given to `update`: only look (`--check`), or choose whether the collector applies updates by itself (`--auto on` or `--auto off`).
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct UpdateOptions {
+    pub config_dir: Option<String>,
+    pub check_only: bool,
+    pub auto: Option<bool>,
 }
 
 /// What was given to `enroll`: where Mnemarr is, the code a person approved, and, if it is not the host name, what this machine is called.
@@ -52,9 +74,38 @@ pub struct EnrollOptions {
     pub allow_insecure_http: bool,
 }
 
+/// What was given to `link`: where Mnemarr is, and, if a person already made a code for this machine, that code; without it the machine asks and a person
+/// answers in Mnemarr (ADR 0030).
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct LinkOptions {
+    pub server: Option<String>,
+    pub code: Option<String>,
+    /// What this Mnemarr is called in the list (by default the host of its address).
+    pub name: Option<String>,
+    /// What this machine suggests to be called there (by default its host name); a person may choose another when they answer.
+    pub machine: Option<String>,
+    pub config_dir: Option<String>,
+    pub allow_insecure_http: bool,
+    /// Print the address to open instead of opening the browser.
+    pub no_browser: bool,
+}
+
+/// What was given to `unlink`: the destination to take away.
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct UnlinkOptions {
+    pub name: Option<String>,
+    pub config_dir: Option<String>,
+}
+
 /// What the command line asked for.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
+    /// Link this machine to a Mnemarr, in addition to those it sends to: with a code, or by asking and being approved in Mnemarr.
+    Link(LinkOptions),
+    /// Stop sending to a Mnemarr.
+    Unlink(UnlinkOptions),
+    /// List the Mnemarr this machine sends to.
+    Destinations(Options),
     Version,
     Help,
     /// Collect for ever: a pass, a wait, a pass.
@@ -71,6 +122,12 @@ pub enum Command {
     Start(Options),
     /// Stop it now. It starts again with the next session if it is installed.
     Stop(Options),
+    /// Print what the memory knows of an application, for the hook that runs at the start of a session of an assistant (D-12).
+    Context(Options),
+    /// Add (or with `--remove` take away) the hook of Claude Code that runs `context` at the start of a session.
+    ContextHook(Options),
+    /// Look for a newer version at the Mnemarr it sends to and apply it, or say how updates are set (ADR 0032).
+    Update(UpdateOptions),
     /// Say whether it runs, and whether it starts with the session.
     Status(Options),
     /// Be quiet for a while (`--minutes`), or until resumed.
@@ -84,6 +141,9 @@ const ALLOW_INSECURE_HTTP: &str = "--allow-insecure-http";
 
 /// The flag that keeps the icon away. It has no value either.
 const NO_TRAY: &str = "--no-tray";
+
+/// The flag that prints the address to open instead of opening the browser. No value.
+const NO_BROWSER: &str = "--no-browser";
 
 /// A command line the collector does not understand.
 #[derive(Debug, PartialEq, Eq)]
@@ -101,13 +161,19 @@ impl std::error::Error for UsageError {}
 pub fn usage() -> String {
     format!(
         "mnemarr-collector {VERSION}\n\n\
-USAGE:\n    mnemarr-collector enroll --server URL --code CODE [--machine NAME]\n                                        join this machine with the code a person approved in Mnemarr\n    \
+USAGE:\n    mnemarr-collector link [--server URL] [--code CODE] [--name NAME] [--machine NAME]\n                                        send to a Mnemarr too: with a code a person made in Mnemarr, or, without\n                                        --code, ask: the address to open is shown, and a person approves there\n    \
+mnemarr-collector unlink NAME       stop sending to that Mnemarr (what it received stays there)\n    \
+mnemarr-collector destinations      list the Mnemarr this machine sends to\n    \
+mnemarr-collector enroll --server URL --code CODE [--machine NAME]\n                                        the same as link with a code\n    \
 mnemarr-collector install           start with your session, and start now (in the background)\n    \
 mnemarr-collector start | stop      start it in the background, or stop it, now\n    \
 mnemarr-collector status            whether it runs, and whether it starts with your session\n    \
 mnemarr-collector pause [--minutes N]  be quiet for N minutes (default: until resumed)\n    \
 mnemarr-collector resume            stop being quiet\n    \
 mnemarr-collector uninstall         stop it and stop it starting with your session (the machine stays joined)\n    \
+mnemarr-collector update [--check] [--auto on|off]\n                                        look for a newer version at the Mnemarr it sends to and apply it (--check: only\n                                        look); --auto says whether it applies updates by itself (installed with the installer)\n    \
+mnemarr-collector context [--application NAME] [--budget N] [--format text|claude-hook]\n                                        print what the memory knows of an application (for the hook at the start of a session)\n    \
+mnemarr-collector context-hook [--remove]\n                                        add to Claude Code (or take away) the hook that runs it at the start of a session\n    \
 mnemarr-collector run  [OPTIONS]    collect for ever (a pass every --interval seconds)\n    \
 mnemarr-collector once [OPTIONS]    one pass, then stop\n    \
 mnemarr-collector [--version | --help]\n\n\
@@ -120,6 +186,7 @@ OPTIONS:\n    --server URL        the address of Mnemarr (or MNEMARR_SERVER)\n  
 --config-dir DIR    where the key and the address of Mnemarr are kept (default: the configuration folder of the user)\n    \
 --log-file PATH     also write what it says to this file\n    \
 --no-tray           no icon in the notification area (Windows)\n    \
+--no-browser        (link) print the address to open instead of opening it\n    \
 --allow-insecure-http  accept an http:// address (the key then travels without encryption: only for a network you trust)\n"
     )
 }
@@ -144,6 +211,9 @@ where
         "run" => return Ok(Command::Run(options(args)?)),
         "once" => return Ok(Command::Once(options(args)?)),
         "enroll" => return Ok(Command::Enroll(enroll_options(args)?)),
+        "link" => return Ok(Command::Link(link_options(args)?)),
+        "unlink" => return Ok(Command::Unlink(unlink_options(args)?)),
+        "destinations" => return Ok(Command::Destinations(options(args)?)),
         "install" => return Ok(Command::Install(options(args)?)),
         "uninstall" => return Ok(Command::Uninstall(options(args)?)),
         "start" => return Ok(Command::Start(options(args)?)),
@@ -151,12 +221,108 @@ where
         "status" => return Ok(Command::Status(options(args)?)),
         "pause" => return Ok(Command::Pause(options(args)?)),
         "resume" => return Ok(Command::Resume(options(args)?)),
+        "update" => return Ok(Command::Update(update_options(args)?)),
+        "context" => return Ok(Command::Context(options(args)?)),
+        "context-hook" => return Ok(Command::ContextHook(options(args)?)),
         other => return Err(unexpected(other)),
     };
     match args.next() {
         None => Ok(command),
         Some(extra) => Err(unexpected(extra.as_ref())),
     }
+}
+
+/// The options that follow `link`: a flag and its value, each in turn.
+fn link_options<I, S>(mut args: I) -> Result<LinkOptions, UsageError>
+where
+    I: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut options = LinkOptions::default();
+    while let Some(flag) = args.next() {
+        let flag = flag.as_ref();
+        match flag {
+            ALLOW_INSECURE_HTTP => {
+                options.allow_insecure_http = true;
+                continue;
+            }
+            NO_BROWSER => {
+                options.no_browser = true;
+                continue;
+            }
+            _ => {}
+        }
+        let Some(value) = args.next() else {
+            return Err(UsageError(format!("{flag} needs a value")));
+        };
+        let value = value.as_ref().to_string();
+        match flag {
+            "--server" => options.server = Some(value),
+            "--code" => options.code = Some(value),
+            "--name" => options.name = Some(value),
+            "--machine" => options.machine = Some(value),
+            "--config-dir" => options.config_dir = Some(value),
+            other => return Err(unexpected(other)),
+        }
+    }
+    Ok(options)
+}
+
+/// The options that follow `update`.
+fn update_options<I, S>(mut args: I) -> Result<UpdateOptions, UsageError>
+where
+    I: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut options = UpdateOptions::default();
+    while let Some(flag) = args.next() {
+        let flag = flag.as_ref();
+        match flag {
+            "--check" => options.check_only = true,
+            "--auto" | "--config-dir" => {
+                let Some(value) = args.next() else {
+                    return Err(UsageError(format!("{flag} needs a value")));
+                };
+                let value = value.as_ref();
+                if flag == "--config-dir" {
+                    options.config_dir = Some(value.to_string());
+                } else {
+                    options.auto = Some(match value {
+                        "on" => true,
+                        "off" => false,
+                        other => {
+                            return Err(UsageError(format!("--auto is on or off, not '{other}'")));
+                        }
+                    });
+                }
+            }
+            other => return Err(unexpected(other)),
+        }
+    }
+    Ok(options)
+}
+
+/// The options that follow `unlink`: the name of the destination, then the flags.
+fn unlink_options<I, S>(mut args: I) -> Result<UnlinkOptions, UsageError>
+where
+    I: Iterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut options = UnlinkOptions::default();
+    while let Some(argument) = args.next() {
+        let argument = argument.as_ref();
+        if argument == "--config-dir" {
+            let Some(value) = args.next() else {
+                return Err(UsageError("--config-dir needs a value".to_string()));
+            };
+            options.config_dir = Some(value.as_ref().to_string());
+        } else if argument.starts_with("--") || options.name.is_some() {
+            return Err(unexpected(argument));
+        } else {
+            options.name = Some(argument.to_string());
+        }
+    }
+    Ok(options)
 }
 
 /// The options that follow `enroll`: a flag and its value, each in turn.
@@ -204,6 +370,10 @@ where
             options.no_tray = true;
             continue;
         }
+        if flag == "--remove" {
+            options.remove = true;
+            continue;
+        }
         let Some(value) = args.next() else {
             return Err(UsageError(format!("{flag} needs a value")));
         };
@@ -215,6 +385,15 @@ where
             "--projects" => options.projects = Some(value),
             "--state" => options.state = Some(value),
             "--log-file" => options.log_file = Some(value),
+            "--application" => options.application = Some(value),
+            "--format" => options.format = Some(value),
+            "--budget" => {
+                options.budget = Some(value.parse().map_err(|_| {
+                    UsageError(format!(
+                        "--budget needs a number of characters, not {value}"
+                    ))
+                })?);
+            }
             "--minutes" => {
                 options.pause_minutes = Some(value.parse().map_err(|_| {
                     UsageError(format!("--minutes needs a number of minutes, not {value}"))
@@ -269,6 +448,34 @@ mod tests {
     }
 
     #[test]
+    fn should_read_the_options_of_context_and_of_its_hook() {
+        let Ok(Command::Context(options)) = parse([
+            "context",
+            "--application",
+            "oter-iptv",
+            "--budget",
+            "4000",
+            "--format",
+            "claude-hook",
+        ]) else {
+            panic!("context");
+        };
+        assert_eq!(
+            (
+                options.application.as_deref(),
+                options.budget,
+                options.format.as_deref()
+            ),
+            (Some("oter-iptv"), Some(4000), Some("claude-hook"))
+        );
+        let Ok(Command::ContextHook(options)) = parse(["context-hook", "--remove"]) else {
+            panic!("context-hook");
+        };
+        assert!(options.remove);
+        assert!(parse(["context", "--budget", "many"]).is_err());
+    }
+
+    #[test]
     fn should_read_the_options_of_run_and_once() {
         let expected = Options {
             server: Some("https://mnemarr.example".to_string()),
@@ -281,6 +488,10 @@ mod tests {
             log_file: None,
             pause_minutes: None,
             no_tray: false,
+            application: None,
+            budget: None,
+            format: None,
+            remove: false,
             allow_insecure_http: false,
         };
         let arguments = [
@@ -320,6 +531,86 @@ mod tests {
             Err(UsageError(
                 "--interval needs a number of seconds, not soon".to_string()
             ))
+        );
+    }
+
+    #[test]
+    fn should_read_the_options_of_link_with_a_code_and_without() {
+        assert_eq!(
+            parse([
+                "link",
+                "--server",
+                "https://mnemarr.example",
+                "--code",
+                "ABCD-EFGH-JKLM",
+                "--name",
+                "prod",
+                "--machine",
+                "pc",
+                "--config-dir",
+                "/c",
+                "--allow-insecure-http",
+                "--no-browser",
+            ]),
+            Ok(Command::Link(LinkOptions {
+                server: Some("https://mnemarr.example".to_string()),
+                code: Some("ABCD-EFGH-JKLM".to_string()),
+                name: Some("prod".to_string()),
+                machine: Some("pc".to_string()),
+                config_dir: Some("/c".to_string()),
+                allow_insecure_http: true,
+                no_browser: true,
+            }))
+        );
+        assert_eq!(parse(["link"]), Ok(Command::Link(LinkOptions::default())));
+        assert_eq!(
+            parse(["link", "--code"]),
+            Err(UsageError("--code needs a value".to_string()))
+        );
+        assert_eq!(
+            parse(["link", "--nope", "x"]),
+            Err(UsageError("unexpected argument: --nope".to_string()))
+        );
+    }
+
+    #[test]
+    fn should_read_the_name_to_unlink_and_the_flags_around_it() {
+        assert_eq!(
+            parse(["unlink", "dev", "--config-dir", "/c"]),
+            Ok(Command::Unlink(UnlinkOptions {
+                name: Some("dev".to_string()),
+                config_dir: Some("/c".to_string()),
+            }))
+        );
+        assert_eq!(
+            parse(["unlink", "--config-dir", "/c", "dev"]),
+            Ok(Command::Unlink(UnlinkOptions {
+                name: Some("dev".to_string()),
+                config_dir: Some("/c".to_string()),
+            }))
+        );
+        assert_eq!(
+            parse(["unlink"]),
+            Ok(Command::Unlink(UnlinkOptions::default()))
+        );
+        assert_eq!(
+            parse(["unlink", "a", "b"]),
+            Err(UsageError("unexpected argument: b".to_string()))
+        );
+        assert_eq!(
+            parse(["unlink", "--config-dir"]),
+            Err(UsageError("--config-dir needs a value".to_string()))
+        );
+    }
+
+    #[test]
+    fn should_list_the_destinations() {
+        assert_eq!(
+            parse(["destinations", "--config-dir", "/c"]),
+            Ok(Command::Destinations(Options {
+                config_dir: Some("/c".to_string()),
+                ..Options::default()
+            }))
         );
     }
 
@@ -408,5 +699,34 @@ mod tests {
             panic!("run was expected");
         };
         assert!(options.no_tray);
+    }
+
+    #[test]
+    fn should_read_the_options_of_update() {
+        assert!(matches!(
+            parse(["update"]),
+            Ok(Command::Update(UpdateOptions {
+                check_only: false,
+                auto: None,
+                ..
+            }))
+        ));
+        let Ok(Command::Update(options)) = parse(["update", "--check", "--config-dir", "/c"])
+        else {
+            panic!("update --check")
+        };
+        assert!(options.check_only);
+        assert_eq!(options.config_dir.as_deref(), Some("/c"));
+        let Ok(Command::Update(on)) = parse(["update", "--auto", "on"]) else {
+            panic!("update --auto on")
+        };
+        assert_eq!(on.auto, Some(true));
+        let Ok(Command::Update(off)) = parse(["update", "--auto", "off"]) else {
+            panic!("update --auto off")
+        };
+        assert_eq!(off.auto, Some(false));
+        assert!(parse(["update", "--auto", "sometimes"]).is_err());
+        assert!(parse(["update", "--auto"]).is_err());
+        assert!(parse(["update", "now"]).is_err());
     }
 }

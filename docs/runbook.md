@@ -18,17 +18,72 @@ What an operator does once Mnemarr runs for real. The examples use `mnemarr.exam
 ## Add a machine
 
 1. In the interface: **Machines > Add a machine**, give it a name (letters, digits, dots, hyphens; 50 characters at most) and say whether it is always on or comes and goes.
-2. Run the one line it shows in a terminal of that machine, **as the user whose conversations it will read**, or download the program it offers for Windows and open it. The code works for 15 minutes and once.
+2. **On Windows, download the installer** it offers and open it (the same file for every machine, no code in it): the collector asks to be linked, and you approve it in **Computers asking to be linked**. Or run the one line it shows in a terminal of that machine, **as the user whose conversations it will read**, or download the program that carries a code and open it. The code works for 15 minutes and once.
 3. The machine shows **online** within a minute. If it does not: [the collector page](collector.md) lists what it says when it cannot join.
 4. An assistant may ask for the code over MCP (`request_collector_enrolment`); it waits for you to approve it on the same page.
+5. **A computer that already has the collector** needs none of this to be linked to this Mnemarr: on that computer, `mnemarr-collector link --server <address of this Mnemarr>` (or **Link to a Mnemarr…** on the icon, on Windows). It shows an address and a code; you open it signed in, check the name the computer gives itself, **choose the name it will have in this Mnemarr** and approve. The computer then sends here as well as to the Mnemarr it already sent to. A computer that asked and is not approved waits in **Computers asking to be linked** for 10 minutes.
 
 The page offers a line per system **that this image carries a program for** (Windows and Linux, x86_64). A system with no program is not offered.
 
+## Update the collectors
+
+A collector installed with the installer **updates itself** from the Mnemarr it sends to (see [the collector](collector.md)). Updating Mnemarr updates what it carries: the new image has the installer and the packages of the version it was built with, and collectors that send to it take the newer version within four hours. The machines page says **Update available: X** for those that are older. Nothing is to be done on the machines. To see what a Mnemarr carries: `GET /api/v1/ingest/updates/releases.win.json`.
+
+The folder it serves is `updates` in the folder of the programs (`MNEMARR__COLLECTORS__DOWNLOADFOLDER`, `/collector-programs` in the image), or the folder
+`MNEMARR__COLLECTORS__UPDATEFOLDER` when it is somewhere else. It holds what the installer makes for the build: `releases.win.json` (the feed), the packages
+`MnemarrCollector-<version>-full.nupkg` and the installer `MnemarrCollector-win-Setup.exe`. The image carries it; a Mnemarr built without it serves no installer and the
+page offers none. A machine that sends over plain `http://` is told on its row why it cannot update (an update is code, so it is only taken over HTTPS).
+
+If an update does not happen: `mnemarr-collector status` on the machine says where it is at (`updates:`), and `mnemarr-collector update` asks now and says why it cannot (not installed with the installer, no Mnemarr reachable over HTTPS, nothing newer).
+
+## The search by meaning
+
+Mnemarr also searches by meaning, with a model that runs on this host (the image carries it; [configuration](configuration.md)). Nothing leaves the host.
+
+- **Is it working?** The notes page says nothing when it is up to date, *The search by meaning is catching up: X of Y passages are read* while it reads, and why when it does not work. `GET /api/v1/search/status` says the same (`off`, `starting`, `ready` or `failed`), with the counts of the sources the caller may see.
+- **The first start over a long history is slow** (about ten passages a second on two threads): the search works by words meanwhile, and by meaning for the passages that are read. It resumes after a restart; it does not start over.
+- **`degraded` with `embeddings-failing`**: the notes page says in a sentence what, and the log of Mnemarr has the detail: the model files do not match what is pinned (an image that was altered, a folder that was swapped), the library cannot be loaded, or a pass failed. The search goes on by words. A model or a library that could not be loaded is tried again every five minutes: no restart is needed once the cause is fixed.
+- **`starting`**: the model is being loaded (a few seconds); until then the answer is by words.
+- **To change the model or its settings**, set the variables of the configuration; a change of model reads every passage again in the background.
+- It uses about 1 GB of memory and two CPU threads while it reads. Lower `MNEMARR__EMBEDDINGS__THREADS` on a small host, or leave `MNEMARR__EMBEDDINGS__MODELFOLDER` empty to turn it off.
+
+## The consolidation
+
+Turns conversations into notes of the memory vault ([ADR 0036](adr/0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md), [configuration](configuration.md)). **Is it working?** The Sources page has a *Consolidation* card (what waits, what is done, notes written, the last failure and its reason); `GET /api/v1/consolidation` says the same, and `/health/ready` is degraded with a `consolidation-*` reason when it is on and cannot work.
+
+- **Nothing happens**: it is off (`MNEMARR__CONSOLIDATION__ENABLED`), the runner is missing (`MNEMARR__AGENT__URL`), or the memory vault is read-only (turn writing on for it on the Sources page). The card says which.
+- **Who wrote this note?** The log says `consolidation (via job:<id>)`; the note's front matter lists the conversations it came from. A wrong note is corrected like any note (a person with `notes.write`, or the chat), or reverted when the vault is a Git repository.
+- **Stop it now**: set `MNEMARR__CONSOLIDATION__ENABLED=false` and restart (notes already written stay). The account `consolidation` belongs to Mnemarr: it is not listed under Accounts and nobody changes it or gives it a key; its tokens last for one run and the setting is the switch.
+- **It costs the subscription**: at most `PERPASS` conversations per pass and `PERDAY` runs of the model per day (UTC), each bounded by `MAXCHARS`. Lower them, or the model, if your own use of Claude is cut short.
+- **A conversation keeps failing**: after `MAXTRIES` failures it is left alone (the probe says `consolidation-failing`) until it has grown by 200 lines. When the cause is gone (a login renewed, the runner back), **Try the conversations that failed again** on the card (`POST /api/v1/consolidation/retry`).
+- **A conversation is never consolidated again from the start**: Mnemarr keeps how many turns were read.
+
+## The chat
+
+An optional runner gives the interface a chat ([the chat](chat.md)). **Is it up?** The chat icon shows at the right of the header and the panel says *The assistant runner does not answer* when it does not. A runner that restarts keeps the conversations (its volume) and resumes them at the next message; a change that waited for approval when it stopped shows *Cancelled*.
+
+- **Who did that?** The audit log says `person (via chat:<conversation>)` for what the chat's model did with a person's token.
+- **Back it up**: the conversations are in the runner's volume (`/data`), not in Mnemarr's database: back that volume up on its own. If it is lost, the conversations are gone and Mnemarr forgets who owned them the next time the panel lists them.
+- **Stop the chat now**: empty `MNEMARR__AGENT__URL` (the chat disappears, nothing else changes) or stop the runner. The tokens it holds expire by themselves in 30 minutes.
+- **Take it from a person**: remove `chat.use` from their role (they lose the chat and the token's hands at once).
+
 ## Take a machine away, or change its key
+
+**Uninstall the collector from a computer**: *Settings, Apps, Mnemarr collector, Uninstall* (it keeps its keys and positions, so that installing again finds them). To forget everything on that computer, also delete the folder `%APPDATA%\mnemarr-collector` and, in Mnemarr, revoke the machine below.
 
 - **Revoke** it on the Machines page: its key stops working at once and the row stays, as *refused*, so that what it wrote can be found. **Remove from the list** frees its name.
 - **A lost or leaked key**: revoke the machine, then add it again with the same name. The new key replaces the old one.
 - **A key of an assistant** (for `/mcp`): create a service account with the role you want under *Accounts*, give its key once, and revoke it there when it is no longer used.
+
+On the machines page, **Manage** on a row offers (ADR 0031):
+
+- **Rename**: the machine, or a name that conversations came from, gets a new name; what it sent is filed under it. The name must be free.
+- **Merge into another machine**: what a name sent is filed under a machine that is enrolled, and the name leaves the list. A conversation that the target
+  holds already is not made twice. This is what repairs a computer that was installed again under another name before Mnemarr knew computers.
+- **Reinstall**: a new code for a machine that exists, without revoking it, to install again or to update the collector on that computer.
+- **Remove, keep its conversations**: its keys stop working and it leaves the list; its conversations stay, under its name, where they can be renamed, merged or deleted.
+- **Delete with its conversations**: the machine and everything it sent leave the notes and the search. It cannot be undone: the daily snapshots of the database
+  still hold a copy until they are rotated out, and what is computed from conversations (consolidated notes) is not deleted.
 
 ## Back up
 

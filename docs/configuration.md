@@ -41,6 +41,33 @@ See [ADR 0016](adr/0016-accounts-roles-and-service-accounts.md) for what each pr
 
 Hidden folders (`.git`, `.obsidian`), links and files larger than 2 MB are not indexed. A pass lists the folder and reads only the notes whose size or last write time changed, so a vault on a share is not read in full every interval; `POST /api/v1/sources/{id}/index?rebuild=true` reads everything. The folder of a source is checked against the roots again before every scan, and a link anywhere between the root and the folder is refused. If a scan fails (the folder was unmounted, or is outside the roots now), the source shows why (`lastError`) and `/health/ready` is degraded with the reason `source-unreadable`; its old notes stay searchable. `POST /api/v1/sources/{id}/index?rebuild=true` cuts every note again. The mode of a source is its write switch: read-only unless you turn writing on. Forgetting a source in the interface forgets its index, never its files.
 
+## The chat (`Agent`)
+
+The chat needs an optional second container, the assistant runner; see [the chat](chat.md) ([ADR 0035](adr/0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md)).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__AGENT__URL` | empty | The address of the runner, for example `http://mnemarr-agent:8489`. Empty: the chat is off, its endpoints answer 404 and the interface shows none. |
+| `MNEMARR__AGENT__SECRET` | empty | The secret shared with the runner, 32 characters or more (the start fails otherwise). Never returned, never logged. |
+| `MNEMARR__AGENT__MAXCONVERSATIONSPERPERSON` | `50` | How many conversations a person keeps (1 to 1000). The runner has its own cap for everybody and deletes nothing to make room: this times the number of people should stay under it. |
+
+The tools with which the chat changes notes are the MCP writing tools (`MNEMARR__MCP__WRITETOOLS=true`), and those with which it looks after sources have their own switch (`MNEMARR__MCP__SOURCETOOLS=true`).
+
+## Search by meaning (`Embeddings`)
+
+The notes and the conversations are also searched by meaning, with a model that runs on this host (ADR 0034). The image carries the model and the library and sets the two paths; a build without them leaves the feature off.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__EMBEDDINGS__MODELFOLDER` | the image sets it | The folder with `model.onnx` and `tokenizer.json`. Empty: the search by meaning is off and nothing is computed. The files are checked against pinned SHA-256 before they are loaded. |
+| `MNEMARR__EMBEDDINGS__EXTENSIONPATH` | the image sets it | The `sqlite-vec` library (`vec0.so`). Required when a model folder is given. |
+| `MNEMARR__EMBEDDINGS__MODEL` | `granite-embedding-97m-multilingual-r2` | The model; only the listed ones are supported, and today there is one. Another one needs its files in `MODELFOLDER`. A change computes every passage again in the background. |
+| `MNEMARR__EMBEDDINGS__THREADS` | `2` | CPU threads of the model (1 to 64). The first run over a long history takes about a second per ten passages on two threads. |
+| `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together (1 to 64). |
+| `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |
+| `MNEMARR__EMBEDDINGS__IDLESECONDS` | `15` | How long it waits when everything is computed before it looks again (1 to 3600). |
+| `MNEMARR__EMBEDDINGS__MAXDISTANCE` | the model's (`0.2` for the default one) | The cosine distance beyond which a passage is not an answer by meaning. Empty: the one measured for the model. Set it only to override, and measure. |
+
 ## Git sources (`Git`)
 
 A source can be the checkout of a Git repository ([ADR 0022](adr/0022-git-sources-are-cloned-and-pulled-in-process-over-https.md)): declare it with a `repository` (an `https` address, optionally a branch and the name of a credential) and a folder inside the roots, where it is cloned. Mnemarr clones into a folder that does not exist or is empty, then fast-forwards; it never merges, never forces, and reports a checkout that has diverged or has uncommitted changes without touching it. SSH is not supported.
@@ -66,6 +93,7 @@ Assistants reach Mnemarr over the Model Context Protocol at `POST /mcp` ([ADR 00
 | Setting | Default | Meaning |
 |---|---|---|
 | `MNEMARR__MCP__WRITETOOLS` | `false` | Whether the tools that write notes (`create_note`, `update_note`, `append_to_note`, `rename_note`, `delete_note`) are offered. Off by default, and an environment setting on purpose: neither the database nor the API can turn it on. A tool is only offered to a role that holds its permission, and a source that is read-only refuses writes whatever this says. |
+| `MNEMARR__MCP__SOURCETOOLS` | `false` | Whether the tools that look after sources (`create_source`, `update_source`, `delete_source`, `index_source`, `sync_source`) are offered, **as well as** `WRITETOOLS` being on. Apart from the notes' switch on purpose: an operator who let assistants write notes has not let them declare or forget sources. Every key whose role holds `sources.manage` (Operator) gets them, not only the chat: turn it on only for assistants you trust with that. |
 
 Tools that read: `list_sources`, `search`, `list_notes`, `read_note` (gives the `version` to send back with `update_note`), `list_tags`. A tool that asks: `request_collector_enrolment` (role `Assistant` or `Admin`) opens a request to add a machine and returns a one-time code and the command to run; it is of no use until a person who manages the collectors approves it in the interface.
 
@@ -77,6 +105,8 @@ A key of a collector belongs to one machine ([ADR 0027](adr/0027-machines-join-w
 |---|---|---|
 | `MNEMARR__INGEST__REQUIREENROLMENT` | `true` | Whether a key may send only for the machine it was enrolled for. Turn it off only for a sandbox, or for the day before every machine is enrolled: a hand-made `Collector` account can then write under any machine name. |
 | `MNEMARR__COLLECTORS__DOWNLOADFOLDER` | none | A folder with the programs a machine installs, one file per system: `mnemarr-collector-windows-x86_64.exe`, `mnemarr-collector-linux-x86_64`, `mnemarr-collector-macos-aarch64`. Mnemarr serves them (and no other file), with their checksum, to the machines that join, and gives a line to install for each system it has. The image carries the Windows and Linux programs of its own commit in `/collector-programs`, and this setting points there by default; set it to serve other programs, or to nothing to serve none. |
+| `MNEMARR__COLLECTORS__UPDATEFOLDER` | `updates` in the folder above | The folder of the installer and the updates of the collector that the installer's packaging made ([ADR 0032](adr/0032-the-collector-is-installed-by-an-installer-and-updates-itself-from-the-mnemarr-it-sends-to.md)): `releases.win.json` (the feed), `MnemarrCollector-<version>-full.nupkg` (the packages) and `MnemarrCollector-win-Setup.exe`. Mnemarr serves them (and no other file) under `/api/v1/ingest/updates/` and `/api/v1/ingest/installer/<system>`, so that an installed collector asks it for a newer version and a person can download the installer. The image carries it; without it, no installer is offered. |
+| `MNEMARR__COLLECTORS__SERVEUPDATES` | `true` | Whether this Mnemarr serves the installer and the updates of the collector it carries. Set it to `false` to serve none: no installer is offered, and a collector linked to it never takes an update from it (an update is code that runs on the computer: a Mnemarr that you would not trust to run it can be told not to offer it). |
 | `MNEMARR__COLLECTORS__PUBLICURL` | the address of the request | The address the lines and installers tell machines to reach Mnemarr at, such as `https://mnemarr.homelab.example`. Set it behind a proxy that does not pass the original host. |
 | `MNEMARR__COLLECTORS__ONLINEWITHINMINUTES` | `5` | A machine heard from within this many minutes is online (1 to 10080). |
 | `MNEMARR__COLLECTORS__SILENCEAFTERMINUTES` | `30` | An `always-on` machine that has not been heard from for this long degrades `/health/ready` (reason `collector-silent`); one that reports an error does too (`collector-failing`). An `intermittent` machine never does. At least the previous setting. |
@@ -96,6 +126,25 @@ Mnemarr keeps a consistent copy of its database in the `backup` folder of the da
 A snapshot holds what the database held that day: **what you delete from Mnemarr stays readable in the snapshots** until they are replaced (`Keep` × `EveryHours`, a week by default), in the **last three copies made before a migration** (kept whatever their age), and in whatever your backup tool keeps beyond that. Keep this in mind for content you must be able to erase.
 
 When the last snapshot failed, or none has been taken for more than twice the interval, `/health/ready` says **degraded** with the reason `backup-failing` or `backup-late` (it stays 200: the application works).
+
+## Consolidation into the memory vault (`Consolidation`)
+
+Turns the conversations into short notes of the memory vault ([ADR 0036](adr/0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md)). **Off by default**: turning it on sends the conversations (already masked) to the model of the assistant runner and spends your subscription, a little for each conversation. It needs `MNEMARR__AGENT__URL` (the runner) and a memory vault whose mode is **ReadWrite** (the Sources page; a vault that is read-only is only read).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MNEMARR__CONSOLIDATION__ENABLED` | `false` | Whether conversations are turned into notes. |
+| `MNEMARR__CONSOLIDATION__MODEL` | `haiku` | The model of the job: a light one is enough to write notes. |
+| `MNEMARR__CONSOLIDATION__IDLEMINUTES` | `30` | A conversation is consolidated once nothing was added to it for this long (1 to 1440). |
+| `MNEMARR__CONSOLIDATION__PASSSECONDS` | `300` | How often the job looks for conversations to consolidate. |
+| `MNEMARR__CONSOLIDATION__PERPASS` | `3` | Conversations consolidated by one pass (1 to 20). |
+| `MNEMARR__CONSOLIDATION__PERDAY` | `30` | Times the model is asked in a day, UTC (1 to 1000): the cost of a day is bounded (a conversation read in several runs, or tried again, costs each time). |
+| `MNEMARR__CONSOLIDATION__AGENT` | empty | The agent of the runner that does the job (`claude-code`, `openai`); empty: the first that can run. The default model is a Claude one: with another agent, set `MODEL` too. |
+| `MNEMARR__CONSOLIDATION__MAXCHARS` | `40000` | What one run reads of a conversation (2000 to 100000); a long conversation is read in several runs. |
+| `MNEMARR__CONSOLIDATION__MAXTRIES` | `3` | A conversation that failed this often is left alone until it has grown by 200 lines. |
+| `MNEMARR__CONSOLIDATION__TIMEOUTMINUTES` | `10` | A run that lasts longer is stopped. |
+
+The status is on the Sources page (and `GET /api/v1/consolidation`); the readiness probe says `consolidation-*` (degraded) when it is on and cannot work.
 
 ## Titles of conversations (`Titles`)
 

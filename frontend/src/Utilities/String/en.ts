@@ -126,7 +126,18 @@ const en = {
   UnresolvedLink: 'No note of this name that you may read',
   Search: 'Search',
   SearchError: 'The search failed.',
+  SearchHowTitle: 'How does the search work?',
+  SearchHowText:
+    'It looks for your words and for what you mean. Type keywords, or ask a question in your own words: the notes about it are found even when they use other words. When the model that reads the meaning is not available, the search is by words only.',
+  SearchHowExample:
+    'Example: "how do I get my data back after a crash?" finds the note about restoring from a snapshot, though that note never says "crash". Each result says whether it matched by its words, by its meaning, or both.',
   SearchTheNotes: 'Search the notes',
+  MatchKeywords: 'matched by its words',
+  MatchMeaning: 'matched by its meaning',
+  MatchBoth: 'matched by its words and its meaning',
+  MeaningFailed: 'The search by meaning does not work, so the search is by words only: {reason}',
+  MeaningCatchingUp:
+    'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
   SourceRoots: 'A source is a folder inside one of: {roots}',
   SourcesError: 'Could not read the sources.',
   Adopt: 'Take over',
@@ -134,6 +145,23 @@ const en = {
   Apply: 'Apply',
   Change: 'Change',
   ConfigurationAsCode: 'Configuration as code',
+  Consolidation: 'Consolidation',
+  ConsolidationOff:
+    'Off. The conversations stay as they are; nothing turns them into notes of the memory vault. To turn it on, see Consolidation in the configuration (it needs the assistant runner and a memory vault open for writing, and it sends the conversations, already masked, to the model of the runner).',
+  ConsolidationOn:
+    'A model ({model}) reads the new turns of each conversation that was left alone for a while and writes notes in the memory vault {vault}, with the link to the conversation.',
+  ConsolidationCounts:
+    '{waiting} conversation(s) wait · {done} done · {notes} note(s) written or changed · {today} of {perDay} runs today',
+  ConsolidationNoRunner: 'The consolidation is on but there is no assistant runner: set MNEMARR__AGENT__URL.',
+  ConsolidationNoMemoryVault: 'There is no memory vault to write in.',
+  ConsolidationMemoryVaultReadOnly:
+    'The memory vault is read-only: turn writing on for it, above, so that the consolidation can write in it.',
+  ConsolidationLastFailure: 'A conversation could not be consolidated at {at}: {error} It is tried again later.',
+  ConsolidationStarted: 'It runs in the background: the counts above change as it goes.',
+  ConsolidationRunning: 'A run is going on.',
+  ConsolidateNow: 'Consolidate what waits now',
+  ConsolidationRetry: 'Try the {count} conversation(s) that failed again',
+  ConsolidationRetried: '{count} conversation(s) will be tried again at the next pass.',
   ConfigurationError: 'Could not read the configuration.',
   ConfigurationHelp:
     'Describe the sources in a YAML document and keep it in a repository: it can be applied here, through the API, or given to Mnemarr as a file. What a document owns is managed by it and cannot be changed by hand. A section that is not in the document is left alone.',
@@ -279,11 +307,16 @@ const en = {
   AddMachine: 'Add the machine',
   AddMachineHelp:
     'The name must be the one the machine will give itself. An always-on machine (a server) raises an alert when it falls silent; an intermittent one (a workstation) never does.',
+  AlreadyHasACollector:
+    'This computer already has the collector? Run the line, or open the download, again: it keeps the Mnemarr it already sends to and adds this one. Or, on the computer, use the icon: Link to a Mnemarr.',
   KindAlwaysOn: 'Always on (a server)',
   KindIntermittent: 'Intermittent (a workstation)',
   NewCode: 'Code of the new machine',
   PasteThisLine:
     'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and installs it. The code in it works once, for 15 minutes, and is shown only now.',
+  DownloadInstaller: 'Download the installer for {system}',
+  DownloadInstallerHelp:
+    'Recommended: it installs the collector like any program (in the list of installed applications, with an uninstaller), keeps itself up to date, and asks which Mnemarr to link to: you approve it here. It holds no code.',
   DownloadFor: 'Download for {system}',
   DownloadHelp:
     'The file already knows this Mnemarr, the machine and the code: open it, and it joins the machine and installs the collector. Windows may say the publisher is unknown, because the program is not signed yet: choose "More info", then "Run anyway".',
@@ -297,6 +330,39 @@ const en = {
   LastSeen: 'Last seen',
   NeverSeen: 'Never',
   ConversationsCount: 'Conversations',
+  ProgramDiffers: 'Another program than this Mnemarr carries',
+  UpdateAvailableTo: 'Update available: {version}',
+  UpdateFailed: 'It cannot update: {reason}',
+  Manage: 'Manage',
+  ManageMachine: 'Manage {name}',
+  RenameTitle: 'Rename',
+  Rename: 'Rename',
+  RenameHelp:
+    'What it sent is filed under the new name. The name must be free: to join it to a machine that exists, merge instead.',
+  MergeTitle: 'Merge into another machine',
+  MergeHelp:
+    'What {name} sent is filed under the machine you choose, without a conversation made twice, and {name} leaves the list.',
+  MergeInto: 'Merge into',
+  Merge: 'Merge',
+  ReinstallTitle: 'Install the collector again',
+  ReinstallHelp:
+    'A new code for {name}, to install again or to update the collector on that computer (this Mnemarr says when a machine runs another program than the one it carries). The machine keeps its name and what it sent; its old key stops working here.',
+  Reinstall: 'Reinstall',
+  RemovalTitle: 'Remove or delete',
+  RemoveHelp:
+    'Remove the machine from the list: its key stops working, and what it sent stays, under its name, where you can rename it, merge it or delete it.',
+  RemoveKeep: 'Remove, keep its conversations',
+  RemoveMachineKeep: 'Remove the machine {name} and keep its conversations',
+  EraseHelp: 'Delete the machine and everything it sent: its conversations leave the notes and the search.',
+  Erase: 'Delete with its conversations…',
+  EraseMachine: 'Delete the machine {name} with its conversations',
+  EraseConfirmTitle: 'Confirm the deletion',
+  EraseConfirm:
+    'Delete {name} and its {count} conversations? This cannot be undone. Copies in the snapshots of the database remain until they are rotated out; what is computed from conversations is not deleted.',
+  EraseYes: 'Yes, delete it all',
+  EraseNow: 'Delete {name} and its conversations now',
+  LinkKnownAs:
+    'This computer says it is the machine {name}, which already joined here. Mnemarr cannot prove it: approve only if that is right. It then takes over that machine, keeps what it sent, and the key {name} had stops working.',
   RevokeMachine: 'Revoke the machine {name}',
   StateOnline: 'Online',
   StatePaused: 'Paused by its user',
@@ -308,6 +374,33 @@ const en = {
   StateSilent: 'Silent',
   StateFailing: 'Failing',
   StateRefused: 'Refused (revoked)',
+  AskingToBeLinked: 'Computers asking to be linked',
+  NoPairings:
+    'No computer is asking. On a computer that has the collector, use its icon: Link to a Mnemarr (or run: mnemarr-collector link).',
+  PairingAsksFor: '{name} asks to be linked',
+  PairingExpires: 'Waiting until {time}',
+  ReviewPairing: 'Review the request of {name}',
+  LinkAComputer: 'Link a computer',
+  LinkIntro:
+    'A computer that has the collector asked to be linked to this Mnemarr. Check that you started it just now, on your own computer, and that the name below is its name.',
+  LinkCodeLabel: 'Code shown on the computer',
+  LinkNameExists:
+    'A machine named {name} exists already. Approving under that name replaces its key: the collector that runs with the old key stops. Choose another name unless this computer is that machine.',
+  LinkCodeOnComputer: 'Code of this request: check that it is the one your computer shows',
+  LinkTakeOver: 'To take over the machine {name}, write its name here',
+  LinkFind: 'Find the request',
+  LinkNotFound:
+    'There is no request waiting with this code: it may have expired (after 10 minutes) or been answered already. Start again on the computer.',
+  LinkHostname: 'The computer says it is called',
+  LinkName: 'Name in this Mnemarr',
+  LinkNameHelp:
+    'If a machine of this name is already linked, it is replaced: its old key stops working. Another Mnemarr you link this computer to has its own name for it.',
+  LinkApprove: 'Link this computer',
+  LinkReject: 'This is not my computer',
+  LinkDone:
+    'Linked as {name}. The computer takes its key in a few seconds and starts sending its conversations; you can close this page.',
+  LinkRejected: 'Refused. The computer is told so, and gets nothing.',
+  LinkSeeMachines: 'See the machines',
   Requests: 'Requests to add a machine',
   NoRequests:
     'Nothing is waiting: an assistant that asks for a machine to be added shows here until a person approves it.',
@@ -339,6 +432,47 @@ const en = {
   RewriteAllTitles: 'Have the model write the titles that are only a first sentence',
   TitlesQueued: '{count} conversation(s) are queued: the model writes their titles in the background.',
   SourceMissing: 'No source is declared for {kind}: what depends on it cannot work until one is.',
+  Chat: 'Chat',
+  OpenChat: 'Open the chat',
+  CloseChat: 'Close the chat',
+  NewChat: 'New chat',
+  ChatHistory: 'Past conversations',
+  ResizeChat: 'Resize the chat',
+  ChatScope:
+    'Ask about your notes, or ask me to add to them and to look after your sources. Every change waits for your approval.',
+  ChatScopeReadOnly:
+    'Ask about your notes. The tools that change them are off on this Mnemarr, so the chat only reads.',
+  ChatReadOnlyHint:
+    'To let the chat change notes and sources, the operator turns the writing tools on (MNEMARR__MCP__WRITETOOLS).',
+  ChatUnreachable: 'The assistant runner does not answer: ask the operator to check it.',
+  ChatNoCredentials: '{agent} has no credentials on the runner: ask the operator to set them.',
+  ChatRequestFailed: 'The chat could not do that (the server answered {status}).',
+  ChatNoConversations: 'No conversation yet.',
+  ChatWaitingApproval: 'waiting for your approval',
+  ChatEmpty: 'Ask a question, for example: what did we decide about backups?',
+  ChatWorking: 'Working…',
+  ChatPrompt: 'Your message',
+  ChatPromptPlaceholder: 'Ask about your notes. Enter sends, Shift+Enter starts a new line.',
+  DeleteConversation: 'Delete the conversation {title}',
+  Conversation: 'Conversation',
+  Agent: 'Agent',
+  Model: 'Model',
+  Send: 'Send',
+  Stop: 'Stop',
+  Thinking: 'Thinking',
+  ApplyThisChange: 'Apply this change?',
+  ChangeApproved: 'Approved: the change was made.',
+  ChangeRejected: 'Rejected: nothing was changed.',
+  ChangeCancelled: 'Cancelled with the turn: nothing was changed.',
+  ToolRunning: 'running',
+  ToolDone: 'done',
+  ToolFailed: 'failed',
+  ToolArguments: 'Arguments',
+  ToolResult: 'Result',
+  ToolNoOutput: 'No output.',
+  UsageTokens: '{input} tokens in, {output} out',
+  UsageCost: '{cost} USD (as the provider reports it)',
+  UsageDuration: '{seconds} s',
 } as const;
 
 export type TranslationKey = keyof typeof en;

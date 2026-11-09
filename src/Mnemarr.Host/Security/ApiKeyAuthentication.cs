@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
+using Mnemarr.Core.Chat;
 
 namespace Mnemarr.Host.Security;
 
@@ -18,7 +19,7 @@ public static class ApiKeyHeader
     public static string? Read(HttpRequest request)
     {
         var header = request.Headers[HeaderName].ToString();
-        if (header.StartsWith(ApiKeyService.SecretPrefix, StringComparison.Ordinal))
+        if (IsOurs(header))
         {
             return header;
         }
@@ -31,20 +32,27 @@ public static class ApiKeyHeader
         }
 
         var token = authorization[Bearer.Length..];
-        return token.StartsWith(ApiKeyService.SecretPrefix, StringComparison.Ordinal) ? token : null;
+        return IsOurs(token) ? token : null;
     }
+
+    private static bool IsOurs(string secret) =>
+        secret.StartsWith(ApiKeyService.SecretPrefix, StringComparison.Ordinal) || secret.StartsWith(ChatAccess.TokenPrefix, StringComparison.Ordinal);
 }
 
 /// <summary>Authenticates a request that carries an API key. A key that is not valid is a 401: it never falls back to a cookie.</summary>
 public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
+    private const string McpPath = "/mcp";
+
     private readonly ApiKeyService _keys;
+    private readonly ChatAccess _chat;
 
     public ApiKeyAuthenticationHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, ApiKeyService keys)
+        IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, ApiKeyService keys, ChatAccess chat)
         : base(options, logger, encoder)
     {
         _keys = keys;
+        _chat = chat;
     }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -58,10 +66,26 @@ public sealed class ApiKeyAuthenticationHandler : AuthenticationHandler<Authenti
         var principal = _keys.Authenticate(secret);
         if (principal is null)
         {
-            return Task.FromResult(AuthenticateResult.Fail("The key is not valid."));
+            // Not a key of Mnemarr: it may be the token that the chat's runner holds for a person, which a key never is.
+            return Task.FromResult(AuthenticateChatToken(secret));
         }
 
         var identity = MnemarrClaims.Identity(principal, ApiKeyHeader.Scheme);
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), ApiKeyHeader.Scheme)));
+    }
+
+    /// <summary>
+    /// The token that the chat's runner presents for a person (ADR 0035): it opens the MCP server and nothing else, whatever the person may do elsewhere, and what it may do there is the person's
+    /// role as it is now. The audit says the chat acted.
+    /// </summary>
+    private AuthenticateResult AuthenticateChatToken(string token)
+    {
+        if (!Request.Path.StartsWithSegments(McpPath, StringComparison.OrdinalIgnoreCase) || _chat.Authenticate(token) is not { } identity)
+        {
+            return AuthenticateResult.Fail("The key is not valid.");
+        }
+
+        var claims = MnemarrClaims.Identity(identity.Principal, ApiKeyHeader.Scheme, new Claim(MnemarrClaims.Via, identity.ConversationId.StartsWith(ChatAccess.JobPrefix, StringComparison.Ordinal) ? identity.ConversationId : $"chat:{identity.ConversationId}"));
+        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(claims), ApiKeyHeader.Scheme));
     }
 }

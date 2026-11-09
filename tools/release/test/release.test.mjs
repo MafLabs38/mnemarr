@@ -93,7 +93,10 @@ test('the jobs that release and publish have the same gates', () => {
     assert.ok(match, `the needs of ${name} must be one inline list: [a, b]`);
     return match[1].split(',').map((gate) => gate.trim()).sort();
   };
-  assert.deepEqual(needs('image').filter((gate) => gate !== 'release'), needs('release'));
+  // `installer` is not a gate: it packages the program at the version `release` chose, so it waits for `release` itself and only the image uses what it makes.
+  assert.deepEqual(needs('image').filter((gate) => gate !== 'release' && gate !== 'installer'), needs('release'));
+  // The one that is not a gate is only that one, and the real test of the installer is a gate of both.
+  assert.ok(needs('image').includes('installer') && needs('image').includes('installer-smoke') && needs('release').includes('installer-smoke'));
 
   // The conditions themselves: the tag needs the end-to-end test and the Sonar analysis to have passed, the image needs a release on main.
   const condition = (name) => job(name).match(/^    if: >-\n((?:      .*\n)+)/m)?.[1].replaceAll(/\s+/g, ' ');
@@ -199,4 +202,14 @@ test('the guard on the seed tag', async (t) => {
     assert.match(result.stderr, /not a git repository/i);
     assert.doesNotMatch(result.stdout, /No release tag/);
   });
+});
+
+test('the SDK in the collector and the tool that packages it are the same version of Velopack', () => {
+  // Velopack expects the library in the program and `vpk` to agree on the format of the packages and the feed: a bump of one alone (Dependabot does that for the
+  // crate) would ship a collector whose updater does not match what the image serves.
+  const root = path.join(here, '..', '..', '..');
+  const crate = readFileSync(path.join(root, 'collector', 'Cargo.toml'), 'utf8').match(/^velopack = "([^"]+)"$/m)?.[1];
+  const tool = readFileSync(path.join(root, 'tools', 'installer', 'pack.sh'), 'utf8').match(/^vpk_version="([^"]+)"$/m)?.[1];
+  assert.ok(crate && tool, 'both versions must be found');
+  assert.equal(crate, tool);
 });
