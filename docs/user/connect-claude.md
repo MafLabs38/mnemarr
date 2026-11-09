@@ -23,7 +23,7 @@ The MCP key and the read key can be the same key. Make **one per computer** anyw
 ## Before you start
 
 - **An address** for your Mnemarr that this computer can reach, written `https://mnemarr.homelab.example` in this guide. Use HTTPS: the keys travel on it. (On a home network without TLS, see [Try it on a home network without TLS](../network.md#try-it-on-a-home-network-without-tls).)
-- **A proxy with a single sign-on** in front of Mnemarr must let `/mcp`, `/api/v1/ingest/*` and `/api/v1/context` through without it. They carry a key, Mnemarr checks it itself, and a program cannot sign in with a browser. See [What to publish](../network.md#what-to-publish-and-what-not-to).
+- **A proxy with a single sign-on** in front of Mnemarr must let `/mcp` and `/api/v1/ingest/*` through without it: they carry a key, Mnemarr checks it itself, and a program cannot sign in with a browser. See [What to publish](../network.md#what-to-publish-and-what-not-to). The hook of step 3 makes one more call, `GET /api/v1/context`; whether it is published like the other two is an open question that [the same page](../network.md#what-to-publish-and-what-not-to) explains. If the hook cannot reach Mnemarr, the session simply starts without it.
 - **Claude Code**, installed on this computer. The extension for VS Code uses the same configuration as the command `claude`.
 - **Whether Claude may write.** Out of the box the MCP tools only read. The operator of your Mnemarr turns on the tools that write notes with `MNEMARR__MCP__WRITETOOLS=true` ([configuration](../configuration.md#mcp-mcp)). If you cannot tell, do the steps and see which tools Claude is offered.
 
@@ -59,10 +59,21 @@ The program itself is where the way you joined put it, and the commands below ca
 
 1. In Mnemarr, open **Accounts** and **Create an account**: a name such as `claude-my-laptop`, the kind **Service**, and the role **Reader** (to read and search) or **Assistant** (to read, search and, when the operator allows it, write).
 2. Open the keys of that account and **Create a key**. Copy it when it is shown: **it is shown once** and cannot be read again. If you lose it, make another and revoke the old one.
-3. On the computer, add Mnemarr to Claude Code:
+3. On the computer, in **a terminal of your own, not in a Claude Code chat** (see [Keep keys out of the chat](#keep-keys-out-of-the-chat)), add Mnemarr to Claude Code:
 
    ```bash
-   claude mcp add --scope user --transport http mnemarr https://mnemarr.homelab.example/mcp --header "X-Api-Key: <the key>"
+   # Linux, macOS: paste the key when asked; nothing is shown
+   read -rs MNEMARR_KEY
+   claude mcp add --scope user --transport http mnemarr https://mnemarr.homelab.example/mcp --header "X-Api-Key: $MNEMARR_KEY"
+   unset MNEMARR_KEY
+   ```
+
+   ```powershell
+   # Windows PowerShell
+   $secret = Read-Host "Key" -AsSecureString
+   $key = [System.Net.NetworkCredential]::new('', $secret).Password
+   claude mcp add --scope user --transport http mnemarr https://mnemarr.homelab.example/mcp --header "X-Api-Key: $key"
+   Remove-Variable key, secret
    ```
 
    - The address ends with **`/mcp`**.
@@ -85,17 +96,18 @@ What Claude is told when it connects: start from `list_sources`, search the **Me
 Without this step Claude knows the memory when it looks. With it, every new chat **starts** with the **thread** of the project (where the last sessions stood, the last in detail and the earlier ones condensed) and the end of the latest conversation of that project. Say *let's resume* and it can answer without searching. The design is in [ADR 0038](../adr/0038-a-new-session-resumes-the-thread-of-the-last-one.md).
 
 1. Make a key as in step 2: a service account with the role **Assistant** (**Reader** gives the thread but not the end of the latest conversation, which needs the right to read conversations). It can be the key you made for the MCP.
-2. Put the key, alone, in a file named `read-key` in the folder of the collector:
+2. In a terminal of your own, put the key, alone, in a file named `read-key` in the folder of the collector. The file is created readable by you only, and the key never appears on a command line:
 
    ```bash
-   # Linux, macOS
-   printf '%s' '<the key>' > ~/.config/mnemarr-collector/read-key
-   chmod 600 ~/.config/mnemarr-collector/read-key
+   # Linux, macOS: paste the key when asked; nothing is shown
+   (umask 077; read -rs KEY; printf '%s' "$KEY" > ~/.config/mnemarr-collector/read-key)
    ```
 
    ```powershell
    # Windows PowerShell
-   Set-Content -Path "$env:APPDATA\mnemarr-collector\read-key" -Value '<the key>' -NoNewline
+   $secret = Read-Host "Key" -AsSecureString
+   Set-Content -Path "$env:APPDATA\mnemarr-collector\read-key" -Value ([System.Net.NetworkCredential]::new('', $secret).Password) -NoNewline
+   Remove-Variable secret
    ```
 
    In Windows PowerShell (the old one, version 5.1) do not write the file with `>`: it saves it in UTF-16 and the key is not read.
@@ -129,13 +141,19 @@ Without this step Claude knows the memory when it looks. With it, every new chat
 
 On each computer: step 1 (join), then a new account and key for steps 2 and 3. That is all; nothing is shared between computers except the Mnemarr itself, which is the point: what you did on one is known on the others once its conversations have been sent.
 
+## Keep keys out of the chat
+
+Everything you type or paste in a Claude Code chat, and every command it runs, is saved in the conversation file. The collector sends that file to Mnemarr, where it is stored, searched and consolidated like any other conversation. Mnemarr masks many kinds of secret on the way in, but a key that was typed in a chat is a key that has been copied into the memory, and the memory is meant to be read by assistants.
+
+So: **create keys in the interface, and enter them yourself in a terminal that is not a Claude Code chat** (the terminal of VS Code is fine; the chat panel is not). Do not ask Claude to run a command that contains a key, and do not paste a key into a message. If a key did end up in a chat, revoke it on the Accounts page and make another.
+
 ## Let Claude do it with you
 
-You can paste this to Claude Code on the computer you want to connect:
+Claude can do the parts that hold no secret. You can paste this to Claude Code on the computer you want to connect:
 
-> Connect this computer to my Mnemarr at `https://mnemarr.homelab.example`. Read the guide `docs/user/connect-claude.md` in the Mnemarr repository (https://github.com/MafLabs38/mnemarr) and do the three steps with me. Stop and ask me whenever you need something only I can give: the one-time code from the Machines page, or a key from the Accounts page. Never print a key back to me, and never put one in a file that is committed.
+> Connect this computer to my Mnemarr at `https://mnemarr.homelab.example`. Read the guide `docs/user/connect-claude.md` in the Mnemarr repository (https://github.com/MafLabs38/mnemarr) and go through the three steps with me. You may run the commands that hold no secret (installing the collector with the one-time code I give you, `claude mcp list`, `mnemarr-collector context-hook`, the checks). For anything that needs a key, give me the command and wait: I create the key in Mnemarr and enter it myself in a terminal of my own, and I will tell you when it is done. Do not ask me for a key, do not run a command that contains one, and never put a key in a file that is committed.
 
-Claude can run the commands; the two things it cannot do for you are approving a machine and creating a key, because both are done in Mnemarr's interface, signed in as you.
+The one-time code of step 1 is safe to give: it works once, for 15 minutes, for one machine name. Approving a machine and creating a key are done in Mnemarr's interface, signed in as you, and no assistant does them for you.
 
 ## When it does not work
 
@@ -152,7 +170,7 @@ Claude can run the commands; the two things it cannot do for you are approving a
 
 ## Security
 
-- A key is a password. The MCP key is stored in clear text in Claude Code's own configuration (`~/.claude.json`) and the read key in `read-key`: keep both readable by your user only, and keep neither in a repository.
+- A key is a password. The MCP key is stored in clear text in Claude Code's own configuration (`~/.claude.json`) and the read key in `read-key`: keep both readable by your user only, and keep neither in a repository. [Keep them out of the chat](#keep-keys-out-of-the-chat) too.
 - A key can do what the role of its account allows, no more. When you create it you can make it expire. Limiting it to some sources is done through the API ([service accounts and keys](../configuration.md#service-accounts-and-keys)).
 - Memory can hold sensitive text. The thread and the end of the last conversation go into the context of the model that Claude uses, like anything you paste into a chat; Mnemarr masks the secrets it recognises, and nothing leaves your Mnemarr except to the assistant you connected.
 - To retire a computer: revoke the machine on the Machines page and the keys of its accounts on the Accounts page.
