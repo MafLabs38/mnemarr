@@ -18,12 +18,12 @@ Each part works alone, and you can stop after any of them. They are three steps 
 | MCP | Claude Code talks to `/mcp` | An **MCP key** of a service account | You, in Mnemarr | Claude Code's own configuration |
 | Hook | Claude Code runs the collector at the start of a session, and it asks Mnemarr what to tell the assistant | A **read key** of a service account | You, in Mnemarr | a file named `read-key` in the folder of the collector |
 
-The MCP key and the read key can be the same key. Make **one per computer** anyway: if a computer is lost or retired, you revoke its keys and nothing else stops working.
+Make a **separate key for the MCP and for the hook, and one set per computer**: if a computer is lost or retired, or one file leaks, you revoke those keys and nothing else stops working.
 
 ## Before you start
 
 - **An address** for your Mnemarr that this computer can reach, written `https://mnemarr.homelab.example` in this guide. Use HTTPS: the keys travel on it. (On a home network without TLS, see [Try it on a home network without TLS](../network.md#try-it-on-a-home-network-without-tls).)
-- **A proxy with a single sign-on** in front of Mnemarr must let `/mcp` and `/api/v1/ingest/*` through without it: they carry a key, Mnemarr checks it itself, and a program cannot sign in with a browser. See [What to publish](../network.md#what-to-publish-and-what-not-to). The hook of step 3 makes one more call, `GET /api/v1/context`; whether it is published like the other two is an open question that [the same page](../network.md#what-to-publish-and-what-not-to) explains. If the hook cannot reach Mnemarr, the session simply starts without it.
+- **A proxy with a single sign-on** in front of Mnemarr must let `/mcp` and `/api/v1/ingest/*` through without it: they carry a key, Mnemarr checks it itself, and a program cannot sign in with a browser. See [What to publish](../network.md#what-to-publish-and-what-not-to). The hook of step 3 makes one more call, `GET /api/v1/context`; whether it is published like the other two is an open question (Q-42), set out in [the paragraph on the hook](../network.md#what-to-publish-and-what-not-to). If the hook cannot reach Mnemarr, it prints nothing and the session starts without it.
 - **Claude Code**, installed on this computer. The extension for VS Code uses the same configuration as the command `claude`.
 - **Whether Claude may write.** Out of the box the MCP tools only read. The operator of your Mnemarr turns on the tools that write notes with `MNEMARR__MCP__WRITETOOLS=true` ([configuration](../configuration.md#mcp-mcp)). If you cannot tell, do the steps and see which tools Claude is offered.
 
@@ -44,7 +44,7 @@ The program is now installed and runs in the background. Its folder holds your k
 
 | System | Folder of the collector |
 |---|---|
-| Linux, macOS | `~/.config/mnemarr-collector/` |
+| Linux, macOS | `~/.config/mnemarr-collector/` (under `$XDG_CONFIG_HOME` instead, if you set it: then use that folder wherever this guide says `~/.config`) |
 | Windows | `%AppData%\mnemarr-collector\` |
 
 The program itself is where the way you joined put it, and the commands below call it `mnemarr-collector`. If your terminal does not know that name, give its full path instead:
@@ -67,6 +67,8 @@ The program itself is where the way you joined put it, and the commands below ca
    claude mcp add --scope user --transport http mnemarr https://mnemarr.homelab.example/mcp --header "X-Api-Key: $MNEMARR_KEY"
    unset MNEMARR_KEY
    ```
+
+   The key is on the command line of `claude mcp add` for a moment, where another user of the same computer could see it with `ps`. It does not matter on a computer that only you use.
 
    ```powershell
    # Windows PowerShell
@@ -95,12 +97,13 @@ What Claude is told when it connects: start from `list_sources`, search the **Me
 
 Without this step Claude knows the memory when it looks. With it, every new chat **starts** with the **thread** of the project (where the last sessions stood, the last in detail and the earlier ones condensed) and the end of the latest conversation of that project. Say *let's resume* and it can answer without searching. The design is in [ADR 0038](../adr/0038-a-new-session-resumes-the-thread-of-the-last-one.md).
 
-1. Make a key as in step 2: a service account with the role **Assistant** (**Reader** gives the thread but not the end of the latest conversation, which needs the right to read conversations). It can be the key you made for the MCP.
+1. Make a key as in step 2: a service account with the role **Assistant** (**Reader** gives the thread but not the end of the latest conversation, which needs the right to read conversations). Make it a **separate key** from the one of the MCP: with the writing tools on, an **Assistant** key can also write notes, and `read-key` is one more file on the computer that holds it, so you want to be able to revoke it alone.
 2. In a terminal of your own, put the key, alone, in a file named `read-key` in the folder of the collector. The file is created readable by you only, and the key never appears on a command line:
 
    ```bash
    # Linux, macOS: paste the key when asked; nothing is shown
    (umask 077; read -rs KEY; printf '%s' "$KEY" > ~/.config/mnemarr-collector/read-key)
+   chmod 600 ~/.config/mnemarr-collector/read-key   # in case the file already existed
    ```
 
    ```powershell
