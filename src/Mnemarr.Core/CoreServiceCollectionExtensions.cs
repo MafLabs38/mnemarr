@@ -40,6 +40,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IConsolidationStore, SqliteConsolidationStore>();
         services.AddSingleton<ConsolidationAccount>();
         services.AddSingleton<ConsolidationInput>();
+        services.AddSingleton<Context.ContextPackBuilder>();
 
         services.AddOptions<AuthOptions>().Bind(configuration.GetSection("Auth")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<AuthOptions>, AuthOptionsValidator>();

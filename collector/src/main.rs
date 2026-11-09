@@ -693,6 +693,106 @@ fn unlink(options: &UnlinkOptions) -> ExitCode {
 }
 
 /// Lists the Mnemarr this machine sends to.
+/// The hook at the start of a session: prints what the memory knows of the application, and never gets in the way (every failure is silence and exit 0, unless `MNEMARR_DEBUG` is set).
+fn context(options: &Options) -> ExitCode {
+    let debug = std::env::var_os("MNEMARR_DEBUG").is_some();
+    let quiet = |why: &str| {
+        if debug {
+            say(&format!("context: {why}"));
+        }
+        ExitCode::SUCCESS
+    };
+    let get = |name: &str| std::env::var(name).ok();
+    let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
+        return quiet("the folder of the collector cannot be found");
+    };
+    let Some((destination, key)) = mnemarr_collector::context::reader_of(&dir) else {
+        return quiet("no read key (read-key in the folder of the collector)");
+    };
+    let format = match options.format.as_deref() {
+        None => mnemarr_collector::context::Format::Text,
+        Some(name) => match mnemarr_collector::context::Format::parse(name) {
+            Some(format) => format,
+            None => return quiet("--format is text or claude-hook"),
+        },
+    };
+    let Some(application) = options.application.clone().or_else(application_of_session) else {
+        return quiet("no application: give --application");
+    };
+    match mnemarr_collector::context::fetch(&destination, &key, &application, options.budget) {
+        Ok(text) if !text.trim().is_empty() => {
+            write_stdout(&mnemarr_collector::context::render(&text, format));
+            ExitCode::SUCCESS
+        }
+        Ok(_) => quiet("the memory knows nothing of this application"),
+        Err(error) => quiet(&error),
+    }
+}
+
+/// The application of the session that started the hook: the working directory in the JSON it was given on its input, else the current folder.
+fn application_of_session() -> Option<String> {
+    use std::io::{IsTerminal, Read};
+    if !io::stdin().is_terminal() {
+        let mut input = String::new();
+        if io::stdin()
+            .take(64 * 1024)
+            .read_to_string(&mut input)
+            .is_ok()
+            && let Some(application) = mnemarr_collector::context::application_of_hook_input(&input)
+        {
+            return Some(application);
+        }
+    }
+    std::env::current_dir()
+        .ok()
+        .and_then(|folder| mnemarr_collector::context::last_folder(&folder.to_string_lossy()))
+}
+
+/// Adds the hook that runs `context` to the settings of Claude Code (a copy of the file as it was is kept beside it), or takes it away.
+fn context_hook(options: &Options) -> ExitCode {
+    use mnemarr_collector::context::{HookChange, change_settings_file, settings_path};
+    let get = |name: &str| std::env::var(name).ok();
+    let home = mnemarr_collector::config::home_dir(&get);
+    let Some(path) = settings_path(&get, home.as_ref()) else {
+        say("the settings of Claude Code cannot be found: set CLAUDE_CONFIG_DIR");
+        return ExitCode::from(2);
+    };
+    let program = match std::env::current_exe() {
+        Ok(program) => program,
+        Err(error) => {
+            say(&format!("this program cannot be found: {error}"));
+            return ExitCode::from(1);
+        }
+    };
+    let config_dir_part = options
+        .config_dir
+        .as_deref()
+        .map_or(String::new(), |dir| format!(" --config-dir \"{dir}\""));
+    let command = format!(
+        "\"{}\" context --format claude-hook{config_dir_part}",
+        program.display()
+    );
+    match change_settings_file(&path, &command, options.remove) {
+        Ok(change) => {
+            let said = match change {
+                HookChange::Added => {
+                    "added: Claude Code will tell your assistant what the memory knows at the start of a session"
+                }
+                HookChange::Updated => "updated: the hook now runs this program",
+                HookChange::AlreadyThere => "it was already there",
+                HookChange::Removed => "removed",
+                HookChange::NotThere => "there was none",
+            };
+            write_stdout(&format!("{said} ({})\n", path.display()));
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            say(&error);
+            ExitCode::from(1)
+        }
+    }
+}
+
 fn list_destinations(options: &Options) -> ExitCode {
     let get = |name: &str| std::env::var(name).ok();
     let Some(dir) = config_dir(options.config_dir.as_deref(), &get) else {
@@ -1138,6 +1238,8 @@ fn main() -> ExitCode {
         Ok(Command::Status(options)) => status(&options),
         Ok(Command::Pause(options)) => pause(&options),
         Ok(Command::Resume(options)) => resume(&options),
+        Ok(Command::Context(options)) => context(&options),
+        Ok(Command::ContextHook(options)) => context_hook(&options),
         Ok(Command::Update(options)) => update_command(&options),
         Err(error) => {
             // If even standard error is closed there is nobody left to tell.

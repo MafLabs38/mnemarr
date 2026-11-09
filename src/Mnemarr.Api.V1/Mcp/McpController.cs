@@ -101,7 +101,7 @@ public sealed class McpController : ControllerBase
             ["protocolVersion"] = asked is not null && Protocols.Contains(asked) ? asked : LatestProtocol,
             ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
             ["serverInfo"] = new JsonObject { ["name"] = "mnemarr", ["version"] = "1" },
-            ["instructions"] = "Mnemarr is long-term memory made of Markdown notes. Start with list_sources, then search or read; write only where a source says it is writable.",
+            ["instructions"] = "Mnemarr is long-term memory made of Markdown notes. Start with list_sources, then search or read; write only where a source says it is writable. The sources have a kind: Memory holds consolidated notes (what was decided and learned, per application, short, with the conversations they came from), Conversations holds what assistants said (the raw record, long; read it in windows with read_note offset, tail or around), Knowledge holds the operator's own notes. To learn what was decided or where a project stands, search the Memory source first (search with that source), then go down to the Conversations for a detail or to check a note.",
         };
     }
 

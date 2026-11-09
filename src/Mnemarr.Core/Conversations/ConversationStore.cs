@@ -57,6 +57,9 @@ public interface IConversationStore
     /// <summary>The conversations of this session, on whichever machine they are held.</summary>
     IReadOnlyList<ConversationRecord> OfSession(string session);
 
+    /// <summary>The latest conversations held in an application (its name, whatever its case), on any machine, the most recently updated first.</summary>
+    IReadOnlyList<ConversationRecord> RecentOfApplication(string application, int limit);
+
     /// <summary>Files a conversation under another machine, with the note it now has. The row is the same: its lines, its title and its tries stay.</summary>
     void Move(string machine, string session, string toMachine, string notePath, long noteBytes);
 
@@ -236,6 +239,23 @@ public sealed class SqliteConversationStore : IConversationStore
     }
 
     public IReadOnlyList<ConversationRecord> OfSession(string session) => Many($"SELECT {Columns} FROM conversations WHERE session = $key", session);
+
+    public IReadOnlyList<ConversationRecord> RecentOfApplication(string application, int limit)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {Columns} FROM conversations WHERE lower(application) = lower($application) ORDER BY updated_at DESC LIMIT $limit";
+        command.Parameters.AddWithValue("$application", application);
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var found = new List<ConversationRecord>();
+        while (reader.Read())
+        {
+            found.Add(Read(reader));
+        }
+
+        return found;
+    }
 
     private List<ConversationRecord> Many(string query, string key)
     {
