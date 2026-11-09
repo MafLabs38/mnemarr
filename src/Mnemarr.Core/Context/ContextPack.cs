@@ -83,7 +83,8 @@ public sealed class ContextPackBuilder
         }
 
         var (front, body) = SplitFrontMatter(raw);
-        var text = WithoutTitleLine(body.Trim());
+        // Every line is indented: the thread is written by a model from conversations, and a line such as "### End of the latest conversation" in it must not pass for a section of the pack.
+        var text = string.Join('\n', WithoutTitleLine(body.Trim()).ReplaceLineEndings("\n").Split('\n').Select(line => line.Length == 0 ? line : "  " + line));
         if (text.Length == 0)
         {
             return string.Empty;
@@ -97,8 +98,11 @@ public sealed class ContextPackBuilder
             return string.Empty;
         }
 
-        return $"{heading}{(text.Length > space ? text[..space] + "\n[...]" : text)}\n\n";
+        return $"{heading}{(text.Length > space ? Cut(text, space) + "\n[...]" : text)}\n\n";
     }
+
+    /// <summary>The first <paramref name="length"/> characters of the text, without half of a surrogate pair at the end.</summary>
+    private static string Cut(string text, int length) => text[..(char.IsHighSurrogate(text[length - 1]) ? length - 1 : length)];
 
     private string TailSection(string application, string? excludeSession, int room)
     {
@@ -148,7 +152,8 @@ public sealed class ContextPackBuilder
             }
 
             // The lines after the first are indented: a turn that holds a line such as "[user] ..." (a pasted page, a quoted message) cannot pass for a turn of its own.
-            var spoken = (body.Length > cut ? body[..cut] + " [...]" : body).ReplaceLineEndings("\n").Replace("\n", "\n    ", StringComparison.Ordinal);
+            var indented = body.ReplaceLineEndings("\n").Replace("\n", "\n    ", StringComparison.Ordinal);
+            var spoken = indented.Length > cut ? Cut(indented, cut) + " [...]" : indented;
             var piece = $"[{OneLine(turn.Role, 12)}] {spoken}\n";
             pieces.Add(piece);
             used += piece.Length;
