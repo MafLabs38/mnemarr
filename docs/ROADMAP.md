@@ -15,6 +15,7 @@
 | Memory is used without being asked (session start) | **Vertical 5** |
 | Turn conversations into durable notes (consolidation) | **Vertical 6** |
 | Find by meaning (vectors) | **Vertical 7** |
+| A new session resumes the thread of the last one | **Vertical 8** |
 
 ## The verticals
 
@@ -107,6 +108,14 @@
 *Demo: ask with other words than the note's and still find it.*
 
 - Embeddings computed locally, vectors in `sqlite-vec`, hybrid with the keyword search (ADR 0012). **Built** ([ADR 0034](adr/0034-search-by-meaning-is-computed-on-the-host-and-merged-with-the-words-by-rank.md)): the model and the library are in the image, the passages are computed in the background, search merges words and meaning, and the notes page says where it is. Follow-ups: another model (`multilingual-e5-small`), vectors for titles alone, a bigger evaluation on conversations, the health page of F-HLT-01 (it will reuse the report of the indexer, not a third view), a version of the text that is embedded.
+
+### 8. Resume the thread — **in progress** ([ADR 0038](adr/0038-a-new-session-resumes-the-thread-of-the-last-one.md))
+
+*Demo: leave a chat, open a new one in the same project, say "let's resume": the assistant says where the work stood, from a few thousand characters and not from the old conversation.*
+
+- Vertical 5's pack did not answer the need (durable notes and one-line titles say what is known, not where the work was). It is replaced: a **thread** per application (a note of the memory vault, written by the consolidation, the last session in detail, the earlier ones condensed, bounded in size) and **the end of the last conversation** (immediate, no model).
+- The consolidation follows the person (idle 5 minutes, a pass each minute, a higher daily cap). The hook passes the session id. What only the old pack used is removed.
+- Not now: a thread per branch or task, other assistants (vertical 4), an on-request "resume" tool.
 
 ## Not now
 

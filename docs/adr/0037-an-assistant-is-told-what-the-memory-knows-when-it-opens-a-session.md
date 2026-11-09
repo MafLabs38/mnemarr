@@ -1,6 +1,6 @@
 # 0037 — An assistant is told what the memory knows when it opens a session
 
-- **Status**: accepted
+- **Status**: accepted; the content of the pack (point 1) is replaced by [0038](0038-a-new-session-resumes-the-thread-of-the-last-one.md): the hook, the key and the scope rules stand
 - **Date**: 2026-11-08
 - **Spec**: D-57 (builds D-12, F-MCP-02; answers Q-26 for the first assistant)
 
