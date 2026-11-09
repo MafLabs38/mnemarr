@@ -135,10 +135,10 @@ Turns the conversations into short notes of the memory vault ([ADR 0036](adr/003
 |---|---|---|
 | `MNEMARR__CONSOLIDATION__ENABLED` | `false` | Whether conversations are turned into notes. |
 | `MNEMARR__CONSOLIDATION__MODEL` | `haiku` | The model of the job: a light one is enough to write notes. |
-| `MNEMARR__CONSOLIDATION__IDLEMINUTES` | `30` | A conversation is consolidated once nothing was added to it for this long (1 to 1440). |
-| `MNEMARR__CONSOLIDATION__PASSSECONDS` | `300` | How often the job looks for conversations to consolidate. |
+| `MNEMARR__CONSOLIDATION__IDLEMINUTES` | `5` | A conversation is consolidated once nothing was added to it for this long (1 to 1440). The thread that a new session is told (ADR 0038) lags the end of a conversation by this time, a pass and the run. |
+| `MNEMARR__CONSOLIDATION__PASSSECONDS` | `60` | How often the job looks for conversations to consolidate. |
 | `MNEMARR__CONSOLIDATION__PERPASS` | `3` | Conversations consolidated by one pass (1 to 20). |
-| `MNEMARR__CONSOLIDATION__PERDAY` | `30` | Times the model is asked in a day, UTC (1 to 1000): the cost of a day is bounded (a conversation read in several runs, or tried again, costs each time). |
+| `MNEMARR__CONSOLIDATION__PERDAY` | `60` | Times the model is asked in a day, UTC (1 to 1000): the cost of a day is bounded (a conversation read in several runs, or tried again, costs each time). |
 | `MNEMARR__CONSOLIDATION__AGENT` | empty | The agent of the runner that does the job (`claude-code`, `openai`); empty: the first that can run. The default model is a Claude one: with another agent, set `MODEL` too. |
 | `MNEMARR__CONSOLIDATION__MAXCHARS` | `40000` | What one run reads of a conversation (2000 to 100000); a long conversation is read in several runs. |
 | `MNEMARR__CONSOLIDATION__MAXTRIES` | `3` | A conversation that failed this often is left alone until it has grown by 200 lines. |
