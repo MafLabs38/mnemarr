@@ -278,7 +278,7 @@ public sealed class ConsolidationApiFixture : IClassFixture<ConsolidationFactory
         var status = await RunAndWaitAsync(callers, current => current.GetProperty("today").GetInt32() > before);
 
         status.GetProperty("today").GetInt32().Should().BeGreaterThan(before);
-        status.GetProperty("perDay").GetInt32().Should().Be(30);
+        status.GetProperty("perDay").GetInt32().Should().Be(60);
     }
 
     [Fact]

@@ -165,7 +165,19 @@ public sealed class RawConversations
     }
 
     /// <summary>The first <paramref name="count"/> lines of a conversation, in order. A batch that was written for a position that was never taken is not read.</summary>
-    public IEnumerable<string> Read(string machine, string session, long count)
+    public IEnumerable<string> Read(string machine, string session, long count) => Lines(machine, session, count, 0);
+
+    /// <summary>
+    /// The last <paramref name="last"/> lines among the first <paramref name="count"/>, in order: the files that end before them are not opened, so the cost does not grow with the length of the
+    /// conversation (the hook that tells how the last one ended has a few seconds).
+    /// </summary>
+    public IEnumerable<string> ReadLast(string machine, string session, long count, int last) => Lines(machine, session, count, Math.Max(0, count - last));
+
+    /// <summary>Where the file at <paramref name="index"/> ends: where the next one starts, which is not known for the last.</summary>
+    private static long? EndOf(List<(string File, bool Parsed, long Start)> starts, int index) =>
+        index + 1 < starts.Count && starts[index + 1].Parsed ? starts[index + 1].Start : null;
+
+    private IEnumerable<string> Lines(string machine, string session, long count, long from)
     {
         var folder = FolderOf(machine, session);
         if (!Directory.Exists(folder))
@@ -173,10 +185,12 @@ public sealed class RawConversations
             yield break;
         }
 
+        var starts = Directory.EnumerateFiles(folder, "*.jsonl.gz").Order(StringComparer.Ordinal).Select(file => (File: file, Parsed: long.TryParse(Path.GetFileName(file).Split('.')[0], out var start), Start: start)).ToList();
         long position = 0;
-        foreach (var file in Directory.EnumerateFiles(folder, "*.jsonl.gz").Order(StringComparer.Ordinal))
+        for (var index = 0; index < starts.Count; index++)
         {
-            if (position >= count || !long.TryParse(Path.GetFileName(file).Split('.')[0], out var start) || start > position)
+            var (file, parsed, start) = starts[index];
+            if (position >= count || !parsed || start > position)
             {
                 yield break;
             }
@@ -187,14 +201,32 @@ public sealed class RawConversations
                 continue;
             }
 
-            using var stream = File.OpenRead(file);
-            using var gzip = new GZipStream(stream, CompressionMode.Decompress);
-            using var reader = new StreamReader(gzip, Encoding.UTF8);
-            while (position < count && reader.ReadLine() is { } line)
+            if (EndOf(starts, index) is { } end && end <= from)
             {
-                position++;
-                yield return line;
+                // This file ends before the lines that are asked for.
+                position = end;
+                continue;
             }
+
+            foreach (var line in FileLines(file, count - position))
+            {
+                if (position++ >= from)
+                {
+                    yield return line;
+                }
+            }
+        }
+    }
+
+    /// <summary>The first <paramref name="take"/> lines of a batch file.</summary>
+    private static IEnumerable<string> FileLines(string file, long take)
+    {
+        using var stream = File.OpenRead(file);
+        using var gzip = new GZipStream(stream, CompressionMode.Decompress);
+        using var reader = new StreamReader(gzip, Encoding.UTF8);
+        for (long read = 0; read < take && reader.ReadLine() is { } line; read++)
+        {
+            yield return line;
         }
     }
 }

@@ -1,5 +1,5 @@
-//! The memory without being asked (D-12, ADR 0037): at the start of a session of an assistant, a hook runs `mnemarr-collector context`, which asks the Mnemarr this machine is linked to what
-//! it knows of the application (the last folder of the working directory) and prints it, so that the assistant starts with it instead of having to think of asking.
+//! The memory without being asked (D-12, ADR 0037, ADR 0038): at the start of a session of an assistant, a hook runs `mnemarr-collector context`, which asks the Mnemarr this machine is linked to
+//! where the work on the application (the last folder of the working directory) stood when the last session ended, and prints it, so that the assistant resumes the thread instead of having to think of asking.
 //!
 //! A hook must never get in the way: no key, no answer in a few seconds, a Mnemarr that knows nothing, a refusal: nothing is printed and the exit code is 0.
 
@@ -47,6 +47,15 @@ pub fn application_of_hook_input(input: &str) -> Option<String> {
     last_folder(value.get("cwd")?.as_str()?)
 }
 
+/// The session that is starting, as the hook was given it (`{"session_id": "..."}` on its input): Mnemarr leaves it out, so that a new chat is not told its own beginning. A value that could not be a
+/// session name (empty, too long) is none.
+pub fn session_of_hook_input(input: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(input).ok()?;
+    let session = value.get("session_id")?.as_str()?.trim();
+    (!session.is_empty() && session.len() <= 100 && !session.chars().any(char::is_control))
+        .then(|| session.to_string())
+}
+
 /// The last folder of a path, with either separator.
 pub fn last_folder(path: &str) -> Option<String> {
     path.split(['/', '\\'])
@@ -90,6 +99,7 @@ pub fn fetch(
     key: &str,
     application: &str,
     budget: Option<u32>,
+    exclude: Option<&str>,
 ) -> Result<String, String> {
     crate::config::check_server(&destination.server, destination.insecure)
         .map_err(|error| error.0)?;
@@ -107,6 +117,9 @@ pub fn fetch(
     );
     if let Some(budget) = budget {
         url.push_str(&format!("&budget={budget}"));
+    }
+    if let Some(session) = exclude {
+        url.push_str(&format!("&exclude={}", encode(session)));
     }
     let mut response = agent
         .get(&url)
@@ -251,6 +264,22 @@ pub fn change_settings_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn should_take_the_session_to_leave_out_from_the_hook_input_and_refuse_what_cannot_be_one() {
+        assert_eq!(
+            session_of_hook_input(r#"{"session_id":"a261bbf4-4361","cwd":"/w/x"}"#).as_deref(),
+            Some("a261bbf4-4361")
+        );
+        assert_eq!(session_of_hook_input(r#"{"cwd":"/w/x"}"#), None);
+        assert_eq!(session_of_hook_input(r#"{"session_id":"  "}"#), None);
+        assert_eq!(
+            session_of_hook_input(&format!(r#"{{"session_id":"{}"}}"#, "a".repeat(101))),
+            None
+        );
+        assert_eq!(session_of_hook_input(r#"{"session_id":"a\nb"}"#), None);
+        assert_eq!(session_of_hook_input("not json"), None);
+    }
 
     #[test]
     fn should_take_the_application_from_the_working_directory_of_the_hook_input() {

@@ -18,16 +18,16 @@ public sealed class ConsolidationOptions
     public string Model { get; set; } = "haiku";
 
     /// <summary>A conversation is consolidated once nothing has been added to it for this many minutes.</summary>
-    public int IdleMinutes { get; set; } = 30;
+    public int IdleMinutes { get; set; } = 5;
 
     /// <summary>How often the background job looks for conversations to consolidate.</summary>
-    public int PassSeconds { get; set; } = 300;
+    public int PassSeconds { get; set; } = 60;
 
     /// <summary>How many conversations one pass consolidates: the cost of a pass is bounded.</summary>
     public int PerPass { get; set; } = 3;
 
     /// <summary>How many times the model is asked in a day (UTC): the cost of a day is bounded. A conversation read in several runs, or tried again, costs each time.</summary>
-    public int PerDay { get; set; } = 30;
+    public int PerDay { get; set; } = 60;
 
     /// <summary>How much of a conversation one run reads, in characters: the rest is read by the next run.</summary>
     public int MaxChars { get; set; } = 40_000;

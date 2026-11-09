@@ -7,6 +7,14 @@ public sealed class ConsolidationOptionsFixture
     private static bool Valid(ConsolidationOptions options) => new ConsolidationOptionsValidator().Validate(null, options).Succeeded;
 
     [Fact]
+    public void should_wait_five_minutes_of_silence_look_every_minute_and_run_sixty_times_a_day_at_most()
+    {
+        var options = new ConsolidationOptions();
+
+        (options.IdleMinutes, options.PassSeconds, options.PerDay, options.PerPass).Should().Be((5, 60, 60, 3));
+    }
+
+    [Fact]
     public void should_be_off_by_default_and_ask_nothing_while_it_is_off()
     {
         new ConsolidationOptions().Enabled.Should().BeFalse();
