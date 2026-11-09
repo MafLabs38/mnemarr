@@ -2,26 +2,48 @@
 
 > Remember. A self-hosted long-term memory for people and AI assistants, in the spirit of the *arr suite.
 
-**Status: foundation.** The architecture is decided ([docs/SPEC.md](docs/SPEC.md)); the first code is a walking skeleton with the full quality chain. There is no memory feature yet.
+**Status: before 1.0.** It is used every day by its author and it works end to end: conversations are collected from every machine, consolidated into notes, searched by meaning and by text, and given back to your assistants (MCP, and a hook that resumes the thread of your last session). Below 1.0 a minor version can still change settings or the API; the release notes say so.
 
 Mnemarr stores what assistants and people learn, and finds it again by meaning (semantic search) and by text. It exposes a REST API and an MCP server so any assistant can read and write memories. Conversations are collected from every machine by a small agent. The consolidated memory is written as Markdown notes in a Git repository you can read in Obsidian. It is a companion of [Portarr](https://github.com/MafLabs38/portarr) (see and describe your fleet) and Orchestrarr (act on it).
 
 ## Documentation
 
+**Use it** (start here once Mnemarr runs):
+
+| Guide | Content |
+|---|---|
+| [Connect Claude to Mnemarr](docs/user/connect-claude.md) | On a computer where you use Claude Code: send its conversations, let Claude search the memory (MCP), and let a new chat resume where the last one stopped (hook) |
+| [docs/collector.md](docs/collector.md) | The collector: joining a machine, the Windows installer, updates, what it reads |
+| [docs/chat.md](docs/chat.md) | The chat panel of the interface |
+
+**Run it:**
+
+| Document | Content |
+|---|---|
+| [deploy/](deploy/README.md) | Generic deployment examples (Docker, Kubernetes) |
+| [docs/configuration.md](docs/configuration.md) | Every setting, accounts and keys, MCP |
+| [docs/network.md](docs/network.md) | Ports, directions, what to publish outside the single sign-on, firewalls and proxies |
+| [docs/runbook.md](docs/runbook.md) | Operating it: what to watch, what to do when it is degraded |
+| [docs/releasing.md](docs/releasing.md) | How versions are made and followed |
+| [SECURITY.md](SECURITY.md) | Reporting a vulnerability, security model |
+
+**Understand it:**
+
 | Document | Content |
 |---|---|
 | [docs/VISION.md](docs/VISION.md) | Why, what it must do, how it plugs into Portarr and assistants |
 | [docs/SPEC.md](docs/SPEC.md) | Decisions, architecture, data model, features, security, open questions |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | The verticals from here to a MVP in production |
-| [docs/collector.md](docs/collector.md) | The collector: a service that gives each machine's conversations to Mnemarr |
-| [docs/conversation-formats.md](docs/conversation-formats.md) | Where Claude Code, Codex, Copilot and Gemini keep their conversations |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records |
-| [docs/DESIGN.md](docs/DESIGN.md) | Interface guidelines (Portarr's, plus what is specific to Mnemarr) |
-| [docs/TESTING.md](docs/TESTING.md) | Testing strategy and CI gates |
-| [deploy/](deploy/README.md) | Generic deployment examples (Docker, Kubernetes) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | The verticals, built and to come |
+| [docs/conversation-formats.md](docs/conversation-formats.md) | Where Claude Code, Codex, Copilot and Gemini keep their conversations |
+
+**Contribute:**
+
+| Document | Content |
+|---|---|
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, conventions, development setup |
-| [docs/network.md](docs/network.md) | Ports, directions, what to publish outside the single sign-on, firewalls and proxies |
-| [SECURITY.md](SECURITY.md) | Reporting a vulnerability, security model |
+| [docs/TESTING.md](docs/TESTING.md) | Testing strategy and CI gates |
+| [docs/DESIGN.md](docs/DESIGN.md) | Interface guidelines (Portarr's, plus what is specific to Mnemarr) |
 | [CLAUDE.md](CLAUDE.md) | Rules for AI assistants working in this repository |
 
 ## What is in the repository
