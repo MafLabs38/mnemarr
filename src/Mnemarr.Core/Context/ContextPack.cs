@@ -25,6 +25,9 @@ public sealed class ContextPackBuilder
     /// <summary>The end of the latest conversation: this many characters at most, each turn cut at <see cref="MaxTailTurnChars"/>.</summary>
     internal const int MaxTailChars = 2500;
 
+    /// <summary>How many lines of the end of a conversation are read to find what was said: a long session is not read from its start.</summary>
+    private const int MaxTailLines = 1000;
+
     private const int MaxTailTurnChars = 1000;
     private const int ConversationsLooked = 5;
 
@@ -103,7 +106,7 @@ public sealed class ContextPackBuilder
         foreach (var record in _conversations.RecentOfApplication(application, ConversationsLooked + 1).Where(found => found.Session != excludeSession).Take(ConversationsLooked))
         {
             var heading = string.Create(CultureInfo.InvariantCulture, $"### End of the latest conversation ({record.UpdatedAt:yyyy-MM-dd HH:mm} UTC, {OneLine(record.Machine, 40)})\n");
-            var text = EndOf(_input.Turns(record), room - heading.Length - 1);
+            var text = EndOf(_input.LastTurns(record, MaxTailLines), room - heading.Length - 1);
             if (text.Length > 0)
             {
                 return $"{heading}{text}\n";
@@ -145,7 +148,9 @@ public sealed class ContextPackBuilder
                 break;
             }
 
-            var piece = $"[{OneLine(turn.Role, 12)}] {(body.Length > cut ? body[..cut] + " [...]" : body)}\n";
+            // The lines after the first are indented: a turn that holds a line such as "[user] ..." (a pasted page, a quoted message) cannot pass for a turn of its own.
+            var spoken = (body.Length > cut ? body[..cut] + " [...]" : body).ReplaceLineEndings("\n").Replace("\n", "\n    ", StringComparison.Ordinal);
+            var piece = $"[{OneLine(turn.Role, 12)}] {spoken}\n";
             pieces.Add(piece);
             used += piece.Length;
         }

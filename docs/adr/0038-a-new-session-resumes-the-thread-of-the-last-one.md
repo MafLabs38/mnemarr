@@ -48,5 +48,11 @@ pack of every start.
 - The model writes the digest from conversations (text from outside) and it is read at the start of the next session: the same risk as ADR 0037 and the same answers (framed as data, written by the
   consolidation account, which can write only in the memory vault, short and dated, a person can correct it). A misleading thread misleads one session, then the next update fades it.
 - The consolidation spends more runs (idle 5 minutes, cap raised); each reads only what is new. An operator who finds it too much lowers the cap or the idle rate; the thread then lags.
+- **The shape of the response changed**: `/api/v1/context` answers `thread` and `tail` (booleans) in place of the counts `notes` and `conversations`. The only consumer is the collector, which reads `text`; the API is not
+  yet a published contract for third parties (the first release is out, the collector is the one client).
+- **The end of the conversation is read from the end**: only the last 1 000 lines of the raw conversation are read, so the hook does not slow down with a long session (it has a few seconds). Each turn is
+  indented after its first line, so that a pasted page or a quoted message cannot pass for another turn or section of the pack. The budget bounds the pack; the parts keep their own caps (the tail 2 500
+  characters, the thread about 4 000), so a larger budget does not enlarge them.
+- The thread has no `sources:` list: it is a rolling digest of many conversations, and the notes it points to carry their own provenance. A person who corrects it knows the date it was updated.
 - **Not now**: a thread per branch or per task within an application (a thread is per application), a thread for assistants other than Claude Code (they come with their readers, vertical 4), a tool "resume"
   that an assistant calls on request (the hook already gives it), merging the threads of two applications.
