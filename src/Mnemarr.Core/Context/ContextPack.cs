@@ -113,18 +113,31 @@ public sealed class ContextPackBuilder
         return string.Empty;
     }
 
-    /// <summary>The last turns that fit in <paramref name="room"/> characters, oldest first, each cut. The newest turn is always there, cut to fit.</summary>
+    /// <summary>
+    /// The last turns that fit in <paramref name="room"/> characters, oldest first, each cut. The newest turn is always there, cut to fit. An assistant works in series of messages between two
+    /// of the person's (a line before each tool it calls): only the last of a series, the one that says where it stands, is kept.
+    /// </summary>
     private static string EndOf(IReadOnlyList<Turn> turns, int room)
     {
+        var said = new List<Turn>();
+        foreach (var turn in turns.Where(turn => !string.IsNullOrWhiteSpace(turn.Text)))
+        {
+            if (said.Count > 0 && turn.Role == said[^1].Role && turn.Role != "user")
+            {
+                said[^1] = turn;
+            }
+            else
+            {
+                said.Add(turn);
+            }
+        }
+
         var pieces = new List<string>();
         var used = 0;
-        for (var index = turns.Count - 1; index >= 0; index--)
+        for (var index = said.Count - 1; index >= 0; index--)
         {
-            var body = turns[index].Text.Trim();
-            if (body.Length == 0)
-            {
-                continue;
-            }
+            var turn = said[index];
+            var body = turn.Text.Trim();
 
             var cut = Math.Min(MaxTailTurnChars, room - used - 40);
             if (cut < 80)
@@ -132,7 +145,7 @@ public sealed class ContextPackBuilder
                 break;
             }
 
-            var piece = $"[{OneLine(turns[index].Role, 12)}] {(body.Length > cut ? body[..cut] + " [...]" : body)}\n";
+            var piece = $"[{OneLine(turn.Role, 12)}] {(body.Length > cut ? body[..cut] + " [...]" : body)}\n";
             pieces.Add(piece);
             used += piece.Length;
         }

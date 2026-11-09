@@ -12,10 +12,12 @@ public static class ConsolidationPrompt
 
     public const string End = "CONVERSATION>>>";
 
+    private const string Unknown = "unknown";
+
     public static string Build(ConversationRecord record, string memorySource, string conversationsSource, ConsolidationExcerpt excerpt, int done, DateTimeOffset today)
     {
-        var application = OneLine(record.Application, "unknown");
-        var notePath = OneLine(record.NotePath, "unknown", MaxPathChars);
+        var application = OneLine(record.Application, Unknown);
+        var notePath = OneLine(record.NotePath, Unknown, MaxPathChars);
         var text = new StringBuilder();
         text.AppendLine(CultureInfo.InvariantCulture, $"You are the consolidation of Mnemarr. Turn the part of a conversation below into two things in the memory vault (the source \"{memorySource}\"): durable notes of what was decided and learned, and the thread of the work that a new session will be told in order to resume; then stop.");
         text.AppendLine();
@@ -79,7 +81,7 @@ public static class ConsolidationPrompt
     }
 
     /// <summary>A short, plain name for a session in the thread, so that the model can tell whether the Now of the thread is this session or another.</summary>
-    internal static string SessionLabel(ConversationRecord record) => OneLine(record.Session, "unknown", 8);
+    internal static string SessionLabel(ConversationRecord record) => OneLine(record.Session, Unknown, 8);
 
     /// <summary>The name of the thread in the folder of an application (read by the context of a new session).</summary>
     public const string ThreadFileName = "_thread.md";
@@ -114,6 +116,6 @@ public static class ConsolidationPrompt
     public static string Slug(string application)
     {
         var slug = new string([.. application.ToLowerInvariant().Select(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' ? character : '-')]).Trim('-', '.');
-        return slug.Length == 0 ? "unknown" : slug;
+        return slug.Length == 0 ? Unknown : slug;
     }
 }

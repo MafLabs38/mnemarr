@@ -78,7 +78,7 @@ public sealed class ContextApiFixture : IClassFixture<ConsolidationFactory>
         var vault = await MemoryAsync(callers);
         var app = Callers.Unique("app").ToLowerInvariant();
         var machine = Callers.Unique("pc");
-        await SendAsync(callers, machine, app, Callers.Unique("s"), Line("user", $"First we looked at the {app}-start.", "2026-11-04T14:00:00Z"), Line("assistant", "Done, nothing special.", "2026-11-04T14:01:00Z"), Line("user", $"Now the {app}-last question: is the queue durable?", "2026-11-04T14:03:00Z"), Line("assistant", "Yes, with a disk behind it.", "2026-11-04T14:04:00Z"));
+        await SendAsync(callers, machine, app, Callers.Unique("s"), Line("user", $"First we looked at the {app}-start.", "2026-11-04T14:00:00Z"), Line("assistant", "Done, nothing special.", "2026-11-04T14:01:00Z"), Line("user", $"Now the {app}-last question: is the queue durable?", "2026-11-04T14:03:00Z"), Line("assistant", $"{app}-narration: I look at the disk first.", "2026-11-04T14:03:30Z"), Line("assistant", "Yes, with a disk behind it.", "2026-11-04T14:04:00Z"));
         await WriteAsync(callers, vault, $"{app}/_thread.md", Thread("2026-11-08", "Now: a thread."));
 
         var assistant = await ContextAsync(callers["Assistant"], app);
@@ -86,6 +86,7 @@ public sealed class ContextApiFixture : IClassFixture<ConsolidationFactory>
 
         var text = assistant.GetProperty("text").GetString()!;
         text.Should().Contain("End of the latest conversation").And.Contain(machine).And.Contain("Yes, with a disk behind it.").And.Contain($"{app}-last question");
+        text.Should().NotContain($"{app}-narration", "only the last message of a series of the assistant is the one that says where it stands");
         text.IndexOf("Now: a thread.", StringComparison.Ordinal).Should().BeLessThan(text.IndexOf("End of the latest conversation", StringComparison.Ordinal), "the thread comes first");
         text.IndexOf($"{app}-last question", StringComparison.Ordinal).Should().BeLessThan(text.IndexOf("Yes, with a disk behind it.", StringComparison.Ordinal), "the turns are in the order they were said");
         (assistant.GetProperty("thread").GetBoolean(), assistant.GetProperty("tail").GetBoolean()).Should().Be((true, true));
