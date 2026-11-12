@@ -24,11 +24,18 @@ function MeaningState() {
   if (data.state === 'failed') {
     return <Alert>{translate('MeaningFailed', { reason: data.reason ?? '' })}</Alert>;
   }
-  return data.computed < data.passages ? (
-    <p className={styles.meaningState}>
-      {translate('MeaningCatchingUp', { computed: data.computed, passages: data.passages })}
-    </p>
-  ) : null;
+  return (
+    <>
+      {data.computed < data.passages && (
+        <p className={styles.meaningState}>
+          {translate('MeaningCatchingUp', { computed: data.computed, passages: data.passages })}
+        </p>
+      )}
+      {data.device !== 'cpu' && (
+        <p className={styles.meaningState}>{translate('MeaningDevice', { device: data.device })}</p>
+      )}
+    </>
+  );
 }
 
 function Results({ query }: Readonly<{ query: string }>) {

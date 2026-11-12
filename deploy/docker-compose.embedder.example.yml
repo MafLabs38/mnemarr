@@ -1,0 +1,34 @@
+# The embedding server (ADR 0040, docs/embedding-server.md): turns texts into vectors on a GPU for a Mnemarr that runs elsewhere (a cluster, another host).
+# For a Docker host with an NVIDIA GPU and the NVIDIA container runtime (on Unraid: the "Nvidia Driver" plugin). Generic values: adapt the names and the paths.
+services:
+  mnemarr-embedder:
+    image: ghcr.io/your-org/mnemarr-embedder:latest
+    runtime: nvidia
+    restart: unless-stopped
+    ports:
+      - "8390:8390"
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      # The key a client must present: a file with at least 16 random characters, readable by the user of the container (uid 1654), one line.
+      MNEMARR__EMBEDDER__KEYFILE: /run/secrets/embedder-key
+      # Auto: the GPU when the engine can use it, the CPU when it cannot. Cuda: the GPU or nothing.
+      MNEMARR__EMBEDDINGS__DEVICE: Auto
+      # The video memory the model may take, in megabytes: the pool of the engine grows without a limit by default, and the GPU may be shared (a media server that transcodes).
+      MNEMARR__EMBEDDINGS__GPUMEMORYMB: "1024"
+      MNEMARR__EMBEDDINGS__BATCHSIZE: "32"
+    volumes:
+      - ./embedder-key:/run/secrets/embedder-key:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD", "dotnet", "Mnemarr.Embedder.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3

@@ -138,6 +138,7 @@ const en = {
   MeaningFailed: 'The search by meaning does not work, so the search is by words only: {reason}',
   MeaningCatchingUp:
     'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
+  MeaningDevice: 'The passages are read on: {device}.',
   SourceRoots: 'A source is a folder inside one of: {roots}',
   SourcesError: 'Could not read the sources.',
   Adopt: 'Take over',

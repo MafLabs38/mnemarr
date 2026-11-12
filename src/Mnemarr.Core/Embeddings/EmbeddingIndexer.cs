@@ -7,7 +7,7 @@ using Mnemarr.Core.Accounts;
 namespace Mnemarr.Core.Embeddings;
 
 /// <summary>What the indexer says of itself, for the health page: whether it can work, why not, and how far it is.</summary>
-public sealed record EmbeddingReport(EmbeddingState State, string? Reason, EmbeddingProgress? Progress, string Model);
+public sealed record EmbeddingReport(EmbeddingState State, string? Reason, EmbeddingProgress? Progress, string Model, string Device = "cpu");
 
 /// <summary>
 /// The automatic part of the search by meaning (D-16, ADR 0034): in the background, the chunks that have no vector of the active model are computed, a batch at a
@@ -66,8 +66,8 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
 
         return _failure is { } failure
-            ? new EmbeddingReport(EmbeddingState.Failed, failure, Progress(scope), _provider.ModelId)
-            : new EmbeddingReport(EmbeddingState.Ready, null, Progress(scope), _provider.ModelId);
+            ? new EmbeddingReport(EmbeddingState.Failed, failure, Progress(scope), _provider.ModelId, _provider.Device)
+            : new EmbeddingReport(EmbeddingState.Ready, null, Progress(scope), _provider.ModelId, _provider.Device);
     }
 
     /// <summary>One pass: computes every chunk that is missing, a batch at a time. Public so that a test can run it. Returns how many were computed.</summary>

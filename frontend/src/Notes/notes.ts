@@ -182,6 +182,8 @@ export interface SemanticSearchState {
   passages: number;
   computed: number;
   reason: string | null;
+  /** Where the passages were computed last: `cpu`, `cuda`, or `remote (cuda)` for an embedding server. */
+  device: string;
 }
 
 const SEMANTIC_REFRESH_MS = 5000;

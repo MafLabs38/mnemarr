@@ -63,8 +63,9 @@ public sealed record SearchHitResource(Guid SourceId, string SourceName, string 
 }
 
 /// <summary>The state of the search by meaning (ADR 0034): <c>off</c>, <c>starting</c>, <c>ready</c> or <c>failed</c>, with the model, the passages computed of those that exist, and why it failed.</summary>
-public sealed record SemanticSearchResource(string State, string Model, int Passages, int Computed, string? Reason)
+/// <summary><c>Device</c> says where the passages were computed last: <c>cpu</c>, <c>cuda</c>, or an embedding server and its device (ADR 0040).</summary>
+public sealed record SemanticSearchResource(string State, string Model, int Passages, int Computed, string? Reason, string Device)
 {
     public static SemanticSearchResource From(EmbeddingReport report) =>
-        new(report.State.ToString().ToLowerInvariant(), report.Model, report.Progress?.Chunks ?? 0, report.Progress?.Embedded ?? 0, report.Reason);
+        new(report.State.ToString().ToLowerInvariant(), report.Model, report.Progress?.Chunks ?? 0, report.Progress?.Embedded ?? 0, report.Reason, report.Device);
 }

@@ -22,6 +22,7 @@ Mnemarr stores what assistants and people learn, and finds it again by meaning (
 |---|---|
 | [deploy/](deploy/README.md) | Generic deployment examples (Docker, Kubernetes) |
 | [docs/configuration.md](docs/configuration.md) | Every setting, accounts and keys, MCP |
+| [docs/embedding-server.md](docs/embedding-server.md) | Compute the vectors of the search by meaning on an NVIDIA GPU, in a small separate container |
 | [docs/network.md](docs/network.md) | Ports, directions, what to publish outside the single sign-on, firewalls and proxies |
 | [docs/runbook.md](docs/runbook.md) | Operating it: what to watch, what to do when it is degraded |
 | [docs/releasing.md](docs/releasing.md) | How versions are made and followed |

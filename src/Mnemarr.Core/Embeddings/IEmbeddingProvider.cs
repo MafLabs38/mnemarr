@@ -46,6 +46,9 @@ public interface IEmbeddingProvider
     /// <summary>The cosine distance beyond which a passage is not an answer, for this model: measured, and different from a model to another.</summary>
     double DefaultMaxDistance { get; }
 
+    /// <summary>Where the last vectors were computed, for the people who ask where the search is at (<c>cpu</c>, <c>cuda</c>, or a server and its device).</summary>
+    string Device => "cpu";
+
     float[] EmbedQuery(string text);
 
     IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts);

@@ -84,7 +84,14 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<IChunkHits>(sp => sp.GetRequiredService<SqliteNoteIndex>());
         services.AddOptions<EmbeddingOptions>().Bind(configuration.GetSection("Embeddings")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<EmbeddingOptions>, EmbeddingOptionsValidator>();
-        services.TryAddSingleton<IEmbeddingProvider, OnnxEmbeddingProvider>();
+        services.AddSingleton<OnnxEmbeddingProvider>();
+        // No redirect is followed: the key of the server must not be sent to another address. The client is the one of this singleton, which lives as long as the host.
+        services.AddSingleton(sp => new RemoteEmbeddingClient(
+            new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(2) }), sp.GetRequiredService<IOptions<EmbeddingOptions>>()));
+        services.TryAddSingleton<IEmbeddingProvider>(sp =>
+            sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value.Remote.Wanted
+                ? ActivatorUtilities.CreateInstance<FailoverEmbeddingProvider>(sp, (IEmbeddingProvider)sp.GetRequiredService<OnnxEmbeddingProvider>())
+                : sp.GetRequiredService<OnnxEmbeddingProvider>());
         services.TryAddSingleton<IVectorStore, SqliteVectorStore>();
         services.AddSingleton<EmbeddingIndexer>();
         services.AddHostedService(sp => sp.GetRequiredService<EmbeddingIndexer>());

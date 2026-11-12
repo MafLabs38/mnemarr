@@ -43,3 +43,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0037](0037-an-assistant-is-told-what-the-memory-knows-when-it-opens-a-session.md) | An assistant is told what the memory knows when it opens a session | D-57 |
 | [0038](0038-a-new-session-resumes-the-thread-of-the-last-one.md) | A new session resumes the thread of the last one: a rolling digest that fades with age, and the end of the last conversation | D-59 |
 | [0039](0039-a-passage-is-embedded-once.md) | A passage is embedded once: the index keeps what did not change, and the vectors are kept by the hash of their text | D-60 |
+| [0040](0040-the-vectors-can-be-computed-by-a-server-on-a-gpu.md) | The vectors can be computed by a server on a GPU, and Mnemarr falls back to its own CPU | D-61 |

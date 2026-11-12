@@ -67,6 +67,10 @@ The notes and the conversations are also searched by meaning, with a model that 
 | `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |
 | `MNEMARR__EMBEDDINGS__IDLESECONDS` | `300` | The safety timer of the indexer (1 to 3600): it is woken when the index has a new passage, so it does not look for work every few seconds; this is how long it waits at most for a change it was not told of. |
 | `MNEMARR__EMBEDDINGS__CACHEDAYS` | `30` | How many days a computed vector is kept after it was last used (1 to 3650), so that a passage that comes back in a note that moved, was renamed or was indexed again is not computed again (ADR 0039). |
+| `MNEMARR__EMBEDDINGS__DEVICE` | `Cpu` | Where the model runs on this host: `Cpu`, `Cuda` (a GPU, in an image that carries the GPU build of the engine), or `Auto` (the GPU when the engine can use it, else the CPU). The image of Mnemarr is CPU only; for a GPU see [the embedding server](embedding-server.md). |
+| `MNEMARR__EMBEDDINGS__GPUMEMORYMB` | `1024` | The most video memory the model may take (256 to 262144). |
+| `MNEMARR__EMBEDDINGS__GPUDEVICEID` | `0` | Which GPU. |
+| `MNEMARR__EMBEDDINGS__REMOTE__URL` | none | An embedding server that computes the vectors on a GPU. When it does not answer, the CPU of this host computes. The other `REMOTE__*` settings (`KEYFILE`, `TIMEOUTSECONDS`, `RETRYAFTERSECONDS`, `ALLOWINSECUREHTTP`) are in [the embedding server](embedding-server.md#point-mnemarr-at-it). |
 | `MNEMARR__EMBEDDINGS__MAXDISTANCE` | the model's (`0.2` for the default one) | The cosine distance beyond which a passage is not an answer by meaning. Empty: the one measured for the model. Set it only to override, and measure. |
 
 ## Git sources (`Git`)

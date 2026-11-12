@@ -547,12 +547,21 @@ describe('Notes', () => {
     });
 
     it('says how far the search by meaning is while the passages are read', async () => {
-      const status = { state: 'ready', model: 'm', passages: 472, computed: 120, reason: null };
+      const status = { state: 'ready', model: 'm', passages: 472, computed: 120, reason: null, device: 'cpu' };
       server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
       renderWithProviders(<Notes />, '/notes', readerSession);
       const region = await screen.findByRole('region', { name: 'Search' });
 
       expect(await within(region).findByText(/120 of 472 passages are read/)).toBeInTheDocument();
+    });
+
+    it('says where the passages are read when it is not the CPU of the host', async () => {
+      const status = { state: 'ready', model: 'm', passages: 10, computed: 10, reason: null, device: 'remote (cuda)' };
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      expect(await within(region).findByText('The passages are read on: remote (cuda).')).toBeInTheDocument();
     });
 
     it.each([
@@ -576,7 +585,7 @@ describe('Notes', () => {
       ['ready', 472, 472],
     ])('says nothing of the search by meaning when it is %s', async (state, passages, computed) => {
       server(noteWith('# x'), (path) =>
-        path === '/search/status' ? { body: { state, model: 'm', passages, computed, reason: null } } : undefined,
+        path === '/search/status' ? { body: { state, model: 'm', passages, computed, reason: null, device: 'cpu' } } : undefined,
       );
       renderWithProviders(<Notes />, '/notes', readerSession);
       const region = await screen.findByRole('region', { name: 'Search' });
