@@ -330,7 +330,7 @@ describe('Sources', () => {
 
     const cours = rowOf(await screen.findByRole('rowheader', { name: /cours/ }));
 
-    expect(within(cours).getByRole('status')).toHaveTextContent('2 notes are above the size limit');
+    expect(within(cours).getByRole('status')).toHaveTextContent('Notes above the size limit: 2');
     expect(
       within(rowOf(screen.getByRole('rowheader', { name: /memoire/ }))).queryByRole('status'),
     ).not.toBeInTheDocument();

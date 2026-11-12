@@ -16,8 +16,9 @@ public sealed partial class NoteSearch
     // The keyword list is at most this long: the list by meaning is as long, and the two are merged and cut to the limit asked.
     private const int Depth = SearchRequest.MaxLimit;
 
-    // The nearest are asked for wider than the list: some are not the caller's to see, or are outside the filters, and the rest must still fill it.
-    private const int MeaningWiderBy = 4;
+    // The nearest are asked for wider than the list: some are not the caller's to see, or are outside the filters, and a long conversation takes many places before each note is held to its share
+    // (ADR 0043), so the rest must still fill the list.
+    private const int MeaningCandidates = 600;
 
     // How many questions the model reads at once, and how long a question waits for its turn: a flood of searches must not hold every thread of the host. A question that
     // does not get its turn is answered by its words.
@@ -143,7 +144,7 @@ public sealed partial class NoteSearch
             var query = _embeddings.EmbedQuery(question);
             var maxDistance = _options.MaxDistance ?? _embeddings.DefaultMaxDistance;
             // The nearest are asked for wider than the answer: some are not the caller's to see, or are outside the filters, and the rest must still fill the list.
-            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, Depth * MeaningWiderBy).Where(match => match.Distance <= maxDistance).ToList();
+            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, MeaningCandidates).Where(match => match.Distance <= maxDistance).ToList();
             var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope).ToDictionary(hit => hit.ChunkId);
             return HoldToShare(near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]), Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit), Depth);
         }

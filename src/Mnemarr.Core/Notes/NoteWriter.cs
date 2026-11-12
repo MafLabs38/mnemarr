@@ -82,7 +82,14 @@ public sealed class NoteWriter
                 throw new RejectedException(Problem.Conflict, "The note changed since it was read: read it again before changing it.");
             }
 
-            var bytes = Encode(KeepLineEndings(Encoding.UTF8.GetString(current), content));
+            var existing = Encoding.UTF8.GetString(current);
+            if (existing.Length > NoteReader.PageChars)
+            {
+                // The note comes in pages: what a client holds is one page, with the version of the whole note, and sending it back would cut the rest off (ADR 0043). Appending stays possible.
+                throw new RejectedException(Problem.Conflict, "The note is longer than a page: it cannot be replaced whole from here. Append to it, or change the file itself.");
+            }
+
+            var bytes = Encode(KeepLineEndings(existing, content));
             WriteAtomic(full, bytes, overwrite: true);
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
             _audit.Append(actor.Name, "note.updated", Target(source, path));

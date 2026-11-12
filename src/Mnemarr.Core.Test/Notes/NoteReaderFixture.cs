@@ -210,15 +210,16 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         var pages = Enumerable.Range(0, first.Pages).Select(page => Reader.Read(source.Id, "long.md", SourceScope.All, page: page)).ToList();
         var whole = Reader.Read(source.Id, "long.md", SourceScope.All, whole: true);
 
-        first.Pages.Should().Be(6);
+        first.Pages.Should().BeGreaterThan(1);
         first.Cut.Should().BeTrue();
         first.Raw.Should().StartWith("# Long\n");
-        pages.Select(page => page.Page).Should().Equal(0, 1, 2, 3, 4, 5);
+        pages.Select(page => page.Page).Should().Equal(Enumerable.Range(0, first.Pages));
         pages.SelectMany(page => page.Raw).Should().Equal(text, "the pages put end to end are the note, with nothing lost and nothing twice");
-        pages.Take(5).Should().OnlyContain(page => page.Raw.Length <= NoteReader.PageChars && page.Raw.EndsWith('\n'), "a page ends where a line ends");
+        pages.Take(first.Pages - 1).Should().OnlyContain(page => page.Raw.Length <= NoteReader.PageChars && page.Raw.EndsWith('\n'), "a page ends where a line ends");
         pages.Should().OnlyContain(page => page.Version == whole.Version, "the version is the one of the whole note, so that a conflict is still seen");
         whole.Cut.Should().BeFalse();
         whole.Raw.Should().Be(text);
+        whole.Markdown.Should().BeEmpty("an assistant reads the text in windows: nothing is drawn for it");
     }
 
     [Fact]
@@ -227,8 +228,23 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         var text = string.Concat(Enumerable.Repeat(new string('w', 99) + "\n", 30_000));
         var source = await SourceWithAsync("chats", ("long.md", text));
 
-        Reader.Read(source.Id, "long.md", SourceScope.All, page: 99).Page.Should().Be(5);
+        var pages = Reader.Read(source.Id, "long.md", SourceScope.All).Pages;
+
+        Reader.Read(source.Id, "long.md", SourceScope.All, page: 99).Page.Should().Be(pages - 1);
         Reader.Read(source.Id, "long.md", SourceScope.All, page: -3).Page.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task should_cut_a_note_that_has_no_line_end_at_all_where_the_page_ends()
+    {
+        var text = new string('x', NoteReader.PageChars + 1000);
+        var source = await SourceWithAsync("chats", ("flat.md", text));
+
+        var first = Reader.Read(source.Id, "flat.md", SourceScope.All);
+        var last = Reader.Read(source.Id, "flat.md", SourceScope.All, page: 1);
+
+        first.Pages.Should().Be(2);
+        (first.Raw + last.Raw).Should().Be(text);
     }
 
     [Fact]

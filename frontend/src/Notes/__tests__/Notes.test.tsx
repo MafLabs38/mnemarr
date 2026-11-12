@@ -248,6 +248,42 @@ describe('Notes', () => {
     expect(screen.getByRole('status')).toHaveTextContent('This note is long, so it comes in pages');
   });
 
+  it('draws plain text, not links, for the ways that lead nowhere on the first and the last page', async () => {
+    server(noteWith('# Docker', { cut: true, page: 0, pages: 3 }));
+    const first = renderWithProviders(<Notes />, open, readerSession);
+    const pages = await screen.findByRole('navigation', { name: 'Pages of the note' });
+
+    expect(within(pages).queryByRole('link', { name: 'First' })).not.toBeInTheDocument();
+    expect(within(pages).queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument();
+    expect(within(pages).getByRole('link', { name: 'Next' })).toBeInTheDocument();
+    expect(screen.getAllByRole('navigation', { name: /Pages of the note/ })).toHaveLength(2);
+    first.unmount();
+
+    server(noteWith('# Docker', { cut: true, page: 2, pages: 3 }));
+    renderWithProviders(<Notes />, `${open}&page=2`, readerSession);
+    const last = await screen.findByRole('navigation', { name: 'Pages of the note' });
+
+    expect(within(last).queryByRole('link', { name: 'Next' })).not.toBeInTheDocument();
+    expect(within(last).queryByRole('link', { name: 'Last' })).not.toBeInTheDocument();
+    expect(within(last).getByRole('link', { name: 'Previous' })).toBeInTheDocument();
+  });
+
+  it('does not repeat the notice of the pages when the banner already says that the note is long', async () => {
+    server(
+      noteWith('# Docker', {
+        cut: true,
+        page: 0,
+        pages: 2,
+        rights: { canWrite: false, reason: 'note-too-long', role: 'Admin' },
+      }),
+    );
+    renderWithProviders(<Notes />, open, readerSession);
+
+    await screen.findByText('This is one page of a long note');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('draws no page navigation for a note that fits a page', async () => {
     server(noteWith('# Docker'));
     renderWithProviders(<Notes />, open, readerSession);

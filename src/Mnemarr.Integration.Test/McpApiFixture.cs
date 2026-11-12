@@ -197,26 +197,41 @@ public sealed class McpApiFixture : IClassFixture<MnemarrFactory>, IClassFixture
     }
 
     [Fact]
-    public async Task should_read_the_end_of_a_note_longer_than_a_page_and_search_with_topics_left_out_and_a_share_per_note()
+    public async Task should_read_the_end_of_a_note_longer_than_a_page_in_windows()
     {
         var line = new string('w', 99) + "\n";
-        var conversation = "# Long\n" + string.Concat(Enumerable.Repeat(line, 30_000)) + "The very last words: zymurgy.\n";
-        var parts = string.Concat(Enumerable.Range(0, 6).Select(index => $"## Part {index}\nThe quasar number {index}.\n"));
-        var id = await SourceAsync(_readOnly, Callers.Unique("long"), "ReadOnly", ("chats/long.md", conversation), ("notes/many.md", "# Many\n" + parts), ("ideas/one.md", "# One\nThe quasar.\n"));
+        var conversation = "# Long\n" + string.Concat(Enumerable.Repeat(line, 6_000)) + "The very last words: zymurgy.\n";
+        var id = await SourceAsync(_readOnly, Callers.Unique("long"), "ReadOnly", ("chats/long.md", conversation));
         using var key = await KeyAsync(_readOnly, "Reader", id);
 
         var tail = await CallAsync(key, "read_note", new { source = id.ToString(), path = "chats/long.md", tail = true });
+
+        tail.Content["content"]!.GetValue<string>().Should().Contain("zymurgy", "an assistant reads the end of a conversation, whatever its length");
+        tail.Content["totalChars"]!.GetValue<int>().Should().BeGreaterThan(Mnemarr.Core.Notes.NoteReader.PageChars, "the note is longer than a page of the interface and is read whole all the same");
+    }
+
+    [Fact]
+    public async Task should_search_with_topics_left_out_and_a_share_per_note()
+    {
+        var parts = string.Concat(Enumerable.Range(0, 6).Select(index => $"## Part {index}\nThe quasar number {index}.\n"));
+        var id = await SourceAsync(_readOnly, Callers.Unique("shares"), "ReadOnly", ("chats/long.md", "# Long\nThe quasar.\n"), ("notes/many.md", "# Many\n" + parts), ("ideas/one.md", "# One\nThe quasar.\n"));
+        using var key = await KeyAsync(_readOnly, "Reader", id);
+
         var shared = await CallAsync(key, "search", new { query = "quasar" });
         var one = await CallAsync(key, "search", new { query = "quasar", per_note = 1 });
         var without = await CallAsync(key, "search", new { query = "quasar", exclude_topic = "notes, chats" });
         var within = await CallAsync(key, "search", new { query = "quasar", topic = "ideas,chats" });
+        var empty = await CallAsync(key, "search", new { query = "quasar", topic = ",", exclude_topic = "" });
+        var clamped = await CallAsync(key, "search", new { query = "quasar", per_note = 0 });
+        var lifted = await CallAsync(key, "search", new { query = "quasar", per_note = 100 });
 
-        tail.Content["content"]!.GetValue<string>().Should().Contain("zymurgy", "an assistant reads the end of a conversation, whatever its length");
-        tail.Content["totalChars"]!.GetValue<int>().Should().BeGreaterThan(2 * 1024 * 1024);
         Paths(shared).Count(path => path == "notes/many.md").Should().Be(3);
-        Paths(one).Should().BeEquivalentTo("notes/many.md", "ideas/one.md");
+        Paths(one).Should().BeEquivalentTo("chats/long.md", "notes/many.md", "ideas/one.md");
         Paths(without).Should().Equal("ideas/one.md");
-        Paths(within).Should().Equal("ideas/one.md");
+        Paths(within).Should().BeEquivalentTo("ideas/one.md", "chats/long.md");
+        Paths(empty).Should().HaveCountGreaterThanOrEqualTo(3, "a topic that is only a comma is no filter, not a filter that matches nothing");
+        Paths(clamped).Count(path => path == "notes/many.md").Should().Be(1, "a share of 0 is the least there is, 1");
+        Paths(lifted).Count(path => path == "notes/many.md").Should().Be(6, "a share above the maximum is the maximum, which lifts it for six passages");
 
         static IEnumerable<string> Paths((bool IsError, JsonNode Content) result) => result.Content.AsArray().Select(hit => hit!["path"]!.GetValue<string>());
     }

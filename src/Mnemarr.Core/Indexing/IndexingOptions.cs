@@ -13,7 +13,7 @@ public sealed class IndexingOptions
 
     public const int DefaultMaxNoteMegabytes = 32;
 
-    public const int HighestMaxNoteMegabytes = 512;
+    public const int HighestMaxNoteMegabytes = 128;
 
     /// <summary><see cref="MaxNoteMegabytes"/> in bytes.</summary>
     public long MaxNoteBytes => MaxNoteMegabytes * 1024L * 1024L;

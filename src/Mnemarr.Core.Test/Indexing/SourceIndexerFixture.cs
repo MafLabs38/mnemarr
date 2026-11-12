@@ -93,6 +93,37 @@ public sealed class SourceIndexerFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_count_a_new_note_that_is_too_large_without_adding_it_and_read_it_once_it_fits()
+    {
+        var folder = _workspace.Folder("chats");
+        var narrow = new SourceIndexer(_index, _workspace.Paths(), _outcomes, _clock, options: Microsoft.Extensions.Options.Options.Create(new IndexingOptions { MaxNoteMegabytes = 1 }));
+        TestWorkspace.Write(folder, "big.md", "# Big\nThe word is zymurgy. " + new string('x', 1024 * 1024));
+        var source = Declare("chats", folder);
+
+        var tooLarge = await narrow.IndexAsync(source, Token);
+        TestWorkspace.Write(folder, "big.md", "# Big\nThe word is zymurgy.\n");
+        var fits = await narrow.IndexAsync(source, Token);
+
+        tooLarge.Should().Be(new IndexReport(Added: 0, Updated: 0, Removed: 0, Unchanged: 0, TooLarge: 1));
+        fits.Should().Be(new IndexReport(Added: 1, Updated: 0, Removed: 0, Unchanged: 0, TooLarge: 0));
+    }
+
+    [Fact]
+    public async Task should_let_the_other_notes_into_the_answer_when_one_note_matches_in_hundreds_of_passages()
+    {
+        var folder = _workspace.Folder("chats");
+        TestWorkspace.Write(folder, "flood.md", "# Flood\n" + string.Concat(Enumerable.Range(0, 700).Select(index => $"## Part {index}\nkelvin kelvin kelvin kelvin number {index}.\n")));
+        TestWorkspace.Write(folder, "single.md", "# Single\nOne kelvin.\n");
+        var source = Declare("chats", folder);
+        await _subject.IndexAsync(source, Token);
+
+        var hits = _index.Search(new SearchRequest("kelvin", Limit: 10), SourceScope.All);
+
+        hits.Count(hit => hit.Path == "flood.md").Should().Be(SearchRequest.DefaultPerNote);
+        hits.Should().Contain(hit => hit.Path == "single.md", "the note with one passage is not pushed out by the note with seven hundred");
+    }
+
+    [Fact]
     public async Task should_keep_what_was_indexed_of_a_note_that_grew_past_the_limit_and_say_that_it_is_too_large()
     {
         var folder = _workspace.Folder("chats");

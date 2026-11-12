@@ -363,28 +363,36 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
 
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
+        // Every passage that matches is ranked and held to its note's share, then the best are completed with their words: the share is not cut from a short list of best passages, so a note whose
+        // passages are all worse than those of a flood of another note is still seen (ADR 0043).
         command.CommandText = """
-            SELECT id, name, path, topic, title, heading, snippet, score, chunk FROM (
-              SELECT id, name, path, topic, title, heading, snippet, score, chunk, rank, ROW_NUMBER() OVER (PARTITION BY note ORDER BY rank, chunk) AS place FROM (
-                SELECT s.id AS id, s.name AS name, n.path AS path, n.topic AS topic, n.title AS title, c.heading AS heading,
-                       snippet(chunks_fts, 0, '', '', ' … ', $snippetWords) AS snippet, -bm25(chunks_fts) AS score, c.id AS chunk, n.id AS note, bm25(chunks_fts) AS rank
-                FROM chunks_fts
-                JOIN chunks c ON c.id = chunks_fts.rowid
-                JOIN notes n ON n.id = c.note_id
-                JOIN sources s ON s.id = n.source_id
-                WHERE chunks_fts MATCH $match
-                  AND ($source IS NULL OR s.id = $source)
-                  AND ($topics IS NULL OR n.topic IN (SELECT value FROM json_each($topics)))
-                  AND n.topic NOT IN (SELECT value FROM json_each($notTopics))
-                  AND s.id NOT IN (SELECT value FROM json_each($notSources))
-                  AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
-                ORDER BY bm25(chunks_fts)
-                LIMIT $candidates
-              )
+            WITH ranked AS (
+              SELECT c.id AS chunk, n.id AS note, bm25(chunks_fts) AS rank
+              FROM chunks_fts
+              JOIN chunks c ON c.id = chunks_fts.rowid
+              JOIN notes n ON n.id = c.note_id
+              JOIN sources s ON s.id = n.source_id
+              WHERE chunks_fts MATCH $match
+                AND ($source IS NULL OR s.id = $source)
+                AND ($topics IS NULL OR n.topic IN (SELECT value FROM json_each($topics)))
+                AND n.topic NOT IN (SELECT value FROM json_each($notTopics))
+                AND s.id NOT IN (SELECT value FROM json_each($notSources))
+                AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
+            ),
+            shared AS (
+              SELECT chunk FROM (SELECT chunk, rank, ROW_NUMBER() OVER (PARTITION BY note ORDER BY rank, chunk) AS place FROM ranked)
+              WHERE place <= $perNote
+              ORDER BY rank, chunk
+              LIMIT $limit
             )
-            WHERE place <= $perNote
-            ORDER BY rank, chunk
-            LIMIT $limit
+            SELECT s.id, s.name, n.path, n.topic, n.title, c.heading,
+                   snippet(chunks_fts, 0, '', '', ' … ', $snippetWords), -bm25(chunks_fts), c.id
+            FROM chunks_fts
+            JOIN chunks c ON c.id = chunks_fts.rowid
+            JOIN notes n ON n.id = c.note_id
+            JOIN sources s ON s.id = n.source_id
+            WHERE chunks_fts MATCH $match AND c.id IN (SELECT chunk FROM shared)
+            ORDER BY bm25(chunks_fts), c.id
             """;
         command.Parameters.AddWithValue("$match", match);
         command.Parameters.AddWithValue(SourceParameter, request.SourceId?.ToString() ?? (object)DBNull.Value);
@@ -395,7 +403,6 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
         command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
         command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, SearchRequest.MaxLimit));
-        command.Parameters.AddWithValue("$candidates", Candidates);
         command.Parameters.AddWithValue("$perNote", Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit));
         command.Parameters.AddWithValue("$snippetWords", SnippetWords);
 
@@ -410,9 +417,6 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
 
         return hits;
     }
-
-    // The keyword list is cut from the best passages of the whole index, wide enough that a note with hundreds of passages cannot take the place of the others once each note is held to its share.
-    private const int Candidates = 600;
 
     private static void BindFilters(SqliteCommand command, SearchRequest request)
     {

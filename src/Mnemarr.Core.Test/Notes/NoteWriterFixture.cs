@@ -188,6 +188,22 @@ public sealed class NoteWriterFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_refuse_to_replace_a_note_that_comes_in_pages_and_still_append_to_it()
+    {
+        var text = "# Long\n" + string.Concat(Enumerable.Repeat(new string('w', 99) + "\n", 6_000));
+        var source = Declare("vault");
+        await _writer.CreateAsync(Alice, source.Id, "long.md", text, Token);
+        var page = _reader.Read(source.Id, "long.md", SourceScope.All);
+
+        var replace = () => _writer.UpdateAsync(Alice, source.Id, "long.md", page.Raw, page.Version, Token);
+
+        text.Length.Should().BeGreaterThan(NoteReader.PageChars).And.BeLessThan((int)MarkdownFileScanner.MaxFileBytes);
+        (await replace.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict, "a page sent back would cut the rest of the note off");
+        (await _writer.AppendAsync(Alice, source.Id, "long.md", "one line more\n", Token)).Path.Should().Be("long.md");
+        File.ReadAllText(Path.Combine(source.Path, "long.md")).Should().StartWith(text, "the note was not touched").And.EndWith("one line more\n");
+    }
+
+    [Fact]
     public async Task should_not_write_in_a_source_that_is_read_only_and_treat_one_out_of_scope_as_absent()
     {
         var readOnly = Declare("ro", SourceMode.ReadOnly);

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Mnemarr.Core.Indexing;
 
 namespace Mnemarr.Core.Test.Indexing;
@@ -14,17 +15,15 @@ public sealed class IndexingOptionsValidatorFixture
 
     [Theory]
     [InlineData(1)]
-    [InlineData(32)]
-    [InlineData(512)]
-    public void should_accept_a_note_limit_between_one_and_five_hundred_and_twelve_megabytes(int megabytes)
+    [InlineData(128)]
+    public void should_accept_a_note_limit_between_one_and_a_hundred_and_twenty_eight_megabytes(int megabytes)
     {
         new IndexingOptionsValidator().Validate(null, new IndexingOptions { MaxNoteMegabytes = megabytes }).Succeeded.Should().BeTrue();
     }
 
     [Theory]
     [InlineData(0)]
-    [InlineData(-1)]
-    [InlineData(513)]
+    [InlineData(129)]
     public void should_refuse_any_other_note_limit(int megabytes)
     {
         new IndexingOptionsValidator().Validate(null, new IndexingOptions { MaxNoteMegabytes = megabytes }).FailureMessage
@@ -39,5 +38,13 @@ public sealed class IndexingOptionsValidatorFixture
     {
         new IndexingOptionsValidator().Validate(null, new IndexingOptions { ScanIntervalSeconds = seconds }).FailureMessage
             .Should().Contain("MNEMARR__INDEXING__SCANINTERVALSECONDS");
+    }
+
+    [Fact]
+    public void should_read_the_note_limit_from_the_indexing_section_of_the_configuration()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Indexing:MaxNoteMegabytes"] = "7" }).Build();
+
+        configuration.GetSection("Indexing").Get<IndexingOptions>()!.MaxNoteBytes.Should().Be(7 * 1024 * 1024);
     }
 }

@@ -71,11 +71,13 @@ public sealed class MarkdownFileScannerFixture : IDisposable
     }
 
     [Fact]
-    public void should_take_a_note_of_several_megabytes_by_default_because_a_long_conversation_is_one_note()
+    public void should_not_say_which_files_were_left_out_before_the_walk_is_complete()
     {
-        File.WriteAllBytes(Path.Combine(_root, "long.md"), new byte[MarkdownFileScanner.MaxFileBytes * 5]);
+        var walk = MarkdownFileScanner.WalkOf(_root, 1024);
 
-        MarkdownFileScanner.Scan(_root).Select(file => file.RelativePath).Should().Equal("long.md");
+        var early = () => walk.TooLarge;
+
+        early.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]

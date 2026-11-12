@@ -56,7 +56,7 @@ public sealed class NoteReader
     /// <param name="sourceId">The source of the note.</param>
     /// <param name="path">The path of the note in its source.</param>
     /// <param name="scope">What the caller may see.</param>
-    /// <param name="whole">Give the whole text of a long note (an assistant reads it in windows); otherwise a note longer than <see cref="PageChars"/> comes in pages cut at a line end.</param>
+    /// <param name="whole">Give the whole text of a long note, as <c>Raw</c> only (an assistant reads it in windows: nothing is drawn, so <c>Markdown</c> and <c>Rendered</c> are empty); otherwise a note longer than <see cref="PageChars"/> comes in pages cut at a line end.</param>
     /// <param name="page">The page to give, from 0, of a note that comes in pages; one past the last is the last.</param>
     public NoteContent Read(Guid sourceId, string path, SourceScope scope, bool whole = false, int page = 0)
     {
@@ -65,8 +65,13 @@ public sealed class NoteReader
         var file = Resolve(source, path);
         var bytes = ReadBytes(file);
         var text = Encoding.UTF8.GetString(bytes);
+        if (whole)
+        {
+            return new NoteContent(detail, string.Empty, string.Empty, text, NoteWriter.VersionOf(bytes), source.Kind, source.Mode);
+        }
+
         var pages = 1;
-        if (!whole && text.Length > PageChars)
+        if (text.Length > PageChars)
         {
             var starts = PageStarts(text);
             pages = starts.Count;
