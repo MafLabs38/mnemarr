@@ -139,8 +139,46 @@ public sealed class IncrementalIndexFixture : IDisposable
         }
 
         rows.Select(row => row.Ordinal).Should().Equal(Enumerable.Range(0, rows.Count));
-        rows.Select(row => row.Heading).Should().ContainInOrder(rows.Select(row => row.Heading).Where(heading => heading.Contains("One", StringComparison.Ordinal) || heading.Contains("Two", StringComparison.Ordinal)));
+        var one = rows.FindIndex(row => row.Heading.Contains("One", StringComparison.Ordinal));
+        var two = rows.FindIndex(row => row.Heading.Contains("Two", StringComparison.Ordinal));
+        one.Should().BeGreaterThanOrEqualTo(0);
+        two.Should().BeGreaterThan(one, "the section added before the other is read first");
         _index.Counts(_source.Id).Chunks.Should().Be(rows.Count + ChunkIds("other.md").Count);
+    }
+
+    [Fact]
+    public async Task should_pair_equal_chunks_one_by_one_when_a_conversation_grows_and_shrinks()
+    {
+        var path = "chat.md";
+        string Same(int count) => "# Chat\n\n" + string.Concat(Enumerable.Range(0, count).Select(_ => Section("Person", "ok")));
+        await WriteAndIndexAsync(path, Same(2));
+        var two = ChunkIdList(path);
+
+        await WriteAndIndexAsync(path, Same(3));
+        var three = ChunkIdList(path);
+        await WriteAndIndexAsync(path, Same(2));
+        var back = ChunkIdList(path);
+
+        three.Should().HaveCount(two.Count + 1);
+        three.Should().Contain(two, "the chunks that were there keep their rows");
+        back.Should().HaveCount(two.Count);
+        two.Should().Contain(back, "and the ones that stay after a cut are the ones that were there");
+    }
+
+    private List<long> ChunkIdList(string path)
+    {
+        using var connection = _workspace.Database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT c.id FROM chunks c JOIN notes n ON n.id = c.note_id WHERE n.path = $path ORDER BY c.ordinal";
+        command.Parameters.AddWithValue("$path", path);
+        using var reader = command.ExecuteReader();
+        var ids = new List<long>();
+        while (reader.Read())
+        {
+            ids.Add(reader.GetInt64(0));
+        }
+
+        return ids;
     }
 
     [Fact]

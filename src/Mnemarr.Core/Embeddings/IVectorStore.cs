@@ -8,7 +8,7 @@ namespace Mnemarr.Core.Embeddings;
 public sealed record ChunkToEmbed(long ChunkId, string Text)
 {
     /// <summary>The SHA-256 of the text the model reads, in hexadecimal: what a computed vector is kept under, so that the same text is never computed twice.</summary>
-    public string Hash => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Text)));
+    public string Hash { get; } = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Text)));
 }
 
 /// <summary>A vector the model computed for a chunk, with the hash of the text it read.</summary>

@@ -156,14 +156,69 @@ public sealed class VectorReuseFixture : IDisposable
     {
         TestWorkspace.Write(_folder, "a.md", "# A\nsome passage");
         await ScanAsync();
-        await _wake.WaitAsync(TimeSpan.FromSeconds(1), Token);
+        (await _wake.WaitAsync(TimeSpan.FromSeconds(5), Token)).Should().BeTrue("a new chunk tells the indexer");
+        (await _wake.WaitAsync(TimeSpan.FromMilliseconds(50), Token)).Should().BeFalse("nothing else was said");
 
         File.Delete(Path.Combine(_folder, "a.md"));
         await ScanAsync();
 
-        await _wake.WaitAsync(TimeSpan.FromSeconds(1), Token);
+        (await _wake.WaitAsync(TimeSpan.FromSeconds(5), Token)).Should().BeTrue("a removal tells it too");
         _wake.TakeRemoved().Should().BeTrue();
         _wake.TakeRemoved().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task should_tell_once_for_many_changes_before_the_indexer_looks()
+    {
+        var wake = new EmbeddingWakeUp();
+        wake.Notify();
+        wake.Notify();
+        wake.Notify();
+
+        (await wake.WaitAsync(TimeSpan.FromSeconds(5), Token)).Should().BeTrue();
+        (await wake.WaitAsync(TimeSpan.FromMilliseconds(50), Token)).Should().BeFalse();
+        wake.TakeRemoved().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task should_move_past_a_window_of_known_texts_and_compute_the_one_that_is_new()
+    {
+        string Sections(int count) => "# Moved\n\n" + string.Concat(Enumerable.Range(0, count).Select(index => $"## Part {index}\n\nthe text of part {index} about subject {index * 11}\n\n"));
+        TestWorkspace.Write(_folder, "a.md", Sections(10));
+        await ScanAsync();
+        var first = await ComputeAsync();
+        first.Should().BeGreaterThan(4, "more than one window of the batch size");
+
+        File.Delete(Path.Combine(_folder, "a.md"));
+        TestWorkspace.Write(_folder, "moved/b.md", Sections(10) + "## Added\n\na passage the model has not read\n\n");
+        await ScanAsync();
+
+        (await ComputeAsync()).Should().Be(1, "only the new passage is read, though the known ones fill more than a window");
+        var progress = _store.Progress(_provider.ModelId);
+        progress.Embedded.Should().Be(progress.Chunks);
+    }
+
+    [Fact]
+    public async Task should_keep_a_vector_that_is_used_from_expiring_while_it_is_in_use()
+    {
+        TestWorkspace.Write(_folder, "a.md", "# Backup\nthe nightly copy of the data");
+        await ScanAsync();
+        await ComputeAsync();
+
+        _clock.Advance(TimeSpan.FromDays(20));
+        File.Delete(Path.Combine(_folder, "a.md"));
+        TestWorkspace.Write(_folder, "b.md", "# Backup\nthe nightly copy of the data");
+        await ScanAsync();
+        (await ComputeAsync()).Should().Be(0);
+
+        _clock.Advance(TimeSpan.FromDays(20));
+        File.Delete(Path.Combine(_folder, "b.md"));
+        await ScanAsync();
+        await ComputeAsync();
+        TestWorkspace.Write(_folder, "c.md", "# Backup\nthe nightly copy of the data");
+        await ScanAsync();
+
+        (await ComputeAsync()).Should().Be(0, "the vector was used at day 20: day 40 is not its expiry");
     }
 
     private sealed class CountingEmbeddings : IEmbeddingProvider
