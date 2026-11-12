@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Options;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Sources;
@@ -8,8 +9,13 @@ namespace Mnemarr.Core.Notes;
 /// <summary>
 /// A note ready to be shown: the index's knowledge of it, its Markdown as written (without the front matter), and the same Markdown with its
 /// wikilinks and embeds rewritten into links and images that lead where the caller may go (<see cref="WikiLinkRenderer"/>).
+/// A note longer than a page of the interface comes in pages: <c>Page</c> (from 0) of <c>Pages</c>, each cut at a line end; the version is the one of the whole note. A caller that reads for an assistant asks for the whole.
 /// </summary>
-public sealed record NoteContent(NoteDetail Detail, string Markdown, string Rendered, string Raw, string Version, SourceKind Kind, SourceMode Mode);
+public sealed record NoteContent(NoteDetail Detail, string Markdown, string Rendered, string Raw, string Version, SourceKind Kind, SourceMode Mode, int Page = 0, int Pages = 1)
+{
+    /// <summary>The text is one page of a longer note, not the note.</summary>
+    public bool Cut => Pages > 1;
+}
 
 /// <summary>An image of a source, opened for reading, with the type to answer with.</summary>
 public sealed record NoteFile(Stream Content, string ContentType);
@@ -27,9 +33,14 @@ public sealed class NoteReader
     private readonly ISourceStore _sources;
     private readonly INoteBrowser _browser;
     private readonly SourcePaths _paths;
+    private readonly long _maxNoteBytes;
 
-    public NoteReader(ISourceStore sources, INoteBrowser browser, SourcePaths paths)
+    /// <summary>The longest text that the interface is given at once for one note: a longer note comes in pages (a page is drawn in about a second), and an assistant reads it whole, in windows.</summary>
+    public const int PageChars = 512 * 1024;
+
+    public NoteReader(ISourceStore sources, INoteBrowser browser, SourcePaths paths, IOptions<IndexingOptions>? options = null)
     {
+        _maxNoteBytes = options?.Value.MaxNoteBytes ?? IndexingOptions.DefaultMaxNoteMegabytes * 1024L * 1024L;
         _sources = sources;
         _browser = browser;
         _paths = paths;
@@ -41,15 +52,54 @@ public sealed class NoteReader
     /// <summary>The tags of the notes the caller may read.</summary>
     public TagListing Tags(SourceScope scope) => _browser.Tags(scope);
 
-    public NoteContent Read(Guid sourceId, string path, SourceScope scope)
+    /// <summary>The note, ready to show.</summary>
+    /// <param name="sourceId">The source of the note.</param>
+    /// <param name="path">The path of the note in its source.</param>
+    /// <param name="scope">What the caller may see.</param>
+    /// <param name="whole">Give the whole text of a long note (an assistant reads it in windows); otherwise a note longer than <see cref="PageChars"/> comes in pages cut at a line end.</param>
+    /// <param name="page">The page to give, from 0, of a note that comes in pages; one past the last is the last.</param>
+    public NoteContent Read(Guid sourceId, string path, SourceScope scope, bool whole = false, int page = 0)
     {
         var detail = _browser.Find(sourceId, path, scope) ?? throw NoSuchNote();
         var source = _sources.Get(sourceId) ?? throw NoSuchNote();
         var file = Resolve(source, path);
         var bytes = ReadBytes(file);
         var text = Encoding.UTF8.GetString(bytes);
+        var pages = 1;
+        if (!whole && text.Length > PageChars)
+        {
+            var starts = PageStarts(text);
+            pages = starts.Count;
+            page = Math.Clamp(page, 0, pages - 1);
+            text = text[starts[page]..(page + 1 < pages ? starts[page + 1] : text.Length)];
+        }
+        else
+        {
+            page = 0;
+        }
+
         var body = MarkdownNotes.Body(text);
-        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body), text, NoteWriter.VersionOf(bytes), source.Kind, source.Mode);
+        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body), text, NoteWriter.VersionOf(bytes), source.Kind, source.Mode, page, pages);
+    }
+
+    /// <summary>Where each page begins: about <see cref="PageChars"/> characters on, back to the end of a line so that no line is split (a line longer than a page is split where the page ends, never inside a surrogate pair).</summary>
+    private static List<int> PageStarts(string text)
+    {
+        var starts = new List<int> { 0 };
+        while (text.Length - starts[^1] > PageChars)
+        {
+            var limit = starts[^1] + PageChars;
+            var end = text.LastIndexOf('\n', limit - 1, PageChars);
+            var next = end >= 0 ? end + 1 : limit;
+            if (next == limit && char.IsHighSurrogate(text[next - 1]))
+            {
+                next--;
+            }
+
+            starts.Add(next);
+        }
+
+        return starts;
     }
 
     /// <summary>What a text would look like as a note of a source (the editor's preview): its links resolved as they will be once it is saved. The text is not kept.</summary>
@@ -117,14 +167,14 @@ public sealed class NoteReader
             : throw NoSuchFile();
     }
 
-    private static byte[] ReadBytes(string file)
+    private byte[] ReadBytes(string file)
     {
         try
         {
             using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var buffer = new byte[Math.Min(stream.Length, MarkdownFileScanner.MaxFileBytes + 1)];
+            var buffer = new byte[Math.Min(stream.Length, _maxNoteBytes + 1)];
             stream.ReadExactly(buffer);
-            return buffer.Length > MarkdownFileScanner.MaxFileBytes ? throw NoSuchNote() : buffer;
+            return buffer.Length > _maxNoteBytes ? throw NoSuchNote() : buffer;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

@@ -64,10 +64,10 @@ public sealed partial class NoteSearch
         }
 
         var wordsWeight = FtsQuery.Meaningful(request.Query) >= LongQuestion ? LongQuestionWordsWeight : 1.0;
-        return Merge(keywords, meaning, limit, wordsWeight);
+        return Merge(keywords, meaning, limit, Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit), wordsWeight);
     }
 
-    private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit, double wordsWeight)
+    private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit, int perNote, double wordsWeight)
     {
         var scores = new Dictionary<long, double>();
         var hits = new Dictionary<long, SearchHit>();
@@ -88,11 +88,35 @@ public sealed partial class NoteSearch
             }
         }
 
-        return
-        [
-            .. scores.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key).Take(limit).Select(pair =>
+        return HoldToShare(
+            scores.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key).Select(pair =>
                 hits[pair.Key] with { Score = pair.Value, Match = both.Contains(pair.Key) ? SearchMatch.Both : hits[pair.Key].Match }),
-        ];
+            perNote, limit);
+    }
+
+    /// <summary>The hits in their order, each note kept to its share, until the list is as long as asked: a long conversation must not take the answer for itself.</summary>
+    private static List<SearchHit> HoldToShare(IEnumerable<SearchHit> ordered, int perNote, int limit)
+    {
+        var taken = new Dictionary<(Guid, string), int>();
+        var kept = new List<SearchHit>();
+        foreach (var hit in ordered)
+        {
+            var key = (hit.SourceId, hit.Path);
+            var count = taken.GetValueOrDefault(key);
+            if (count >= perNote)
+            {
+                continue;
+            }
+
+            taken[key] = count + 1;
+            kept.Add(hit);
+            if (kept.Count == limit)
+            {
+                break;
+            }
+        }
+
+        return kept;
     }
 
     private List<SearchHit> ByMeaning(SearchRequest request, SourceScope scope)
@@ -121,7 +145,7 @@ public sealed partial class NoteSearch
             // The nearest are asked for wider than the answer: some are not the caller's to see, or are outside the filters, and the rest must still fill the list.
             var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, Depth * MeaningWiderBy).Where(match => match.Distance <= maxDistance).ToList();
             var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope).ToDictionary(hit => hit.ChunkId);
-            return [.. near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]).Take(Depth)];
+            return HoldToShare(near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]), Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit), Depth);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

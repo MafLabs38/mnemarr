@@ -60,6 +60,19 @@
   font-size: var(--fontSizeMeta);
 }
 
+.pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin: 12px 0;
+  font-size: var(--fontSizeMeta);
+}
+
+.pages span:not([aria-current]) {
+  color: var(--inkMuted);
+}
+
 .unresolved {
   color: var(--inkMuted);
   text-decoration: underline dotted;

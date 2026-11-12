@@ -188,14 +188,68 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     {
         var source = await SourceWithAsync("courses", ("big.md", "# Big"), ("gone.md", "# Gone"));
         var folder = Path.Combine(Workspace.SourcesFolder, "courses");
-        File.WriteAllText(Path.Combine(folder, "big.md"), new string('x', (int)Mnemarr.Core.Indexing.MarkdownFileScanner.MaxFileBytes + 10));
+        File.WriteAllText(Path.Combine(folder, "big.md"), new string('x', 1024 * 1024 + 10));
         File.Delete(Path.Combine(folder, "gone.md"));
 
-        var big = () => Reader.Read(source.Id, "big.md", SourceScope.All);
-        var gone = () => Reader.Read(source.Id, "gone.md", SourceScope.All);
+        var narrow = new NoteReader(new Mnemarr.Core.Sources.SqliteSourceStore(Workspace.Database), Browser, Workspace.Paths(), Microsoft.Extensions.Options.Options.Create(new Mnemarr.Core.Indexing.IndexingOptions { MaxNoteMegabytes = 1 }));
+        var big = () => narrow.Read(source.Id, "big.md", SourceScope.All);
+        var gone = () => narrow.Read(source.Id, "gone.md", SourceScope.All);
 
         big.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound, "it is not a note any more");
         gone.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict, "the file is not there now; the next pass will say");
+    }
+
+    [Fact]
+    public async Task should_give_a_long_note_in_pages_cut_at_line_ends_for_the_interface_and_whole_for_an_assistant()
+    {
+        var line = new string('w', 99) + "\n";
+        var text = "# Long\n" + string.Concat(Enumerable.Repeat(line, 30_000));
+        var source = await SourceWithAsync("chats", ("long.md", text));
+
+        var first = Reader.Read(source.Id, "long.md", SourceScope.All);
+        var pages = Enumerable.Range(0, first.Pages).Select(page => Reader.Read(source.Id, "long.md", SourceScope.All, page: page)).ToList();
+        var whole = Reader.Read(source.Id, "long.md", SourceScope.All, whole: true);
+
+        first.Pages.Should().Be(6);
+        first.Cut.Should().BeTrue();
+        first.Raw.Should().StartWith("# Long\n");
+        pages.Select(page => page.Page).Should().Equal(0, 1, 2, 3, 4, 5);
+        pages.SelectMany(page => page.Raw).Should().Equal(text, "the pages put end to end are the note, with nothing lost and nothing twice");
+        pages.Take(5).Should().OnlyContain(page => page.Raw.Length <= NoteReader.PageChars && page.Raw.EndsWith('\n'), "a page ends where a line ends");
+        pages.Should().OnlyContain(page => page.Version == whole.Version, "the version is the one of the whole note, so that a conflict is still seen");
+        whole.Cut.Should().BeFalse();
+        whole.Raw.Should().Be(text);
+    }
+
+    [Fact]
+    public async Task should_give_the_last_page_for_a_page_past_the_end_and_the_first_for_a_negative_one()
+    {
+        var text = string.Concat(Enumerable.Repeat(new string('w', 99) + "\n", 30_000));
+        var source = await SourceWithAsync("chats", ("long.md", text));
+
+        Reader.Read(source.Id, "long.md", SourceScope.All, page: 99).Page.Should().Be(5);
+        Reader.Read(source.Id, "long.md", SourceScope.All, page: -3).Page.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task should_cut_a_line_longer_than_a_page_without_splitting_a_character()
+    {
+        var text = "start\n" + string.Concat(Enumerable.Repeat("😀", 400_000)) + "\nend\n";
+        var source = await SourceWithAsync("chats", ("wide.md", text));
+
+        var pages = Enumerable.Range(0, Reader.Read(source.Id, "wide.md", SourceScope.All).Pages).Select(page => Reader.Read(source.Id, "wide.md", SourceScope.All, page: page).Raw).ToList();
+
+        pages.Should().HaveCountGreaterThan(1);
+        string.Concat(pages).Should().Be(text);
+        pages.Select(page => char.IsLowSurrogate(page[0]) || char.IsHighSurrogate(page.Last())).Should().OnlyContain(split => !split, "no page begins or ends in the middle of an emoji");
+    }
+
+    [Fact]
+    public async Task should_not_cut_a_note_that_fits_a_page()
+    {
+        var source = await SourceWithAsync("chats", ("short.md", "# Short\nhello\n"));
+
+        Reader.Read(source.Id, "short.md", SourceScope.All).Cut.Should().BeFalse();
     }
 
     [Theory]

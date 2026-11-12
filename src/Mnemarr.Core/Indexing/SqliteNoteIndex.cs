@@ -364,28 +364,39 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT s.id, s.name, n.path, n.topic, n.title, c.heading,
-                   snippet(chunks_fts, 0, '', '', ' … ', $snippetWords), -bm25(chunks_fts), c.id
-            FROM chunks_fts
-            JOIN chunks c ON c.id = chunks_fts.rowid
-            JOIN notes n ON n.id = c.note_id
-            JOIN sources s ON s.id = n.source_id
-            WHERE chunks_fts MATCH $match
-              AND ($source IS NULL OR s.id = $source)
-              AND ($topic IS NULL OR n.topic = $topic)
-              AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
-            ORDER BY bm25(chunks_fts)
+            SELECT id, name, path, topic, title, heading, snippet, score, chunk FROM (
+              SELECT id, name, path, topic, title, heading, snippet, score, chunk, rank, ROW_NUMBER() OVER (PARTITION BY note ORDER BY rank, chunk) AS place FROM (
+                SELECT s.id AS id, s.name AS name, n.path AS path, n.topic AS topic, n.title AS title, c.heading AS heading,
+                       snippet(chunks_fts, 0, '', '', ' … ', $snippetWords) AS snippet, -bm25(chunks_fts) AS score, c.id AS chunk, n.id AS note, bm25(chunks_fts) AS rank
+                FROM chunks_fts
+                JOIN chunks c ON c.id = chunks_fts.rowid
+                JOIN notes n ON n.id = c.note_id
+                JOIN sources s ON s.id = n.source_id
+                WHERE chunks_fts MATCH $match
+                  AND ($source IS NULL OR s.id = $source)
+                  AND ($topics IS NULL OR n.topic IN (SELECT value FROM json_each($topics)))
+                  AND n.topic NOT IN (SELECT value FROM json_each($notTopics))
+                  AND s.id NOT IN (SELECT value FROM json_each($notSources))
+                  AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
+                ORDER BY bm25(chunks_fts)
+                LIMIT $candidates
+              )
+            )
+            WHERE place <= $perNote
+            ORDER BY rank, chunk
             LIMIT $limit
             """;
         command.Parameters.AddWithValue("$match", match);
         command.Parameters.AddWithValue(SourceParameter, request.SourceId?.ToString() ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("$topic", request.Topic ?? (object)DBNull.Value);
+        BindFilters(command, request);
         // A caller limited to some sources sees those, even when it is none: an empty list matches nothing, never everything.
         command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
         // What was said to the assistants is seen only by those who hold conversations.read.
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
         command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
         command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, SearchRequest.MaxLimit));
+        command.Parameters.AddWithValue("$candidates", Candidates);
+        command.Parameters.AddWithValue("$perNote", Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit));
         command.Parameters.AddWithValue("$snippetWords", SnippetWords);
 
         using var reader = command.ExecuteReader();
@@ -398,6 +409,17 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         }
 
         return hits;
+    }
+
+    // The keyword list is cut from the best passages of the whole index, wide enough that a note with hundreds of passages cannot take the place of the others once each note is held to its share.
+    private const int Candidates = 600;
+
+    private static void BindFilters(SqliteCommand command, SearchRequest request)
+    {
+        var within = request.StayWithin;
+        command.Parameters.AddWithValue("$topics", within.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(within));
+        command.Parameters.AddWithValue("$notTopics", JsonSerializer.Serialize(request.ExcludeTopics));
+        command.Parameters.AddWithValue("$notSources", JsonSerializer.Serialize(request.ExcludeSources.Select(id => id.ToString())));
     }
 
     /// <inheritdoc />
@@ -417,12 +439,14 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
             JOIN sources s ON s.id = n.source_id
             WHERE c.id IN (SELECT value FROM json_each($ids))
               AND ($source IS NULL OR s.id = $source)
-              AND ($topic IS NULL OR n.topic = $topic)
+              AND ($topics IS NULL OR n.topic IN (SELECT value FROM json_each($topics)))
+              AND n.topic NOT IN (SELECT value FROM json_each($notTopics))
+              AND s.id NOT IN (SELECT value FROM json_each($notSources))
               AND ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
             """;
         command.Parameters.AddWithValue("$ids", JsonSerializer.Serialize(chunkIds));
         command.Parameters.AddWithValue(SourceParameter, request.SourceId?.ToString() ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("$topic", request.Topic ?? (object)DBNull.Value);
+        BindFilters(command, request);
         command.Parameters.AddWithValue("$sources", scope.Sources is { } allowed ? JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
         command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));

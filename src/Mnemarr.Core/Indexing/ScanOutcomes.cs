@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace Mnemarr.Core.Indexing;
 
 /// <summary>How the last pass over a source ended: when, and the reason code when it failed (never a path or a message from the disk).</summary>
-public sealed record ScanOutcome(DateTimeOffset At, string? Error)
+public sealed record ScanOutcome(DateTimeOffset At, string? Error, int TooLarge = 0)
 {
     public const string FolderMissing = "folder-missing";
     public const string OutsideRoots = "outside-roots";
@@ -24,7 +24,7 @@ public sealed class ScanOutcomes
 
     public ScanOutcome? Of(Guid sourceId) => _outcomes.GetValueOrDefault(sourceId);
 
-    public void Succeeded(Guid sourceId, DateTimeOffset at) => _outcomes[sourceId] = new ScanOutcome(at, null);
+    public void Succeeded(Guid sourceId, DateTimeOffset at, int tooLarge = 0) => _outcomes[sourceId] = new ScanOutcome(at, null, tooLarge);
 
     /// <summary>Forgets the outcome of every source that is not declared any more.</summary>
     public void Retain(IReadOnlyCollection<Guid> declared)

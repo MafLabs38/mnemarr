@@ -33,6 +33,7 @@ public sealed class McpTools
 {
     private const int MaxListed = 200;
     private const string Str = "string";
+    private const string Int = "integer";
     private const string ContentKey = "content";
     private const string VersionKey = "version";
     private const string PathKey = "path";
@@ -62,12 +63,12 @@ public sealed class McpTools
     private static readonly McpTool[] Notes =
     [
         new("list_sources", "The sources of notes you may use: their name, kind, whether notes can be written in them, and how many notes they hold.", McpArguments.Schema(), Permissions.NotesRead, false),
-        new("search", "Searches the notes by words and, when the host has the model, by meaning (the question may use other words than the note; the best matches first, each with the kind of its source and how it matched: keywords, meaning or both). A hit of kind Memory is a consolidated note (what was decided and learned, short and dated, with the conversations it came from); a hit of kind Conversations is the raw record. Start from Memory, go down to Conversations for a detail or to check. Optionally within one source or one topic (the first folder of a note).",
-            McpArguments.Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note.", false), ("limit", "integer", "At most this many hits (1 to 25, default 10).", false)),
+        new("search", "Searches the notes by words and, when the host has the model, by meaning (the question may use other words than the note; the best matches first, each with the kind of its source and how it matched: keywords, meaning or both). A hit of kind Memory is a consolidated note (what was decided and learned, short and dated, with the conversations it came from); a hit of kind Conversations is the raw record. Start from Memory, go down to Conversations for a detail or to check. Optionally within one source or some topics (the first folder of a note), leaving topics out; one note gives at most per_note hits.",
+            McpArguments.Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note. Several, separated by commas: a note of any one of them.", false), ("exclude_topic", Str, "A topic to leave out (several, separated by commas).", false), ("per_note", Int, "At most this many hits from one note (1 to 25, default 3): a long conversation does not fill the answer.", false), ("limit", Int, "At most this many hits (1 to 25, default 10).", false)),
             Permissions.Search, false),
         new("list_notes", "Lists notes (source, path, title), of one source or carrying one tag.", McpArguments.Schema(OptionalSourceArg, ("tag", Str, "A tag, without #.", false)), Permissions.NotesRead, false),
         new("read_note", "Reads a note: its text, its tags, the notes that link to it, and its version. A long note (a conversation can be hundreds of thousands of characters) comes in a window of at most 20000 characters: the answer says the total length and where the next window starts. Ask for another window with offset, for the end of the note with tail (the latest of a conversation is at its end), or for the passage around some words with around. A note that came truncated cannot be replaced whole: use append_to_note.",
-            McpArguments.Schema(SourceArg, (PathKey, Str, "The path of the note in its source, such as Topic/Note.md.", true), ("offset", "integer", "Start at this character (default 0).", false), ("length", "integer", "At most this many characters (1 to 20000, default 20000).", false), ("tail", "boolean", "Read the last characters of the note instead of the first.", false), ("around", Str, "Read the passage around the first place where these words appear.", false)), Permissions.NotesRead, false),
+            McpArguments.Schema(SourceArg, (PathKey, Str, "The path of the note in its source, such as Topic/Note.md.", true), ("offset", Int, "Start at this character (default 0).", false), ("length", Int, "At most this many characters (1 to 20000, default 20000).", false), ("tail", "boolean", "Read the last characters of the note instead of the first.", false), ("around", Str, "Read the passage around the first place where these words appear.", false)), Permissions.NotesRead, false),
         new("list_tags", "The tags of the notes, most used first.", McpArguments.Schema(), Permissions.NotesRead, false),
         new("create_note", "Creates a note. The path ends in .md; folders are created. The text is the whole file, front matter included.",
             McpArguments.Schema((SourceKey, Str, "A source name (it must be open for writing).", true), (PathKey, Str, "Where the note goes, such as Topic/Note.md.", true), (ContentKey, Str, "The whole text of the note.", true)), Permissions.NotesWrite, true),
@@ -151,9 +152,17 @@ public sealed class McpTools
         var limit = Math.Clamp(McpArguments.Integer(arguments, "limit") ?? 10, 1, 25);
         Guid? source = McpArguments.Optional(arguments, SourceKey) is null ? null : SourceId(arguments, scope);
         var kinds = _catalog.List(scope).ToDictionary(known => known.Id, known => known.Kind.ToString());
-        return _search.Search(new SearchRequest(McpArguments.Text(arguments, "query"), source, McpArguments.Optional(arguments, "topic"), limit), scope)
+        var request = new SearchRequest(McpArguments.Text(arguments, "query"), source, Limit: limit)
+        {
+            Topics = Split(McpArguments.Optional(arguments, "topic")),
+            ExcludeTopics = Split(McpArguments.Optional(arguments, "exclude_topic")),
+            PerNote = Math.Clamp(McpArguments.Integer(arguments, "per_note") ?? SearchRequest.DefaultPerNote, 1, 25),
+        };
+        return _search.Search(request, scope)
             .Select(hit => new { source = hit.SourceName, kind = kinds.GetValueOrDefault(hit.SourceId, string.Empty), path = hit.Path, title = hit.Title, heading = hit.Heading, snippet = hit.Snippet, match = hit.Match }).ToList();
     }
+
+    private static string[] Split(string? topics) => topics is null ? [] : [.. topics.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
     private object ListNotes(JsonElement arguments, SourceScope scope)
     {
@@ -164,7 +173,7 @@ public sealed class McpTools
 
     private object Read(JsonElement arguments, McpCaller caller)
     {
-        var note = _reader.Read(SourceId(arguments, caller.Scope), McpArguments.Text(arguments, PathKey), caller.Scope);
+        var note = _reader.Read(SourceId(arguments, caller.Scope), McpArguments.Text(arguments, PathKey), caller.Scope, whole: true);
         var window = NoteWindow.Of(note.Raw, McpArguments.Integer(arguments, "offset"), McpArguments.Integer(arguments, "length"), McpArguments.Boolean(arguments, "tail"), McpArguments.Optional(arguments, "around"));
         return new
         {

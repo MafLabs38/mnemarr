@@ -30,6 +30,8 @@ export interface SourceItem {
   lastSyncError: SyncError | null;
   /** The commit the checkout is at. */
   head: string | null;
+  /** How many notes are above `Indexing:MaxNoteMegabytes` at the last pass: they keep what was indexed and are not read again. */
+  notesTooLarge: number;
 }
 
 /** The repository a source is the checkout of: never a secret, only the name of the credential it uses. */

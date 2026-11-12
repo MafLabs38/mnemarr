@@ -8,17 +8,18 @@ namespace Mnemarr.Api.V1.Sources;
 /// <summary>
 /// A declared source, with what is known of its index and of its last pass: <c>lastError</c> is a stable code (<c>folder-missing</c>,
 /// <c>outside-roots</c>, <c>unreadable</c>, <c>index-failed</c>) when the last pass failed, and the notes of the source are then those of the pass before.
+/// <c>notesTooLarge</c>: how many notes of the folder are above <c>Indexing:MaxNoteMegabytes</c> at the last pass; they keep what was indexed and are not read again.
 /// <c>managed</c>: a configuration document owns it, and it is changed there. A source that is the checkout of a Git repository has its
 /// <c>repository</c> (never a secret: the name of the credential only) and how its last sync ended (<c>lastSyncError</c> is a stable code).</summary>
 public sealed record SourceResource(
     Guid Id, string Name, string Kind, string Mode, string Path, DateTimeOffset CreatedAt, int Notes, int Chunks, DateTimeOffset? LastIndexedAt,
     DateTimeOffset? LastScanAt, string? LastError, bool Managed, GitRepositoryResource? Repository = null, DateTimeOffset? LastSyncAt = null,
-    string? LastSyncError = null, string? Head = null)
+    string? LastSyncError = null, string? Head = null, int NotesTooLarge = 0)
 {
     public static SourceResource From(Source source, IndexCounts counts, ScanOutcome? scan, SyncOutcome? sync = null) =>
         new(
             source.Id, source.Name, source.Kind.ToString(), source.Mode.ToString(), source.Path, source.CreatedAt, counts.Notes, counts.Chunks,
-            counts.LastIndexedAt, scan?.At, scan?.Error, source.Managed, GitRepositoryResource.From(source.Repository), sync?.At, sync?.Error, sync?.Head);
+            counts.LastIndexedAt, scan?.At, scan?.Error, source.Managed, GitRepositoryResource.From(source.Repository), sync?.At, sync?.Error, sync?.Head, scan?.TooLarge ?? 0);
 }
 
 /// <summary>The repository a source is the checkout of: its address, its branch (the default one when null) and the name of the credential it uses.</summary>
@@ -50,9 +51,9 @@ public sealed record SourceKindResource(string Kind, bool Required, bool Unique,
 }
 
 /// <summary>What one pass over a source did.</summary>
-public sealed record IndexReportResource(int Added, int Updated, int Removed, int Unchanged)
+public sealed record IndexReportResource(int Added, int Updated, int Removed, int Unchanged, int TooLarge = 0)
 {
-    public static IndexReportResource From(IndexReport report) => new(report.Added, report.Updated, report.Removed, report.Unchanged);
+    public static IndexReportResource From(IndexReport report) => new(report.Added, report.Updated, report.Removed, report.Unchanged, report.TooLarge);
 }
 
 /// <summary>A chunk of a note that matches a search, with where it comes from.</summary>

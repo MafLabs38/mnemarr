@@ -21,7 +21,9 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private async Task<Guid> IndexedSourceAsync(string name, params (string Path, string Text)[] files)
+    private async Task<Guid> IndexedSourceAsync(string name, params (string Path, string Text)[] files) => await IndexedSourceAsync(name, "ReadOnly", files);
+
+    private async Task<Guid> IndexedSourceAsync(string name, string mode, params (string Path, string Text)[] files)
     {
         var folder = Path.Combine(_factory.DataFolder, "sources", name);
         Directory.CreateDirectory(folder);
@@ -32,10 +34,34 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
             File.WriteAllText(file, text);
         }
 
-        var created = await _callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name, kind = "Knowledge", mode = "ReadOnly", path = folder }, Token);
+        var created = await _callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name, kind = "Knowledge", mode, path = folder }, Token);
         var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
         (await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         return id;
+    }
+
+    [Fact]
+    public async Task should_read_a_note_longer_than_a_page_as_its_first_part_that_cannot_be_replaced_from_here()
+    {
+        var name = Callers.Unique("chats");
+        var line = new string('w', 99) + "\n";
+        var id = await IndexedSourceAsync(name, "ReadWrite", ("long.md", "# Long\n" + string.Concat(Enumerable.Repeat(line, 30_000))), ("short.md", "# Short\nhello\n"));
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token);
+
+        var longNote = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md", Token);
+        var shortNote = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/short.md", Token);
+
+        var third = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?page=2", Token);
+        longNote.GetProperty("cut").GetBoolean().Should().BeTrue();
+        longNote.GetProperty("page").GetInt32().Should().Be(0);
+        longNote.GetProperty("pages").GetInt32().Should().Be(6);
+        longNote.GetProperty("raw").GetString()!.Length.Should().BeLessThanOrEqualTo(512 * 1024);
+        third.GetProperty("page").GetInt32().Should().Be(2);
+        third.GetProperty("raw").GetString().Should().NotStartWith("# Long");
+        longNote.GetProperty("writable").GetBoolean().Should().BeFalse();
+        longNote.GetProperty("rights").GetProperty("reason").GetString().Should().Be("note-too-long");
+        shortNote.GetProperty("cut").GetBoolean().Should().BeFalse();
+        shortNote.GetProperty("writable").GetBoolean().Should().BeTrue("a short note of a source open for writing is edited as before");
     }
 
     [Fact]

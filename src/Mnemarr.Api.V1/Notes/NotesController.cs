@@ -47,8 +47,8 @@ public sealed class NotesController : ControllerBase
     [HttpGet("{sourceId:guid}/{**path}")]
     [ProducesResponseType<NoteResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public NoteResource Get(Guid sourceId, string path) =>
-        NoteResource.From(_reader.Read(sourceId, path, User.Scope()), MayWrite, Role);
+    public NoteResource Get(Guid sourceId, string path, [FromQuery] int page = 0) =>
+        NoteResource.From(_reader.Read(sourceId, path, User.Scope(), page: page), MayWrite, Role);
 
     /// <summary>Creates a note, in a source that is open for writing: written whole and at once, read into the index at once, and, in a Git source, committed and pushed.</summary>
     [HttpPost("{sourceId:guid}/{**path}")]

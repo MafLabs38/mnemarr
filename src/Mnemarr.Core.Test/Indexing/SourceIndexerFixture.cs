@@ -35,6 +35,81 @@ public sealed class SourceIndexerFixture : IDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task should_index_a_long_conversation_of_several_megabytes_and_find_what_is_at_its_end()
+    {
+        var folder = _workspace.Folder("chats");
+        var filler = string.Concat(Enumerable.Repeat("The people talked about the cluster and the backups for a while.\n", 50_000));
+        TestWorkspace.Write(folder, "long.md", "# A long conversation\n" + filler + "\n## The end\nAnd finally zymurgy was mentioned.\n");
+        new FileInfo(Path.Combine(folder, "long.md")).Length.Should().BeGreaterThan(MarkdownFileScanner.MaxFileBytes, "the old limit would have left it out");
+        var source = Declare("chats", folder);
+
+        var report = await _subject.IndexAsync(source, Token);
+
+        report.Should().Be(new IndexReport(Added: 1, Updated: 0, Removed: 0, Unchanged: 0));
+        _index.Search(new SearchRequest("zymurgy"), SourceScope.All).Should().ContainSingle().Which.Path.Should().Be("long.md");
+    }
+
+    [Fact]
+    public async Task should_give_a_note_at_most_its_share_of_the_hits_so_that_a_long_conversation_does_not_fill_the_answer()
+    {
+        var folder = _workspace.Folder("chats");
+        TestWorkspace.Write(folder, "long.md", "# Long\n" + string.Concat(Enumerable.Range(0, 20).Select(index => $"## Part {index}\nThe backups were discussed again, number {index}.\n")));
+        TestWorkspace.Write(folder, "other.md", "# Other\nOne word about the backups.\n");
+        var source = Declare("chats", folder);
+        await _subject.IndexAsync(source, Token);
+
+        var shared = _index.Search(new SearchRequest("backups", Limit: 10), SourceScope.All);
+        var one = _index.Search(new SearchRequest("backups", Limit: 10) { PerNote = 1 }, SourceScope.All);
+        var all = _index.Search(new SearchRequest("backups", Limit: 50) { PerNote = 50 }, SourceScope.All);
+
+        shared.Count(hit => hit.Path == "long.md").Should().Be(SearchRequest.DefaultPerNote);
+        shared.Should().Contain(hit => hit.Path == "other.md");
+        one.Select(hit => hit.Path).Should().BeEquivalentTo("long.md", "other.md");
+        all.Count(hit => hit.Path == "long.md").Should().Be(20, "the share can be lifted");
+    }
+
+    [Fact]
+    public async Task should_stay_within_some_topics_and_leave_others_out_and_leave_a_source_out()
+    {
+        var first = _workspace.Folder("first");
+        TestWorkspace.Write(first, "ops/a.md", "# A\nThe alpha is here.\n");
+        TestWorkspace.Write(first, "dev/b.md", "# B\nThe alpha is here.\n");
+        TestWorkspace.Write(first, "docs/c.md", "# C\nThe alpha is here.\n");
+        var second = _workspace.Folder("second");
+        TestWorkspace.Write(second, "ops/d.md", "# D\nThe alpha is here.\n");
+        var one = Declare("first", first);
+        var two = Declare("second", second);
+        await _subject.IndexAsync(one, Token);
+        await _subject.IndexAsync(two, Token);
+
+        IEnumerable<string> Paths(SearchRequest request) => _index.Search(request, SourceScope.All).Select(hit => hit.Path);
+
+        Paths(new SearchRequest("alpha") { Topics = ["ops", "dev"] }).Should().BeEquivalentTo("ops/a.md", "dev/b.md", "ops/d.md");
+        Paths(new SearchRequest("alpha", Topic: "docs") { Topics = ["dev"] }).Should().BeEquivalentTo("docs/c.md", "dev/b.md");
+        Paths(new SearchRequest("alpha") { ExcludeTopics = ["dev", "docs"] }).Should().BeEquivalentTo("ops/a.md", "ops/d.md");
+        Paths(new SearchRequest("alpha") { ExcludeSources = [two.Id] }).Should().BeEquivalentTo("ops/a.md", "dev/b.md", "docs/c.md");
+        Paths(new SearchRequest("alpha") { Topics = ["ops"], ExcludeSources = [one.Id] }).Should().Equal("ops/d.md");
+        Paths(new SearchRequest("alpha")).Should().HaveCount(4, "nothing asked, nothing left out");
+    }
+
+    [Fact]
+    public async Task should_keep_what_was_indexed_of_a_note_that_grew_past_the_limit_and_say_that_it_is_too_large()
+    {
+        var folder = _workspace.Folder("chats");
+        TestWorkspace.Write(folder, "talk.md", "# Talk\nThe word is zymurgy.\n");
+        var source = Declare("chats", folder);
+        var narrow = new SourceIndexer(_index, _workspace.Paths(), _outcomes, _clock, options: Microsoft.Extensions.Options.Options.Create(new IndexingOptions { MaxNoteMegabytes = 1 }));
+        await narrow.IndexAsync(source, Token);
+
+        File.AppendAllText(Path.Combine(folder, "talk.md"), new string('x', 1024 * 1024 + 10));
+        var report = await narrow.IndexAsync(source, Token);
+
+        report.Should().Be(new IndexReport(Added: 0, Updated: 0, Removed: 0, Unchanged: 0, TooLarge: 1));
+        _index.Search(new SearchRequest("zymurgy"), SourceScope.All).Should().ContainSingle("a note that is too large to read is not a note that was deleted");
+        _outcomes.Of(source.Id).Should().Be(new ScanOutcome(_clock.GetUtcNow(), null, TooLarge: 1));
+    }
+
+    [Fact]
     public async Task should_index_every_note_of_a_source_and_find_them_by_their_words()
     {
         var folder = _workspace.Folder("courses");

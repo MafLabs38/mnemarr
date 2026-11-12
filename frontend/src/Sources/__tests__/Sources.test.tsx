@@ -62,6 +62,7 @@ const sources: SourceItem[] = [
     lastSyncAt: null,
     lastSyncError: null,
     head: null,
+    notesTooLarge: 0,
   },
   {
     id: 's2',
@@ -80,6 +81,7 @@ const sources: SourceItem[] = [
     lastSyncAt: null,
     lastSyncError: null,
     head: null,
+    notesTooLarge: 0,
   },
 ];
 
@@ -316,6 +318,21 @@ describe('Sources', () => {
     );
     expect(
       within(rowOf(screen.getByRole('rowheader', { name: /memoire/ }))).queryByRole('alert'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says how many notes are above the size limit, since they are kept but not read again', async () => {
+    server(
+      () => undefined,
+      sources.map((source) => (source.name === 'cours' ? { ...source, notesTooLarge: 2 } : source)),
+    );
+    renderWithProviders(<Sources />);
+
+    const cours = rowOf(await screen.findByRole('rowheader', { name: /cours/ }));
+
+    expect(within(cours).getByRole('status')).toHaveTextContent('2 notes are above the size limit');
+    expect(
+      within(rowOf(screen.getByRole('rowheader', { name: /memoire/ }))).queryByRole('status'),
     ).not.toBeInTheDocument();
   });
 

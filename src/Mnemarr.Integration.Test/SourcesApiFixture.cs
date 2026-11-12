@@ -48,6 +48,28 @@ public sealed class SourcesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLif
     private static string Unique(string prefix) => Callers.Unique(prefix);
 
     [Fact]
+    public async Task should_search_within_several_topics_leave_topics_and_sources_out_and_hold_a_note_to_its_share()
+    {
+        var first = Unique("first");
+        var second = Unique("second");
+        var word = Unique("kelvin").Replace("-", string.Empty, StringComparison.Ordinal);
+        var parts = string.Concat(Enumerable.Range(0, 8).Select(index => $"## Part {index}\nThe {word} number {index}.\n"));
+        var one = (await DeclareAsync(_callers["Operator"], first, Folder(first, ("ops/long.md", "# Long\n" + parts), ("dev/b.md", $"# B\nThe {word}.\n"), ("docs/c.md", $"# C\nThe {word}.\n")))).GetProperty("id").GetGuid();
+        var two = (await DeclareAsync(_callers["Operator"], second, Folder(second, ("ops/d.md", $"# D\nThe {word}.\n")))).GetProperty("id").GetGuid();
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{one}/index", null, Token);
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{two}/index", null, Token);
+
+        async Task<List<string>> PathsAsync(string query) =>
+            [.. (await _callers["Reader"].GetFromJsonAsync<JsonElement>($"/api/v1/search?q={word}&limit=50{query}", Token)).EnumerateArray().Select(hit => hit.GetProperty("path").GetString()!)];
+
+        (await PathsAsync("&topic=dev&topic=docs")).Should().BeEquivalentTo("dev/b.md", "docs/c.md");
+        (await PathsAsync("&notTopic=dev&notTopic=docs")).Should().BeEquivalentTo(Enumerable.Repeat("ops/long.md", 3).Append("ops/d.md"));
+        (await PathsAsync($"&notSource={one}")).Should().Equal("ops/d.md");
+        (await PathsAsync("&perNote=1")).Should().BeEquivalentTo("ops/long.md", "dev/b.md", "docs/c.md", "ops/d.md");
+        (await PathsAsync("&perNote=50")).Count(path => path == "ops/long.md").Should().Be(8);
+    }
+
+    [Fact]
     public async Task should_declare_a_folder_index_it_and_find_its_notes_by_their_words_with_the_source_shown()
     {
         var name = Unique("courses");

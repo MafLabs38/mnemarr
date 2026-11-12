@@ -98,6 +98,11 @@ function SourceRow({ source, kind, onResult, onEdit }: Readonly<RowProps>) {
             {translate('ScanFailed', { reason: translate(source.lastError) })}
           </p>
         )}
+        {source.notesTooLarge > 0 && (
+          <p className={styles.scanFailed} role="status">
+            {translate('NotesTooLarge', { count: source.notesTooLarge })}
+          </p>
+        )}
         <SyncStatus source={source} />
       </td>
       <td>
