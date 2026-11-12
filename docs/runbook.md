@@ -116,6 +116,7 @@ A deployment that follows the version tags (see [releasing](releasing.md)) picks
 |---|---|
 | A machine **silent** or **failing** | the Machines page says why; [the collector page](collector.md) |
 | *System > Status* **degraded** with `collector-silent` | an always-on machine has not reported for 30 minutes: is it on, can it reach Mnemarr? |
+| *System > Status* **degraded** with `notifications-failing` or `notifications-secret` | the last mail did not leave (the reason is on the Machines page: server unreachable, sign-in refused: for Google, use an application password) or the password file cannot be read. Send a test mail from the Machines page. |
 | 429 on the installer or a download | too many programs are being written at once, or the proxy's per-address limit: wait a few seconds |
 | 429 on `enrol` | ten wrong codes in a minute for the whole server: wait a minute |
 | No line to run on the page | this image carries no program for that system |

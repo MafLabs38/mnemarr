@@ -28,6 +28,38 @@ export interface MachineItem {
   updateNote: string | null;
   /** What the collector found where it looks for conversations: why a machine that is online sends nothing (a sentence with no path). */
   watching: string | null;
+  /** What the machine asks a person for (ADR 0041): Mnemarr's sentence for a code, and where the person can answer it. */
+  attention: MachineAttention | null;
+  /** What a person said about turning the conversations of this machine into notes: null, the default of their format. */
+  consolidate: boolean | null;
+  /** Whether they are turned into notes now, by what was said or by default. */
+  consolidating: boolean;
+}
+
+/** A machine that asks for a person: a satellite whose session ended, for one. `url` is https (or loopback) and null when none acceptable was given. */
+export interface MachineAttention {
+  code: 'needs-login' | 'reader-broken';
+  sentence: string;
+  url: string | null;
+  since: string | null;
+  /** How many mails were sent to a person for this episode (ADR 0042), and why the last one did not leave when it did not. */
+  mails: number;
+  mailProblem: string | null;
+}
+
+/** Whether Mnemarr can write to a person, and what became of the last mail (ADR 0042). */
+export interface NotificationStatus {
+  enabled: boolean;
+  provider: string | null;
+  recipient: string | null;
+  lastAt: string | null;
+  lastDelivered: boolean | null;
+  lastProblem: string | null;
+}
+
+export interface NotificationTest {
+  delivered: boolean;
+  problem: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */
@@ -178,6 +210,18 @@ export function useRenameMachine() {
   });
 }
 
+/** Says whether the conversations of a machine are turned into notes; null puts it back to the default of their format. */
+export function useSetConsolidate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (change: { machine: string; consolidate: boolean | null }) =>
+      apiSend('POST', `/collectors/${encodeURIComponent(change.machine)}/consolidate`, {
+        consolidate: change.consolidate,
+      }),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
 /** What a merge did: how many conversations were filed under the other machine, and how many it held already. */
 export interface MergeResult {
   moved: number;
@@ -201,5 +245,22 @@ export function useEraseMachine() {
     mutationFn: (machine: string) =>
       apiSend<{ conversations: number }>('POST', `/collectors/${encodeURIComponent(machine)}/erase`),
     onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+const isNotificationQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/notifications');
+
+/** Only an administrator sees the notifications (the page asks only if they may manage the machines): the server refuses everybody else. */
+export function useNotifications() {
+  return useApiQuery<NotificationStatus>('/notifications');
+}
+
+/** Sends a mail to the address that is set, to see that the settings work. */
+export function useSendTestMail() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend<NotificationTest>('POST', '/notifications/test'),
+    gcTime: 0,
+    onSettled: () => client.invalidateQueries({ predicate: isNotificationQuery }),
   });
 }

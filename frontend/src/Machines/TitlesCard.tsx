@@ -16,10 +16,10 @@ export default function TitlesCard() {
   if (!counts.data) {
     return null;
   }
-  const { modelEnabled, firstSentence, summary, person, lastError, lastErrorAt } = counts.data;
+  const { modelEnabled, firstSentence, summary, person, sender, lastError, lastErrorAt } = counts.data;
   return (
     <>
-      <p>{translate('TitleCounts', { summary, person, firstSentence })}</p>
+      <p>{translate('TitleCounts', { summary, person, sender, firstSentence })}</p>
       {modelEnabled ? (
         <>
           <p className={styles.hint}>{translate('TitlesModelOn')}</p>

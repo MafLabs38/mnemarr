@@ -149,7 +149,9 @@ public sealed class ConversationIngestorFixture : IDisposable
     {
         await _ingestor.IngestAsync(Batch(0, Line("user", "one", "2026-11-04T14:03:00Z"), Line("assistant", "two", "2026-11-04T14:04:00Z")), Token);
 
-        _store.Machines().Should().ContainSingle().Which.Should().Be(new MachineActivity("workstation", 1, 2, _clock.GetUtcNow()));
+        var machine = _store.Machines().Should().ContainSingle().Subject;
+        (machine.Machine, machine.Conversations, machine.Lines, machine.LastSeen).Should().Be(("workstation", 1, 2, _clock.GetUtcNow()));
+        machine.Formats.Should().Equal("claude-code");
     }
 
     [Fact]

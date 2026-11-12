@@ -138,6 +138,27 @@ const en = {
   MeaningFailed: 'The search by meaning does not work, so the search is by words only: {reason}',
   MeaningCatchingUp:
     'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
+  AttentionOpen: 'Open {host}',
+  AttentionMailed: 'A mail was sent to you ({count}).',
+  AttentionMailProblem: 'The mail could not be sent: {problem}',
+  Notifications: 'Notifications',
+  NotificationsOff:
+    'Mnemarr does not write to anyone. Turn the notifications on in the settings to be told by mail when a machine needs you.',
+  NotificationsOn: 'When a machine needs you, Mnemarr writes to {recipient} ({provider}).',
+  NotificationsLast: 'The last mail was tried at {at}.',
+  NotificationsLastProblem: 'The last mail could not be sent: {problem}',
+  SendTestMail: 'Send a test mail',
+  TestMailSent: 'The test mail left. Look in {recipient}.',
+  TestMailFailed: 'The test mail did not leave: {problem}',
+  NotConsolidated: 'Not turned into notes (the setting of this machine).',
+  ConsolidateTitle: 'Notes of the memory',
+  ConsolidateHelp:
+    'Whether the conversations of this machine are turned into notes of the memory. By default the ones of a command-line assistant are, and the ones of a web assistant are kept as they were said and found, not consolidated.',
+  Consolidate: 'Consolidate its conversations',
+  ConsolidateDefaultYes: 'By default (yes)',
+  ConsolidateDefaultNo: 'By default (no)',
+  ConsolidateYes: 'Yes',
+  ConsolidateNo: 'No',
   MeaningDevice: 'The passages are read on: {device}.',
   MeaningServer: 'The passages are read on the embedding server ({device}).',
   MeaningServerProblem: 'The embedding server is not used: {problem} The passages are read on this host meanwhile.',
@@ -421,12 +442,13 @@ const en = {
   TitleFromFirstSentence: 'the first sentence of the conversation',
   TitleFromModel: 'written by a model',
   TitleFromPerson: 'typed by a person',
+  TitleFromSender: 'given by the assistant it comes from',
   ChangeTitle: 'Change the title',
   SaveTitle: 'Save the title',
   RewriteTitle: 'Rewrite with the model',
   WritingTitle: 'The model is writing…',
   TitleCounts:
-    '{summary} written by a model, {person} typed by a person, {firstSentence} with only the first sentence.',
+    '{summary} written by a model, {person} typed by a person, {sender} given by their assistant, {firstSentence} with only the first sentence.',
   TitlesModelOn:
     'A model writes a title and a summary for each conversation once it has been left alone for a while. What a person typed is never replaced.',
   TitlesModelOff:

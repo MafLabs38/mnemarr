@@ -288,6 +288,27 @@ public static class Schema
         ) WITHOUT ROWID;
         CREATE INDEX embedding_cache_by_use ON embedding_cache (used_at);
         """,
+        // 22: a satellite that is not a command-line tool (ADR 0041). Whether a machine's conversations are consolidated (null: the default of their format), and the attention a machine asks for
+        // (a closed code, the address where a person can answer it, when the episode began, and the mail that was sent for it, so that a restart does not send again).
+        """
+        ALTER TABLE machines ADD COLUMN consolidate INTEGER;
+        ALTER TABLE machines ADD COLUMN attention_code TEXT;
+        ALTER TABLE machines ADD COLUMN attention_url TEXT;
+        ALTER TABLE machines ADD COLUMN attention_since TEXT;
+        ALTER TABLE machines ADD COLUMN attention_mailed_at TEXT;
+        ALTER TABLE machines ADD COLUMN attention_mails INTEGER NOT NULL DEFAULT 0;
+        """,
+        // 23: the mails that were tried (ADR 0042), what the daily caps count and what the page shows of a failure. A mail for a machine names it; a test mail does not.
+        """
+        CREATE TABLE notification_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            machine TEXT,
+            at TEXT NOT NULL,
+            delivered INTEGER NOT NULL,
+            reason TEXT
+        );
+        CREATE INDEX notification_log_by_time ON notification_log (at);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

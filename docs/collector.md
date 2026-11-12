@@ -90,6 +90,20 @@ The code works once, for 15 minutes, for that machine name. A machine that enrol
 
 An assistant can ask for a machine over MCP (`request_collector_enrolment`): the request waits on the page until a person approves it.
 
+## A program that is not a collector: a satellite (ADR 0041)
+
+A web assistant has no file to read, so a program of its own (a satellite) joins Mnemarr **as a machine, exactly like a collector**: it is paired or enrolled, holds an ingest key bound to its name, sends its conversations in the [`chat-turns` format](conversation-formats.md#a-satellite-that-is-not-a-command-line-tool-chat-turns-adr-0041), and a heartbeat at the end of every pass. The heartbeat has one optional field more than a collector uses:
+
+```json
+{ "version": "0.3.0", "pendingLines": 0, "error": null, "paused": false,
+  "attention": { "code": "needs-login", "url": "https://satellite.homelab.example/connection" } }
+```
+
+- `code` is from a **closed list** in Mnemarr: `needs-login` (the session of the assistant ended and a person must sign in again) and `reader-broken` (what the satellite reads no longer looks as it expects). A satellite never invents one: an unknown code is ignored, and the rest of the heartbeat is kept.
+- `url` is where a person can answer it. It is **untrusted text**: it is kept only if it is an `https` address (or `http` to a loopback address, for a sandbox) with a host, no credentials, no space or control character, and at most 512 characters; anything else is dropped. It is shown as a link with `rel="noopener noreferrer nofollow"` and its host visible, never `javascript:` or `data:`.
+- A heartbeat **with** `attention` makes the machine `failing` (an alert, for an always-on machine) and shows, on the machines page, Mnemarr's own sentence for the code and the link. The **next heartbeat without it** ends the episode. The start of the episode and the mails that were sent for it are kept in the database, so that a restart does not send again. When the notifications are on ([configuration](configuration.md#notifications-notifications)), one mail tells the person when the episode begins, with a reminder at most once a day for a few days; it holds Mnemarr's sentence and the address of the Machines page, never anything the satellite wrote, not even its address.
+- Nothing the satellite wrote is shown but the address: the sentence is Mnemarr's, mapped from the code. No token, no key and no conversation text is ever in the signal or on the page.
+
 ## Install it on Windows, and keep it up to date (built, ADR 0032)
 
 The usual way on a workstation is the **installer**. On the Machines page, *Add a machine* offers **Download the installer for Windows**; it is the same file for every machine and holds no code.

@@ -41,7 +41,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 1;
                 """;
             back.ExecuteNonQuery();
@@ -71,7 +71,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 2;
                 """;
             back.ExecuteNonQuery();
@@ -98,7 +98,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 3;
                 """;
             back.ExecuteNonQuery();
@@ -126,8 +126,8 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                ALTER TABLE machines DROP COLUMN attention_mails; ALTER TABLE machines DROP COLUMN attention_mailed_at; ALTER TABLE machines DROP COLUMN attention_since; ALTER TABLE machines DROP COLUMN attention_url; ALTER TABLE machines DROP COLUMN attention_code; ALTER TABLE machines DROP COLUMN consolidate; ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 7;
                 """;
             back.ExecuteNonQuery();
@@ -153,8 +153,8 @@ public sealed class DatabaseFixture : IDisposable
             ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
             ALTER TABLE conversations DROP COLUMN computer_id;
             DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-            ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
-            DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+            ALTER TABLE machines DROP COLUMN attention_mails; ALTER TABLE machines DROP COLUMN attention_mailed_at; ALTER TABLE machines DROP COLUMN attention_since; ALTER TABLE machines DROP COLUMN attention_url; ALTER TABLE machines DROP COLUMN attention_code; ALTER TABLE machines DROP COLUMN consolidate; ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
+            DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
             PRAGMA user_version = 7;
             """;
         back.ExecuteNonQuery();
@@ -258,8 +258,8 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                ALTER TABLE machines DROP COLUMN attention_mails; ALTER TABLE machines DROP COLUMN attention_mailed_at; ALTER TABLE machines DROP COLUMN attention_since; ALTER TABLE machines DROP COLUMN attention_url; ALTER TABLE machines DROP COLUMN attention_code; ALTER TABLE machines DROP COLUMN consolidate; ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 8;
                 """;
             back.ExecuteNonQuery();
@@ -288,8 +288,8 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE machines DROP COLUMN platform; ALTER TABLE machines DROP COLUMN program; DROP INDEX IF EXISTS machines_by_computer; ALTER TABLE machines DROP COLUMN computer_id;
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                ALTER TABLE machines DROP COLUMN attention_mails; ALTER TABLE machines DROP COLUMN attention_mailed_at; ALTER TABLE machines DROP COLUMN attention_since; ALTER TABLE machines DROP COLUMN attention_url; ALTER TABLE machines DROP COLUMN attention_code; ALTER TABLE machines DROP COLUMN consolidate; ALTER TABLE machines DROP COLUMN watching; ALTER TABLE machines DROP COLUMN update_note; ALTER TABLE machines DROP COLUMN can_update; ALTER TABLE machines DROP COLUMN interval_seconds;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 6;
                 """;
             back.ExecuteNonQuery();
@@ -317,7 +317,7 @@ public sealed class DatabaseFixture : IDisposable
                 ALTER TABLE conversations DROP COLUMN computer_id;
                 DROP TABLE IF EXISTS pairings;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 5;
                 """;
             back.ExecuteNonQuery();
@@ -343,7 +343,7 @@ public sealed class DatabaseFixture : IDisposable
                 DROP TABLE conversations; DROP TABLE machines; DROP TABLE enrolments;
                 DROP TABLE IF EXISTS pairings;
                 DROP TABLE IF EXISTS machine_aliases; DROP INDEX IF EXISTS conversations_by_session;
-                DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
+                DROP TABLE IF EXISTS notification_log; DROP TABLE IF EXISTS embedding_cache; DROP TABLE IF EXISTS consolidation_days; DROP TABLE IF EXISTS consolidations; DROP TABLE IF EXISTS chunk_embeddings; DROP TABLE IF EXISTS chat_tokens; DROP TABLE IF EXISTS chat_conversations;
                 PRAGMA user_version = 4;
                 """;
             back.ExecuteNonQuery();

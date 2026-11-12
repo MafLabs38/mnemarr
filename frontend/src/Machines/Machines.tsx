@@ -8,6 +8,7 @@ import translate from 'Utilities/String/translate';
 
 import AddMachine from './AddMachine';
 import MachineList from './MachineList';
+import NotificationsCard from './NotificationsCard';
 import Pairings from './Pairings';
 import Requests from './Requests';
 import TitlesCard from './TitlesCard';
@@ -31,6 +32,9 @@ export default function Machines() {
           <>
             <Card title={translate('AskingToBeLinked')}>
               <Pairings />
+            </Card>
+            <Card title={translate('Notifications')}>
+              <NotificationsCard />
             </Card>
             <Card title={translate('Requests')}>
               <Requests />

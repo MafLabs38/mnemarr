@@ -39,6 +39,12 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
     private const string Columns = "machine, session, lines_done, turns_done, notes, tries, error, last_at";
     private readonly IDatabase _database;
 
+    // Whether the machine of a conversation wants it consolidated (ADR 0041): what the machine says, else the default of the format of the conversation. A conversation whose machine
+    // is not a machine that joined has no row, and takes the default. The formats that are consolidated by default are a parameter, so that the rule is in one place (ConsolidationDefaults).
+    private const string Consolidated = "coalesce((SELECT m.consolidate FROM machines m WHERE m.name = c.machine), c.format IN (SELECT value FROM json_each($defaults))) = 1";
+
+    private static string DefaultFormats() => System.Text.Json.JsonSerializer.Serialize(ConsolidationDefaults.Formats);
+
     public SqliteConsolidationStore(IDatabase database)
     {
         _database = database;
@@ -80,13 +86,15 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         // A conversation that grew since the last run starts again with its tries: what failed was another text.
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT c.machine, c.session FROM conversations c
             LEFT JOIN consolidations k ON k.machine = c.machine AND k.session = c.session
             WHERE c.updated_at <= $idle AND c.lines > coalesce(k.lines_done, 0)
               AND (coalesce(k.tries, 0) < $tries OR c.lines > coalesce(k.lines_done, 0) + $growth)
+              AND {Consolidated}
             ORDER BY c.updated_at LIMIT $limit
             """;
+        command.Parameters.AddWithValue("$defaults", DefaultFormats());
         command.Parameters.AddWithValue("$idle", StorageText.Format(idleBefore));
         command.Parameters.AddWithValue(TriesParameter, maxTries);
         command.Parameters.AddWithValue("$growth", IConsolidationStore.RetryAfterGrowth);
@@ -105,15 +113,16 @@ public sealed class SqliteConsolidationStore : IConsolidationStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = $"""
             SELECT
-              (SELECT COUNT(*) FROM conversations c LEFT JOIN consolidations k ON k.machine = c.machine AND k.session = c.session WHERE c.lines > coalesce(k.lines_done, 0)),
+              (SELECT COUNT(*) FROM conversations c LEFT JOIN consolidations k ON k.machine = c.machine AND k.session = c.session WHERE c.lines > coalesce(k.lines_done, 0) AND {Consolidated}),
               (SELECT COUNT(*) FROM consolidations WHERE error IS NULL),
               (SELECT COUNT(*) FROM consolidations WHERE error IS NOT NULL AND tries >= $tries),
               (SELECT coalesce(SUM(notes), 0) FROM consolidations),
               (SELECT coalesce(SUM(runs), 0) FROM consolidation_days WHERE day = $day)
             """;
         command.Parameters.AddWithValue(TriesParameter, maxTries);
+        command.Parameters.AddWithValue("$defaults", DefaultFormats());
         command.Parameters.AddWithValue("$day", DayKey(dayStart));
         using var reader = command.ExecuteReader();
         reader.Read();

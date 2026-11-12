@@ -16,6 +16,7 @@ using Mnemarr.Core.Embeddings;
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Notes;
+using Mnemarr.Core.Notifications;
 using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
@@ -137,6 +138,17 @@ public static class CoreServiceCollectionExtensions
         }
 
         services.TryAddSingleton<ITitleWriter>(sp => TitleProviders.Select(sp.GetServices<ITitleProvider>(), sp.GetRequiredService<IOptions<TitleOptions>>()));
+        services.AddOptions<NotificationOptions>().Bind(configuration.GetSection("Notifications")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>();
+        foreach (var provider in NotificationProviders.BuiltIn)
+        {
+            services.AddSingleton(typeof(INotificationProvider), provider);
+        }
+
+        services.TryAddSingleton<INotificationSender>(sp => NotificationProviders.Select(sp.GetServices<INotificationProvider>(), sp.GetRequiredService<IOptions<NotificationOptions>>()));
+        services.AddSingleton<INotificationLog, SqliteNotificationLog>();
+        services.AddSingleton<AttentionMailer>();
+        services.AddHostedService<AttentionMailService>();
         services.AddSingleton<ConversationTitles>();
         services.AddSingleton<TitleWriting>();
         services.AddHostedService<TitleService>();
