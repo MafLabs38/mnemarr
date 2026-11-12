@@ -333,8 +333,8 @@ const en = {
     'The name must be the one the machine will give itself. An always-on machine (a server) raises an alert when it falls silent; an intermittent one (a workstation) never does.',
   AlreadyHasACollector:
     'This computer already has the collector? Run the line, or open the download, again: it keeps the Mnemarr it already sends to and adds this one. Or, on the computer, use the icon: Link to a Mnemarr.',
-  KindAlwaysOn: 'Always on (a server)',
-  KindIntermittent: 'Intermittent (a workstation)',
+  KindAlwaysOn: 'Always on',
+  KindIntermittent: 'Intermittent',
   NewCode: 'Code of the new machine',
   PasteThisLine:
     'On {name}, open the program for the system below as your usual user (no administrator rights needed), paste this line and press Enter. It downloads the collector from this Mnemarr, checks it, joins the machine and installs it. The code in it works once, for 15 minutes, and is shown only now.',
@@ -404,6 +404,7 @@ const en = {
   PairingAsksFor: '{name} asks to be linked',
   PairingExpires: 'Waiting until {time}',
   ReviewPairing: 'Review the request of {name}',
+  ReviewRequest: 'Review',
   LinkAComputer: 'Link a computer',
   LinkIntro:
     'A computer that has the collector asked to be linked to this Mnemarr. Check that you started it just now, on your own computer, and that the name below is its name.',
