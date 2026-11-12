@@ -221,7 +221,7 @@ jobs:
       # The .NET scanner does not read SONAR_TOKEN for `begin`, so the token is an argument of `begin` and `end`. This job runs the
       # pull request's own code (the build): same-repository branch authors are trusted with this secret, and pull requests from
       # forks never get it.
-      # Documented exception (CLAUDE.md): docker:S8431 asks for the tag or the digest of a base image, not both. The Dockerfile keeps
+      # Documented exception (CLAUDE.md): docker:S8431 asks for the tag or the digest of a base image, not both. The Dockerfiles (Dockerfile, Dockerfile.embedder) keep
       # both on purpose: the digest makes a build reproducible, the tag is what Dependabot follows to move the digest (ADR 0013).
       # agent/** is excluded from the coverage figure only (its issues are still analysed): the runner is tested by Node's own test runner, which
       # writes no lcov report here; its tests and gates (tsc, ESLint with SonarJS, Prettier) run in this workflow.
@@ -238,7 +238,7 @@ jobs:
           /d:sonar.qualitygate.wait=true
           /d:sonar.issue.ignore.multicriteria=e1
           /d:sonar.issue.ignore.multicriteria.e1.ruleKey="docker:S8431"
-          /d:sonar.issue.ignore.multicriteria.e1.resourceKey="Dockerfile"
+          /d:sonar.issue.ignore.multicriteria.e1.resourceKey="Dockerfile*"
       - run: dotnet build src/Mnemarr.sln
       - name: End SonarQube analysis
         run: dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
@@ -506,3 +506,26 @@ jobs:
           no-cache: ${{ needs.release.outputs.version != '' }}
           cache-from: ${{ needs.release.outputs.version == '' && 'type=gha,scope=agent' || '' }}
           cache-to: ${{ needs.release.outputs.version == '' && 'type=gha,mode=max,scope=agent' || '' }}
+      # The embedding server (ADR 0040) computes the vectors on a GPU for a Mnemarr elsewhere: its own image, built from the same code, linux/amd64 only (the GPU build of the
+      # engine is published for that). It is built here and published like the others; whether it runs on a GPU is for the people who run it.
+      - id: meta-embedder
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}-embedder
+          tags: |
+            type=ref,event=branch
+            type=sha
+            type=raw,value=${{ needs.release.outputs.version }},enable=${{ needs.release.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ needs.release.outputs.version != '' }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: Dockerfile.embedder
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-embedder.outputs.tags }}
+          labels: ${{ steps.meta-embedder.outputs.labels }}
+          build-args: VERSION=${{ steps.version.outputs.value }}
+          no-cache: ${{ needs.release.outputs.version != '' }}
+          cache-from: ${{ needs.release.outputs.version == '' && 'type=gha,scope=embedder' || '' }}
+          cache-to: ${{ needs.release.outputs.version == '' && 'type=gha,mode=max,scope=embedder' || '' }}

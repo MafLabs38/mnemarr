@@ -25,6 +25,7 @@ public sealed partial class FailoverEmbeddingProvider : IEmbeddingProvider
         _options = options.Value;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
+        _device = _options.Remote.Wanted ? "remote" : "cpu";
     }
 
     public string ModelId => _local.ModelId;
