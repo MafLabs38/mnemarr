@@ -62,6 +62,9 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         (await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?page=-1", Token)).GetProperty("page").GetInt32().Should().Be(0, "a negative page is the first");
         longNote.GetProperty("writable").GetBoolean().Should().BeFalse();
         longNote.GetProperty("rights").GetProperty("reason").GetString().Should().Be("note-too-long");
+        var longWhole = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?whole=true", Token);
+        longWhole.GetProperty("writable").GetBoolean().Should().BeFalse("a note above the 2 MB that can be written is not promised as editable, whole or not");
+        longWhole.GetProperty("rights").GetProperty("reason").GetString().Should().Be("note-too-long");
         shortNote.GetProperty("cut").GetBoolean().Should().BeFalse();
         shortNote.GetProperty("writable").GetBoolean().Should().BeTrue("a short note of a source open for writing is edited as before");
         var mid = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/mid.md", Token);

@@ -1,4 +1,5 @@
 using Mnemarr.Core.Git;
+using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Notes;
 using Mnemarr.Core.Sources;
 
@@ -59,7 +60,8 @@ public sealed record NoteResource(
 
     private static NoteResource From(NoteContent content, NoteRightsResource given)
     {
-        var rights = content.Cut && given.CanWrite ? given with { CanWrite = false, Reason = NoteRightsReason.NoteTooLong } : given;
+        // A page, or a note above the 2 MB that can be written (read whole), is not edited from here: the write refuses it, so the rights must not promise it.
+        var rights = (content.Cut || content.Raw.Length > MarkdownFileScanner.MaxFileBytes) && given.CanWrite ? given with { CanWrite = false, Reason = NoteRightsReason.NoteTooLong } : given;
         return new(
             content.Detail.Note.SourceId, content.Detail.Note.SourceName, content.Detail.Note.Path, content.Detail.Note.Title, content.Markdown, content.Rendered,
             content.Detail.Tags,
