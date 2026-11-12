@@ -74,7 +74,7 @@ public sealed class EmbedderApiFixture : IAsyncLifetime
         return await _http!.SendAsync(request, Token);
     }
 
-    private static object Ask(string[] texts, string kind = "passage", string model = "fake-model") => new { model, kind, texts };
+    private static object Ask(string[] texts, string kind = "passage", string model = "fake-model", int? maxTokens = null) => new { model, kind, texts, maxTokens = maxTokens ?? new EmbeddingOptions().MaxTokens };
 
     [Fact]
     public async Task should_say_whether_the_model_is_loaded()
@@ -137,6 +137,15 @@ public sealed class EmbedderApiFixture : IAsyncLifetime
         var act = async () => await app.StartAsync(Token);
 
         await act.Should().ThrowAsync<OptionsValidationException>();
+    }
+
+    [Fact]
+    public async Task should_refuse_a_client_that_reads_another_length_of_text()
+    {
+        var response = await PostAsync(Ask(["a"], maxTokens: 64));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        _provider.Computed.Should().Be(0);
     }
 
     [Fact]
