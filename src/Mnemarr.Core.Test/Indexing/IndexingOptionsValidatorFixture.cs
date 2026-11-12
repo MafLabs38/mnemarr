@@ -15,15 +15,15 @@ public sealed class IndexingOptionsValidatorFixture
 
     [Theory]
     [InlineData(1)]
-    [InlineData(128)]
-    public void should_accept_a_note_limit_between_one_and_a_hundred_and_twenty_eight_megabytes(int megabytes)
+    [InlineData(64)]
+    public void should_accept_a_note_limit_between_one_and_sixty_four_megabytes(int megabytes)
     {
         new IndexingOptionsValidator().Validate(null, new IndexingOptions { MaxNoteMegabytes = megabytes }).Succeeded.Should().BeTrue();
     }
 
     [Theory]
     [InlineData(0)]
-    [InlineData(129)]
+    [InlineData(65)]
     public void should_refuse_any_other_note_limit(int megabytes)
     {
         new IndexingOptionsValidator().Validate(null, new IndexingOptions { MaxNoteMegabytes = megabytes }).FailureMessage

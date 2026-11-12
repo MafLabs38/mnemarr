@@ -27,7 +27,7 @@ public sealed class SourceIndexer
 
     public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock, SourceLocks? locks = null, EmbeddingWakeUp? wake = null, IOptions<IndexingOptions>? options = null)
     {
-        _maxNoteBytes = options?.Value.MaxNoteBytes ?? IndexingOptions.DefaultMaxNoteMegabytes * 1024L * 1024L;
+        _maxNoteBytes = options?.Value.MaxNoteBytes ?? IndexingOptions.DefaultMaxNoteBytes;
         _wake = wake;
         _locks = locks ?? new SourceLocks();
         _index = index;

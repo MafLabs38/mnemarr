@@ -65,7 +65,7 @@ public sealed partial class NoteSearch
         }
 
         var wordsWeight = FtsQuery.Meaningful(request.Query) >= LongQuestion ? LongQuestionWordsWeight : 1.0;
-        return Merge(keywords, meaning, limit, Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit), wordsWeight);
+        return Merge(keywords, meaning, limit, request.Share, wordsWeight);
     }
 
     private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit, int perNote, double wordsWeight)
@@ -143,10 +143,9 @@ public sealed partial class NoteSearch
             var question = request.Query.Length > MaxQuestionLength ? request.Query[..MaxQuestionLength] : request.Query;
             var query = _embeddings.EmbedQuery(question);
             var maxDistance = _options.MaxDistance ?? _embeddings.DefaultMaxDistance;
-            // The nearest are asked for wider than the answer: some are not the caller's to see, or are outside the filters, and the rest must still fill the list.
             var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, MeaningCandidates).Where(match => match.Distance <= maxDistance).ToList();
             var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope).ToDictionary(hit => hit.ChunkId);
-            return HoldToShare(near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]), Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit), Depth);
+            return HoldToShare(near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]), request.Share, Depth);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

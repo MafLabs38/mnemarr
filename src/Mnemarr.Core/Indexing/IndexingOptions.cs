@@ -11,9 +11,12 @@ public sealed class IndexingOptions
     /// <summary>The largest note that is indexed and read, in megabytes (ADR 0043). A long conversation is one note and must stay searchable; the bound exists so that one file that is not a note cannot fill the memory.</summary>
     public int MaxNoteMegabytes { get; set; } = DefaultMaxNoteMegabytes;
 
+
     public const int DefaultMaxNoteMegabytes = 32;
 
-    public const int HighestMaxNoteMegabytes = 128;
+    public const int HighestMaxNoteMegabytes = 64;
+
+    public const long DefaultMaxNoteBytes = DefaultMaxNoteMegabytes * 1024L * 1024L;
 
     /// <summary><see cref="MaxNoteMegabytes"/> in bytes.</summary>
     public long MaxNoteBytes => MaxNoteMegabytes * 1024L * 1024L;

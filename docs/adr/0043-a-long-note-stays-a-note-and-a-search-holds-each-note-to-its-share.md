@@ -15,7 +15,7 @@ A conversation is one note, and it grows with every exchange. Two limits made a 
 
 ## Decision
 
-1. **The size limit is a setting, `Indexing:MaxNoteMegabytes`, 32 by default (1 to 128).** It bounds what a pass reads into memory at once, so that one file that is not a note (a log renamed `.md`) cannot fill the host.
+1. **The size limit is a setting, `Indexing:MaxNoteMegabytes`, 32 by default (1 to 64).** It bounds what a pass reads into memory at once, so that one file that is not a note (a log renamed `.md`) cannot fill the host.
    It is a guard, no longer the size of a conversation. 2 MB stays what a person writes in one go through the editor (ADR 0023) and the length of a page of the interface.
 2. **A note above the limit is never forgotten.** It is not read, it **keeps what the index had of it**, and it is **counted and shown**: `tooLarge` in the report of a pass, `notesTooLarge` on the source, a line on the
    Sources page that names the setting. A limit that silently loses data is a defect; one that says what it left out is a setting.
@@ -30,6 +30,7 @@ A conversation is one note, and it grows with every exchange. Two limits made a 
 ## Consequences
 
 - A pass over a note of tens of megabytes reads it whole (bytes, text, passages): memory is bounded by the setting and by one note at a time (the lock of the source), not by the vault. Measured on a 28 MB note:
-  7 seconds, 665 MB of peak memory in the container; a note of the limit is the most a small host should be asked to read. A page of a note is read from the whole file each time (no cache yet).
+  7 seconds, 665 MB of peak memory in the container, about 20 times the size of the note: that is why the ceiling is 64 MB, and why at most two reads of a note above 2 MB run at once (a third waits five seconds and is
+  told to try again, with `Retry-After`). A page of a note is read from the whole file each time (no cache yet).
 - A very long conversation is still one note, so an append re-reads it; the cost per pass grows with the conversation (the debounce noted in ADR 0039 remains the answer if it is measured to matter).
 - The default share changes the answer of a search: a note gives at most three passages. `perNote=50` gives the old behaviour.

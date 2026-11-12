@@ -204,6 +204,21 @@ public sealed class NoteWriterFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_read_a_note_above_two_megabytes_but_not_change_it_and_say_why()
+    {
+        var source = Declare("vault", SourceMode.ReadWrite, false, ("big.md", "# Big\n" + new string('w', (int)MarkdownFileScanner.MaxFileBytes + 10)));
+        var indexer = new SourceIndexer(_index, _workspace.Paths(), new ScanOutcomes(), _clock);
+        await indexer.IndexAsync(source, Token);
+        var version = _reader.Read(source.Id, "big.md", SourceScope.All, whole: true).Version;
+
+        var replace = () => _writer.UpdateAsync(Alice, source.Id, "big.md", "# Replaced", version, Token);
+        var append = () => _writer.AppendAsync(Alice, source.Id, "big.md", "more", Token);
+
+        (await replace.Should().ThrowAsync<RejectedException>()).Which.Should().Match<RejectedException>(refusal => refusal.Problem == Problem.Conflict && refusal.Message.Contains("not changed from here", StringComparison.Ordinal));
+        (await append.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+    }
+
+    [Fact]
     public async Task should_not_write_in_a_source_that_is_read_only_and_treat_one_out_of_scope_as_absent()
     {
         var readOnly = Declare("ro", SourceMode.ReadOnly);

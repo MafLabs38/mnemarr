@@ -40,7 +40,7 @@ public sealed class NoteReader
 
     public NoteReader(ISourceStore sources, INoteBrowser browser, SourcePaths paths, IOptions<IndexingOptions>? options = null)
     {
-        _maxNoteBytes = options?.Value.MaxNoteBytes ?? IndexingOptions.DefaultMaxNoteMegabytes * 1024L * 1024L;
+        _maxNoteBytes = options?.Value.MaxNoteBytes ?? IndexingOptions.DefaultMaxNoteBytes;
         _sources = sources;
         _browser = browser;
         _paths = paths;
@@ -63,6 +63,7 @@ public sealed class NoteReader
         var detail = _browser.Find(sourceId, path, scope) ?? throw NoSuchNote();
         var source = _sources.Get(sourceId) ?? throw NoSuchNote();
         var file = Resolve(source, path);
+        using var turn = LargeRead.Enter(file);
         var bytes = ReadBytes(file);
         var text = Encoding.UTF8.GetString(bytes);
         if (whole)
@@ -172,26 +173,11 @@ public sealed class NoteReader
             : throw NoSuchFile();
     }
 
-    // A note of several megabytes is read whole, then decoded and cut: a few readers of the biggest notes at once are the memory of a small host. Past this many at once, a reader is told to try again.
-    private const int LargeReadsAtOnce = 2;
-    private static readonly TimeSpan LargeReadWaits = TimeSpan.FromSeconds(5);
-    private static readonly SemaphoreSlim LargeReads = new(LargeReadsAtOnce);
-
     private byte[] ReadBytes(string file)
     {
-        var holding = false;
         try
         {
             using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            if (stream.Length > MarkdownFileScanner.MaxFileBytes)
-            {
-                holding = LargeReads.Wait(LargeReadWaits);
-                if (!holding)
-                {
-                    throw new RejectedException(Problem.Busy, "Other long notes are being read: try again in a moment.");
-                }
-            }
-
             var buffer = new byte[Math.Min(stream.Length, _maxNoteBytes + 1)];
             stream.ReadExactly(buffer);
             return buffer.Length > _maxNoteBytes ? throw NoSuchNote() : buffer;
@@ -200,11 +186,53 @@ public sealed class NoteReader
         {
             throw new RejectedException(Problem.Conflict, "The note cannot be read now: try again in a moment.");
         }
-        finally
+    }
+
+    /// <summary>
+    /// A note of several megabytes is read whole, decoded, cut and drawn: a few readers of the biggest notes at once are the memory of a small host (ADR 0043). A read of such a note takes one of
+    /// <see cref="AtOnce"/> places for its whole length; a reader who finds none for <see cref="Waits"/> is told to try again.
+    /// </summary>
+    private sealed class LargeRead : IDisposable
+    {
+        private const int AtOnce = 2;
+        private static readonly TimeSpan Waits = TimeSpan.FromSeconds(5);
+        private static readonly SemaphoreSlim Places = new(AtOnce);
+        private readonly bool _holding;
+
+        private LargeRead(bool holding)
         {
-            if (holding)
+            _holding = holding;
+        }
+
+        public static LargeRead Enter(string file)
+        {
+            if (!IsLarge(file))
             {
-                LargeReads.Release();
+                return new LargeRead(holding: false);
+            }
+
+            return Places.Wait(Waits)
+                ? new LargeRead(holding: true)
+                : throw new RejectedException(Problem.Busy, "Other long notes are being read: try again in a moment.", TimeSpan.FromSeconds(5));
+        }
+
+        public void Dispose()
+        {
+            if (_holding)
+            {
+                Places.Release();
+            }
+        }
+
+        private static bool IsLarge(string file)
+        {
+            try
+            {
+                return new FileInfo(file).Length > MarkdownFileScanner.MaxFileBytes;
+            }
+            catch (IOException)
+            {
+                return false;
             }
         }
     }

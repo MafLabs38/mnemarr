@@ -23,8 +23,11 @@ public sealed record SearchRequest(string Query, Guid? SourceId = null, string? 
     /// <summary>Sources to leave out.</summary>
     public IReadOnlyList<Guid> ExcludeSources { get; init; } = [];
 
-    /// <summary>The most hits that one note gives, 1 to <see cref="MaxLimit"/>.</summary>
+    /// <summary>The most hits that one note gives; <see cref="Share"/> is the value that is used.</summary>
     public int PerNote { get; init; } = DefaultPerNote;
+
+    /// <summary><see cref="PerNote"/> held between 1 and <see cref="MaxLimit"/>.</summary>
+    public int Share => Math.Clamp(PerNote, 1, MaxLimit);
 
     /// <summary>The topics to stay within, <see cref="Topic"/> included; empty when the search is not limited to topics. The empty topic is the root of a source, and is a topic like another.</summary>
     public IReadOnlyList<string> StayWithin => [.. (Topic is null ? Topics : Topics.Prepend(Topic)).Distinct(StringComparer.Ordinal)];

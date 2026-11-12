@@ -62,10 +62,10 @@ public static class MarkdownFileScanner
     /// Walks a source once for its notes and its images (the image files a note may show, see <see cref="ImageFormats"/>; none hidden or behind a
     /// link): one walk, not two.
     /// </summary>
-    public static Walk WalkOf(string root, long maxNoteBytes = IndexingOptions.DefaultMaxNoteMegabytes * 1024L * 1024L) => new(root, maxNoteBytes);
+    public static Walk WalkOf(string root, long maxNoteBytes = IndexingOptions.DefaultMaxNoteBytes) => new(root, maxNoteBytes);
 
     /// <summary>The notes of a source (no images): what a walk finds, read to the end.</summary>
-    public static IEnumerable<ScannedFile> Scan(string root, long maxNoteBytes = IndexingOptions.DefaultMaxNoteMegabytes * 1024L * 1024L) => Find(root, maxNoteBytes, null, null, null);
+    public static IEnumerable<ScannedFile> Scan(string root, long maxNoteBytes = IndexingOptions.DefaultMaxNoteBytes) => Find(root, maxNoteBytes, null, null, null);
 
     private static IEnumerable<ScannedFile> Find(string root, long maxNoteBytes, List<string>? images, List<string>? tooLarge, Action? completed)
     {

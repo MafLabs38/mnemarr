@@ -403,7 +403,7 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         command.Parameters.AddWithValue("$hideConversations", scope.ConversationsHidden ? 1 : 0);
         command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
         command.Parameters.AddWithValue("$limit", Math.Clamp(request.Limit, 1, SearchRequest.MaxLimit));
-        command.Parameters.AddWithValue("$perNote", Math.Clamp(request.PerNote, 1, SearchRequest.MaxLimit));
+        command.Parameters.AddWithValue("$perNote", request.Share);
         command.Parameters.AddWithValue("$snippetWords", SnippetWords);
 
         using var reader = command.ExecuteReader();

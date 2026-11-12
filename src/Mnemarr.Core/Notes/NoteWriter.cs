@@ -304,8 +304,10 @@ public sealed class NoteWriter
             throw new RejectedException(Problem.NotFound, "There is no such note.");
         }
 
-        var bytes = File.ReadAllBytes(full);
-        return bytes.Length > MarkdownFileScanner.MaxFileBytes ? throw new RejectedException(Problem.Conflict, "The note is longer than 2 MB: it is read, but it is not changed from here. Change the file itself.") : bytes;
+        // The size is looked at before the file is read: a note of tens of megabytes is refused without being loaded.
+        return new FileInfo(full).Length > MarkdownFileScanner.MaxFileBytes
+            ? throw new RejectedException(Problem.Conflict, $"The note is longer than {MarkdownFileScanner.MaxFileBytes / (1024 * 1024)} MB: it is read, but it is not changed from here. Change the file itself.")
+            : File.ReadAllBytes(full);
     }
 
     /// <summary>The full path of a note of a source, or a refusal: a Markdown file, relative, inside the folder, not hidden, not behind a link.</summary>
