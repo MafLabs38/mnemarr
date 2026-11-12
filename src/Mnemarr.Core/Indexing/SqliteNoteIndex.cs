@@ -63,7 +63,7 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
             {
                 noteId = InsertNote(connection, transaction, sourceId, file, note, at);
                 removed = false;
-                InsertChunks(connection, transaction, noteId, note.Chunks, 0);
+                InsertChunks(connection, transaction, noteId, note.Chunks);
             }
 
             InsertLinks(connection, transaction, noteId, note.Meta.Links);
@@ -196,11 +196,11 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         return gone.Count > 0 || titleChanged;
     }
 
-    private static void InsertChunks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IReadOnlyList<Chunk> chunks, int firstOrdinal)
+    private static void InsertChunks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IReadOnlyList<Chunk> chunks)
     {
         for (var index = 0; index < chunks.Count; index++)
         {
-            InsertChunk(connection, transaction, noteId, firstOrdinal + index, chunks[index]);
+            InsertChunk(connection, transaction, noteId, index, chunks[index]);
         }
     }
 
