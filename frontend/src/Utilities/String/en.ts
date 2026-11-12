@@ -218,6 +218,17 @@ const en = {
   MemoryPurpose: 'The consolidated memory. Mnemarr is its only author: there is exactly one, and it is required.',
   MemoryTitle: 'Memory vault',
   ScanFailed: 'The last scan failed: {reason}',
+  NotesTooLarge:
+    'Notes above the size limit: {count}. They keep what was indexed and are not read again; raise Indexing:MaxNoteMegabytes.',
+  LongNoteNotice:
+    'This note is long, so it comes in pages. All of it is searched, and an assistant reads it in windows, the end included.',
+  PagesOfTheNote: 'Pages of the note',
+  PagesOfTheNoteEnd: 'Pages of the note, at its end',
+  FirstPage: 'First',
+  PreviousPage: 'Previous',
+  NextPage: 'Next',
+  LastPage: 'Last',
+  PageOf: 'Part {page} of {pages}',
   'folder-missing': 'the folder is not there any more',
   'outside-roots': 'the folder is not inside the folders the operator allows any more',
   'host-not-allowed': 'the host is not one the operator allows for Git sources any more',
@@ -237,10 +248,12 @@ const en = {
   'RightsShort_source-read-only': 'This source is declared read-only.',
   'RightsShort_kind-not-writable': 'This kind of notes is not edited by hand here.',
   'RightsShort_no-permission': 'Your role may not write notes.',
+  'RightsShort_note-too-long': 'This note is longer than a page: it is not edited here.',
   BannerTitle_writable: 'You can edit this note',
   'BannerTitle_source-read-only': 'This note is read-only',
   'BannerTitle_kind-not-writable': 'This note is not edited here',
   'BannerTitle_no-permission': 'Your role cannot write notes',
+  'BannerTitle_note-too-long': 'This is one page of a long note',
   BannerText_writable: 'You are {role}, and the source {source} is open for writing.',
   'BannerText_source-read-only':
     'The source {source} is declared read-only: nothing is written there until someone turns writing on.',
@@ -248,6 +261,8 @@ const en = {
     'The documentation of an application is edited in its repository, and conversations come from the collectors: neither is written by hand here.',
   'BannerText_no-permission':
     'You are {role}. Writing notes takes the notes.write permission, which Operator, Assistant and Admin have.',
+  'BannerText_note-too-long':
+    'This note is longer than a page of the interface, so it comes in pages. All of it is searched, and an assistant reads it in windows, the end included.',
   NoteRights: 'What you may do with this note',
   WhyThisRule: 'Why?',
   BannerWhy_writable:
@@ -258,6 +273,8 @@ const en = {
     'The repository of an application is not Mnemarr’s, and a conversation is what was said: Mnemarr reads both and never rewrites them, so that two places never claim to hold the truth.',
   'BannerWhy_no-permission':
     'Reading and writing are separate permissions, given by role. An administrator can change your role, or give a service account to an assistant that is meant to write.',
+  'BannerWhy_note-too-long':
+    'A page is cut at a line end so that the screen stays quick. Saving what is on screen would replace the whole note with one page of it, so the editor is off: the file itself is untouched.',
   MemoryWriteNote:
     'This is Mnemarr’s memory: a correction is kept in the audit log, and in the history of the repository when it is a Git source.',
   OpenSourcesToWrite: 'Open Sources to turn writing on',

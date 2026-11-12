@@ -56,6 +56,9 @@ function noteWith(markdown: string, extra: Partial<Note> = {}): Note {
     sourceKind: 'Knowledge',
     sourceMode: 'ReadOnly',
     rights: { canWrite: false, reason: 'source-read-only', role: 'Admin' },
+    cut: false,
+    page: 0,
+    pages: 1,
     ...extra,
   };
 }
@@ -200,6 +203,110 @@ describe('Notes', () => {
     renderWithProviders(<Notes />, open, readerSession);
 
     expect(await screen.findByText('Showing 1 of 230 backlinks.')).toBeInTheDocument();
+  });
+
+  it('says that only the first part of a long note is shown, and that it is not edited here', async () => {
+    server(
+      noteWith('# Docker', {
+        cut: true,
+        page: 0,
+        pages: 3,
+        rights: { canWrite: false, reason: 'note-too-long', role: 'Admin' },
+      }),
+    );
+    renderWithProviders(<Notes />, open, readerSession);
+
+    const banner = await screen.findByRole('region', { name: 'What you may do with this note' });
+
+    expect(within(banner).getByText('This is one page of a long note')).toBeInTheDocument();
+    expect(within(banner).getByText(/an assistant reads it in windows, the end included/)).toBeInTheDocument();
+  });
+
+  it('draws the way through the pages of a long note, from its first page to its last', async () => {
+    server(noteWith('# Docker', { cut: true, page: 1, pages: 4 }));
+    renderWithProviders(<Notes />, open, readerSession);
+
+    const pages = await screen.findByRole('navigation', { name: 'Pages of the note' });
+
+    expect(within(pages).getByText('Part 2 of 4')).toHaveAttribute('aria-current', 'page');
+    expect(within(pages).getByRole('link', { name: 'First' })).toHaveAttribute(
+      'href',
+      `/notes?source=${S1}&path=devops%2Fdocker.md`,
+    );
+    expect(within(pages).getByRole('link', { name: 'Previous' })).toHaveAttribute(
+      'href',
+      `/notes?source=${S1}&path=devops%2Fdocker.md`,
+    );
+    expect(within(pages).getByRole('link', { name: 'Next' })).toHaveAttribute(
+      'href',
+      `/notes?source=${S1}&path=devops%2Fdocker.md&page=2`,
+    );
+    expect(within(pages).getByRole('link', { name: 'Last' })).toHaveAttribute(
+      'href',
+      `/notes?source=${S1}&path=devops%2Fdocker.md&page=3`,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('This note is long, so it comes in pages');
+  });
+
+  it.each([
+    ['2', '?page=2'],
+    ['abc', ''],
+    ['-1', ''],
+    ['1.5', ''],
+    ['0', ''],
+  ])('asks the server for the page %s of the address as %j', async (typed, asked) => {
+    const fetchMock = server(noteWith('# Docker'));
+    renderWithProviders(<Notes />, `${open}&page=${typed}`, readerSession);
+
+    await screen.findByRole('region', { name: 'What you may do with this note' });
+
+    const requested = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/notes/1111'));
+    expect(requested).toEqual([`/api/v1/notes/${S1}/devops/docker.md${asked}`]);
+  });
+
+  it('draws plain text, not links, for the ways that lead nowhere on the first and the last page', async () => {
+    server(noteWith('# Docker', { cut: true, page: 0, pages: 3 }));
+    const first = renderWithProviders(<Notes />, open, readerSession);
+    const pages = await screen.findByRole('navigation', { name: 'Pages of the note' });
+
+    expect(within(pages).queryByRole('link', { name: 'First' })).not.toBeInTheDocument();
+    expect(within(pages).queryByRole('link', { name: 'Previous' })).not.toBeInTheDocument();
+    expect(within(pages).getByRole('link', { name: 'Next' })).toBeInTheDocument();
+    expect(screen.getAllByRole('navigation', { name: /Pages of the note/ })).toHaveLength(2);
+    first.unmount();
+
+    server(noteWith('# Docker', { cut: true, page: 2, pages: 3 }));
+    renderWithProviders(<Notes />, `${open}&page=2`, readerSession);
+    const last = await screen.findByRole('navigation', { name: 'Pages of the note' });
+
+    expect(within(last).queryByRole('link', { name: 'Next' })).not.toBeInTheDocument();
+    expect(within(last).queryByRole('link', { name: 'Last' })).not.toBeInTheDocument();
+    expect(within(last).getByRole('link', { name: 'Previous' })).toBeInTheDocument();
+  });
+
+  it('does not repeat the notice of the pages when the banner already says that the note is long', async () => {
+    server(
+      noteWith('# Docker', {
+        cut: true,
+        page: 0,
+        pages: 2,
+        rights: { canWrite: false, reason: 'note-too-long', role: 'Admin' },
+      }),
+    );
+    renderWithProviders(<Notes />, open, readerSession);
+
+    await screen.findByText('This is one page of a long note');
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('draws no page navigation for a note that fits a page', async () => {
+    server(noteWith('# Docker'));
+    renderWithProviders(<Notes />, open, readerSession);
+
+    await screen.findByRole('region', { name: 'What you may do with this note' });
+
+    expect(screen.queryByRole('navigation', { name: /Pages of the note/ })).not.toBeInTheDocument();
   });
 
   it('says when no note links to this one', async () => {

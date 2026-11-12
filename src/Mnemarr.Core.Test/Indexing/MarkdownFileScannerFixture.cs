@@ -48,20 +48,36 @@ public sealed class MarkdownFileScannerFixture : IDisposable
     }
 
     [Fact]
-    public void should_not_take_a_file_that_is_too_large_for_a_note()
+    public void should_not_take_a_file_that_is_larger_than_the_limit_and_say_which_one_it_left()
     {
-        File.WriteAllBytes(Path.Combine(_root, "huge.md"), new byte[MarkdownFileScanner.MaxFileBytes + 1]);
+        File.WriteAllBytes(Path.Combine(_root, "huge.md"), new byte[1025]);
         TestWorkspace.Write(_root, "small.md", "x");
 
-        MarkdownFileScanner.Scan(_root).Select(file => file.RelativePath).Should().Equal("small.md");
+        var walk = MarkdownFileScanner.WalkOf(_root, 1024);
+
+        walk.Notes.Select(file => file.RelativePath).ToList().Should().Equal("small.md");
+        walk.TooLarge.Should().Equal("huge.md");
     }
 
     [Fact]
-    public void should_take_a_file_of_exactly_the_largest_size_of_a_note()
+    public void should_take_a_file_of_exactly_the_limit()
     {
-        File.WriteAllBytes(Path.Combine(_root, "edge.md"), new byte[MarkdownFileScanner.MaxFileBytes]);
+        File.WriteAllBytes(Path.Combine(_root, "edge.md"), new byte[1024]);
 
-        MarkdownFileScanner.Scan(_root).Select(file => file.RelativePath).Should().Equal("edge.md");
+        var walk = MarkdownFileScanner.WalkOf(_root, 1024);
+
+        walk.Notes.Select(file => file.RelativePath).ToList().Should().Equal("edge.md");
+        walk.TooLarge.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void should_not_say_which_files_were_left_out_before_the_walk_is_complete()
+    {
+        var walk = MarkdownFileScanner.WalkOf(_root, 1024);
+
+        var early = () => walk.TooLarge;
+
+        early.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]

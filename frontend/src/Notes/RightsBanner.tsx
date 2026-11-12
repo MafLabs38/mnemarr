@@ -13,6 +13,7 @@ const toneOf: Record<RightsReason, string> = {
   'source-read-only': 'toneLocked',
   'kind-not-writable': 'toneInfo',
   'no-permission': 'toneDenied',
+  'note-too-long': 'toneInfo',
 };
 
 /**

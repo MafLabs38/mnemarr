@@ -46,3 +46,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0040](0040-the-vectors-can-be-computed-by-a-server-on-a-gpu.md) | The vectors can be computed by a server on a GPU, and Mnemarr falls back to its own CPU | D-61 |
 | [0041](0041-a-satellite-sends-a-neutral-format-and-can-ask-a-person-for-attention.md) | A satellite sends a neutral format, is not consolidated by default, and can ask a person for attention | D-62 |
 | [0042](0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md) | Mnemarr writes to a person through a swappable notification sender | D-63 |
+| [0043](0043-a-long-note-stays-a-note-and-a-search-holds-each-note-to-its-share.md) | A long note stays a note, and a search holds each note to its share | D-64 |

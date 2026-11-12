@@ -2,11 +2,35 @@ using System.Text.RegularExpressions;
 
 namespace Mnemarr.Core.Indexing;
 
-/// <summary>What is asked of a search: words, and optionally one source and one topic (the first folder of a note).</summary>
+/// <summary>
+/// What is asked of a search: words, and optionally one source, topics (the first folder of a note) to stay within or to leave out, sources to leave out, and how many
+/// hits one note may give (ADR 0043: a conversation of a thousand passages must not fill the answer by itself).
+/// </summary>
 public sealed record SearchRequest(string Query, Guid? SourceId = null, string? Topic = null, int Limit = 10)
 {
     /// <summary>The most hits a search gives, and the longest list that the index gives for one question: the search by meaning merges lists of this length.</summary>
     public const int MaxLimit = 50;
+
+    /// <summary>How many hits one note gives when nothing else is asked.</summary>
+    public const int DefaultPerNote = 3;
+
+    /// <summary>More topics to stay within, besides <see cref="Topic"/>: a note is kept when its topic is any one of them.</summary>
+    public IReadOnlyList<string> Topics { get; init; } = [];
+
+    /// <summary>Topics to leave out.</summary>
+    public IReadOnlyList<string> ExcludeTopics { get; init; } = [];
+
+    /// <summary>Sources to leave out.</summary>
+    public IReadOnlyList<Guid> ExcludeSources { get; init; } = [];
+
+    /// <summary>The most hits that one note gives; <see cref="Share"/> is the value that is used.</summary>
+    public int PerNote { get; init; } = DefaultPerNote;
+
+    /// <summary><see cref="PerNote"/> held between 1 and <see cref="MaxLimit"/>.</summary>
+    public int Share => Math.Clamp(PerNote, 1, MaxLimit);
+
+    /// <summary>The topics to stay within, <see cref="Topic"/> included; empty when the search is not limited to topics. The empty topic is the root of a source, and is a topic like another.</summary>
+    public IReadOnlyList<string> StayWithin => [.. (Topic is null ? Topics : Topics.Prepend(Topic)).Distinct(StringComparer.Ordinal)];
 }
 
 /// <summary>A chunk that matches, with where it comes from. A higher score is a better match.</summary>

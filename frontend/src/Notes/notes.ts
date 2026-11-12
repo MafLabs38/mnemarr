@@ -27,7 +27,7 @@ export interface NoteLink {
 }
 
 /** Why a person may or may not write the notes of a source (the server decides; the interface explains). */
-export type RightsReason = 'writable' | 'source-read-only' | 'kind-not-writable' | 'no-permission';
+export type RightsReason = 'writable' | 'source-read-only' | 'kind-not-writable' | 'no-permission' | 'note-too-long';
 
 export interface NoteRights {
   canWrite: boolean;
@@ -65,6 +65,11 @@ export interface Note {
   version: string;
   /** Whether the person may write this note (`rights.canWrite`). */
   writable: boolean;
+  /** The text is one page of a note that is longer than a page; it is not replaced from here. */
+  cut: boolean;
+  /** The page shown, from 0, of `pages`. */
+  page: number;
+  pages: number;
   sourceKind: SourceKind;
   sourceMode: SourceMode;
   rights: NoteRights;
@@ -151,11 +156,10 @@ export function noteToRead(sourceId: string | null, path: string | null): { sour
 }
 
 /** A note with its links and backlinks. Nothing is asked until a valid note is chosen. */
-export function useNote(sourceId: string | null, path: string | null) {
+export function useNote(sourceId: string | null, path: string | null, page = 0) {
   const note = noteToRead(sourceId, path);
-  return useApiQuery<Note>(note ? `/notes/${note.sourceId}/${encodePath(note.path)}` : '/notes/none', {
-    enabled: note !== null,
-  });
+  const where = note ? `/notes/${note.sourceId}/${encodePath(note.path)}` : '/notes/none';
+  return useApiQuery<Note>(page > 0 ? `${where}?page=${page}` : where, { enabled: note !== null });
 }
 
 /** The address of a file of a source (an image), served by the authenticated API from that source only. */

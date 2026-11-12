@@ -16,6 +16,9 @@ public static class NoteRightsReason
 
     /// <summary>The person's role (or key) does not hold <c>notes.write</c>.</summary>
     public const string NoPermission = "no-permission";
+
+    /// <summary>The note is longer than a page of the interface: only its first part is shown, so it is not replaced from here (an assistant appends to it, a person has the file).</summary>
+    public const string NoteTooLong = "note-too-long";
 }
 
 /// <summary>What a caller may do to the notes of a source, and why: one rule for the interface, the API and the MCP tools.</summary>
