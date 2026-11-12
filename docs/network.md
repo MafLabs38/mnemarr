@@ -10,6 +10,7 @@
 | An assistant | Mnemarr | 443 (HTTPS) | outbound | `POST /mcp` | an API key of a service account |
 | A person | Mnemarr | 443 (HTTPS) | outbound | the interface and the API | a password (a cookie session), usually behind the proxy's single sign-on |
 | Mnemarr | a Git host | 443 (HTTPS) | outbound | the Git sources | a named token; only the hosts in `Git:Hosts` |
+| Mnemarr | an embedding server (optional) | 8390 (plain HTTP by default: HTTPS behind a proxy that holds the certificate, or HTTP on a network you trust) | outbound | `POST /v1/embeddings`: the texts to turn into vectors on a GPU ([embedding-server.md](embedding-server.md)) | a key in a file (bearer token); the server is never published outside the network of Mnemarr |
 | A proxy in front of Mnemarr | Mnemarr | 8383 (HTTP) | inbound to the container | everything above, once the proxy ended TLS | none: this port is not published to the outside |
 
 **Nothing listens on the network on a machine that runs a collector.** The collector needs no inbound rule, on Windows or anywhere else; it only makes outbound HTTPS calls. A firewall that lets a workstation browse the web already lets it collect. The one exception stays on the machine: when a person chooses *Link to a Mnemarr…* from the icon, the collector listens for up to thirty minutes on the **loopback address only** (`127.0.0.1`, a random port, under a secret path), to show a page in the person's own browser; nothing outside the machine can reach it.

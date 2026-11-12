@@ -281,6 +281,14 @@ public sealed class SqliteVectorStore : IVectorStore
         return new EmbeddingProgress(reader.GetInt32(0), reader.GetInt32(1));
     }
 
+    public void ForgetComputed()
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM embedding_cache";
+        command.ExecuteNonQuery();
+    }
+
     public void Tidy(string model, int dimension)
     {
         using var connection = OpenWithVectors();

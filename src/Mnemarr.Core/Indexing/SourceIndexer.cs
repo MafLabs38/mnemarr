@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Mnemarr.Core.Embeddings;
 using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Indexing;
@@ -20,8 +21,11 @@ public sealed class SourceIndexer
     private readonly TimeProvider _clock;
     private readonly SourceLocks _locks;
 
-    public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock, SourceLocks? locks = null)
+    private readonly EmbeddingWakeUp? _wake;
+
+    public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock, SourceLocks? locks = null, EmbeddingWakeUp? wake = null)
     {
+        _wake = wake;
         _locks = locks ?? new SourceLocks();
         _index = index;
         _paths = paths;
@@ -97,6 +101,13 @@ public sealed class SourceIndexer
 
     /// <summary>Forgets a note of a source that a change of notes has just removed or moved. The caller holds the lock of the source.</summary>
     public void RemoveNote(Source source, string relativePath) => _index.Remove(source.Id, relativePath);
+
+    /// <summary>Removes a note that a person asked to delete: what the index and the computed vectors kept of it go too (ADR 0039). A move or a rename uses <see cref="RemoveNote"/>.</summary>
+    public void ForgetNote(Source source, string relativePath)
+    {
+        _index.Remove(source.Id, relativePath);
+        _wake?.RequestPurge();
+    }
 
     /// <summary>Forgets what is kept of the sources that are not declared any more: how their last pass ended, and their lock.</summary>
     public void Retain(IReadOnlyCollection<Guid> declared)

@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mnemarr.Host", "Mnemarr.Hos
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mnemarr.Integration.Test", "Mnemarr.Integration.Test\Mnemarr.Integration.Test.csproj", "{3F919634-0C97-4ADB-A645-3204B098BE9D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mnemarr.Embedder", "Mnemarr.Embedder\Mnemarr.Embedder.csproj", "{C3AB06C5-25ED-46A7-B582-4958F92A207A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{3F919634-0C97-4ADB-A645-3204B098BE9D}.Release|x64.Build.0 = Release|Any CPU
 		{3F919634-0C97-4ADB-A645-3204B098BE9D}.Release|x86.ActiveCfg = Release|Any CPU
 		{3F919634-0C97-4ADB-A645-3204B098BE9D}.Release|x86.Build.0 = Release|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Debug|x64.Build.0 = Debug|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Debug|x86.Build.0 = Debug|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Release|x64.ActiveCfg = Release|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Release|x64.Build.0 = Release|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Release|x86.ActiveCfg = Release|Any CPU
+		{C3AB06C5-25ED-46A7-B582-4958F92A207A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

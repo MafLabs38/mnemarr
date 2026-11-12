@@ -9,9 +9,12 @@ public sealed class SqliteSourceStore : ISourceStore
     private const int UniqueViolation = 2067;
     private readonly IDatabase _database;
 
-    public SqliteSourceStore(IDatabase database)
+    private readonly Embeddings.EmbeddingWakeUp? _wake;
+
+    public SqliteSourceStore(IDatabase database, Embeddings.EmbeddingWakeUp? wake = null)
     {
         _database = database;
+        _wake = wake;
     }
 
     public IReadOnlyList<Source> List()
@@ -89,7 +92,14 @@ public sealed class SqliteSourceStore : ISourceStore
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM sources WHERE id = $id";
         command.Parameters.AddWithValue("$id", id.ToString());
-        return command.ExecuteNonQuery() > 0;
+        var removed = command.ExecuteNonQuery() > 0;
+        if (removed)
+        {
+            // A source forgotten on purpose: the vectors kept for reuse of what it held go too (ADR 0039).
+            _wake?.RequestPurge();
+        }
+
+        return removed;
     }
 
     private static void BindRepository(SqliteCommand command, Source source)

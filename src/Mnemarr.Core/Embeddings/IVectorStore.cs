@@ -48,6 +48,9 @@ public interface IVectorStore
     /// <summary>How far the model is, among the chunks of the sources the caller may see (all of them when no scope is given).</summary>
     EmbeddingProgress Progress(string model, SourceScope? scope = null);
 
+    /// <summary>Forgets every vector that is kept for reuse (not the ones of the chunks that exist): after a delete that was asked for, nothing computed from the deleted text is left.</summary>
+    void ForgetComputed();
+
     /// <summary>Forgets the vectors of chunks that are gone, the tables of models nothing uses any more, and the computed vectors that have not been used for a while.</summary>
     void Tidy(string model, int dimension);
 }

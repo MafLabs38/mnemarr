@@ -27,6 +27,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     private DateTimeOffset _checkedAt;
     private InferenceSession? _session;
     private ByteLevelBpeTokenizer? _tokenizer;
+    private volatile string _device = "cpu";
 
     public OnnxEmbeddingProvider(IOptions<EmbeddingOptions> options, ILogger<OnnxEmbeddingProvider> logger, TimeProvider? clock = null)
     {
@@ -38,6 +39,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     public string ModelId => _options.Model;
 
     public int Dimension => KnownModels.TryGet(_options.Model, out var model) ? model.Dimension : 0;
+
+    /// <summary>Where the model runs once it is loaded: <c>cpu</c> or <c>cuda</c>.</summary>
+    public string Device => _device;
 
     public double DefaultMaxDistance => KnownModels.TryGet(_options.Model, out var model) ? model.MaxDistance : 0;
 
@@ -127,9 +131,8 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             }
 
             _tokenizer = ByteLevelBpeTokenizer.Load(Path.Combine(_options.ModelFolder!, "tokenizer.json"));
-            using var settings = new SessionOptions { IntraOpNumThreads = _options.Threads, InterOpNumThreads = 1, GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
-            _session = new InferenceSession(Path.Combine(_options.ModelFolder!, "model.onnx"), settings);
-            LogLoaded(model.Id, _options.Threads);
+            _session = CreateSession(Path.Combine(_options.ModelFolder!, "model.onnx"));
+            LogLoaded(model.Id, _device, _options.Threads);
             return new EmbeddingStatus(EmbeddingState.Ready);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -140,6 +143,40 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             return Failed("The model could not be loaded: see the log of Mnemarr.");
         }
     }
+
+    // The GPU when it is asked for and the engine can use it (ADR 0040); with Auto, the CPU when it cannot, because the search must go on whatever the machine has. The memory the
+    // model may take is capped: the engine's pool grows without a limit by default, and the GPU may be shared.
+    private InferenceSession CreateSession(string modelPath)
+    {
+        if (_options.Device != EmbeddingDevice.Cpu)
+        {
+            try
+            {
+                using var gpu = Settings();
+                using var cuda = new OrtCUDAProviderOptions();
+                cuda.UpdateOptions(new Dictionary<string, string>
+                {
+                    ["device_id"] = _options.GpuDeviceId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["gpu_mem_limit"] = (_options.GpuMemoryMb * 1024L * 1024L).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["arena_extend_strategy"] = "kSameAsRequested",
+                });
+                gpu.AppendExecutionProvider_CUDA(cuda);
+                var session = new InferenceSession(modelPath, gpu);
+                _device = "cuda";
+                return session;
+            }
+            catch (Exception ex) when (_options.Device == EmbeddingDevice.Auto && ex is OnnxRuntimeException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+            {
+                LogGpuUnavailable(ex);
+            }
+        }
+
+        using var cpu = Settings();
+        _device = "cpu";
+        return new InferenceSession(modelPath, cpu);
+    }
+
+    private SessionOptions Settings() => new() { IntraOpNumThreads = _options.Threads, InterOpNumThreads = 1, GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
 
     private static EmbeddingStatus Failed(string reason) => new(EmbeddingState.Failed, reason);
 
@@ -237,8 +274,11 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
         return true;
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "The model {Model} is loaded, on {Threads} threads.")]
-    private partial void LogLoaded(string model, int threads);
+    [LoggerMessage(Level = LogLevel.Information, Message = "The model {Model} is loaded, on the {Device}, with {Threads} CPU threads.")]
+    private partial void LogLoaded(string model, string device, int threads);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The GPU cannot be used by the engine: the model runs on the CPU.")]
+    private partial void LogGpuUnavailable(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "The model could not be loaded.")]
     private partial void LogLoadFailed(Exception exception);

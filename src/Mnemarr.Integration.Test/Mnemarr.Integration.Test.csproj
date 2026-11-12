@@ -16,5 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Mnemarr.Host\Mnemarr.Host.csproj" />
+    <ProjectReference Include="..\Mnemarr.Embedder\Mnemarr.Embedder.csproj" />
   </ItemGroup>
 </Project>

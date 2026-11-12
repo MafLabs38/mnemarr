@@ -1,0 +1,44 @@
+# syntax=docker/dockerfile:1
+
+# The embedding server (ADR 0040): a small program that holds the model next to a CUDA GPU and turns texts into vectors for Mnemarr, which keeps all its logic and its data
+# in its own container. linux/amd64 only: the GPU build of ONNX Runtime is published for that, and the GPUs of a homelab are on it.
+# The base images are pinned by digest (the tag says what they are, the digest what they were when a release was built); Dependabot moves both.
+# Tag and digest together are on purpose, an exception to SonarQube's docker:S8431 stated in ci.yml and ADR 0013: do not "fix" it.
+
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS native
+RUN apk add --no-cache bash curl unzip
+COPY tools/native /tools/native
+RUN /tools/native/fetch-model.sh /out/models/granite-embedding-97m-multilingual-r2 \
+    && /tools/native/fetch-onnx-gpu.sh /out/onnx-gpu
+
+# The CUDA libraries the GPU build of ONNX Runtime asks for (libcudart, libcublas, libcublasLt, libcurand: CUDA 13), taken from NVIDIA's runtime image. The driver is the host's:
+# the container runtime puts libcuda in the container when it is started with the NVIDIA runtime.
+FROM nvidia/cuda:13.0.2-runtime-ubuntu24.04@sha256:6a0e31b59e70890446f2c17356d6efc0d54260090a8c63d6ca7c2ad049db95d2 AS cuda
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS backend
+ARG VERSION=0.0.0-dev
+WORKDIR /build
+COPY global.json Directory.Build.props Directory.Packages.props ./
+COPY src/Mnemarr.Embedder/Mnemarr.Embedder.csproj src/Mnemarr.Embedder/
+COPY src/Mnemarr.Core/Mnemarr.Core.csproj src/Mnemarr.Core/
+RUN dotnet restore src/Mnemarr.Embedder/Mnemarr.Embedder.csproj
+COPY src ./src
+RUN dotnet publish src/Mnemarr.Embedder/Mnemarr.Embedder.csproj -c Release --no-restore -o /app -p:Version=${VERSION}
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e
+WORKDIR /app
+COPY --from=backend /app ./
+# The GPU build replaces the CPU library of the published output (it runs on the CPU too), and brings the provider that talks to CUDA.
+COPY --from=native /out/onnx-gpu/ /app/runtimes/linux-x64/native/
+COPY --from=cuda /usr/local/cuda/targets/x86_64-linux/lib/libcudart.so.13* /usr/local/cuda/targets/x86_64-linux/lib/libcublas.so.13* /usr/local/cuda/targets/x86_64-linux/lib/libcublasLt.so.13* /usr/local/cuda/targets/x86_64-linux/lib/libcurand.so.10* /usr/local/lib/cuda/
+COPY --from=native /out/models /models
+ENV LD_LIBRARY_PATH=/usr/local/lib/cuda
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV MNEMARR__EMBEDDINGS__MODELFOLDER=/models/granite-embedding-97m-multilingual-r2
+ENV MNEMARR__EMBEDDINGS__DEVICE=Auto
+ENV ASPNETCORE_URLS=http://0.0.0.0:8390
+USER 1654:1654
+EXPOSE 8390
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD ["dotnet", "Mnemarr.Embedder.dll", "--healthcheck"]
+ENTRYPOINT ["dotnet", "Mnemarr.Embedder.dll"]

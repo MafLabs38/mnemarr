@@ -6,6 +6,7 @@ Generic examples only. A real deployment (host names, addresses, secrets, storag
 |---|---|
 | [docker-compose.example.yml](docker-compose.example.yml) | A Docker host |
 | [kubernetes/mnemarr.example.yaml](kubernetes/mnemarr.example.yaml) | A Kubernetes cluster |
+| [docker-compose.embedder.example.yml](docker-compose.embedder.example.yml) | The embedding server, on a Docker host with an NVIDIA GPU ([guide](../docs/embedding-server.md)) |
 
 Both run the image as a non-root user with a read-only root filesystem and no Linux capabilities, and keep the data folder on a **local** volume. Back up the data folder with your backup tool, from the snapshots Mnemarr produces (decision D-28 in [the spec](../docs/SPEC.md)).
 

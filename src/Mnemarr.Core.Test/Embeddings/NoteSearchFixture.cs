@@ -182,6 +182,10 @@ public sealed class NoteSearchFixture
 
         public EmbeddingProgress Progress(string model, SourceScope? scope = null) => new(0, 0);
 
+        public int Forgotten { get; private set; }
+
+        public void ForgetComputed() => Forgotten++;
+
         public void Tidy(string model, int dimension)
         {
         }

@@ -39,6 +39,29 @@ public sealed class ModelReferenceFixture
     }
 
     [Fact]
+    public void should_run_on_the_cpu_when_the_gpu_is_wanted_but_not_there_and_the_device_is_auto()
+    {
+        Assert.SkipUnless(Model is not null, "No model folder given.");
+        var options = new EmbeddingOptions { ModelFolder = Model, ExtensionPath = "unused", Device = EmbeddingDevice.Auto };
+        using var provider = new OnnxEmbeddingProvider(Options.Create(options), NullLogger<OnnxEmbeddingProvider>.Instance);
+
+        provider.Status().Should().Be(new EmbeddingStatus(EmbeddingState.Ready));
+
+        provider.Device.Should().Be("cpu", "the engine of this build has no GPU provider, and Auto means the search goes on");
+        provider.EmbedPassages(["a passage"]).Should().ContainSingle();
+    }
+
+    [Fact]
+    public void should_not_load_the_model_when_the_gpu_is_required_and_cannot_be_used()
+    {
+        Assert.SkipUnless(Model is not null, "No model folder given.");
+        var options = new EmbeddingOptions { ModelFolder = Model, ExtensionPath = "unused", Device = EmbeddingDevice.Cuda };
+        using var provider = new OnnxEmbeddingProvider(Options.Create(options), NullLogger<OnnxEmbeddingProvider>.Instance);
+
+        provider.Status().State.Should().Be(EmbeddingState.Failed);
+    }
+
+    [Fact]
     public void should_compute_vectors_that_point_the_way_of_the_reference()
     {
         Assert.SkipUnless(Model is not null, "No model folder given.");
