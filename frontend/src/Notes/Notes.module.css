@@ -60,6 +60,13 @@
   font-size: var(--fontSizeMeta);
 }
 
+.notice {
+  display: block;
+  margin: 8px 0;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}
+
 .pages {
   display: flex;
   flex-wrap: wrap;

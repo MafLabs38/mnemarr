@@ -76,7 +76,9 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
       </header>
       {!hasOwnTitle(note.markdown, note.title) && <h2 className={styles.noteTitle}>{note.title}</h2>}
       <RightsBanner note={note} />
-      {note.cut && note.rights.reason !== 'note-too-long' && <p role="status">{translate('LongNoteNotice')}</p>}
+      {note.cut && note.rights.reason !== 'note-too-long' && (
+        <output className={styles.notice}>{translate('LongNoteNotice')}</output>
+      )}
       <NotePages label={translate('PagesOfTheNote')} note={note} />
       {note.tags.length > 0 && (
         <ul aria-label={translate('Tags')} className={styles.tags}>
