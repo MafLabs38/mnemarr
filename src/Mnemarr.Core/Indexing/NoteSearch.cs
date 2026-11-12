@@ -16,8 +16,9 @@ public sealed partial class NoteSearch
     // The keyword list is at most this long: the list by meaning is as long, and the two are merged and cut to the limit asked.
     private const int Depth = SearchRequest.MaxLimit;
 
-    // The nearest are asked for wider than the list: some are not the caller's to see, or are outside the filters, and the rest must still fill it.
-    private const int MeaningWiderBy = 4;
+    // The nearest are asked for wider than the list: some are not the caller's to see, or are outside the filters, and a long conversation takes many places before each note is held to its share
+    // (ADR 0043), so the rest must still fill the list.
+    private const int MeaningCandidates = 600;
 
     // How many questions the model reads at once, and how long a question waits for its turn: a flood of searches must not hold every thread of the host. A question that
     // does not get its turn is answered by its words.
@@ -64,10 +65,10 @@ public sealed partial class NoteSearch
         }
 
         var wordsWeight = FtsQuery.Meaningful(request.Query) >= LongQuestion ? LongQuestionWordsWeight : 1.0;
-        return Merge(keywords, meaning, limit, wordsWeight);
+        return Merge(keywords, meaning, limit, request.Share, wordsWeight);
     }
 
-    private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit, double wordsWeight)
+    private static List<SearchHit> Merge(IReadOnlyList<SearchHit> keywords, IReadOnlyList<SearchHit> meaning, int limit, int perNote, double wordsWeight)
     {
         var scores = new Dictionary<long, double>();
         var hits = new Dictionary<long, SearchHit>();
@@ -88,11 +89,35 @@ public sealed partial class NoteSearch
             }
         }
 
-        return
-        [
-            .. scores.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key).Take(limit).Select(pair =>
+        return HoldToShare(
+            scores.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key).Select(pair =>
                 hits[pair.Key] with { Score = pair.Value, Match = both.Contains(pair.Key) ? SearchMatch.Both : hits[pair.Key].Match }),
-        ];
+            perNote, limit);
+    }
+
+    /// <summary>The hits in their order, each note kept to its share, until the list is as long as asked: a long conversation must not take the answer for itself.</summary>
+    private static List<SearchHit> HoldToShare(IEnumerable<SearchHit> ordered, int perNote, int limit)
+    {
+        var taken = new Dictionary<(Guid, string), int>();
+        var kept = new List<SearchHit>();
+        foreach (var hit in ordered)
+        {
+            var key = (hit.SourceId, hit.Path);
+            var count = taken.GetValueOrDefault(key);
+            if (count >= perNote)
+            {
+                continue;
+            }
+
+            taken[key] = count + 1;
+            kept.Add(hit);
+            if (kept.Count == limit)
+            {
+                break;
+            }
+        }
+
+        return kept;
     }
 
     private List<SearchHit> ByMeaning(SearchRequest request, SourceScope scope)
@@ -118,10 +143,9 @@ public sealed partial class NoteSearch
             var question = request.Query.Length > MaxQuestionLength ? request.Query[..MaxQuestionLength] : request.Query;
             var query = _embeddings.EmbedQuery(question);
             var maxDistance = _options.MaxDistance ?? _embeddings.DefaultMaxDistance;
-            // The nearest are asked for wider than the answer: some are not the caller's to see, or are outside the filters, and the rest must still fill the list.
-            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, Depth * MeaningWiderBy).Where(match => match.Distance <= maxDistance).ToList();
+            var near = _vectors.Nearest(_embeddings.ModelId, _embeddings.Dimension, query, MeaningCandidates).Where(match => match.Distance <= maxDistance).ToList();
             var found = _chunks.Chunks(near.Select(match => match.ChunkId).ToList(), request, scope).ToDictionary(hit => hit.ChunkId);
-            return [.. near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]).Take(Depth)];
+            return HoldToShare(near.Where(match => found.ContainsKey(match.ChunkId)).Select(match => found[match.ChunkId]), request.Share, Depth);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

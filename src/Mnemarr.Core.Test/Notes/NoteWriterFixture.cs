@@ -188,6 +188,43 @@ public sealed class NoteWriterFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_refuse_a_page_sent_back_as_the_note_and_accept_the_whole_text_that_was_read()
+    {
+        var text = "# Long\n" + string.Concat(Enumerable.Repeat(new string('w', 99) + "\n", 6_000));
+        var source = Declare("vault");
+        await _writer.CreateAsync(Alice, source.Id, "long.md", text, Token);
+        var page = _reader.Read(source.Id, "long.md", SourceScope.All);
+        var whole = _reader.Read(source.Id, "long.md", SourceScope.All, whole: true);
+
+        var replace = () => _writer.UpdateAsync(Alice, source.Id, "long.md", page.Raw, page.Version, Token);
+
+        text.Length.Should().BeGreaterThan(NoteReader.PageChars).And.BeLessThan((int)MarkdownFileScanner.MaxFileBytes);
+        (await replace.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict, "a page has a version of its own, so that it cannot be sent back as the note");
+        File.ReadAllText(Path.Combine(source.Path, "long.md")).Should().Be(text, "the note was not touched");
+        await _writer.UpdateAsync(Alice, source.Id, "long.md", whole.Raw + "one line more\n", whole.Version, Token);
+        File.ReadAllText(Path.Combine(source.Path, "long.md")).Should().EndWith("one line more\n", "the whole text that was read, with the version of the note, is replaced as before");
+    }
+
+    [Fact]
+    public async Task should_read_a_note_above_two_megabytes_but_not_change_it_and_say_why()
+    {
+        var source = Declare("vault", SourceMode.ReadWrite, false, ("big.md", "# Big\n" + new string('w', (int)MarkdownFileScanner.MaxFileBytes + 10)));
+        var indexer = new SourceIndexer(_index, _workspace.Paths(), new ScanOutcomes(), _clock);
+        await indexer.IndexAsync(source, Token);
+        var version = _reader.Read(source.Id, "big.md", SourceScope.All, whole: true).Version;
+
+        var replace = () => _writer.UpdateAsync(Alice, source.Id, "big.md", "# Replaced", version, Token);
+        var append = () => _writer.AppendAsync(Alice, source.Id, "big.md", "more", Token);
+
+        (await replace.Should().ThrowAsync<RejectedException>()).Which.Should().Match<RejectedException>(refusal => refusal.Problem == Problem.Conflict && refusal.Message.Contains("not changed from here", StringComparison.Ordinal));
+        (await append.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        var rename = () => _writer.RenameAsync(Alice, source.Id, "big.md", "moved/big.md", Token);
+        (await rename.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        await _writer.DeleteAsync(Alice, source.Id, "big.md", expectedVersion: null, Token);
+        File.Exists(Path.Combine(source.Path, "big.md")).Should().BeFalse("a note that the search finds can be taken out, whatever its size");
+    }
+
+    [Fact]
     public async Task should_not_write_in_a_source_that_is_read_only_and_treat_one_out_of_scope_as_absent()
     {
         var readOnly = Declare("ro", SourceMode.ReadOnly);

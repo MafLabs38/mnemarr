@@ -32,7 +32,7 @@ export default function Pairings() {
             <td>{formatDateTime(pairing.expiresAt)}</td>
             <td>
               <Link aria-label={translate('ReviewPairing', { name: pairing.hostname })} to={`/link?id=${pairing.id}`}>
-                {translate('Approve')}
+                {translate('ReviewRequest')}
               </Link>
             </td>
           </tr>

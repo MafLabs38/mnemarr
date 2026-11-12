@@ -47,6 +47,13 @@
   font-weight: 400;
 }
 
+.tooLarge {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}
+
 .scanFailed {
   margin: 4px 0 0;
   color: var(--dangerColor);

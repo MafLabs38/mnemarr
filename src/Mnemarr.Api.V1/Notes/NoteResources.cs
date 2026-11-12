@@ -1,4 +1,5 @@
 using Mnemarr.Core.Git;
+using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Notes;
 using Mnemarr.Core.Sources;
 
@@ -10,7 +11,7 @@ public sealed record NoteEntryResource(Guid SourceId, string SourceName, string 
     public static NoteEntryResource From(NoteEntry entry) => new(entry.SourceId, entry.SourceName, entry.Path, entry.Title, entry.Topic);
 }
 
-/// <summary>What a caller may do to the notes of a source, and why: <c>reason</c> is <c>writable</c>, <c>source-read-only</c>, <c>kind-not-writable</c> or <c>no-permission</c>; <c>role</c> is the caller's, to say it in words.</summary>
+/// <summary>What a caller may do to the notes of a source, and why: <c>reason</c> is <c>writable</c>, <c>source-read-only</c>, <c>kind-not-writable</c>, <c>no-permission</c> or <c>note-too-long</c>; <c>role</c> is the caller's, to say it in words.</summary>
 public sealed record NoteRightsResource(bool CanWrite, string Reason, string Role)
 {
     public static NoteRightsResource For(SourceKind kind, SourceMode mode, bool mayWrite, string role)
@@ -45,24 +46,29 @@ public sealed record NoteLinkResource(string Target, NoteRefResource? Note);
 /// A note to read: its Markdown as written (without the front matter), the same Markdown with its wikilinks and embeds rewritten into
 /// links and images that lead where the caller may go (<c>mnemarr-note:{source}/{path}</c>, <c>mnemarr-file:{path}</c> for an image of the
 /// source of the note, <c>mnemarr-unresolved:</c> for what leads nowhere the caller may read), its tags, where its links lead, and the notes
-/// that link to it. An image is fetched from <c>/api/v1/sources/{id}/files/{path}</c>.
+/// that link to it. An image is fetched from <c>/api/v1/sources/{id}/files/{path}</c>. <c>pages</c>: a note longer than a page of the interface comes in pages (<c>page</c>, from 0,
+/// of <c>pages</c>; <c>cut</c> is true then); the text is one page with a version of its own, which no file has, so that it cannot be sent back as the note (<c>?whole=true</c> gives the whole).
 /// </summary>
 public sealed record NoteResource(
     Guid SourceId, string SourceName, string Path, string Title, string Markdown, string Rendered, IReadOnlyList<string> Tags,
     IReadOnlyList<NoteLinkResource> Links, IReadOnlyList<NoteRefResource> Backlinks, int BacklinksTotal, string Raw, string Version, bool Writable,
-    string SourceKind, string SourceMode, NoteRightsResource Rights)
+    string SourceKind, string SourceMode, NoteRightsResource Rights, bool Cut = false, int Page = 0, int Pages = 1)
 {
     /// <summary>The note, for a caller who may or may not write: <c>writable</c> is true when the caller may write notes and the source is open for writing.</summary>
     public static NoteResource From(NoteContent content, bool mayWrite, string role) =>
         From(content, NoteRightsResource.For(content.Kind, content.Mode, mayWrite, role));
 
-    private static NoteResource From(NoteContent content, NoteRightsResource rights) =>
-        new(
+    private static NoteResource From(NoteContent content, NoteRightsResource given)
+    {
+        // A page, or a note above the 2 MB that can be written (read whole), is not edited from here: the write refuses it, so the rights must not promise it.
+        var rights = (content.Cut || content.Raw.Length > MarkdownFileScanner.MaxFileBytes) && given.CanWrite ? given with { CanWrite = false, Reason = NoteRightsReason.NoteTooLong } : given;
+        return new(
             content.Detail.Note.SourceId, content.Detail.Note.SourceName, content.Detail.Note.Path, content.Detail.Note.Title, content.Markdown, content.Rendered,
             content.Detail.Tags,
             [.. content.Detail.Links.Select(link => new NoteLinkResource(link.Target, link.Note is null ? null : NoteRefResource.From(link.Note)))],
             [.. content.Detail.Backlinks.Select(NoteRefResource.From)], content.Detail.BacklinksTotal, content.Raw, content.Version, rights.CanWrite,
-            content.Kind.ToString(), content.Mode.ToString(), rights);
+            content.Kind.ToString(), content.Mode.ToString(), rights, content.Cut, content.Page, content.Pages);
+    }
 }
 
 /// <summary>The whole text of a new note (front matter included).</summary>

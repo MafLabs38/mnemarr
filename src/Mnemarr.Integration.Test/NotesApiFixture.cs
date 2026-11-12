@@ -21,7 +21,9 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private async Task<Guid> IndexedSourceAsync(string name, params (string Path, string Text)[] files)
+    private async Task<Guid> IndexedSourceAsync(string name, params (string Path, string Text)[] files) => await IndexedSourceAsync(name, "ReadOnly", files);
+
+    private async Task<Guid> IndexedSourceAsync(string name, string mode, params (string Path, string Text)[] files)
     {
         var folder = Path.Combine(_factory.DataFolder, "sources", name);
         Directory.CreateDirectory(folder);
@@ -32,10 +34,61 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
             File.WriteAllText(file, text);
         }
 
-        var created = await _callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name, kind = "Knowledge", mode = "ReadOnly", path = folder }, Token);
+        var created = await _callers["Operator"].PostAsJsonAsync("/api/v1/sources", new { name, kind = "Knowledge", mode, path = folder }, Token);
         var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
         (await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         return id;
+    }
+
+    [Fact]
+    public async Task should_read_a_note_longer_than_a_page_as_its_first_part_that_cannot_be_replaced_from_here()
+    {
+        var name = Callers.Unique("chats");
+        var line = new string('w', 99) + "\n";
+        var id = await IndexedSourceAsync(name, "ReadWrite", ("long.md", "# Long\n" + string.Concat(Enumerable.Repeat(line, 30_000))), ("mid.md", "# Mid\n" + string.Concat(Enumerable.Repeat(line, 6_000))), ("short.md", "# Short\nhello\n"));
+        await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token);
+
+        var longNote = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md", Token);
+        var shortNote = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/short.md", Token);
+
+        var third = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?page=2", Token);
+        longNote.GetProperty("cut").GetBoolean().Should().BeTrue();
+        longNote.GetProperty("page").GetInt32().Should().Be(0);
+        longNote.GetProperty("pages").GetInt32().Should().Be(6);
+        longNote.GetProperty("raw").GetString()!.Length.Should().BeLessThanOrEqualTo(512 * 1024);
+        third.GetProperty("page").GetInt32().Should().Be(2);
+        third.GetProperty("raw").GetString().Should().NotStartWith("# Long");
+        (await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?page=99", Token)).GetProperty("page").GetInt32().Should().Be(5, "a page past the end is the last");
+        (await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?page=-1", Token)).GetProperty("page").GetInt32().Should().Be(0, "a negative page is the first");
+        longNote.GetProperty("writable").GetBoolean().Should().BeFalse();
+        longNote.GetProperty("rights").GetProperty("reason").GetString().Should().Be("note-too-long");
+        var longWhole = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md?whole=true", Token);
+        longWhole.GetProperty("writable").GetBoolean().Should().BeFalse("a note above the 2 MB that can be written is not promised as editable, whole or not");
+        longWhole.GetProperty("rights").GetProperty("reason").GetString().Should().Be("note-too-long");
+        shortNote.GetProperty("cut").GetBoolean().Should().BeFalse();
+        shortNote.GetProperty("writable").GetBoolean().Should().BeTrue("a short note of a source open for writing is edited as before");
+        var mid = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/mid.md", Token);
+        var replace = await _callers["Operator"].PutAsJsonAsync($"/api/v1/notes/{id}/mid.md", new { content = mid.GetProperty("raw").GetString(), version = mid.GetProperty("version").GetString() }, Token);
+        mid.GetProperty("pages").GetInt32().Should().Be(2);
+        var whole = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/mid.md?whole=true", Token);
+        whole.GetProperty("cut").GetBoolean().Should().BeFalse();
+        whole.GetProperty("raw").GetString()!.Length.Should().BeGreaterThan(512 * 1024);
+        whole.GetProperty("version").GetString().Should().HaveLength(64).And.NotBe(mid.GetProperty("version").GetString(), "the page has a version of its own");
+        var replaceWhole = await _callers["Operator"].PutAsJsonAsync($"/api/v1/notes/{id}/mid.md", new { content = whole.GetProperty("raw").GetString() + "more\n", version = whole.GetProperty("version").GetString() }, Token);
+        replaceWhole.StatusCode.Should().Be(HttpStatusCode.OK, "the whole text, with the version of the note, is replaced as before");
+        replace.StatusCode.Should().Be(HttpStatusCode.Conflict, "a page has a version of its own, so that it cannot be sent back as the note");
+    }
+
+    [Fact]
+    public async Task should_keep_the_reason_of_a_read_only_source_for_a_note_that_comes_in_pages()
+    {
+        var name = Callers.Unique("chats");
+        var id = await IndexedSourceAsync(name, ("long.md", "# Long\n" + string.Concat(Enumerable.Repeat(new string('w', 99) + "\n", 30_000))));
+
+        var note = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/long.md", Token);
+
+        note.GetProperty("cut").GetBoolean().Should().BeTrue();
+        note.GetProperty("rights").GetProperty("reason").GetString().Should().Be("source-read-only", "the source is read-only: that reason is the one that holds");
     }
 
     [Fact]

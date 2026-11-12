@@ -185,7 +185,7 @@ The hook never gets in your way: no key, no answer within 5 seconds, or nothing 
 - The **Machines** page (and `GET /api/v1/collectors`) shows each machine: its kind, its state (**online**, **away** when an intermittent machine sleeps, **silent** when an always-on machine has not been heard from, **failing** when a pass reported an error, **refused** when it was revoked, **waiting** before its first pass), when it was last seen, the version of its collector and how many conversations it sent. It tells something about the conversations, so it needs the right to read them (`conversations.read`: `Admin` and `Assistant`).
 - `/health/ready` is degraded, with the reason `collector-silent` or `collector-failing`, when an **always-on** machine has been silent for 30 minutes or reports an error. A workstation that sleeps never raises it.
 - The notes page has a section of the conversations, one folder per machine; only `Admin` and `Assistant` see it.
-- Over MCP, an assistant with the right to read conversations calls `search` (use `topic` to keep one machine) and `read_note`.
+- Over MCP, an assistant with the right to read conversations calls `search` (use `topic` to keep some machines, `exclude_topic` to leave some out, and `per_note` to give a very long conversation fewer places in the answer) and `read_note` (a conversation of any length is read in windows, its end included with `tail`).
 
 ## Build it
 

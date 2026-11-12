@@ -28,6 +28,9 @@ const note: Note = {
   sourceKind: 'Knowledge',
   sourceMode: 'ReadWrite',
   rights: { canWrite: true, reason: 'writable', role: 'Admin' },
+  cut: false,
+  page: 0,
+  pages: 1,
 };
 
 const readOnlyRights = { canWrite: false, reason: 'source-read-only', role: 'Admin' } as const;
@@ -51,6 +54,7 @@ const writableSource: SourceItem = {
   lastSyncAt: null,
   lastSyncError: null,
   head: null,
+  notesTooLarge: 0,
 };
 
 let sourcesInTree: NoteSource[] = [cours];

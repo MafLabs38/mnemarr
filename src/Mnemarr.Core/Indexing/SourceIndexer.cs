@@ -1,12 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Options;
 using Mnemarr.Core.Embeddings;
 using Mnemarr.Core.Sources;
 
 namespace Mnemarr.Core.Indexing;
 
-/// <summary>What one pass over a source did.</summary>
-public sealed record IndexReport(int Added, int Updated, int Removed, int Unchanged);
+/// <summary>What one pass over a source did. <c>TooLarge</c>: the notes above the size limit, which keep what the index had of them and are not read (ADR 0043).</summary>
+public sealed record IndexReport(int Added, int Updated, int Removed, int Unchanged, int TooLarge = 0);
 
 /// <summary>
 /// Brings the index of a source in line with its folder (F-IDX-01): a note whose content hash and cut did not change is left alone,
@@ -22,9 +23,11 @@ public sealed class SourceIndexer
     private readonly SourceLocks _locks;
 
     private readonly EmbeddingWakeUp? _wake;
+    private readonly long _maxNoteBytes;
 
-    public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock, SourceLocks? locks = null, EmbeddingWakeUp? wake = null)
+    public SourceIndexer(INoteIndex index, SourcePaths paths, ScanOutcomes outcomes, TimeProvider clock, SourceLocks? locks = null, EmbeddingWakeUp? wake = null, IOptions<IndexingOptions>? options = null)
     {
+        _maxNoteBytes = options?.Value.MaxNoteBytes ?? IndexingOptions.DefaultMaxNoteBytes;
         _wake = wake;
         _locks = locks ?? new SourceLocks();
         _index = index;
@@ -75,7 +78,7 @@ public sealed class SourceIndexer
             }
 
             var report = await PassAsync(source, rebuild, cancellationToken);
-            _outcomes.Succeeded(source.Id, _clock.GetUtcNow());
+            _outcomes.Succeeded(source.Id, _clock.GetUtcNow(), report.TooLarge);
             return report;
         }
         catch (Exception ex) when (ex is not (OperationCanceledException or RejectedException))
@@ -149,7 +152,7 @@ public sealed class SourceIndexer
         var known = _index.Notes(source.Id);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var counts = new Dictionary<FileResult, int>();
-        var walk = MarkdownFileScanner.WalkOf(source.Path);
+        var walk = MarkdownFileScanner.WalkOf(source.Path, _maxNoteBytes);
 
         foreach (var file in walk.Notes)
         {
@@ -170,6 +173,14 @@ public sealed class SourceIndexer
             counts[result] = counts.GetValueOrDefault(result) + 1;
         }
 
+        // A note that grew past the limit is not read, and it is not forgotten: the person keeps finding what was indexed, and is told that the rest is not (ADR 0043). A pass that
+        // cuts everything again (rebuild) is the way to drop it: what the index kept of a note that is above the limit then goes, which is also how a secret that was removed from the file is purged.
+        var tooLarge = walk.TooLarge;
+        if (!rebuild)
+        {
+            seen.UnionWith(tooLarge);
+        }
+
         var removed = 0;
         foreach (var path in known.Keys.Where(path => !seen.Contains(path)))
         {
@@ -178,7 +189,7 @@ public sealed class SourceIndexer
         }
 
         RecordImages(source, walk);
-        return new IndexReport(counts.GetValueOrDefault(FileResult.Added), counts.GetValueOrDefault(FileResult.Updated), removed, counts.GetValueOrDefault(FileResult.Unchanged));
+        return new IndexReport(counts.GetValueOrDefault(FileResult.Added), counts.GetValueOrDefault(FileResult.Updated), removed, counts.GetValueOrDefault(FileResult.Unchanged), tooLarge.Count);
     }
 
     /// <summary>The image files of the source, for the notes that show them: written only when they are not what the last pass found.</summary>
@@ -217,7 +228,7 @@ public sealed class SourceIndexer
             return FileResult.Unchanged;
         }
 
-        if (await ReadAsync(file, cancellationToken) is not { } bytes)
+        if (await ReadAsync(file, _maxNoteBytes, cancellationToken) is not { } bytes)
         {
             return File.Exists(file.FullPath) ? FileResult.Kept : FileResult.Gone;
         }
@@ -249,14 +260,14 @@ public sealed class SourceIndexer
     /// The content of a note, or null when it cannot be read now: removed since the scan, locked, not allowed. A file that grew since the
     /// scan is read no further than the limit, and is not a note.
     /// </summary>
-    private static async Task<byte[]?> ReadAsync(ScannedFile file, CancellationToken cancellationToken)
+    private static async Task<byte[]?> ReadAsync(ScannedFile file, long maxNoteBytes, CancellationToken cancellationToken)
     {
         try
         {
             await using var stream = new FileStream(file.FullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var buffer = new byte[Math.Min(stream.Length, MarkdownFileScanner.MaxFileBytes + 1)];
+            var buffer = new byte[Math.Min(stream.Length, maxNoteBytes + 1)];
             await stream.ReadExactlyAsync(buffer, cancellationToken);
-            return buffer.Length > MarkdownFileScanner.MaxFileBytes ? null : buffer;
+            return buffer.Length > maxNoteBytes ? null : buffer;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

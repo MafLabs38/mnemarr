@@ -145,6 +145,21 @@ public sealed class SemanticSearchFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_hold_a_long_note_to_its_share_so_that_the_other_notes_are_seen()
+    {
+        var parts = string.Concat(Enumerable.Range(0, 12).Select(index => $"## Part {index}\nSauvegarde numéro {index}.\n"));
+        await IndexAsync("talks", SourceKind.Knowledge, ("long.md", "# Long\n" + parts), ("short.md", "# Short\nSauvegarde de la maison."));
+        await _embedder.RunAsync(Token);
+
+        var hits = _search.Search(new SearchRequest("protéger contre la perte"), SourceScope.All);
+        var one = _search.Search(new SearchRequest("protéger contre la perte") { PerNote = 1 }, SourceScope.All);
+
+        hits.Count(hit => hit.Path == "long.md").Should().Be(SearchRequest.DefaultPerNote);
+        hits.Should().Contain(hit => hit.Path == "short.md");
+        one.Select(hit => hit.Path).Should().BeEquivalentTo("long.md", "short.md");
+    }
+
+    [Fact]
     public async Task should_count_the_progress_among_the_sources_the_caller_may_see()
     {
         var mine = await IndexAsync("mine", SourceKind.Knowledge, ("a.md", "# A\nSauvegarde."));

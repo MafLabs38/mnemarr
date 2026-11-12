@@ -142,8 +142,13 @@ public sealed class NoteWriter
         InLockAsync(actor, sourceId, cancellationToken, (source, folder) =>
         {
             var full = Resolve(folder, path);
-            var current = Existing(full);
-            if (expectedVersion is not null && !string.Equals(VersionOf(current), expectedVersion, StringComparison.OrdinalIgnoreCase))
+            if (!File.Exists(full))
+            {
+                throw new RejectedException(Problem.NotFound, "There is no such note.");
+            }
+
+            // Removing a note changes none of its text, whatever its size: the version is hashed from the stream, and nothing is read when none was given.
+            if (expectedVersion is not null && !string.Equals(VersionOfFile(full), expectedVersion, StringComparison.OrdinalIgnoreCase))
             {
                 throw new RejectedException(Problem.Conflict, "The note changed since it was read: read it again before removing it.");
             }
@@ -290,6 +295,12 @@ public sealed class NoteWriter
             : Encoding.UTF8.GetBytes(content);
     }
 
+    private static string VersionOfFile(string full)
+    {
+        using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
     private static byte[] Existing(string full)
     {
         if (!File.Exists(full))
@@ -297,8 +308,10 @@ public sealed class NoteWriter
             throw new RejectedException(Problem.NotFound, "There is no such note.");
         }
 
-        var bytes = File.ReadAllBytes(full);
-        return bytes.Length > MarkdownFileScanner.MaxFileBytes ? throw new RejectedException(Problem.NotFound, "There is no such note.") : bytes;
+        // The size is looked at before the file is read: a note of tens of megabytes is refused without being loaded.
+        return new FileInfo(full).Length > MarkdownFileScanner.MaxFileBytes
+            ? throw new RejectedException(Problem.Conflict, $"The note is longer than {MarkdownFileScanner.MaxFileBytes / (1024 * 1024)} MB: it is read, but it is not changed from here. Change the file itself.")
+            : File.ReadAllBytes(full);
     }
 
     /// <summary>The full path of a note of a source, or a refusal: a Markdown file, relative, inside the folder, not hidden, not behind a link.</summary>
