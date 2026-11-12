@@ -69,7 +69,7 @@ public sealed class SqliteVectorStore : IVectorStore
     {
         // A chunk whose text was computed before is given its vector here, and the next ones are looked at: the caller only gets what the model has to read. The chunks that were
         // given a vector are left out of the next look, so that the loop always moves on.
-        var left = skipped;
+        var left = new HashSet<long>(skipped);
         while (true)
         {
             var candidates = Candidates(model, limit, left);
@@ -84,7 +84,7 @@ public sealed class SqliteVectorStore : IVectorStore
                 return needed;
             }
 
-            left = new HashSet<long>(left.Concat(given));
+            left.UnionWith(given);
         }
     }
 
