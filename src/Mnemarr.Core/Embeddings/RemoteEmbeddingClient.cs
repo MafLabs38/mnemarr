@@ -5,11 +5,12 @@ using Microsoft.Extensions.Options;
 
 namespace Mnemarr.Core.Embeddings;
 
-/// <summary>What Mnemarr asks of a server that computes vectors (ADR 0040): the model it expects, whether the texts are passages or a question, and the texts.</summary>
+/// <summary>What Mnemarr asks of a server that computes vectors (ADR 0040): the model it expects, how many tokens of a text it reads (the server refuses to differ: the vectors would not be the same), whether the texts are passages or a question, and the texts.</summary>
 public sealed record RemoteEmbeddingRequest(
     [property: JsonPropertyName("model")] string Model,
     [property: JsonPropertyName("kind")] string Kind,
-    [property: JsonPropertyName("texts")] IReadOnlyList<string> Texts);
+    [property: JsonPropertyName("texts")] IReadOnlyList<string> Texts,
+    [property: JsonPropertyName("maxTokens")] int MaxTokens = 0);
 
 /// <summary>What the server answers: the model it ran, the size of the vectors, where it ran, and one vector per text, in the order of the texts.</summary>
 public sealed record RemoteEmbeddingResponse(
@@ -26,6 +27,8 @@ public sealed class RemoteEmbeddingClient
 {
     /// <summary>The path of the endpoint, shared by the client and the server.</summary>
     public const string Path = "v1/embeddings";
+
+    private const int QuestionTimeoutSeconds = 5;
 
     private readonly HttpClient _http;
     private readonly EmbeddingOptions _options;
@@ -45,12 +48,14 @@ public sealed class RemoteEmbeddingClient
     /// <summary>Asks for the vectors of the texts. Throws <see cref="EmbeddingException"/> when the server does not answer, refuses, or answers something that is not what was asked.</summary>
     public IReadOnlyList<float[]> Embed(IReadOnlyList<string> texts, string kind, string model, int dimension)
     {
-        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(_options.Remote.TimeoutSeconds));
+        // A question is asked while a person waits: a server that hangs is given a few seconds, not the time a batch of passages is given.
+        var seconds = kind == "query" ? Math.Min(_options.Remote.TimeoutSeconds, QuestionTimeoutSeconds) : _options.Remote.TimeoutSeconds;
+        using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, Address());
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Key());
-            request.Content = JsonContent.Create(new RemoteEmbeddingRequest(model, kind, texts));
+            request.Content = JsonContent.Create(new RemoteEmbeddingRequest(model, kind, texts, _options.MaxTokens));
             using var response = _http.Send(request, HttpCompletionOption.ResponseContentRead, cancel.Token);
             if (!response.IsSuccessStatusCode)
             {
@@ -74,7 +79,7 @@ public sealed class RemoteEmbeddingClient
             // Only the time this client allowed itself: a cancellation from the host (it stops) goes through.
             throw new EmbeddingException("The embedding server did not answer in time.", ex);
         }
-        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or IOException or InvalidOperationException or UriFormatException or NotSupportedException)
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or IOException or InvalidOperationException or UriFormatException or NotSupportedException or FormatException)
         {
             // Whatever the network does, the callers know one failure. The detail (an address, a socket error) is for the log of the caller, not for the page.
             throw new EmbeddingException("The embedding server could not be reached or did not answer as expected.", ex);

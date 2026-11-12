@@ -32,6 +32,8 @@ stops the memory), or keep Mnemarr where it is and add a small server that compu
 
 ## Consequences
 
+- **It relaxes D-01 (a single container) knowingly.** The embedding server is an optional second container from the same repository; the single container still works alone, and Mnemarr reaches the server only through its API (D-02). Do not cite it as a precedent for other helpers inside the product.
+- The request carries `maxTokens` and the server refuses (409) a client that reads another length of text: the same model with another truncation gives other vectors, and the cache of Mnemarr relies on them being the same. A question is given at most five seconds, so that a hung server does not make a search wait.
 - With a GPU, a long history is read in minutes and a question is embedded in about ten milliseconds; the CPU of the host is left alone. Measured on a GeForce RTX 2070: 250 to 330 passages a second.
 - One more image and one more container to run for the people who want it, with its own secret. The image pins the CUDA 13 libraries of NVIDIA's runtime image by digest and the engine's GPU package by SHA-256;
   moving the engine version means moving `tools/native/fetch-onnx-gpu.sh` and `Directory.Packages.props` together.

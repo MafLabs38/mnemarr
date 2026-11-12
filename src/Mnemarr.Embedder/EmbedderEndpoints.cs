@@ -40,7 +40,7 @@ public static class EmbedderEndpoints
         return app;
     }
 
-    private static async Task<IResult> Embed(HttpRequest http, EmbedderKey key, IEmbeddingProvider provider, IOptions<EmbedderOptions> options, CancellationToken cancellationToken)
+    private static async Task<IResult> Embed(HttpRequest http, EmbedderKey key, IEmbeddingProvider provider, IOptions<EmbedderOptions> options, IOptions<EmbeddingOptions> embedding, CancellationToken cancellationToken)
     {
         var header = http.Headers.Authorization.ToString();
         if (!key.Accepts(header.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase) ? header[BearerPrefix.Length..].Trim() : null))
@@ -76,6 +76,12 @@ public static class EmbedderEndpoints
             return Results.Problem($"This server computes {provider.ModelId}.", statusCode: StatusCodes.Status409Conflict);
         }
 
+        if (body.MaxTokens != embedding.Value.MaxTokens)
+        {
+            // The same model that reads another length of text is not the same vectors: the cache of Mnemarr relies on it.
+            return Results.Problem($"This server reads {embedding.Value.MaxTokens} tokens of a text.", statusCode: StatusCodes.Status409Conflict);
+        }
+
         try
         {
             var vectors = await Task.Run(() => body.Kind == "query" ? [.. texts.Select(provider.EmbedQuery)] : provider.EmbedPassages(texts), cancellationToken);
@@ -90,10 +96,15 @@ public static class EmbedderEndpoints
 }
 
 /// <summary>
-/// Loads the model when the server starts, so that the first request does not wait for it and <c>/health</c> tells the truth. It also reads the key then (it is a parameter), so that a key file
-/// that is wrong stops the server at start and not at the first request.
+/// Loads the model when the server starts, so that the first request does not wait for it and <c>/health</c> tells the truth. It also builds the key then, so that a key file that is
+/// wrong stops the server at start and not at the first request.
 /// </summary>
 public sealed class ModelWarmUp(IEmbeddingProvider provider, EmbedderKey key) : BackgroundService
 {
-    protected override Task ExecuteAsync(CancellationToken stoppingToken) => key is null ? Task.CompletedTask : Task.Run(() => provider.Status(), stoppingToken);
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // The key is a parameter so that it is built when this service is: a key file that is wrong stops the server at start. Nothing to do with it here.
+        GC.KeepAlive(key);
+        return Task.Run(() => provider.Status(), stoppingToken);
+    }
 }
