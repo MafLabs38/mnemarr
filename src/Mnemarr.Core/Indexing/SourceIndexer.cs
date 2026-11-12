@@ -173,9 +173,14 @@ public sealed class SourceIndexer
             counts[result] = counts.GetValueOrDefault(result) + 1;
         }
 
-        // A note that grew past the limit is not read, and it is not forgotten: the person keeps finding what was indexed, and is told that the rest is not (ADR 0043).
+        // A note that grew past the limit is not read, and it is not forgotten: the person keeps finding what was indexed, and is told that the rest is not (ADR 0043). A pass that
+        // cuts everything again (rebuild) is the way to drop it: what the index kept of a note that is above the limit then goes, which is also how a secret that was removed from the file is purged.
         var tooLarge = walk.TooLarge;
-        seen.UnionWith(tooLarge);
+        if (!rebuild)
+        {
+            seen.UnionWith(tooLarge);
+        }
+
         var removed = 0;
         foreach (var path in known.Keys.Where(path => !seen.Contains(path)))
         {

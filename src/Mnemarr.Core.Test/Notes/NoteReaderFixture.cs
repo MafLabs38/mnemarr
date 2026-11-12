@@ -195,7 +195,7 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         var big = () => narrow.Read(source.Id, "big.md", SourceScope.All);
         var gone = () => narrow.Read(source.Id, "gone.md", SourceScope.All);
 
-        big.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound, "it is not a note any more");
+        big.Should().Throw<RejectedException>().Which.Should().Match<RejectedException>(refusal => refusal.Problem == Problem.Conflict && refusal.Message.Contains("Indexing:MaxNoteMegabytes", StringComparison.Ordinal), "it is not read, and the sentence names the setting");
         gone.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Conflict, "the file is not there now; the next pass will say");
     }
 

@@ -180,7 +180,7 @@ public sealed class NoteReader
             using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             var buffer = new byte[Math.Min(stream.Length, _maxNoteBytes + 1)];
             stream.ReadExactly(buffer);
-            return buffer.Length > _maxNoteBytes ? throw NoSuchNote() : buffer;
+            return buffer.Length > _maxNoteBytes ? throw new RejectedException(Problem.Conflict, "This note is above the size limit (Indexing:MaxNoteMegabytes): it is not read. The search still has what was indexed before.") : buffer;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -190,12 +190,12 @@ public sealed class NoteReader
 
     /// <summary>
     /// A note of several megabytes is read whole, decoded, cut and drawn: a few readers of the biggest notes at once are the memory of a small host (ADR 0043). A read of such a note takes one of
-    /// <see cref="AtOnce"/> places for its whole length; a reader who finds none for <see cref="Waits"/> is told to try again.
+    /// <see cref="AtOnce"/> places for its whole length; a reader who finds none for <see cref="Waits"/> (a thread of the host is held that long at most) is told to try again after as long.
     /// </summary>
     private sealed class LargeRead : IDisposable
     {
         private const int AtOnce = 2;
-        private static readonly TimeSpan Waits = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan Waits = TimeSpan.FromSeconds(1);
         private static readonly SemaphoreSlim Places = new(AtOnce);
         private readonly bool _holding;
 
@@ -213,7 +213,7 @@ public sealed class NoteReader
 
             return Places.Wait(Waits)
                 ? new LargeRead(holding: true)
-                : throw new RejectedException(Problem.Busy, "Other long notes are being read: try again in a moment.", TimeSpan.FromSeconds(5));
+                : throw new RejectedException(Problem.Busy, "Other long notes are being read: try again in a moment.", Waits);
         }
 
         public void Dispose()

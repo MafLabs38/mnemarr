@@ -447,7 +447,7 @@ public sealed class McpWriteFactory : MnemarrFactoryBase
     }
 }
 
-/// <summary>An application whose operator lowered the size of a note that is read to 1 MB (<c>Indexing:MaxNoteMegabytes</c>), so that a note above it is a test of a few megabytes, not of tens.</summary>
+/// <summary>An application whose operator lowered the size of a note that is read to 2 MB, the least it can be (<c>Indexing:MaxNoteMegabytes</c>), so that a note above it is a test of a few megabytes, not of tens.</summary>
 public sealed class SmallNotesFactory : MnemarrFactoryBase
 {
     public SmallNotesFactory()
@@ -458,7 +458,7 @@ public sealed class SmallNotesFactory : MnemarrFactoryBase
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
-        builder.UseSetting("Indexing:MaxNoteMegabytes", "1");
+        builder.UseSetting("Indexing:MaxNoteMegabytes", "2");
     }
 }
 

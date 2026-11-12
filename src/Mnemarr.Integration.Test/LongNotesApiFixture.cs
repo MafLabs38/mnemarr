@@ -31,7 +31,7 @@ public sealed class LongNotesApiFixture : IClassFixture<SmallNotesFactory>, IAsy
         var id = (await created.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("id").GetGuid();
         await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token);
 
-        await File.AppendAllTextAsync(Path.Combine(folder, "talk.md"), new string('x', 1024 * 1024 + 10), Token);
+        await File.AppendAllTextAsync(Path.Combine(folder, "talk.md"), new string('x', 2 * 1024 * 1024 + 10), Token);
         var report = await (await _callers["Operator"].PostAsync($"/api/v1/sources/{id}/index", null, Token)).Content.ReadFromJsonAsync<JsonElement>(Token);
         var listed = (await _callers["Operator"].GetFromJsonAsync<JsonElement>("/api/v1/sources", Token)).EnumerateArray().Single(source => source.GetProperty("id").GetGuid() == id);
         var hits = await _callers["Reader"].GetFromJsonAsync<JsonElement>($"/api/v1/search?q=zymurgy&source={id}", Token);

@@ -15,10 +15,12 @@ A conversation is one note, and it grows with every exchange. Two limits made a 
 
 ## Decision
 
-1. **The size limit is a setting, `Indexing:MaxNoteMegabytes`, 32 by default (1 to 64).** It bounds what a pass reads into memory at once, so that one file that is not a note (a log renamed `.md`) cannot fill the host.
+1. **The size limit is a setting, `Indexing:MaxNoteMegabytes`, 32 by default (2 to 64).** It bounds what a pass reads into memory at once, so that one file that is not a note (a log renamed `.md`) cannot fill the host.
    It is a guard, no longer the size of a conversation. 2 MB stays what a person writes in one go through the editor (ADR 0023) and the length of a page of the interface.
 2. **A note above the limit is never forgotten.** It is not read, it **keeps what the index had of it**, and it is **counted and shown**: `tooLarge` in the report of a pass, `notesTooLarge` on the source, a line on the
-   Sources page that names the setting. A limit that silently loses data is a defect; one that says what it left out is a setting.
+   Sources page that names the setting. A limit that silently loses data is a defect; one that says what it left out is a setting. A note above the limit is not opened either (a sentence that names the
+   setting, not "no such note"), and **a reconstruction (`rebuild=true`) drops it**: that is how what the index kept of it is purged, a secret that was removed from the file included. The setting is at least
+   2 MB, the size that can be written, so that Mnemarr never writes a note it then refuses to read.
 3. **The interface shows pages, an assistant reads the whole.** A note longer than a page (512 KB, drawn in about a second) comes to the interface in pages cut at line ends (`page` of `pages`, `?page=`),
    with the version of the whole note. A page is never a note: the editor is off for it (reason `note-too-long`, unless the source is read-only, which is the first reason), and **the server refuses to
    replace such a note whole** (409), because a client that sends one page back with the version of the whole would cut the rest off; appending stays possible up to the 2 MB that the editor writes (above it, a note is read and searched but not changed from here: its file is). The MCP `read_note` reads the whole in windows,

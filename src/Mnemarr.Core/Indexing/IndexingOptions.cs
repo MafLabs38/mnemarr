@@ -8,11 +8,13 @@ public sealed class IndexingOptions
     /// <summary>How often every source is scanned for changes, in seconds.</summary>
     public int ScanIntervalSeconds { get; set; } = 30;
 
-    /// <summary>The largest note that is indexed and read, in megabytes (ADR 0043). A long conversation is one note and must stay searchable; the bound exists so that one file that is not a note cannot fill the memory.</summary>
+    /// <summary>The largest note that is indexed and read, in megabytes, at least the 2 MB that can be written (ADR 0043). A long conversation is one note and must stay searchable; the bound exists so that one file that is not a note cannot fill the memory.</summary>
     public int MaxNoteMegabytes { get; set; } = DefaultMaxNoteMegabytes;
 
 
     public const int DefaultMaxNoteMegabytes = 32;
+
+    public const int LowestMaxNoteMegabytes = 2;
 
     public const int HighestMaxNoteMegabytes = 64;
 
@@ -31,8 +33,8 @@ public sealed class IndexingOptionsValidator : IValidateOptions<IndexingOptions>
             return ValidateOptionsResult.Fail("Indexing:ScanIntervalSeconds (MNEMARR__INDEXING__SCANINTERVALSECONDS) must be between 1 and 86400.");
         }
 
-        return options.MaxNoteMegabytes is >= 1 and <= IndexingOptions.HighestMaxNoteMegabytes
+        return options.MaxNoteMegabytes is >= IndexingOptions.LowestMaxNoteMegabytes and <= IndexingOptions.HighestMaxNoteMegabytes
             ? ValidateOptionsResult.Success
-            : ValidateOptionsResult.Fail($"Indexing:MaxNoteMegabytes (MNEMARR__INDEXING__MAXNOTEMEGABYTES) must be between 1 and {IndexingOptions.HighestMaxNoteMegabytes}.");
+            : ValidateOptionsResult.Fail($"Indexing:MaxNoteMegabytes (MNEMARR__INDEXING__MAXNOTEMEGABYTES) must be between {IndexingOptions.LowestMaxNoteMegabytes} and {IndexingOptions.HighestMaxNoteMegabytes}: a note is written up to 2 MB, and what is written must be read.");
     }
 }

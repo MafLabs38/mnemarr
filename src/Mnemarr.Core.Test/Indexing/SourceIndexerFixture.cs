@@ -140,6 +140,24 @@ public sealed class SourceIndexerFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_drop_what_was_kept_of_a_note_above_the_limit_when_everything_is_cut_again()
+    {
+        var folder = _workspace.Folder("chats");
+        TestWorkspace.Write(folder, "talk.md", "# Talk\nThe word is zymurgy.\n");
+        var source = Declare("chats", folder);
+        var narrow = new SourceIndexer(_index, _workspace.Paths(), _outcomes, _clock, options: Microsoft.Extensions.Options.Options.Create(new IndexingOptions { MaxNoteMegabytes = 1 }));
+        await narrow.IndexAsync(source, Token);
+        File.AppendAllText(Path.Combine(folder, "talk.md"), new string('x', 1024 * 1024 + 10));
+        await narrow.IndexAsync(source, Token);
+        _index.Search(new SearchRequest("zymurgy"), SourceScope.All).Should().HaveCount(1, "an ordinary pass keeps it");
+
+        var rebuilt = await narrow.IndexAsync(source, rebuild: true, Token);
+
+        rebuilt.Should().Be(new IndexReport(Added: 0, Updated: 0, Removed: 1, Unchanged: 0, TooLarge: 1));
+        _index.Search(new SearchRequest("zymurgy"), SourceScope.All).Should().BeEmpty("a reconstruction drops what the index kept of a note it does not read");
+    }
+
+    [Fact]
     public async Task should_keep_what_was_indexed_of_a_note_that_grew_past_the_limit_and_say_that_it_is_too_large()
     {
         var folder = _workspace.Folder("chats");
