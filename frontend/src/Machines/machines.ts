@@ -42,6 +42,24 @@ export interface MachineAttention {
   sentence: string;
   url: string | null;
   since: string | null;
+  /** How many mails were sent to a person for this episode (ADR 0042), and why the last one did not leave when it did not. */
+  mails: number;
+  mailProblem: string | null;
+}
+
+/** Whether Mnemarr can write to a person, and what became of the last mail (ADR 0042). */
+export interface NotificationStatus {
+  enabled: boolean;
+  provider: string | null;
+  recipient: string | null;
+  lastAt: string | null;
+  lastDelivered: boolean | null;
+  lastProblem: string | null;
+}
+
+export interface NotificationTest {
+  delivered: boolean;
+  problem: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */
@@ -227,5 +245,22 @@ export function useEraseMachine() {
     mutationFn: (machine: string) =>
       apiSend<{ conversations: number }>('POST', `/collectors/${encodeURIComponent(machine)}/erase`),
     onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+const isNotificationQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/notifications');
+
+/** Only an administrator sees the notifications: the server refuses everybody else. */
+export function useNotifications(enabled: boolean) {
+  return useApiQuery<NotificationStatus>('/notifications', { enabled });
+}
+
+/** Sends a mail to the address that is set, to see that the settings work. */
+export function useSendTestMail() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiSend<NotificationTest>('POST', '/notifications/test'),
+    gcTime: 0,
+    onSettled: () => client.invalidateQueries({ predicate: isNotificationQuery }),
   });
 }

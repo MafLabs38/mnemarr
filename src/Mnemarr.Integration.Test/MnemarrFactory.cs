@@ -225,6 +225,49 @@ public sealed class TitlesFactory : MnemarrFactoryBase
     }
 }
 
+/// <summary>An application where the notifications are on, with a sender that keeps what it is given, and a background pass that never comes by itself during a test.</summary>
+public sealed class NotificationsFactory : MnemarrFactoryBase
+{
+    public NotificationsFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    public FakeNotificationSender Sender { get; } = new();
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<Mnemarr.Core.Notifications.INotificationSender>(Sender);
+        services.PostConfigure<Mnemarr.Core.Notifications.NotificationOptions>(options =>
+        {
+            options.Enabled = true;
+            options.Recipient = "me@homelab.example";
+            options.From = "mnemarr@homelab.example";
+            options.Smtp.Host = "smtp.homelab.example";
+            options.PassSeconds = 3600;
+        });
+    }
+}
+
+/// <summary>A sender that delivers nothing: it keeps the notifications, or fails with a reason a test sets.</summary>
+public sealed class FakeNotificationSender : Mnemarr.Core.Notifications.INotificationSender
+{
+    public List<Mnemarr.Core.Notifications.Notification> Sent { get; } = [];
+
+    public string? FailWith { get; set; }
+
+    public Task<Mnemarr.Core.Notifications.NotificationResult> SendAsync(Mnemarr.Core.Notifications.Notification notification, CancellationToken cancellationToken)
+    {
+        if (FailWith is { } reason)
+        {
+            return Task.FromResult(Mnemarr.Core.Notifications.NotificationResult.Failed(reason));
+        }
+
+        Sent.Add(notification);
+        return Task.FromResult(Mnemarr.Core.Notifications.NotificationResult.Done);
+    }
+}
+
 /// <summary>An application that serves the programs a machine installs: fake files, so that the checksums can be told.</summary>
 public class DownloadsFactory : MnemarrFactoryBase
 {

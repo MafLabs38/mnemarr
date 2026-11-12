@@ -139,6 +139,17 @@ const en = {
   MeaningCatchingUp:
     'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
   AttentionOpen: 'Open {host}',
+  AttentionMailed: 'A mail was sent to you ({count}).',
+  AttentionMailProblem: 'The mail could not be sent: {problem}',
+  Notifications: 'Notifications',
+  NotificationsOff:
+    'Mnemarr does not write to anyone. Turn the notifications on in the settings to be told by mail when a machine needs you.',
+  NotificationsOn: 'When a machine needs you, Mnemarr writes to {recipient} ({provider}).',
+  NotificationsLast: 'The last mail was tried at {at}.',
+  NotificationsLastProblem: 'The last mail could not be sent: {problem}',
+  SendTestMail: 'Send a test mail',
+  TestMailSent: 'The test mail left. Look in {recipient}.',
+  TestMailFailed: 'The test mail did not leave: {problem}',
   NotConsolidated: 'Not turned into notes (the setting of this machine).',
   ConsolidateTitle: 'Notes of the memory',
   ConsolidateHelp:

@@ -160,12 +160,21 @@ describe('Machines', () => {
           sentence: 'needs you to sign in again.',
           url: 'https://geminarr.homelab.example/connection',
           since: '2026-11-12T08:00:00Z',
+          mails: 0,
+          mailProblem: null,
         },
       }),
       machine({
         machine: 'no-link',
         state: 'failing',
-        attention: { code: 'reader-broken', sentence: 'can no longer read what it comes for.', url: null, since: null },
+        attention: {
+          code: 'reader-broken',
+          sentence: 'can no longer read what it comes for.',
+          url: null,
+          since: null,
+          mails: 0,
+          mailProblem: null,
+        },
       }),
     ]);
 

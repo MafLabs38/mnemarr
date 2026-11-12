@@ -21,7 +21,7 @@ function Attention({ machine }: Readonly<{ machine: MachineItem }>) {
   if (!machine.attention) {
     return null;
   }
-  const { sentence, url } = machine.attention;
+  const { sentence, url, mails, mailProblem } = machine.attention;
   return (
     <p className={styles.error}>
       {machine.machine} {sentence}{' '}
@@ -29,6 +29,10 @@ function Attention({ machine }: Readonly<{ machine: MachineItem }>) {
         <a href={url} rel="noopener noreferrer nofollow" target="_blank">
           {translate('AttentionOpen', { host: new URL(url).host })}
         </a>
+      )}
+      {mails > 0 && <span className={styles.hint}> {translate('AttentionMailed', { count: mails })}</span>}
+      {mailProblem && (
+        <span className={styles.hint}> {translate('AttentionMailProblem', { problem: mailProblem })}</span>
       )}
     </p>
   );

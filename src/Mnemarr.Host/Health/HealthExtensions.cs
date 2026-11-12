@@ -21,6 +21,7 @@ public static class HealthExtensions
             .AddCheck<SourcesHealthCheck>("sources", tags: [ReadyTag])
             .AddCheck<ConfigurationHealthCheck>("configuration", tags: [ReadyTag])
             .AddCheck<CollectorsHealthCheck>("collectors", tags: [ReadyTag])
+            .AddCheck<NotificationsHealthCheck>("notifications", tags: [ReadyTag])
             .AddCheck<BackupHealthCheck>("backup", tags: [ReadyTag])
             .AddCheck<EmbeddingsHealthCheck>("embeddings", tags: [ReadyTag])
             .AddCheck<Mnemarr.Api.V1.Chat.AgentHealthCheck>("chat", tags: [ReadyTag])

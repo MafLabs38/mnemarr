@@ -296,7 +296,7 @@ public sealed class CollectorService
         {
             activity.Remove(machine.Name, out var sent);
             var seen = Latest(machine.LastSeenAt, sent?.LastSeen);
-            list.Add(new MachineStatus(machine.Name, machine.Kind, MachineStates.Of(machine, now, _options.Value), sent?.Conversations ?? 0, sent?.Lines ?? 0, seen, machine.EnrolledAt, machine.Version, machine.PendingLines, machine.Error, machine.Platform, machine.Program, machine.CanUpdate, machine.UpdateNote, machine.Watching, machine.AttentionCode, machine.AttentionUrl, machine.AttentionSince, machine.Consolidate, ConsolidationDefaults.For(machine.Consolidate, sent?.Formats)));
+            list.Add(new MachineStatus(machine.Name, machine.Kind, MachineStates.Of(machine, now, _options.Value), sent?.Conversations ?? 0, sent?.Lines ?? 0, seen, machine.EnrolledAt, machine.Version, machine.PendingLines, machine.Error, machine.Platform, machine.Program, machine.CanUpdate, machine.UpdateNote, machine.Watching, machine.AttentionCode, machine.AttentionUrl, machine.AttentionSince, machine.Consolidate, ConsolidationDefaults.For(machine.Consolidate, sent?.Formats), machine.AttentionMails));
         }
 
         list.AddRange(activity.Values.Select(sent => new MachineStatus(sent.Machine, null, MachineState.Unenrolled, sent.Conversations, sent.Lines, sent.LastSeen, null, null, 0, null)));

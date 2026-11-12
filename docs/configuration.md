@@ -181,6 +181,34 @@ Whatever the provider, turning titles on sends the start and the end of conversa
 
 A person who holds `conversations.write` (`Admin`) changes a title, or asks the model to write it again, on the page of the note; the Machines page counts the titles and queues the first sentences for the model. What a person typed is never replaced by a model's.
 
+## Notifications (`Notifications`)
+
+Mnemarr can write to one person when a machine asks for them: a satellite whose session ended and that needs a sign-in ([ADR 0042](adr/0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **It is off by default.** The mail says the name of the machine, a sentence of Mnemarr's own and the address the satellite gave (an `https` address, checked); it never holds a token, a key or a conversation.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__NOTIFICATIONS__ENABLED` | `false` | Whether Mnemarr writes. |
+| `MNEMARR__NOTIFICATIONS__PROVIDER` | `Smtp` | The channel: `Smtp`. See [Another channel](#another-channel-for-notifications). |
+| `MNEMARR__NOTIFICATIONS__RECIPIENT` | none | The address the mails go to. Needed then, and the only one ever written to. |
+| `MNEMARR__NOTIFICATIONS__FROM` | none | The address the mails come from (often the mailbox that sends them). Needed then. |
+| `MNEMARR__NOTIFICATIONS__SMTP__HOST` | none | The mail server (`smtp.gmail.com` for a Google account). Needed then. |
+| `MNEMARR__NOTIFICATIONS__SMTP__PORT` | `587` | The submission port, upgraded with STARTTLS. Port 465 (implicit TLS) is not supported. |
+| `MNEMARR__NOTIFICATIONS__SMTP__USERNAME` | none | The sign-in of the mailbox (for Google, the whole address). Goes with `PASSWORDFILE`. |
+| `MNEMARR__NOTIFICATIONS__SMTP__PASSWORDFILE` | none | A file that holds the password (a mounted secret). For Google, an **application password** (the account needs two-step verification; create it under Security, then App passwords), not the account password. |
+| `MNEMARR__NOTIFICATIONS__SMTP__STARTTLS` | `true` | Whether the connection is made secure. Off only without a password (a catcher on a test machine): a password is never sent in clear. |
+| `MNEMARR__NOTIFICATIONS__SMTP__TIMEOUTSECONDS` | `30` | How long to wait for the server. |
+| `MNEMARR__NOTIFICATIONS__REMINDERHOURS` | `24` | Hours between two reminders while a machine still asks. |
+| `MNEMARR__NOTIFICATIONS__MAXREMINDERS` | `3` | How many reminders follow the first mail of an episode. |
+| `MNEMARR__NOTIFICATIONS__MAXPERDAY` | `10` | The most mails tried in a day, all machines together. |
+| `MNEMARR__NOTIFICATIONS__MAXPERMACHINEPERDAY` | `3` | The most mails tried for one machine in a day, sent or not. |
+| `MNEMARR__NOTIFICATIONS__RETRYMINUTES` | `15` | The pause after a mail that could not be sent. |
+
+One mail leaves when an episode begins, a reminder at most once a day while it lasts, nothing when it ends; the two daily caps hold whatever a machine does. Only a machine that is enrolled and not revoked is mailed. An administrator sees where mails go, and sends a test mail, on the Machines page (`POST /api/v1/notifications/test`). `/health/ready` is degraded with `notifications-secret` (the password file cannot be read) or `notifications-failing` (the last mail did not leave); it is never unhealthy.
+
+### Another channel for notifications
+
+A channel is one small interface, `INotificationSender` (a recipient, a subject and a text in; delivered or a short reason out); the name in `Notifications:Provider` selects the `INotificationProvider` that checks its settings and builds the sender. To add one (a chat message, a push, another mail service), write a class that implements `INotificationProvider` and register it with `services.AddSingleton<INotificationProvider, MyProvider>()`. [SmtpNotificationSender.cs](../src/Mnemarr.Core/Notifications/SmtpNotificationSender.cs) is the built-in example; the policy (when, how often, the caps) is not the provider's.
+
 ## Configuration as code (`Config`)
 
 `GET /api/v1/config/status` says whether a file is in charge, whether it was applied and why not (in words that give no path); the interface shows it and does not offer to apply a document while a file is in charge.

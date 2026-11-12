@@ -298,6 +298,17 @@ public static class Schema
         ALTER TABLE machines ADD COLUMN attention_mailed_at TEXT;
         ALTER TABLE machines ADD COLUMN attention_mails INTEGER NOT NULL DEFAULT 0;
         """,
+        // 23: the mails that were tried (ADR 0042), what the daily caps count and what the page shows of a failure. A mail for a machine names it; a test mail does not.
+        """
+        CREATE TABLE notification_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            machine TEXT,
+            at TEXT NOT NULL,
+            delivered INTEGER NOT NULL,
+            reason TEXT
+        );
+        CREATE INDEX notification_log_by_time ON notification_log (at);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

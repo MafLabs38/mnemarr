@@ -99,6 +99,8 @@ public sealed class EndpointsFixture
         "api/v1/notes/{sourceId:guid}/{**path}",
         "api/v1/notes/{sourceId:guid}/{**path}",
         "api/v1/notes/{sourceId:guid}/{**path}",
+        "api/v1/notifications",
+        "api/v1/notifications/test",
         "api/v1/pairings",
         "api/v1/pairings/lookup",
         "api/v1/pairings/{id:guid}/approve",

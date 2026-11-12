@@ -29,7 +29,7 @@ the memory. Mnemarr had three things in the way: a single format (Claude Code's 
    next heartbeat without `attention` ends the episode. The code, the address, the beginning of the episode, and the number and date of the mails sent for it are stored, so that a restart does not send again.
 5. **A satellite's conversations are not told to a project.** The start-of-session pack selects by application and `gemini` is not a project; the search finds them by the machine (the first folder of the note, `topic`),
    and `conversations.read` governs them like every conversation. Tests say so. Excluding them from a search is done by source or by asking another topic: a search takes one topic, it has no "not this topic".
-6. **Not now**: the mail that tells a person (a notification feature with an adapter, which waits for the choice of a mail service), a title set later by a sender's key (the maintainer asks if needed), a second kind of
+6. **Not now**: the mail that tells a person (done in [0042](0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)), a title set later by a sender's key (the maintainer asks if needed), a second kind of
    attention, a satellite for another assistant.
 
 ## Consequences

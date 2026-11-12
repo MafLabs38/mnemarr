@@ -168,7 +168,8 @@ public sealed record MachineStatus(
     string? AttentionUrl = null,
     DateTimeOffset? AttentionSince = null,
     bool? Consolidate = null,
-    bool Consolidating = true);
+    bool Consolidating = true,
+    int AttentionMails = 0);
 
 /// <summary>
 /// The attention a machine may ask for (ADR 0041). The codes are a closed list in Mnemarr's own words: a satellite never invents one, and what a person is told is Mnemarr's sentence,
