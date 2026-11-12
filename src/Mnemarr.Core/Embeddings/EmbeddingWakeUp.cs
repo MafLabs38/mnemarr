@@ -8,6 +8,7 @@ public sealed class EmbeddingWakeUp
 {
     private readonly SemaphoreSlim _signal = new(0, 1);
     private int _removed;
+    private int _purge;
 
     /// <summary>Chunks were added or replaced: the indexer should look.</summary>
     public void Notify()
@@ -28,6 +29,19 @@ public sealed class EmbeddingWakeUp
         Volatile.Write(ref _removed, 1);
         Notify();
     }
+
+    /// <summary>
+    /// Something was deleted on purpose (a note, the conversations of a machine, a source): the computed vectors that are kept for reuse are forgotten too, so that a delete leaves
+    /// nothing derived behind (ADR 0039). A file that only moved or disappeared from its folder does not ask for this.
+    /// </summary>
+    public void RequestPurge()
+    {
+        Volatile.Write(ref _purge, 1);
+        Notify();
+    }
+
+    /// <summary>Whether a purge was asked since the last time this was asked.</summary>
+    public bool TakePurge() => Interlocked.Exchange(ref _purge, 0) == 1;
 
     /// <summary>Whether chunks went since the last time this was asked.</summary>
     public bool TakeRemoved() => Interlocked.Exchange(ref _removed, 0) == 1;

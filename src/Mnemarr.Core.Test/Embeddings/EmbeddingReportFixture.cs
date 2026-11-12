@@ -255,6 +255,10 @@ public sealed class EmbeddingReportFixture : IDisposable
 
         EmbeddingProgress IVectorStore.Progress(string model, SourceScope? scope) => Progress;
 
+        public int Forgotten { get; private set; }
+
+        public void ForgetComputed() => Forgotten++;
+
         public void Tidy(string model, int dimension)
         {
         }

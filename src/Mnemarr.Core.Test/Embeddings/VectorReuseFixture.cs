@@ -33,7 +33,7 @@ public sealed class VectorReuseFixture : IDisposable
         _workspace = new TestWorkspace();
         var options = new EmbeddingOptions { ModelFolder = "unused", ExtensionPath = Library, BatchSize = 4, CacheDays = 30 };
         _index = new SqliteNoteIndex(_workspace.Database, _wake);
-        _indexer = new SourceIndexer(_index, _workspace.Paths(), new ScanOutcomes(), _clock);
+        _indexer = new SourceIndexer(_index, _workspace.Paths(), new ScanOutcomes(), _clock, wake: _wake);
         _store = new SqliteVectorStore(_workspace.Database, Options.Create(options), _clock);
         _embedder = new EmbeddingIndexer(_provider, _store, Options.Create(options), NullLogger<EmbeddingIndexer>.Instance, _wake);
         _folder = _workspace.Folder("notes");
@@ -96,6 +96,39 @@ public sealed class VectorReuseFixture : IDisposable
         await ScanAsync();
 
         (await ComputeAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task should_forget_what_was_computed_when_a_note_is_deleted_on_purpose_and_not_when_it_only_moves()
+    {
+        TestWorkspace.Write(_folder, "a.md", "# Secret\nthe passage that must not outlive its note");
+        await ScanAsync();
+        await ComputeAsync();
+
+        _indexer.ForgetNote(_source, "a.md");
+        File.Delete(Path.Combine(_folder, "a.md"));
+        await ComputeAsync();
+        TestWorkspace.Write(_folder, "again.md", "# Secret\nthe passage that must not outlive its note");
+        await ScanAsync();
+
+        (await ComputeAsync()).Should().Be(1, "nothing is left of what was computed from the deleted note");
+    }
+
+    [Fact]
+    public async Task should_forget_what_was_computed_when_a_source_is_forgotten()
+    {
+        TestWorkspace.Write(_folder, "a.md", "# Secret\nthe passage that must not outlive its source");
+        await ScanAsync();
+        await ComputeAsync();
+
+        new SqliteSourceStore(_workspace.Database, _wake).Remove(_source.Id);
+        await ComputeAsync();
+        var other = new Source(Guid.NewGuid(), "other", SourceKind.Knowledge, SourceMode.ReadWrite, _workspace.Folder("other"), _clock.GetUtcNow());
+        new SqliteSourceStore(_workspace.Database).Add(other);
+        TestWorkspace.Write(other.Path, "b.md", "# Secret\nthe passage that must not outlive its source");
+        await _indexer.IndexAsync(other, Token);
+
+        (await ComputeAsync()).Should().Be(1);
     }
 
     [Fact]
