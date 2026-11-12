@@ -42,6 +42,7 @@ Mnemarr also searches by meaning, with a model that runs on this host (the image
 
 - **Is it working?** The notes page says nothing when it is up to date, *The search by meaning is catching up: X of Y passages are read* while it reads, and why when it does not work. `GET /api/v1/search/status` says the same (`off`, `starting`, `ready` or `failed`), with the counts of the sources the caller may see.
 - **The first start over a long history is slow** (about ten passages a second on two threads): the search works by words meanwhile, and by meaning for the passages that are read. It resumes after a restart; it does not start over.
+- **The passages are read on the CPU although an embedding server is configured**: the notes page says so, with the reason in a sentence ("The embedding server is not used: …"; the same in `GET /api/v1/search/status`, `server.problem`). Mnemarr computes on its own CPU while the server does not answer, and asks it again every `Embeddings:Remote:RetryAfterSeconds`; nothing stops. The log has `The embedding server did not answer` with the reason (a refused key, another model, the network). Check `GET /health` of the server and its log ([embedding-server.md](embedding-server.md)).
 - **`degraded` with `embeddings-failing`**: the notes page says in a sentence what, and the log of Mnemarr has the detail: the model files do not match what is pinned (an image that was altered, a folder that was swapped), the library cannot be loaded, or a pass failed. The search goes on by words. A model or a library that could not be loaded is tried again every five minutes: no restart is needed once the cause is fixed.
 - **`starting`**: the model is being loaded (a few seconds); until then the answer is by words.
 - **To change the model or its settings**, set the variables of the configuration; a change of model reads every passage again in the background.
@@ -115,6 +116,7 @@ A deployment that follows the version tags (see [releasing](releasing.md)) picks
 |---|---|
 | A machine **silent** or **failing** | the Machines page says why; [the collector page](collector.md) |
 | *System > Status* **degraded** with `collector-silent` | an always-on machine has not reported for 30 minutes: is it on, can it reach Mnemarr? |
+| *System > Status* **degraded** with `notifications-failing` or `notifications-secret` | the last mail did not leave (the reason is on the Machines page: server unreachable, sign-in refused: for Google, use an application password) or the password file cannot be read. Send a test mail from the Machines page. |
 | 429 on the installer or a download | too many programs are being written at once, or the proxy's per-address limit: wait a few seconds |
 | 429 on `enrol` | ten wrong codes in a minute for the whole server: wait a minute |
 | No line to run on the page | this image carries no program for that system |

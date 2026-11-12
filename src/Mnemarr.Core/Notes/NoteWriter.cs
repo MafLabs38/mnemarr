@@ -161,7 +161,7 @@ public sealed class NoteWriter
             }
 
             PruneEmptyFolders(Path.GetDirectoryName(full)!, folder);
-            _indexer.RemoveNote(source, path);
+            _indexer.ForgetNote(source, path);
             _audit.Append(actor.Name, "note.removed", Target(source, path));
             return Task.FromResult(Publish(source, $"Remove {path}", actor, [path], cancellationToken));
         });

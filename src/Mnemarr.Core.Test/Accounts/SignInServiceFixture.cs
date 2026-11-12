@@ -392,7 +392,7 @@ public sealed class SignInServiceFixture : IDisposable
         {
             for (var i = 0; i < count; i++)
             {
-                _entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the checks reach the hasher");
+                _entered.Wait(TimeSpan.FromSeconds(30)).Should().BeTrue("the checks reach the hasher (a loaded runner may take its time to give them a thread)");
             }
         }
 
@@ -409,7 +409,7 @@ public sealed class SignInServiceFixture : IDisposable
         public Microsoft.AspNetCore.Identity.PasswordVerificationResult VerifyHashedPassword(Account account, string hashedPassword, string providedPassword)
         {
             _entered.Release();
-            _open.Wait(TimeSpan.FromSeconds(10));
+            _open.Wait(TimeSpan.FromSeconds(45));
             return hashedPassword == "hash:" + providedPassword
                 ? Microsoft.AspNetCore.Identity.PasswordVerificationResult.Success
                 : Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed;

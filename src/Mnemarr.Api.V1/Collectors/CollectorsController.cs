@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core.Accounts;
 using Mnemarr.Core.Collectors;
+using Mnemarr.Core.Notifications;
 
 namespace Mnemarr.Api.V1.Collectors;
 
@@ -13,10 +14,10 @@ namespace Mnemarr.Api.V1.Collectors;
 /// name that conversations came from and that never joined; the state is <c>unenrolled</c>, <c>refused</c>, <c>waiting</c>, <c>failing</c>,
 /// <c>online</c>, <c>away</c> or <c>silent</c> (ADR 0027 §7).
 /// </summary>
-public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool ProgramDiffers, string? UpdateTo, string? UpdateNote, string? Watching)
+public sealed record MachineResource(string Machine, string? Kind, string State, int Conversations, long Lines, DateTimeOffset? LastSeen, DateTimeOffset? EnrolledAt, string? Version, long PendingLines, string? Error, bool ProgramDiffers, string? UpdateTo, string? UpdateNote, string? Watching, MachineAttentionResource? Attention, bool? Consolidate, bool Consolidating)
 {
     /// <summary><paramref name="updateTo"/>: the version a machine that was installed with the installer could update to (ADR 0032). <paramref name="programDiffers"/>: this Mnemarr carries a program for the system of the machine, and it is not the program the machine runs.</summary>
-    public static MachineResource From(MachineStatus status, bool programDiffers, string? updateTo) => new(
+    public static MachineResource From(MachineStatus status, bool programDiffers, string? updateTo, string? mailProblem = null) => new(
         status.Name,
         status.Kind is { } kind ? MachineKinds.Name(kind) : null,
         status.State.ToString().ToLowerInvariant(),
@@ -30,8 +31,23 @@ public sealed record MachineResource(string Machine, string? Kind, string State,
         programDiffers,
         updateTo,
         status.UpdateNote,
-        status.Watching);
+        status.Watching,
+        status.AttentionCode is { } code ? MachineAttentionResource.From(code, status.AttentionUrl, status.AttentionSince, status.AttentionMails, mailProblem) : null,
+        status.Consolidate,
+        status.Consolidating);
 }
+
+/// <summary>
+/// What a machine asks a person for (ADR 0041): a code from a closed list, the sentence for it in Mnemarr's own words, the address where the person can answer it (https, or http to a
+/// loopback address; null when the machine gave none that is acceptable), since when, how many mails were sent for it and, when the last one did not leave, why. Nothing the machine wrote is shown but the address.
+/// </summary>
+public sealed record MachineAttentionResource(string Code, string Sentence, string? Url, DateTimeOffset? Since, int Mails, string? MailProblem)
+{
+    public static MachineAttentionResource From(string code, string? url, DateTimeOffset? since, int mails, string? mailProblem) => new(code, AttentionSignal.Sentence(code), url, since, mails, mailProblem);
+}
+
+/// <summary>Whether the conversations of the machine are consolidated into notes; null for the default of their format.</summary>
+public sealed record SetConsolidateRequest(bool? Consolidate);
 
 public sealed record RenameMachineRequest(string? Name);
 
@@ -55,8 +71,11 @@ public sealed class CollectorsController : ControllerBase
     private readonly CollectorDownloads _downloads;
     private readonly CollectorUpdates _updates;
 
-    public CollectorsController(CollectorService collectors, CollectorDownloads downloads, CollectorUpdates updates)
+    private readonly INotificationLog _mails;
+
+    public CollectorsController(CollectorService collectors, CollectorDownloads downloads, CollectorUpdates updates, INotificationLog mails)
     {
+        _mails = mails;
         _updates = updates;
         _collectors = collectors;
         _downloads = downloads;
@@ -64,10 +83,24 @@ public sealed class CollectorsController : ControllerBase
 
     [HttpGet]
     [Authorize(Policy = Permissions.ConversationsRead)]
-    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, ProgramDiffers(status), _updates.NewerThan(status.Version, status.CanUpdate, status.Platform)))];
+    public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, ProgramDiffers(status), _updates.NewerThan(status.Version, status.CanUpdate, status.Platform), MailProblem(status)))];
+
+    /// <summary>Why the last mail for the episode of a machine that asks for attention did not leave; null when it did, or when none was tried.</summary>
+    private string? MailProblem(MachineStatus status) =>
+        status.AttentionCode is not null && _mails.Last(status.Name) is { Delivered: false } failed && failed.At >= (status.AttentionSince ?? DateTimeOffset.MinValue) ? failed.Reason : null;
 
     private bool ProgramDiffers(MachineStatus status) =>
         status.Program is { } running && status.Platform is { } platform && _downloads.Find(platform) is { } carried && !string.Equals(carried.Sha256, running, StringComparison.Ordinal);
+
+    /// <summary>Says whether the conversations of a machine are turned into notes of the memory; null puts it back to the default of their format (ADR 0041).</summary>
+    [HttpPost("{machine}/consolidate")]
+    [Authorize(Policy = Permissions.CollectorsManage)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public IActionResult Consolidate(string machine, SetConsolidateRequest request)
+    {
+        _collectors.SetConsolidate(machine, request.Consolidate, User.ActorName());
+        return NoContent();
+    }
 
     /// <summary>Takes a machine that was revoked out of the list, so that its name is free again. Its conversations stay.</summary>
     [HttpPost("{machine}/forget")]

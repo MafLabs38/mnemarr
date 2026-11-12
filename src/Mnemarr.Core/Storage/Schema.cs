@@ -276,6 +276,39 @@ public static class Schema
             runs INTEGER NOT NULL
         );
         """,
+        // 21: the vectors that were computed, by the hash of the text the model read (ADR 0039): a passage that was embedded once is never embedded again, whichever note it comes
+        // back in (a note that grows, moves, is renamed, is indexed again from scratch). The row outlives the chunk that asked for it, and goes when it has not been used for a while.
+        """
+        CREATE TABLE embedding_cache (
+            model TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            vector BLOB NOT NULL,
+            used_at TEXT NOT NULL,
+            PRIMARY KEY (model, text_hash)
+        ) WITHOUT ROWID;
+        CREATE INDEX embedding_cache_by_use ON embedding_cache (used_at);
+        """,
+        // 22: a satellite that is not a command-line tool (ADR 0041). Whether a machine's conversations are consolidated (null: the default of their format), and the attention a machine asks for
+        // (a closed code, the address where a person can answer it, when the episode began, and the mail that was sent for it, so that a restart does not send again).
+        """
+        ALTER TABLE machines ADD COLUMN consolidate INTEGER;
+        ALTER TABLE machines ADD COLUMN attention_code TEXT;
+        ALTER TABLE machines ADD COLUMN attention_url TEXT;
+        ALTER TABLE machines ADD COLUMN attention_since TEXT;
+        ALTER TABLE machines ADD COLUMN attention_mailed_at TEXT;
+        ALTER TABLE machines ADD COLUMN attention_mails INTEGER NOT NULL DEFAULT 0;
+        """,
+        // 23: the mails that were tried (ADR 0042), what the daily caps count and what the page shows of a failure. A mail for a machine names it; a test mail does not.
+        """
+        CREATE TABLE notification_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            machine TEXT,
+            at TEXT NOT NULL,
+            delivered INTEGER NOT NULL,
+            reason TEXT
+        );
+        CREATE INDEX notification_log_by_time ON notification_log (at);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

@@ -10,7 +10,10 @@ public static class TitleSources
     public const string Summary = "summary";
     public const string Person = "person";
 
-    public static bool IsKnown(string source) => source is FirstSentence or Summary or Person;
+    /// <summary>The sender gave the title (a web assistant's own title for the conversation, ADR 0041): a model is never asked for one, a person can still rewrite it.</summary>
+    public const string Sender = "sender";
+
+    public static bool IsKnown(string source) => source is FirstSentence or Summary or Person or Sender;
 }
 
 /// <summary>
@@ -35,10 +38,10 @@ public sealed record ConversationRecord(
     string? ComputerId = null);
 
 /// <summary>How many conversations have a title of each origin.</summary>
-public sealed record TitleCounts(int FirstSentence, int Summary, int Person);
+public sealed record TitleCounts(int FirstSentence, int Summary, int Person, int Sender = 0);
 
 /// <summary>What is known of a machine that sent conversations: that it is not silent is what tells an agent that works from one that does not.</summary>
-public sealed record MachineActivity(string Machine, int Conversations, long Lines, DateTimeOffset LastSeen);
+public sealed record MachineActivity(string Machine, int Conversations, long Lines, DateTimeOffset LastSeen, IReadOnlyList<string>? Formats = null);
 
 public interface IConversationStore
 {
@@ -169,7 +172,7 @@ public sealed class SqliteConversationStore : IConversationStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = includePerson
-            ? "UPDATE conversations SET title_source = 'first-sentence', title_tries = 0 WHERE title_source <> 'first-sentence' OR title_tries <> 0"
+            ? "UPDATE conversations SET title_source = 'first-sentence', title_tries = 0 WHERE title_source IN ('summary', 'person') OR title_tries <> 0"
             : "UPDATE conversations SET title_source = 'first-sentence', title_tries = 0 WHERE title_source = 'summary' OR (title_source = 'first-sentence' AND title_tries <> 0)";
         return command.ExecuteNonQuery();
     }
@@ -180,7 +183,7 @@ public sealed class SqliteConversationStore : IConversationStore
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT title_source, COUNT(*) FROM conversations GROUP BY title_source";
         using var reader = command.ExecuteReader();
-        int first = 0, summary = 0, person = 0;
+        int first = 0, summary = 0, person = 0, sender = 0;
         while (reader.Read())
         {
             var count = reader.GetInt32(1);
@@ -192,13 +195,16 @@ public sealed class SqliteConversationStore : IConversationStore
                 case TitleSources.Person:
                     person = count;
                     break;
+                case TitleSources.Sender:
+                    sender = count;
+                    break;
                 default:
                     first += count;
                     break;
             }
         }
 
-        return new TitleCounts(first, summary, person);
+        return new TitleCounts(first, summary, person, sender);
     }
 
     public void Save(ConversationRecord record)
@@ -300,12 +306,12 @@ public sealed class SqliteConversationStore : IConversationStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT machine, COUNT(*), SUM(lines), MAX(updated_at) FROM conversations GROUP BY machine ORDER BY machine";
+        command.CommandText = "SELECT machine, COUNT(*), SUM(lines), MAX(updated_at), group_concat(DISTINCT format) FROM conversations GROUP BY machine ORDER BY machine";
         using var reader = command.ExecuteReader();
         var machines = new List<MachineActivity>();
         while (reader.Read())
         {
-            machines.Add(new MachineActivity(reader.GetString(0), reader.GetInt32(1), reader.GetInt64(2), StorageText.Parse(reader.GetString(3))));
+            machines.Add(new MachineActivity(reader.GetString(0), reader.GetInt32(1), reader.GetInt64(2), StorageText.Parse(reader.GetString(3)), [.. reader.GetString(4).Split(',')]));
         }
 
         return machines;

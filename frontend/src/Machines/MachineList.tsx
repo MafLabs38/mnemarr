@@ -16,6 +16,37 @@ import styles from './Machines.module.css';
 
 const kindText = { 'always-on': 'KindAlwaysOn', intermittent: 'KindIntermittent' } as const;
 
+/** The host of an address, read in the browser's own way; an address that the browser cannot read is shown whole. */
+function hostOf(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/** What a machine asks of a person, in Mnemarr's own words, and the way to answer: a link whose host is read, to a place that is https. */
+function Attention({ machine }: Readonly<{ machine: MachineItem }>) {
+  if (!machine.attention) {
+    return null;
+  }
+  const { sentence, url, mails, mailProblem } = machine.attention;
+  return (
+    <p className={styles.error}>
+      {machine.machine} {sentence}{' '}
+      {url && (
+        <a href={url} rel="noopener noreferrer nofollow" target="_blank">
+          {translate('AttentionOpen', { host: hostOf(url) })}
+        </a>
+      )}
+      {mails > 0 && <span className={styles.hint}> {translate('AttentionMailed', { count: mails })}</span>}
+      {mailProblem && (
+        <span className={styles.hint}> {translate('AttentionMailProblem', { problem: mailProblem })}</span>
+      )}
+    </p>
+  );
+}
+
 function MachineRow({
   machine,
   others,
@@ -34,11 +65,15 @@ function MachineRow({
         <td>
           <StatusLabel kind={look.kind}>{translate(look.text)}</StatusLabel>
           {machine.error && <p className={styles.error}>{machine.error}</p>}
+          <Attention machine={machine} />
         </td>
         <td>{machine.lastSeen ? formatDateTime(machine.lastSeen) : translate('NeverSeen')}</td>
         <td>
           {machine.conversations}
           {machine.conversations === 0 && machine.watching && <p className={styles.hint}>{machine.watching}</p>}
+          {machine.conversations > 0 && !machine.consolidating && (
+            <p className={styles.hint}>{translate('NotConsolidated')}</p>
+          )}
         </td>
         <td>
           {machine.version ?? ''}

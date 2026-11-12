@@ -234,17 +234,17 @@ public sealed class EmbeddingReportFixture : IDisposable
             return true;
         }
 
-        public IReadOnlyList<ChunkToEmbed> Missing(string model, int limit, IReadOnlySet<long> skipped) =>
+        public IReadOnlyList<ChunkToEmbed> Missing(string model, int dimension, int limit, IReadOnlySet<long> skipped) =>
             FailWith is { } failure ? throw failure : [.. Pending.Where(chunk => !_done.Contains(chunk.ChunkId) && !skipped.Contains(chunk.ChunkId)).Take(limit)];
 
-        public void Save(string model, int dimension, IReadOnlyList<(long ChunkId, float[] Vector)> items)
+        public void Save(string model, int dimension, IReadOnlyList<ComputedVector> items)
         {
             if (SaveFails is { } failure)
             {
                 throw failure;
             }
 
-            foreach (var (chunkId, _) in items)
+            foreach (var (chunkId, _, _) in items)
             {
                 _done.Add(chunkId);
                 Saved.Add(chunkId);
@@ -254,6 +254,10 @@ public sealed class EmbeddingReportFixture : IDisposable
         public IReadOnlyList<VectorMatch> Nearest(string model, int dimension, float[] query, int k) => NearestFails is { } failure ? throw failure : Matches;
 
         EmbeddingProgress IVectorStore.Progress(string model, SourceScope? scope) => Progress;
+
+        public int Forgotten { get; private set; }
+
+        public void ForgetComputed() => Forgotten++;
 
         public void Tidy(string model, int dimension)
         {

@@ -9,7 +9,10 @@ using Mnemarr.Core.Collectors;
 namespace Mnemarr.Api.V1.Ingest;
 
 /// <summary>What a collector says at the end of a pass: its version, how many lines it still has to send, when a reader failed a short sentence with no path and no content, and whether a person paused it.</summary>
-public sealed record HeartbeatRequest(string? Version, [property: JsonRequired] long PendingLines, string? Error, bool? Paused, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null, bool? CanUpdate = null, string? UpdateNote = null, string? Watching = null);
+public sealed record HeartbeatRequest(string? Version, [property: JsonRequired] long PendingLines, string? Error, bool? Paused, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null, bool? CanUpdate = null, string? UpdateNote = null, string? Watching = null, AttentionRequest? Attention = null);
+
+/// <summary>What a machine asks a person for (ADR 0041): a code from a closed list, and where the person can answer. A code that is not on the list is ignored.</summary>
+public sealed record AttentionRequest(string? Code, string? Url);
 
 /// <summary>The sign of life of a collector (ADR 0027 §6): sent at the end of every pass, even one that sent nothing, with the key of the machine.</summary>
 [ApiController]
@@ -33,7 +36,7 @@ public sealed class HeartbeatController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public IActionResult Beat(HeartbeatRequest request)
     {
-        _collectors.Beat(User.AccountId(), new Heartbeat(request.Version ?? string.Empty, request.PendingLines, request.Error, request.Paused ?? false, request.Platform, request.Program, request.ComputerId, request.IntervalSeconds, request.CanUpdate ?? false, request.UpdateNote, request.Watching));
+        _collectors.Beat(User.AccountId(), new Heartbeat(request.Version ?? string.Empty, request.PendingLines, request.Error, request.Paused ?? false, request.Platform, request.Program, request.ComputerId, request.IntervalSeconds, request.CanUpdate ?? false, request.UpdateNote, request.Watching, request.Attention?.Code is { } code ? new HeartbeatAttention(code, request.Attention.Url) : null));
         return NoContent();
     }
 }

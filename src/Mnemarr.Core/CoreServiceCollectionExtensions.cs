@@ -16,6 +16,7 @@ using Mnemarr.Core.Embeddings;
 using Mnemarr.Core.Git;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Notes;
+using Mnemarr.Core.Notifications;
 using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
@@ -78,12 +79,25 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SourceLocks>();
         services.AddSingleton<SyncOutcomes>();
         services.AddSingleton<ISourceStore, SqliteSourceStore>();
+        services.AddSingleton<EmbeddingWakeUp>();
         services.AddSingleton<SqliteNoteIndex>();
         services.AddSingleton<INoteIndex>(sp => sp.GetRequiredService<SqliteNoteIndex>());
         services.AddSingleton<IChunkHits>(sp => sp.GetRequiredService<SqliteNoteIndex>());
         services.AddOptions<EmbeddingOptions>().Bind(configuration.GetSection("Embeddings")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<EmbeddingOptions>, EmbeddingOptionsValidator>();
-        services.TryAddSingleton<IEmbeddingProvider, OnnxEmbeddingProvider>();
+        services.AddSingleton<OnnxEmbeddingProvider>();
+        // No redirect is followed: the key of the server must not be sent to another address. The client is the one of this singleton, which lives as long as the host.
+        services.AddSingleton(sp => new RemoteEmbeddingClient(
+            new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(2) })
+            {
+                // The client times each call itself (Remote:TimeoutSeconds, up to 300); an answer is a few kilobytes of numbers, so a server cannot make the pod buffer more than this.
+                Timeout = Timeout.InfiniteTimeSpan,
+                MaxResponseContentBufferSize = 16 * 1024 * 1024,
+            }, sp.GetRequiredService<IOptions<EmbeddingOptions>>()));
+        services.TryAddSingleton<IEmbeddingProvider>(sp =>
+            sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value.Remote.Wanted
+                ? ActivatorUtilities.CreateInstance<FailoverEmbeddingProvider>(sp, (IEmbeddingProvider)sp.GetRequiredService<OnnxEmbeddingProvider>())
+                : sp.GetRequiredService<OnnxEmbeddingProvider>());
         services.TryAddSingleton<IVectorStore, SqliteVectorStore>();
         services.AddSingleton<EmbeddingIndexer>();
         services.AddHostedService(sp => sp.GetRequiredService<EmbeddingIndexer>());
@@ -124,6 +138,17 @@ public static class CoreServiceCollectionExtensions
         }
 
         services.TryAddSingleton<ITitleWriter>(sp => TitleProviders.Select(sp.GetServices<ITitleProvider>(), sp.GetRequiredService<IOptions<TitleOptions>>()));
+        services.AddOptions<NotificationOptions>().Bind(configuration.GetSection("Notifications")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<NotificationOptions>, NotificationOptionsValidator>();
+        foreach (var provider in NotificationProviders.BuiltIn)
+        {
+            services.AddSingleton(typeof(INotificationProvider), provider);
+        }
+
+        services.TryAddSingleton<INotificationSender>(sp => NotificationProviders.Select(sp.GetServices<INotificationProvider>(), sp.GetRequiredService<IOptions<NotificationOptions>>()));
+        services.AddSingleton<INotificationLog, SqliteNotificationLog>();
+        services.AddSingleton<AttentionMailer>();
+        services.AddHostedService<AttentionMailService>();
         services.AddSingleton<ConversationTitles>();
         services.AddSingleton<TitleWriting>();
         services.AddHostedService<TitleService>();

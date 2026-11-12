@@ -65,7 +65,12 @@ The notes and the conversations are also searched by meaning, with a model that 
 | `MNEMARR__EMBEDDINGS__THREADS` | `2` | CPU threads of the model (1 to 64). The first run over a long history takes about a second per ten passages on two threads. |
 | `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together (1 to 64). |
 | `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |
-| `MNEMARR__EMBEDDINGS__IDLESECONDS` | `15` | How long it waits when everything is computed before it looks again (1 to 3600). |
+| `MNEMARR__EMBEDDINGS__IDLESECONDS` | `300` | The safety timer of the indexer (1 to 3600): it is woken when the index has a new passage, so it does not look for work every few seconds; this is how long it waits at most for a change it was not told of. |
+| `MNEMARR__EMBEDDINGS__CACHEDAYS` | `30` | How many days a computed vector is kept after it was last used (1 to 3650), so that a passage that comes back in a note that moved, was renamed or was indexed again is not computed again (ADR 0039). A delete that a person asked for (a note, the conversations of a machine, a source) empties the cache (see ADR 0039). |
+| `MNEMARR__EMBEDDINGS__DEVICE` | `Cpu` | Where the model runs on this host: `Cpu`, `Cuda` (a GPU, in an image that carries the GPU build of the engine), or `Auto` (the GPU when the engine can use it, else the CPU). The image of Mnemarr is CPU only; for a GPU see [the embedding server](embedding-server.md). |
+| `MNEMARR__EMBEDDINGS__GPUMEMORYMB` | `1024` | The most video memory the model may take (256 to 262144). |
+| `MNEMARR__EMBEDDINGS__GPUDEVICEID` | `0` | Which GPU. |
+| `MNEMARR__EMBEDDINGS__REMOTE__URL` | none | An embedding server that computes the vectors on a GPU. When it does not answer, the CPU of this host computes. The other `REMOTE__*` settings (`KEYFILE`, `TIMEOUTSECONDS`, `RETRYAFTERSECONDS`, `ALLOWINSECUREHTTP`) are in [the embedding server](embedding-server.md#point-mnemarr-at-it). |
 | `MNEMARR__EMBEDDINGS__MAXDISTANCE` | the model's (`0.2` for the default one) | The cosine distance beyond which a passage is not an answer by meaning. Empty: the one measured for the model. Set it only to override, and measure. |
 
 ## Git sources (`Git`)
@@ -176,6 +181,35 @@ Whatever the provider, turning titles on sends the start and the end of conversa
 
 A person who holds `conversations.write` (`Admin`) changes a title, or asks the model to write it again, on the page of the note; the Machines page counts the titles and queues the first sentences for the model. What a person typed is never replaced by a model's.
 
+## Notifications (`Notifications`)
+
+Mnemarr can write to one person when a machine asks for them: a satellite whose session ended and that needs a sign-in ([ADR 0042](adr/0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **It is off by default.** The mail says the name of the machine, a sentence of Mnemarr's own and where to look (the Machines page of this Mnemarr, from `Collectors:PublicUrl`); it never holds a token, a key, a conversation or an address that a machine gave.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__NOTIFICATIONS__ENABLED` | `false` | Whether Mnemarr writes. |
+| `MNEMARR__NOTIFICATIONS__PROVIDER` | `Smtp` | The channel: `Smtp`. See [Another channel](#another-channel-for-notifications). |
+| `MNEMARR__NOTIFICATIONS__RECIPIENT` | none | The address the mails go to. Needed then, and the only one ever written to. |
+| `MNEMARR__NOTIFICATIONS__FROM` | none | The address the mails come from (often the mailbox that sends them). Needed then. |
+| `MNEMARR__NOTIFICATIONS__SMTP__HOST` | none | The mail server (`smtp.gmail.com` for a Google account). Needed then. |
+| `MNEMARR__NOTIFICATIONS__SMTP__PORT` | `587` | The submission port, upgraded with STARTTLS. Port 465 (implicit TLS) is not supported. |
+| `MNEMARR__NOTIFICATIONS__SMTP__USERNAME` | none | The sign-in of the mailbox (for Google, the whole address). Goes with `PASSWORDFILE`. |
+| `MNEMARR__NOTIFICATIONS__SMTP__PASSWORDFILE` | none | A file that holds the password (a mounted secret). For Google, an **application password** (the account needs two-step verification; create it under Security, then App passwords), not the account password. |
+| `MNEMARR__NOTIFICATIONS__SMTP__STARTTLS` | `true` | Whether the connection is made secure. Off only without a password (a catcher on a test machine): a password is never sent in clear. |
+| `MNEMARR__NOTIFICATIONS__SMTP__TIMEOUTSECONDS` | `30` | How long to wait for the server before giving a mail up (it is tried again after the pause). |
+| `MNEMARR__NOTIFICATIONS__REMINDERHOURS` | `24` | Hours between two reminders while a machine still asks. |
+| `MNEMARR__NOTIFICATIONS__MAXREMINDERS` | `3` | How many reminders follow the first mail of an episode. |
+| `MNEMARR__NOTIFICATIONS__MAXPERDAY` | `10` | The most mails tried in a day, all machines together. |
+| `MNEMARR__NOTIFICATIONS__MAXPERMACHINEPERDAY` | `3` | The most mails tried for one machine in a day, sent or not. |
+| `MNEMARR__NOTIFICATIONS__RETRYMINUTES` | `15` | The pause after a mail that could not be sent. |
+| `MNEMARR__NOTIFICATIONS__PASSSECONDS` | `60` | How often Mnemarr looks for mails that are due (10 to 3600). |
+
+One mail leaves when an episode begins, a reminder at most once a day while it lasts, nothing when it ends; the two daily caps hold whatever a machine does. Only a machine that is enrolled and not revoked is mailed. An administrator sees where mails go, and sends a test mail, on the Machines page (`POST /api/v1/notifications/test`). `/health/ready` is degraded with `notifications-secret` (the password file cannot be read) or `notifications-failing` (the last mail did not leave); it is never unhealthy.
+
+### Another channel for notifications
+
+A channel is one small interface, `INotificationSender` (a recipient, a subject and a text in; delivered or a short reason out); the name in `Notifications:Provider` selects the `INotificationProvider` that checks its settings and builds the sender. To add one (a chat message, a push, another mail service), write a class that implements `INotificationProvider` and register it with `services.AddSingleton<INotificationProvider, MyProvider>()`. [SmtpNotificationSender.cs](../src/Mnemarr.Core/Notifications/SmtpNotificationSender.cs) is the built-in example; the policy (when, how often, the caps) is not the provider's.
+
 ## Configuration as code (`Config`)
 
 `GET /api/v1/config/status` says whether a file is in charge, whether it was applied and why not (in words that give no path); the interface shows it and does not offer to apply a document while a file is in charge.
@@ -196,6 +230,7 @@ Anything that is not a person (an assistant, a collector, a companion such as Po
 | A companion that watches the status of the system | `Monitor` (`system.read` only) |
 | An assistant that reads and searches notes | `Reader` |
 | An assistant that also writes notes | `Assistant` |
+| The start-of-session hook of an assistant ([connect Claude](user/connect-claude.md)) | `Assistant` for the thread and the end of the last conversation (`Reader` gives the thread only). With the writing tools on, an `Assistant` key can also write notes: make a key for the hook of its own |
 | A collector that sends conversations (later) | `Collector` |
 
 Send the key as `X-Api-Key: <key>` or `Authorization: Bearer <key>`. It is shown **once**, when it is created, and only a hash of it is kept: if it is lost, create another and revoke the old one. A key can be limited to some sources and can expire. `/health/live` and `/health/ready` need no key.

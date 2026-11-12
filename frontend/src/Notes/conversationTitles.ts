@@ -3,8 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiSend } from 'Helpers/Api/apiGet';
 import { isApiPath, useApiQuery } from 'Helpers/Hooks/useApiQuery';
 
-/** Where the title of a conversation comes from (ADR 0028): the first sentence, a summary written by a model, or a person. */
-export type TitleSource = 'first-sentence' | 'summary' | 'person';
+/** Where the title of a conversation comes from (ADR 0028): the first sentence, a summary written by a model, a person, or the assistant the conversation comes from (ADR 0041). */
+export type TitleSource = 'first-sentence' | 'summary' | 'person' | 'sender';
 
 export interface ConversationTitleItem {
   path: string;
@@ -20,6 +20,7 @@ export interface TitleCounts {
   firstSentence: number;
   summary: number;
   person: number;
+  sender: number;
   /** Why the last call to the model failed, and when; null when none failed (a provider that is down must show). */
   lastError: string | null;
   lastErrorAt: string | null;

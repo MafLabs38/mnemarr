@@ -20,6 +20,9 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   updateTo: null,
   updateNote: null,
   watching: null,
+  attention: null,
+  consolidate: null,
+  consolidating: true,
   ...over,
 });
 
@@ -84,6 +87,40 @@ describe('Managing a machine', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Rename' }));
 
     expect(sentBody(called(fetchMock, '/api/v1/collectors/gamng-pc/rename'))).toEqual({ name: 'gaming-pc' });
+  });
+
+  it('turns the notes of the memory on or off for a machine, or puts it back to the default of its format', async () => {
+    const fetchMock = server([machine({ machine: 'web', consolidating: false })]);
+    renderWithProviders(<Machines />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage web' }));
+    const select = panelOf('web').getByLabelText('Consolidate its conversations');
+    expect(select).toHaveValue('default');
+    expect(panelOf('web').getByRole('option', { name: 'By default (no)' })).toBeInTheDocument();
+    await userEvent.selectOptions(select, 'on');
+
+    expect(sentBody(called(fetchMock, '/api/v1/collectors/web/consolidate'))).toEqual({ consolidate: true });
+  });
+
+  it('shows what was said, and sends null to go back to the default', async () => {
+    const fetchMock = server([machine({ machine: 'cli', consolidate: false, consolidating: false })]);
+    renderWithProviders(<Machines />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage cli' }));
+    const select = panelOf('cli').getByLabelText('Consolidate its conversations');
+    expect(select).toHaveValue('off');
+    await userEvent.selectOptions(select, 'default');
+
+    expect(sentBody(called(fetchMock, '/api/v1/collectors/cli/consolidate'))).toEqual({ consolidate: null });
+  });
+
+  it('offers no setting of consolidation for a name that never joined', async () => {
+    server([machine({ machine: 'old-name', kind: null, state: 'unenrolled' })]);
+    renderWithProviders(<Machines />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage old-name' }));
+
+    expect(panelOf('old-name').queryByLabelText('Consolidate its conversations')).not.toBeInTheDocument();
   });
 
   it('merges what a name sent into a machine that is enrolled, and offers no machine that is revoked or that is itself', async () => {

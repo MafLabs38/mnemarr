@@ -1,0 +1,110 @@
+using Microsoft.Extensions.Options;
+using Mnemarr.Core.Embeddings;
+
+namespace Mnemarr.Embedder;
+
+/// <summary>
+/// The two endpoints of the embedding server (ADR 0040): <c>GET /health</c> says whether the model is loaded, and <c>POST /v1/embeddings</c> turns texts into vectors for a client that
+/// holds the key. The server keeps nothing: no text, no vector, no log of either.
+/// </summary>
+public static class EmbedderEndpoints
+{
+    private const string BearerPrefix = "Bearer ";
+
+    /// <summary>The path that says whether the model is loaded; the probe of the container asks it.</summary>
+    public const string HealthPath = "health";
+
+    public static IServiceCollection AddEmbedder(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<EmbeddingOptions>().Bind(configuration.GetSection("Embeddings")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<EmbeddingOptions>, EmbedderModelValidator>();
+        services.AddOptions<EmbedderOptions>().Bind(configuration.GetSection("Embedder")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<EmbedderOptions>, EmbedderOptionsValidator>();
+        services.AddSingleton<EmbedderKey>();
+        services.AddSingleton<OnnxEmbeddingProvider>();
+        services.AddSingleton<IEmbeddingProvider>(sp => sp.GetRequiredService<OnnxEmbeddingProvider>());
+        services.AddHostedService<ModelWarmUp>();
+        return services;
+    }
+
+    public static WebApplication MapEmbedder(this WebApplication app)
+    {
+        app.MapGet("/" + HealthPath, (IEmbeddingProvider provider) => provider.Known() switch
+        {
+            { State: EmbeddingState.Ready } => Results.Ok(new { status = "ready" }),
+            { State: EmbeddingState.Failed } => Results.Json(new { status = "failed" }, statusCode: StatusCodes.Status503ServiceUnavailable),
+            _ => Results.Json(new { status = "starting" }, statusCode: StatusCodes.Status503ServiceUnavailable),
+        });
+
+        app.MapPost("/" + RemoteEmbeddingClient.Path, Embed);
+        return app;
+    }
+
+    private static async Task<IResult> Embed(HttpRequest http, EmbedderKey key, IEmbeddingProvider provider, IOptions<EmbedderOptions> options, IOptions<EmbeddingOptions> embedding, CancellationToken cancellationToken)
+    {
+        var header = http.Headers.Authorization.ToString();
+        if (!key.Accepts(header.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase) ? header[BearerPrefix.Length..].Trim() : null))
+        {
+            return Results.Unauthorized();
+        }
+
+        // The body is read only now: somebody without the key makes the server parse nothing.
+        RemoteEmbeddingRequest? body;
+        try
+        {
+            body = await http.ReadFromJsonAsync<RemoteEmbeddingRequest>(cancellationToken);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Results.Problem("The body must be a JSON request.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var limits = options.Value;
+        if (body?.Texts is not { Count: > 0 } texts || texts.Count > limits.MaxTexts || texts.Any(text => text is null || text.Length > limits.MaxTextChars))
+        {
+            return Results.Problem("The request must hold between 1 and the allowed number of texts, none longer than the allowed length.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (body.Kind is not ("passage" or "query"))
+        {
+            return Results.Problem("The kind must be 'passage' or 'query'.", statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        if (!string.Equals(body.Model, provider.ModelId, StringComparison.Ordinal))
+        {
+            // The vectors of two models are not the same space: a client that expects another model is told, not given the wrong ones.
+            return Results.Problem($"This server computes {provider.ModelId}.", statusCode: StatusCodes.Status409Conflict);
+        }
+
+        if (body.MaxTokens != embedding.Value.MaxTokens)
+        {
+            // The same model that reads another length of text is not the same vectors: the cache of Mnemarr relies on it.
+            return Results.Problem($"This server reads {embedding.Value.MaxTokens} tokens of a text.", statusCode: StatusCodes.Status409Conflict);
+        }
+
+        try
+        {
+            var vectors = await Task.Run(() => body.Kind == "query" ? [.. texts.Select(provider.EmbedQuery)] : provider.EmbedPassages(texts), cancellationToken);
+            return Results.Ok(new RemoteEmbeddingResponse(provider.ModelId, provider.Dimension, provider.Device, vectors));
+        }
+        catch (EmbeddingException)
+        {
+            // The model failed or is busy: the client computes on its own CPU. What went wrong is for this server's log, which holds no text.
+            return Results.Problem("The model could not compute the vectors.", statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+}
+
+/// <summary>
+/// Loads the model when the server starts, so that the first request does not wait for it and <c>/health</c> tells the truth. It also builds the key then, so that a key file that is
+/// wrong stops the server at start and not at the first request.
+/// </summary>
+public sealed class ModelWarmUp(IEmbeddingProvider provider, EmbedderKey key) : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        // The key is a parameter so that it is built when this service is: a key file that is wrong stops the server at start. Nothing to do with it here.
+        GC.KeepAlive(key);
+        return Task.Run(() => provider.Status(), stoppingToken);
+    }
+}

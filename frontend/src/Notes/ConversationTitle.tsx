@@ -15,6 +15,7 @@ const sourceText: Record<TitleSource, TranslationKey> = {
   'first-sentence': 'TitleFromFirstSentence',
   summary: 'TitleFromModel',
   person: 'TitleFromPerson',
+  sender: 'TitleFromSender',
 };
 
 /** Changing the title of a conversation is changing how it is called, not what was said: a person types one, or has the model write it again. */

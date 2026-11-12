@@ -7,7 +7,7 @@ using Mnemarr.Core.Accounts;
 namespace Mnemarr.Core.Embeddings;
 
 /// <summary>What the indexer says of itself, for the health page: whether it can work, why not, and how far it is.</summary>
-public sealed record EmbeddingReport(EmbeddingState State, string? Reason, EmbeddingProgress? Progress, string Model);
+public sealed record EmbeddingReport(EmbeddingState State, string? Reason, EmbeddingProgress? Progress, string Model, string Device = "cpu", EmbeddingServer? Server = null);
 
 /// <summary>
 /// The automatic part of the search by meaning (D-16, ADR 0034): in the background, the chunks that have no vector of the active model are computed, a batch at a
@@ -26,13 +26,15 @@ public sealed partial class EmbeddingIndexer : BackgroundService
     private readonly IVectorStore _store;
     private readonly EmbeddingOptions _options;
     private readonly ILogger<EmbeddingIndexer> _logger;
+    private readonly EmbeddingWakeUp _wake;
     private readonly HashSet<long> _skipped = [];
     private volatile string? _failure;
     private EmbeddingProgress? _progress;
     private long _progressAt;
 
-    public EmbeddingIndexer(IEmbeddingProvider provider, IVectorStore store, IOptions<EmbeddingOptions> options, ILogger<EmbeddingIndexer> logger)
+    public EmbeddingIndexer(IEmbeddingProvider provider, IVectorStore store, IOptions<EmbeddingOptions> options, ILogger<EmbeddingIndexer> logger, EmbeddingWakeUp? wake = null)
     {
+        _wake = wake ?? new EmbeddingWakeUp();
         _provider = provider;
         _store = store;
         _options = options.Value;
@@ -64,8 +66,8 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
 
         return _failure is { } failure
-            ? new EmbeddingReport(EmbeddingState.Failed, failure, Progress(scope), _provider.ModelId)
-            : new EmbeddingReport(EmbeddingState.Ready, null, Progress(scope), _provider.ModelId);
+            ? new EmbeddingReport(EmbeddingState.Failed, failure, Progress(scope), _provider.ModelId, _provider.Device, _provider.Server)
+            : new EmbeddingReport(EmbeddingState.Ready, null, Progress(scope), _provider.ModelId, _provider.Device, _provider.Server);
     }
 
     /// <summary>One pass: computes every chunk that is missing, a batch at a time. Public so that a test can run it. Returns how many were computed.</summary>
@@ -80,7 +82,7 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var batch = await Task.Run(() => _store.Missing(_provider.ModelId, _options.BatchSize * Lookahead, _skipped), cancellationToken);
+            var batch = await Task.Run(() => _store.Missing(_provider.ModelId, _provider.Dimension, _options.BatchSize * Lookahead, _skipped), cancellationToken);
             if (batch.Count == 0)
             {
                 break;
@@ -120,7 +122,7 @@ public sealed partial class EmbeddingIndexer : BackgroundService
             return 0;
         }
 
-        _store.Save(_provider.ModelId, _provider.Dimension, [.. chunks.Select((chunk, index) => (chunk.ChunkId, vectors[index]))]);
+        _store.Save(_provider.ModelId, _provider.Dimension, [.. chunks.Select((chunk, index) => new ComputedVector(chunk.ChunkId, chunk.Hash, vectors[index]))]);
         return chunks.Count;
     }
 
@@ -139,25 +141,33 @@ public sealed partial class EmbeddingIndexer : BackgroundService
             return;
         }
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_options.IdleSeconds));
         var passes = 0;
         do
         {
             await PassAsync(++passes % Tidyings == 0, stoppingToken);
         }
-        while (await WaitAsync(timer, stoppingToken));
+        while (await WaitAsync(stoppingToken));
     }
 
     /// <summary>
-    /// One pass of the loop: what is missing is computed, and what is gone is forgotten (after a pass that computed, and now and then). A failure of any kind is kept as the reason
+    /// One pass of the loop: what is missing is computed, and what is gone is forgotten (when the index said that chunks went, and now and then). A failure of any kind is kept as the reason
     /// and the loop goes on: it is where everything stops, and an optional feature must not take the host down. The detail is in the log; what is said to the people who ask where
     /// the search is at is not a path of the host. Public so that a test can run it.
     /// </summary>
     public async Task PassAsync(bool tidy, CancellationToken cancellationToken)
     {
+        var removed = false;
+        var purge = _wake.TakePurge();
         try
         {
-            if (await RunAsync(cancellationToken) > 0 || tidy)
+            if (purge)
+            {
+                _store.ForgetComputed();
+            }
+
+            await RunAsync(cancellationToken);
+            removed = _wake.TakeRemoved();
+            if (removed || tidy)
             {
                 await TidyAsync(cancellationToken);
             }
@@ -166,16 +176,29 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            if (purge)
+            {
+                _wake.RequestPurge();
+            }
+
+            if (removed)
+            {
+                // The vectors of the chunks that went are still there: the next pass tidies again.
+                _wake.NotifyRemoved();
+            }
+
             _failure = "The last pass failed: see the log of Mnemarr.";
             LogFailed(ex);
         }
     }
 
-    private static async Task<bool> WaitAsync(PeriodicTimer timer, CancellationToken cancellationToken)
+    // Until the index says there is work, or the safety timer ends.
+    private async Task<bool> WaitAsync(CancellationToken cancellationToken)
     {
         try
         {
-            return await timer.WaitForNextTickAsync(cancellationToken);
+            await _wake.WaitAsync(TimeSpan.FromSeconds(_options.IdleSeconds), cancellationToken);
+            return true;
         }
         catch (OperationCanceledException)
         {

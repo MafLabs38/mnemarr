@@ -21,6 +21,24 @@ This table was written on 5 November 2026 from the pages linked at the end.
 | `copilot-vscode` | `…/Code/User/workspaceStorage/<hash>/chatSessions/<uuid>.json` under `%APPDATA%` (Windows), `~/.config` (Linux), `~/Library/Application Support` (macOS); `Code - Insiders` for the Insiders build; under `~/.vscode-server/…` for WSL, SSH and dev containers. The hash is derived from the workspace folder, and a workspace that was moved leaves its history in an orphaned hash (the `workspace.json` of each folder says which workspace it is). One report mentions a newer `GitHub.copilot-chat/transcripts/*.jsonl` event stream. | A JSON document per session, rewritten as the conversation goes on. | Planned. To be tried against real files. |
 | `gemini-cli` | `~/.gemini/tmp/<project_hash>/chats/session-*.json` (the official documentation says a hash of the project root; some tools say a slug: look at the real folder). Manual checkpoints (`/chat save`) are in `~/.gemini/tmp/<project_hash>/`. | A JSON document per chat: `sessionId`, `startTime`, `lastUpdated`, `messages`. | Planned. **Untested**: no real files yet. |
 
+## A satellite that is not a command-line tool: `chat-turns` (ADR 0041)
+
+A web assistant has no file for a collector to read. A **satellite** (a small program of its own, a machine for Mnemarr) reads the conversations where it can and sends them as `chat-turns`: a neutral format that any satellite can use, not tied to one assistant. It is sent to the same endpoint as every format, `POST /api/v1/ingest/conversations`, with `format: "chat-turns"`, one JSON object per line:
+
+```json
+{ "v": 1, "meta": { "title": "A distributed AI?", "source": "web", "id": "c1a2b3c4d5e6" } }
+{ "v": 1, "role": "user", "at": "2026-11-12T08:03:12Z", "text": "..." }
+{ "v": 1, "role": "assistant", "at": null, "text": "..." }
+```
+
+- **Line 0 is always the `meta` line**: the `title` the assistant gave to the conversation (it may be empty), the `source` (`web` or `takeout`) and the `id` of the conversation at the assistant. It is **not a turn** (no heading in the note), but it **is a line**: it takes position 0, so that turn *n* is line *n + 1* and the positions of the satellite and of Mnemarr stay aligned.
+- A **turn line** has a `role` (`user` or `assistant`; any other is skipped), `at` (an ISO-8601 UTC time, or `null`) and `text` (plain text or Markdown, never HTML). `v` is the version of the line, 1: a line of another version is skipped, not a failure.
+- **Tolerance is the same as for the other formats**: a line that is not JSON, not an object or not what is expected is skipped, never a failure, and positions never move. Every turn is masked for secrets once decoded, is cut at 20 000 characters, and an empty text is skipped.
+- **The title.** A non-empty `title` of the `meta` line is the title of the note (masked, on one line, at most 200 characters), and its source is `sender`: **no model is ever asked for another** (the subscription is not spent for a title that exists), and a person can still rewrite it. A rename at the assistant after the first send is **not propagated**: the position model cannot update line 0. Without a title, the first sentence is used, as for the other formats.
+- **Names.** The `session` is `<assistant>-<id>` in lower case, `[a-z0-9-]` only (a satellite of a web assistant uses the assistant's name as the `application`); the note is filed `<machine>/<application>/<day>-<session>.md`, so the first folder is the machine, and a search can be limited to it with `topic`.
+- **Limits** are the usual ones: 500 lines or 3 MB a batch, and a line at most 1.5 MB.
+- **Not consolidated by default.** The conversations of a satellite are an idea repository, not a build log: they are kept as they were said, indexed and found by words and by meaning, and **not turned into notes of the memory** unless a person turns it on for that machine (the Manage button of the machines page, `POST /api/v1/collectors/{machine}/consolidate`).
+
 ## What a reader must do
 
 - Find its files, by operating system, in the usual place or in the folder the machine's bootstrap file names (never a path from the server).

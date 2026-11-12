@@ -121,7 +121,8 @@ public sealed partial class ConversationIngestor
         var application = known?.Application ?? Slug(batch.Application);
         var path = known?.NotePath ?? ConversationMarkdown.NotePath(batch.Machine, application, startedAt, batch.Session);
         var noteBytes = known?.NoteBytes ?? 0;
-        var title = known?.Title;
+        var (title, titleSource) = TitleOf(known, batch, masked);
+
         if (known is null)
         {
             _raw.WriteInfo(batch.Machine, batch.Session, new RawInfo(batch.Format, application, startedAt));
@@ -147,8 +148,20 @@ public sealed partial class ConversationIngestor
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
         }
 
-        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account, title, known?.TitleSource ?? TitleSources.FirstSentence, known?.Summary, 0, batch.ComputerId ?? known?.ComputerId));
+        _store.Save(new ConversationRecord(batch.Machine, batch.Session, application, batch.Format, total, startedAt, now, path, noteBytes, batch.Account, title, titleSource, known?.Summary, 0, batch.ComputerId ?? known?.ComputerId));
         return new IngestResult(total, fresh.Count);
+    }
+
+    // The title a conversation has: the one it was given, or, for a new conversation that a sender names (the first line of chat-turns), the sender's, and no model is asked for another (the
+    // subscription is not spent for a title that exists). Otherwise none yet: the first sentence is taken when the note is written.
+    private static (string? Title, string Source) TitleOf(ConversationRecord? known, IngestBatch batch, IReadOnlyList<string> masked)
+    {
+        if (known is not null)
+        {
+            return (known.Title, known.TitleSource);
+        }
+
+        return ConversationFormats.SenderTitle(batch.Format, masked.FirstOrDefault()) is { } sent ? (sent, TitleSources.Sender) : (null, TitleSources.FirstSentence);
     }
 
     /// <summary>The conversation as the server holds it, taking over one that was held under a name that is not a machine (ADR 0031) rather than making it twice.</summary>
