@@ -17,6 +17,8 @@ public sealed partial class FailoverEmbeddingProvider : IEmbeddingProvider
     private readonly ILogger<FailoverEmbeddingProvider> _logger;
     private long _retryAt;
     private volatile string _device = "cpu";
+    private volatile bool _inUse;
+    private volatile string? _problem;
 
     public FailoverEmbeddingProvider(IEmbeddingProvider local, RemoteEmbeddingClient remote, IOptions<EmbeddingOptions> options, ILogger<FailoverEmbeddingProvider> logger, TimeProvider? clock = null)
     {
@@ -25,7 +27,6 @@ public sealed partial class FailoverEmbeddingProvider : IEmbeddingProvider
         _options = options.Value;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
-        _device = _options.Remote.Wanted ? "remote" : "cpu";
     }
 
     public string ModelId => _local.ModelId;
@@ -35,6 +36,8 @@ public sealed partial class FailoverEmbeddingProvider : IEmbeddingProvider
     public double DefaultMaxDistance => _local.DefaultMaxDistance;
 
     public string Device => _device;
+
+    public EmbeddingServer? Server => _options.Remote.Wanted ? new EmbeddingServer(_inUse, _problem) : null;
 
     // The model of this host is loaded only if it is needed: while the server answers, the pod does not read 390 MB and its checksum for nothing.
     public EmbeddingStatus Status() => ServerIsDue() ? new EmbeddingStatus(EmbeddingState.Ready) : _local.Status();
@@ -54,11 +57,15 @@ public sealed partial class FailoverEmbeddingProvider : IEmbeddingProvider
             try
             {
                 var vectors = _remote.Embed(texts, kind, ModelId, Dimension);
-                _device = _remote.Device ?? "remote";
+                _device = _remote.Device ?? "unknown";
+                _inUse = true;
+                _problem = null;
                 return vectors;
             }
             catch (EmbeddingException ex)
             {
+                _inUse = false;
+                _problem = ex.Message;
                 Interlocked.Exchange(ref _retryAt, _clock.GetTimestamp() + (long)(_options.Remote.RetryAfterSeconds * (double)_clock.TimestampFrequency));
                 LogServerDown(_options.Remote.RetryAfterSeconds, ex);
             }

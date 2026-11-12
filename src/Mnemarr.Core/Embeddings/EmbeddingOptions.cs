@@ -123,7 +123,8 @@ public sealed class EmbeddingOptionsValidator : IValidateOptions<EmbeddingOption
             : ValidateOptionsResult.Fail("Embeddings:MaxDistance must be above 0 and at most 2.");
     }
 
-    private static string? RangeProblem(EmbeddingOptions options)
+    /// <summary>What is out of range among the settings of the model (the batch, the threads, the GPU), or null. Shared with the embedding server.</summary>
+    public static string? RangeProblem(EmbeddingOptions options)
     {
         if (options.GpuMemoryMb is < 256 or > 262_144 || options.GpuDeviceId is < 0 or > 64)
         {
@@ -141,6 +142,11 @@ public sealed class EmbeddingOptionsValidator : IValidateOptions<EmbeddingOption
         if (!remote.Wanted)
         {
             return null;
+        }
+
+        if (!options.Wanted)
+        {
+            return "Embeddings:Remote:Url needs Embeddings:ModelFolder as well: the model of this host is what computes when the server does not answer.";
         }
 
         if (!Uri.TryCreate(remote.Url, UriKind.Absolute, out var address) || address.Scheme is not ("http" or "https") || address.UserInfo.Length > 0)

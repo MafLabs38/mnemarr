@@ -139,6 +139,8 @@ const en = {
   MeaningCatchingUp:
     'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
   MeaningDevice: 'The passages are read on: {device}.',
+  MeaningServer: 'The passages are read on the embedding server ({device}).',
+  MeaningServerProblem: 'The embedding server is not used: {problem} The passages are read on this host meanwhile.',
   SourceRoots: 'A source is a folder inside one of: {roots}',
   SourcesError: 'Could not read the sources.',
   Adopt: 'Take over',

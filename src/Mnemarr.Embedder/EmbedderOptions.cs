@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Mnemarr.Core.Embeddings;
 
 namespace Mnemarr.Embedder;
 
@@ -35,5 +36,22 @@ public sealed class EmbedderOptionsValidator : IValidateOptions<EmbedderOptions>
         return options.MaxTexts is < 1 or > 1024 || options.MaxTextChars is < 100 or > 100_000 || options.MaxBodyBytes is < 1024 or > 64 * 1024 * 1024
             ? ValidateOptionsResult.Fail("Embedder: MaxTexts is 1 to 1024, MaxTextChars 100 to 100000 and MaxBodyBytes 1 KiB to 64 MiB.")
             : ValidateOptionsResult.Success;
+    }
+}
+
+/// <summary>
+/// The settings of the model on the server, checked at start like Mnemarr checks them: the same ranges (a batch of 0 would never end), and a model it knows. The vector library and the
+/// <c>Remote</c> section are Mnemarr's, not the server's.
+/// </summary>
+public sealed class EmbedderModelValidator : IValidateOptions<EmbeddingOptions>
+{
+    public ValidateOptionsResult Validate(string? name, EmbeddingOptions options)
+    {
+        if (!KnownModels.TryGet(options.Model, out _))
+        {
+            return ValidateOptionsResult.Fail($"Embeddings:Model (MNEMARR__EMBEDDINGS__MODEL) must be one of: {string.Join(", ", KnownModels.Identifiers)}.");
+        }
+
+        return EmbeddingOptionsValidator.RangeProblem(options) is { } range ? ValidateOptionsResult.Fail(range) : ValidateOptionsResult.Success;
     }
 }

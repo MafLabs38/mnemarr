@@ -36,8 +36,8 @@ public sealed class RemoteEmbeddingFixture : IDisposable
         })), Options());
     }
 
-    private static HttpResponseMessage Answer(string model = "m", int dimension = 3, int count = 2, string device = "cuda", float value = 0.5f) =>
-        new(HttpStatusCode.OK) { Content = JsonContent.Create(new RemoteEmbeddingResponse(model, dimension, device, [.. Enumerable.Range(0, count).Select(_ => Enumerable.Repeat(value, dimension).ToArray())])) };
+    private static HttpResponseMessage Answer(string model = "m", int dimension = 3, int count = 2, string device = "cuda") =>
+        new(HttpStatusCode.OK) { Content = JsonContent.Create(new RemoteEmbeddingResponse(model, dimension, device, [.. Enumerable.Range(0, count).Select(_ => Enumerable.Repeat(0.5f, dimension).ToArray())])) };
 
     [Fact]
     public void should_ask_the_server_with_the_key_and_give_back_the_vectors_and_where_they_were_computed()
@@ -47,18 +47,18 @@ public sealed class RemoteEmbeddingFixture : IDisposable
         var vectors = client.Embed(["a", "b"], "passage", "m", 3);
 
         vectors.Should().HaveCount(2);
-        client.Device.Should().Be("remote (cuda)");
+        client.Device.Should().Be("cuda");
         seen.Single().RequestUri.Should().Be(new Uri("https://embedder.homelab.example/v1/embeddings"));
         seen.Single().Headers.Authorization!.ToString().Should().Be("Bearer a-key-of-the-server-0123456789");
     }
 
     [Theory]
-    [InlineData("other-model", 3, 2, 0.5f)]
-    [InlineData("m", 4, 2, 0.5f)]
-    [InlineData("m", 3, 1, 0.5f)]
-    public void should_refuse_an_answer_that_is_not_what_was_asked(string model, int dimension, int count, float value)
+    [InlineData("other-model", 3, 2)]
+    [InlineData("m", 4, 2)]
+    [InlineData("m", 3, 1)]
+    public void should_refuse_an_answer_that_is_not_what_was_asked(string model, int dimension, int count)
     {
-        var client = Client(_ => Answer(model, dimension, count, value: value), out _);
+        var client = Client(_ => Answer(model, dimension, count), out _);
 
         var act = () => client.Embed(["a", "b"], "passage", "m", 3);
 
@@ -66,10 +66,13 @@ public sealed class RemoteEmbeddingFixture : IDisposable
     }
 
     [Theory]
-    [InlineData("[[1e999,0,0]]")]
-    [InlineData("[[0,0,null]]")]
-    [InlineData("[[0,0,\"x\"]]")]
-    public void should_refuse_a_vector_that_holds_something_that_is_not_a_number(string vectors)
+    [InlineData("[[1e999,0,0]]", "a number that overflows: it is not valid JSON for a float")]
+    [InlineData("[[0,0,\"x\"]]", "a string where a number is")]
+    [InlineData("[[0,0]]", "a vector that is too short")]
+    [InlineData("[[0,0,0,0]]", "a vector that is too long")]
+    [InlineData("[null]", "a vector that is null")]
+    [InlineData("null", "no vectors at all")]
+    public void should_refuse_a_vector_that_is_not_of_the_size_of_the_model_or_holds_something_that_is_not_a_number(string vectors, string because)
     {
         var client = Client(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -78,7 +81,20 @@ public sealed class RemoteEmbeddingFixture : IDisposable
 
         var act = () => client.Embed(["a"], "passage", "m", 3);
 
-        act.Should().Throw<EmbeddingException>();
+        act.Should().Throw<EmbeddingException>(because);
+    }
+
+    [Theory]
+    [InlineData("tpu", "unknown")]
+    [InlineData("Re-enter your password at example.org", "unknown")]
+    [InlineData("cpu", "cpu")]
+    public void should_keep_only_a_place_it_knows_of_what_the_server_says_it_ran_on(string device, string expected)
+    {
+        var client = Client(_ => Answer(count: 1, device: device), out _);
+
+        client.Embed(["a"], "passage", "m", 3);
+
+        client.Device.Should().Be(expected);
     }
 
     [Theory]
@@ -127,7 +143,8 @@ public sealed class RemoteEmbeddingFixture : IDisposable
         var vectors = provider.EmbedPassages(["a", "b"]);
 
         vectors.Should().HaveCount(2);
-        provider.Device.Should().Be("remote (cuda)");
+        provider.Device.Should().Be("cuda");
+        provider.Server.Should().Be(new EmbeddingServer(true, null));
         local.Loaded.Should().BeFalse("the model of the host is only read when the server cannot be");
         local.Computed.Should().Be(0);
     }
@@ -146,9 +163,14 @@ public sealed class RemoteEmbeddingFixture : IDisposable
 
         provider.EmbedPassages(["a"]).Should().HaveCount(1);
         provider.Device.Should().Be("cpu");
+        provider.Server!.InUse.Should().BeFalse();
+        provider.Server.Problem.Should().NotBeNullOrEmpty().And.NotContain("embedder.homelab.example", "the page says what happened, not the address");
         local.Computed.Should().Be(1);
         provider.EmbedPassages(["b"]);
         calls.Should().Be(1, "the server is left alone while the CPU computes");
+        _clock.Advance(TimeSpan.FromSeconds(59));
+        provider.EmbedPassages(["b"]);
+        calls.Should().Be(1, "and still for the whole of the delay");
         provider.Status().State.Should().Be(EmbeddingState.Ready);
         local.Loaded.Should().BeTrue();
 
@@ -156,9 +178,10 @@ public sealed class RemoteEmbeddingFixture : IDisposable
         _clock.Advance(TimeSpan.FromSeconds(61));
         provider.EmbedPassages(["c"]);
 
-        provider.Device.Should().Be("remote (cuda)");
+        provider.Device.Should().Be("cuda");
+        provider.Server.Should().Be(new EmbeddingServer(true, null), "the problem is forgotten once the server answers");
         calls.Should().Be(2);
-        local.Computed.Should().Be(2);
+        local.Computed.Should().Be(3);
     }
 
     [Fact]
@@ -170,6 +193,28 @@ public sealed class RemoteEmbeddingFixture : IDisposable
         provider.EmbedQuery("a question").Should().HaveCount(3);
 
         local.Computed.Should().Be(1);
+    }
+
+    [Fact]
+    public void should_go_on_with_the_host_when_the_server_answers_for_another_model()
+    {
+        var local = new FakeLocal();
+        var provider = Failover(local, Client(_ => Answer(model: "other-model", count: 1), out _));
+
+        provider.EmbedPassages(["a"]).Should().HaveCount(1);
+
+        local.Computed.Should().Be(1);
+        provider.Server!.InUse.Should().BeFalse();
+    }
+
+    [Fact]
+    public void should_say_nothing_of_a_server_when_none_is_set()
+    {
+        var options = Options();
+        options.Value.Remote.Url = null;
+        var provider = new FailoverEmbeddingProvider(new FakeLocal(), Client(_ => Answer(), out _), options, NullLogger<FailoverEmbeddingProvider>.Instance, _clock);
+
+        provider.Server.Should().BeNull();
     }
 
     private FailoverEmbeddingProvider Failover(FakeLocal local, RemoteEmbeddingClient client) =>

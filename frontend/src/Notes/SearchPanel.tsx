@@ -31,7 +31,13 @@ function MeaningState() {
           {translate('MeaningCatchingUp', { computed: data.computed, passages: data.passages })}
         </p>
       )}
-      {data.device !== 'cpu' && (
+      {data.server?.inUse && (
+        <p className={styles.meaningState}>{translate('MeaningServer', { device: data.device })}</p>
+      )}
+      {data.server?.problem && (
+        <p className={styles.meaningState}>{translate('MeaningServerProblem', { problem: data.server.problem })}</p>
+      )}
+      {!data.server && data.device !== 'cpu' && (
         <p className={styles.meaningState}>{translate('MeaningDevice', { device: data.device })}</p>
       )}
     </>

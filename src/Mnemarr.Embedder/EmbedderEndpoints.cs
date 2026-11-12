@@ -16,7 +16,8 @@ public static class EmbedderEndpoints
 
     public static IServiceCollection AddEmbedder(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddOptions<EmbeddingOptions>().Bind(configuration.GetSection("Embeddings"));
+        services.AddOptions<EmbeddingOptions>().Bind(configuration.GetSection("Embeddings")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<EmbeddingOptions>, EmbedderModelValidator>();
         services.AddOptions<EmbedderOptions>().Bind(configuration.GetSection("Embedder")).ValidateOnStart();
         services.AddSingleton<IValidateOptions<EmbedderOptions>, EmbedderOptionsValidator>();
         services.AddSingleton<EmbedderKey>();
@@ -39,12 +40,23 @@ public static class EmbedderEndpoints
         return app;
     }
 
-    private static async Task<IResult> Embed(HttpRequest http, RemoteEmbeddingRequest? body, EmbedderKey key, IEmbeddingProvider provider, IOptions<EmbedderOptions> options, CancellationToken cancellationToken)
+    private static async Task<IResult> Embed(HttpRequest http, EmbedderKey key, IEmbeddingProvider provider, IOptions<EmbedderOptions> options, CancellationToken cancellationToken)
     {
         var header = http.Headers.Authorization.ToString();
         if (!key.Accepts(header.StartsWith(BearerPrefix, StringComparison.OrdinalIgnoreCase) ? header[BearerPrefix.Length..].Trim() : null))
         {
             return Results.Unauthorized();
+        }
+
+        // The body is read only now: somebody without the key makes the server parse nothing.
+        RemoteEmbeddingRequest? body;
+        try
+        {
+            body = await http.ReadFromJsonAsync<RemoteEmbeddingRequest>(cancellationToken);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Results.Problem("The body must be a JSON request.", statusCode: StatusCodes.Status400BadRequest);
         }
 
         var limits = options.Value;

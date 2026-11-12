@@ -182,8 +182,10 @@ export interface SemanticSearchState {
   passages: number;
   computed: number;
   reason: string | null;
-  /** Where the passages were computed last: `cpu`, `cuda`, or `remote (cuda)` for an embedding server. */
+  /** Where the passages were computed last: `cpu`, `cuda` or `unknown`. */
   device: string;
+  /** The embedding server, when one is set: whether the last passages came from it, and why it was left alone when it was. */
+  server: { inUse: boolean; problem: string | null } | null;
 }
 
 const SEMANTIC_REFRESH_MS = 5000;

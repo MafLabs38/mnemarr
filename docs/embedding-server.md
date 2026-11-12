@@ -60,7 +60,7 @@ The model files must still be in the Mnemarr image (`Embeddings:ModelFolder`): t
 
 The indexing never waits for the GPU. When the server does not answer (down, unreachable, refusing the key, another model), Mnemarr computes on its own CPU, as it did before, and asks the server again after `RetryAfterSeconds`; the next batch goes back to the server when it is up. The notes page says where the passages are read (`cpu`, `cuda`, or `remote (cuda)`), and `GET /api/v1/search/status` gives it as `device`. Without a GPU at all, set nothing: it is the default.
 
-An `Auto` server on a machine whose GPU cannot be used falls back to its own CPU and says so in its log; Mnemarr sees `remote (cpu)`.
+An `Auto` server on a machine whose GPU cannot be used falls back to its own CPU and says so in its log; Mnemarr sees `cpu` as the place and the server as in use.
 
 ## Security
 

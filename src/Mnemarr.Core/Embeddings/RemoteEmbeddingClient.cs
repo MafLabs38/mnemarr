@@ -37,7 +37,7 @@ public sealed class RemoteEmbeddingClient
         _options = options.Value;
     }
 
-    /// <summary>Where the server computed the last vectors it gave (<c>cuda</c> for a GPU), or null before the first answer.</summary>
+    /// <summary>Where the server computed the last vectors it gave: <c>cpu</c>, <c>cuda</c> or <c>unknown</c>, or null before the first answer.</summary>
     public string? Device { get; private set; }
 
     public bool Wanted => _options.Remote.Wanted;
@@ -65,10 +65,16 @@ public sealed class RemoteEmbeddingClient
 
             var answer = response.Content.ReadFromJsonAsync<RemoteEmbeddingResponse>(cancel.Token).GetAwaiter().GetResult();
             var vectors = Checked(answer, texts.Count, model, dimension);
-            Device = $"remote ({answer!.Device ?? "unknown"})";
+            // Text from outside: only the two known places are kept.
+            Device = answer!.Device is "cpu" or "cuda" ? answer.Device : "unknown";
             return vectors;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or System.Text.Json.JsonException or IOException or InvalidOperationException or UriFormatException)
+        catch (OperationCanceledException ex) when (cancel.IsCancellationRequested)
+        {
+            // Only the time this client allowed itself: a cancellation from the host (it stops) goes through.
+            throw new EmbeddingException("The embedding server did not answer in time.", ex);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or IOException or InvalidOperationException or UriFormatException or NotSupportedException)
         {
             // Whatever the network does, the callers know one failure. The detail (an address, a socket error) is for the log of the caller, not for the page.
             throw new EmbeddingException("The embedding server could not be reached or did not answer as expected.", ex);
