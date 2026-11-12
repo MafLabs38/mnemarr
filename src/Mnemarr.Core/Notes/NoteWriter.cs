@@ -149,7 +149,7 @@ public sealed class NoteWriter
         InLockAsync(actor, sourceId, cancellationToken, (source, folder) =>
         {
             var full = Resolve(folder, path);
-            var current = Existing(full);
+            var current = Existing(full, anySize: true);
             if (expectedVersion is not null && !string.Equals(VersionOf(current), expectedVersion, StringComparison.OrdinalIgnoreCase))
             {
                 throw new RejectedException(Problem.Conflict, "The note changed since it was read: read it again before removing it.");
@@ -297,7 +297,9 @@ public sealed class NoteWriter
             : Encoding.UTF8.GetBytes(content);
     }
 
-    private static byte[] Existing(string full)
+    /// <param name="full">The file of the note.</param>
+    /// <param name="anySize">Whether a note above 2 MB may be read: to remove it, which changes none of its text, so that a note that the search finds can be taken out (a rename rewrites the note and stays within 2 MB).</param>
+    private static byte[] Existing(string full, bool anySize = false)
     {
         if (!File.Exists(full))
         {
@@ -305,7 +307,7 @@ public sealed class NoteWriter
         }
 
         // The size is looked at before the file is read: a note of tens of megabytes is refused without being loaded.
-        return new FileInfo(full).Length > MarkdownFileScanner.MaxFileBytes
+        return !anySize && new FileInfo(full).Length > MarkdownFileScanner.MaxFileBytes
             ? throw new RejectedException(Problem.Conflict, $"The note is longer than {MarkdownFileScanner.MaxFileBytes / (1024 * 1024)} MB: it is read, but it is not changed from here. Change the file itself.")
             : File.ReadAllBytes(full);
     }

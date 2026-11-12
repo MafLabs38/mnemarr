@@ -23,7 +23,7 @@ A conversation is one note, and it grows with every exchange. Two limits made a 
    2 MB, the size that can be written, so that Mnemarr never writes a note it then refuses to read.
 3. **The interface shows pages, an assistant reads the whole.** A note longer than a page (512 KB, drawn in about a second) comes to the interface in pages cut at line ends (`page` of `pages`, `?page=`),
    with the version of the whole note. A page is never a note: the editor is off for it (reason `note-too-long`, unless the source is read-only, which is the first reason), and **the server refuses to
-   replace such a note whole** (409), because a client that sends one page back with the version of the whole would cut the rest off; appending stays possible up to the 2 MB that the editor writes (above it, a note is read and searched but not changed from here: its file is). The MCP `read_note` reads the whole in windows,
+   replace such a note whole** (409), because a client that sends one page back with the version of the whole would cut the rest off; appending stays possible up to the 2 MB that the editor writes (above it, a note is read and searched but not changed from here, except that it can be removed: its file is the way to change or move it). The MCP `read_note` reads the whole in windows,
    the end included (`tail`), and draws nothing for it: that is how an assistant reads a conversation.
 4. **A search stays within some topics, leaves topics and sources out, and holds each note to its share.** `topic` may be repeated (any one of them), `notTopic` and `notSource` leave out, and `perNote` (3 by default,
    1 to 50) is how many passages one note may give. The share is applied inside the keyword query (every matching passage is ranked and held to its share before the best are completed) and again on the merged list, so that the other notes fill the answer. MCP `search`
@@ -32,7 +32,7 @@ A conversation is one note, and it grows with every exchange. Two limits made a 
 ## Consequences
 
 - A pass over a note of tens of megabytes reads it whole (bytes, text, passages): memory is bounded by the setting and by one note at a time (the lock of the source), not by the vault. Measured on a 28 MB note:
-  7 seconds, 665 MB of peak memory in the container, about 20 times the size of the note: that is why the ceiling is 64 MB, and why at most two reads of a note above 2 MB run at once (a third waits five seconds and is
+  7 seconds, 665 MB of peak memory in the container, about 20 times the size of the note: that is why the ceiling is 64 MB, and why at most two reads of a note above 2 MB run at once (a third waits one second, which holds a thread of the host that long at most, and is
   told to try again, with `Retry-After`). A page of a note is read from the whole file each time (no cache yet).
 - A very long conversation is still one note, so an append re-reads it; the cost per pass grows with the conversation (the debounce noted in ADR 0039 remains the answer if it is measured to matter).
 - The default share changes the answer of a search: a note gives at most three passages. `perNote=50` gives the old behaviour.

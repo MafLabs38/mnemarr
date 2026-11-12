@@ -216,6 +216,10 @@ public sealed class NoteWriterFixture : IDisposable
 
         (await replace.Should().ThrowAsync<RejectedException>()).Which.Should().Match<RejectedException>(refusal => refusal.Problem == Problem.Conflict && refusal.Message.Contains("not changed from here", StringComparison.Ordinal));
         (await append.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        var rename = () => _writer.RenameAsync(Alice, source.Id, "big.md", "moved/big.md", Token);
+        (await rename.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict);
+        await _writer.DeleteAsync(Alice, source.Id, "big.md", expectedVersion: null, Token);
+        File.Exists(Path.Combine(source.Path, "big.md")).Should().BeFalse("a note that the search finds can be taken out, whatever its size");
     }
 
     [Fact]
