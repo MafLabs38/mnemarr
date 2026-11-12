@@ -502,7 +502,7 @@ test.describe('smoke @smoke', () => {
     await page.reload();
     const row = page.getByRole('row', { name: new RegExp(machine) });
     await expect(row).toContainText('Online');
-    await expect(row).toContainText('Intermittent (a workstation)');
+    await expect(row).toContainText('Intermittent');
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
     await page.goto('/notes');

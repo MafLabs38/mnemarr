@@ -127,7 +127,7 @@ describe('Machines', () => {
     ).toBeInTheDocument();
     expect(within(rowOf(screen.getByRole('rowheader', { name: 'fresh' }))).getByText('Never')).toBeInTheDocument();
     expect(
-      within(rowOf(screen.getByRole('rowheader', { name: 'server-1' }))).getByText('Always on (a server)'),
+      within(rowOf(screen.getByRole('rowheader', { name: 'server-1' }))).getByText('Always on'),
     ).toBeInTheDocument();
   });
 
