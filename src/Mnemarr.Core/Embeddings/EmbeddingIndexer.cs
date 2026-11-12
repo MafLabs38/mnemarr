@@ -156,10 +156,12 @@ public sealed partial class EmbeddingIndexer : BackgroundService
     /// </summary>
     public async Task PassAsync(bool tidy, CancellationToken cancellationToken)
     {
+        var removed = false;
         try
         {
             await RunAsync(cancellationToken);
-            if (_wake.TakeRemoved() || tidy)
+            removed = _wake.TakeRemoved();
+            if (removed || tidy)
             {
                 await TidyAsync(cancellationToken);
             }
@@ -168,6 +170,12 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            if (removed)
+            {
+                // The vectors of the chunks that went are still there: the next pass tidies again.
+                _wake.NotifyRemoved();
+            }
+
             _failure = "The last pass failed: see the log of Mnemarr.";
             LogFailed(ex);
         }
