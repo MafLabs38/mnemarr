@@ -65,7 +65,30 @@ public sealed class SqliteVectorStore : IVectorStore
         }
     }
 
-    public IReadOnlyList<ChunkToEmbed> Missing(string model, int limit, IReadOnlySet<long> skipped)
+    public IReadOnlyList<ChunkToEmbed> Missing(string model, int dimension, int limit, IReadOnlySet<long> skipped)
+    {
+        // A chunk whose text was computed before is given its vector here, and the next ones are looked at: the caller only gets what the model has to read. The chunks that were
+        // given a vector are left out of the next look, so that the loop always moves on.
+        var left = new HashSet<long>(skipped);
+        while (true)
+        {
+            var candidates = Candidates(model, limit, left);
+            if (candidates.Count == 0)
+            {
+                return candidates;
+            }
+
+            var (needed, given) = GiveKnownVectors(model, dimension, candidates);
+            if (needed.Count > 0)
+            {
+                return needed;
+            }
+
+            left.UnionWith(given);
+        }
+    }
+
+    private List<ChunkToEmbed> Candidates(string model, int limit, IReadOnlySet<long> skipped)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
@@ -94,24 +117,85 @@ public sealed class SqliteVectorStore : IVectorStore
         return chunks;
     }
 
-    public void Save(string model, int dimension, IReadOnlyList<(long ChunkId, float[] Vector)> items)
+    // The chunks of the list whose text has a vector already (kept under the hash of the text, ADR 0039) are given it; the others are returned, and so are the ids that were given.
+    // Of several chunks that share a text, the model is asked for one: the others are given its vector at the next look.
+    private (List<ChunkToEmbed> Needed, List<long> Given) GiveKnownVectors(string model, int dimension, List<ChunkToEmbed> candidates)
+    {
+        var known = KnownVectors(model, dimension, candidates);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var needed = candidates.Where(chunk => !known.ContainsKey(chunk.Hash) && seen.Add(chunk.Hash)).ToList();
+        var reused = candidates.Where(chunk => known.ContainsKey(chunk.Hash)).ToList();
+        if (reused.Count == 0)
+        {
+            return (needed, []);
+        }
+
+        using var connection = OpenWithVectors();
+        var table = TableOf(model, dimension);
+        Create(connection, table, dimension);
+        using var transaction = connection.BeginTransaction();
+        foreach (var chunk in reused)
+        {
+            KeepVector(connection, transaction, table, model, chunk.ChunkId, known[chunk.Hash]);
+        }
+
+        Execute(connection, transaction, "UPDATE embedding_cache SET used_at = $at WHERE model = $model AND text_hash IN (SELECT value FROM json_each($hashes))",
+            ("$at", StorageText.Format(_clock.GetUtcNow())), (ModelParameter, model), ("$hashes", System.Text.Json.JsonSerializer.Serialize(known.Keys)));
+        transaction.Commit();
+        return (needed, [.. reused.Select(chunk => chunk.ChunkId)]);
+    }
+
+    private Dictionary<string, byte[]> KnownVectors(string model, int dimension, List<ChunkToEmbed> candidates)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT text_hash, vector FROM embedding_cache WHERE model = $model AND text_hash IN (SELECT value FROM json_each($hashes))";
+        command.Parameters.AddWithValue(ModelParameter, model);
+        command.Parameters.AddWithValue("$hashes", System.Text.Json.JsonSerializer.Serialize(candidates.Select(chunk => chunk.Hash).Distinct()));
+        using var reader = command.ExecuteReader();
+        var known = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        while (reader.Read())
+        {
+            // A vector of another size is not this model's: it is computed again.
+            if (reader.GetFieldValue<byte[]>(1) is { } vector && vector.Length == dimension * sizeof(float))
+            {
+                known[reader.GetString(0)] = vector;
+            }
+        }
+
+        return known;
+    }
+
+    public void Save(string model, int dimension, IReadOnlyList<ComputedVector> items)
     {
         using var connection = OpenWithVectors();
         var table = TableOf(model, dimension);
         Create(connection, table, dimension);
         using var transaction = connection.BeginTransaction();
-        foreach (var (chunkId, vector) in items)
+        var at = StorageText.Format(_clock.GetUtcNow());
+        foreach (var (chunkId, hash, vector) in items)
         {
-            if (!MarkEmbedded(connection, transaction, chunkId, model))
-            {
-                continue;
-            }
+            var bytes = MemoryMarshal.AsBytes(vector.AsSpan()).ToArray();
+            KeepVector(connection, transaction, table, model, chunkId, bytes);
 
-            Execute(connection, transaction, $"DELETE FROM {table} WHERE rowid = $id", ("$id", chunkId));
-            Execute(connection, transaction, $"INSERT INTO {table} (rowid, embedding) VALUES ($id, $vector)", ("$id", chunkId), ("$vector", MemoryMarshal.AsBytes(vector.AsSpan()).ToArray()));
+            // Kept even when the chunk was replaced meanwhile: its text is most likely back in a chunk of the new note, and the model has read it.
+            Execute(connection, transaction, "INSERT OR REPLACE INTO embedding_cache (model, text_hash, vector, used_at) VALUES ($model, $hash, $vector, $at)",
+                (ModelParameter, model), ("$hash", hash), ("$vector", bytes), ("$at", at));
         }
 
         transaction.Commit();
+    }
+
+    // The vector of a chunk, in the table of the model and in the bookkeeping, unless the chunk was replaced meanwhile.
+    private static void KeepVector(SqliteConnection connection, SqliteTransaction transaction, string table, string model, long chunkId, byte[] vector)
+    {
+        if (!MarkEmbedded(connection, transaction, chunkId, model))
+        {
+            return;
+        }
+
+        Execute(connection, transaction, $"DELETE FROM {table} WHERE rowid = $id", ("$id", chunkId));
+        Execute(connection, transaction, $"INSERT INTO {table} (rowid, embedding) VALUES ($id, $vector)", ("$id", chunkId), ("$vector", vector));
     }
 
     public IReadOnlyList<VectorMatch> Nearest(string model, int dimension, float[] query, int k)
@@ -167,6 +251,18 @@ public sealed class SqliteVectorStore : IVectorStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
+        var restricted = scope is { } given && (given.Sources is not null || given.ConversationsHidden) ? given : null;
+        if (restricted is null)
+        {
+            // Everything, for the probes of the host and for a caller who may see it all: two counts that read an index each, not a join over every chunk. It relies on the cascade that
+            // removes the vectors of a chunk with the chunk; a vector that is left until the next tidy would be counted for a moment.
+            command.CommandText = "SELECT (SELECT COUNT(*) FROM chunks), (SELECT COUNT(*) FROM chunk_embeddings WHERE model = $model)";
+            command.Parameters.AddWithValue(ModelParameter, model);
+            using var all = command.ExecuteReader();
+            all.Read();
+            return new EmbeddingProgress(all.GetInt32(0), all.GetInt32(1));
+        }
+
         // Counted among the chunks of the sources the caller may see: the totals of the whole database tell a caller how much the others are doing.
         command.CommandText = """
             SELECT COUNT(*), COUNT(e.chunk_id)
@@ -177,8 +273,8 @@ public sealed class SqliteVectorStore : IVectorStore
             WHERE ($sources IS NULL OR s.id IN (SELECT value FROM json_each($sources))) AND ($hideConversations = 0 OR s.kind <> $conversationsKind)
             """;
         command.Parameters.AddWithValue(ModelParameter, model);
-        command.Parameters.AddWithValue("$sources", scope?.Sources is { } allowed ? System.Text.Json.JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
-        command.Parameters.AddWithValue("$hideConversations", scope?.ConversationsHidden == true ? 1 : 0);
+        command.Parameters.AddWithValue("$sources", restricted.Sources is { } allowed ? System.Text.Json.JsonSerializer.Serialize(allowed.Select(id => id.ToString())) : DBNull.Value);
+        command.Parameters.AddWithValue("$hideConversations", restricted.ConversationsHidden ? 1 : 0);
         command.Parameters.AddWithValue("$conversationsKind", nameof(Mnemarr.Core.Sources.SourceKind.Conversations));
         using var reader = command.ExecuteReader();
         reader.Read();
@@ -194,6 +290,9 @@ public sealed class SqliteVectorStore : IVectorStore
             RemoveStaleRows(connection, active, model);
         }
 
+        // The vectors that were computed and have not been used for a while are forgotten (ADR 0039).
+        Execute(connection, null, "DELETE FROM embedding_cache WHERE used_at < $before", ("$before", StorageText.Format(_clock.GetUtcNow().AddDays(-_options.CacheDays))));
+
         // Tables of other models go once no chunk has a vector of another model: until then they still answer for the chunks not yet computed again.
         using var others = connection.CreateCommand();
         others.CommandText = "SELECT EXISTS (SELECT 1 FROM chunk_embeddings WHERE model <> $model)";
@@ -204,6 +303,8 @@ public sealed class SqliteVectorStore : IVectorStore
             {
                 Execute(connection, null, $"DROP TABLE {name}");
             }
+
+            Execute(connection, null, "DELETE FROM embedding_cache WHERE model <> $model", (ModelParameter, model));
         }
     }
 

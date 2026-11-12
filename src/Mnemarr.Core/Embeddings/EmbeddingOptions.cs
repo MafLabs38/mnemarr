@@ -26,8 +26,14 @@ public sealed class EmbeddingOptions
     /// <summary>How many passages are computed together.</summary>
     public int BatchSize { get; set; } = 8;
 
-    /// <summary>How long the indexer waits, in seconds, when there is nothing to compute, before it looks again.</summary>
-    public int IdleSeconds { get; set; } = 15;
+    /// <summary>
+    /// How long the indexer waits, in seconds, when there is nothing to compute, before it looks again. It does not poll for the work: the index tells it when a chunk is new
+    /// (ADR 0039), and this is the safety net for a change it was not told of.
+    /// </summary>
+    public int IdleSeconds { get; set; } = 300;
+
+    /// <summary>How many days a computed vector is kept after it was last used, so that a passage that comes back (a note moved, renamed, indexed again) is not computed again.</summary>
+    public int CacheDays { get; set; } = 30;
 
     /// <summary>
     /// The cosine distance beyond which a passage is not a match by meaning (0 is the same, 2 is opposite): the nearest passages of a question that nothing answers are
@@ -53,9 +59,9 @@ public sealed class EmbeddingOptionsValidator : IValidateOptions<EmbeddingOption
             return ValidateOptionsResult.Fail("Embeddings:ExtensionPath (MNEMARR__EMBEDDINGS__EXTENSIONPATH) is required when a model folder is given: it is the sqlite-vec library.");
         }
 
-        if (options.Threads is < 1 or > 64 || options.BatchSize is < 1 or > 64 || options.MaxTokens is < 16 or > 8192 || options.IdleSeconds is < 1 or > 3600)
+        if (options.Threads is < 1 or > 64 || options.BatchSize is < 1 or > 64 || options.MaxTokens is < 16 or > 8192 || options.IdleSeconds is < 1 or > 3600 || options.CacheDays is < 1 or > 3650)
         {
-            return ValidateOptionsResult.Fail("Embeddings: Threads is 1 to 64, BatchSize 1 to 64, MaxTokens 16 to 8192 and IdleSeconds 1 to 3600.");
+            return ValidateOptionsResult.Fail("Embeddings: Threads is 1 to 64, BatchSize 1 to 64, MaxTokens 16 to 8192, IdleSeconds 1 to 3600 and CacheDays 1 to 3650.");
         }
 
         return options.MaxDistance is null or (> 0 and <= 2)

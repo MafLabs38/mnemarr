@@ -42,3 +42,4 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0036](0036-the-consolidation-reads-new-turns-and-writes-notes-of-the-memory-vault-as-an-account-of-its-own.md) | The consolidation reads the new turns and writes notes of the memory vault as an account of its own, through the runner | D-56 |
 | [0037](0037-an-assistant-is-told-what-the-memory-knows-when-it-opens-a-session.md) | An assistant is told what the memory knows when it opens a session | D-57 |
 | [0038](0038-a-new-session-resumes-the-thread-of-the-last-one.md) | A new session resumes the thread of the last one: a rolling digest that fades with age, and the end of the last conversation | D-59 |
+| [0039](0039-a-passage-is-embedded-once.md) | A passage is embedded once: the index keeps what did not change, and the vectors are kept by the hash of their text | D-60 |
