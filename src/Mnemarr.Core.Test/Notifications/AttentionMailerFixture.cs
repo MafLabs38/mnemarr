@@ -51,7 +51,7 @@ public sealed class AttentionMailerFixture : IDisposable
 
     private void Enrol(string name) => _machines.Enrol(new Machine(name, MachineKind.AlwaysOn, Guid.NewGuid(), _clock.GetUtcNow().AddDays(-1), null, null, 0, null, null));
 
-    private void Ask(string name, string code = "needs-login", string? url = "https://geminarr.homelab.example/connection") =>
+    private void Ask(string name, string code = "needs-login", string? url = "https://satellite.homelab.example/connection") =>
         _machines.Seen(name, _clock.GetUtcNow(), new Heartbeat("0.3.0", 0, null, Attention: new HeartbeatAttention(code, url)));
 
     private void Calm(string name) => _machines.Seen(name, _clock.GetUtcNow(), new Heartbeat("0.3.0", 0, null));
@@ -71,14 +71,14 @@ public sealed class AttentionMailerFixture : IDisposable
     [Fact]
     public async Task should_write_to_the_address_that_is_set_in_mnemarrs_words_with_the_address_of_the_machine_and_nothing_else()
     {
-        Ask("gemini", "needs-login", "https://geminarr.homelab.example/connection");
+        Ask("gemini", "needs-login", "https://satellite.homelab.example/connection");
 
         await Mailer().RunOnceAsync(Token);
 
         var mail = _sender.Sent.Single();
         mail.Recipient.Should().Be("me@homelab.example");
         mail.Subject.Should().Be("Mnemarr: gemini needs you");
-        mail.Body.Should().Contain("gemini needs you to sign in again.").And.Contain("https://geminarr.homelab.example/connection");
+        mail.Body.Should().Contain("gemini needs you to sign in again.").And.Contain("https://satellite.homelab.example/connection");
     }
 
     [Fact]
@@ -233,6 +233,54 @@ public sealed class AttentionMailerFixture : IDisposable
         await Mailer().RunOnceAsync(Token);
 
         _sender.Sent.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task should_send_exactly_one_mail_and_no_reminder_when_none_is_set()
+    {
+        _settings.MaxReminders = 0;
+        Ask("gemini");
+
+        await Mailer().RunOnceAsync(Token);
+        _clock.Advance(TimeSpan.FromDays(3));
+        await Mailer().RunOnceAsync(Token);
+
+        _sender.Sent.Should().ContainSingle();
+        _sender.Sent[0].Subject.Should().NotContain("reminder");
+    }
+
+    [Fact]
+    public async Task should_count_a_sender_that_throws_as_a_failed_attempt_so_that_the_pause_and_the_caps_hold()
+    {
+        var mailer = new AttentionMailer(_machines, new ThrowingSender(), _log, Options.Create(_settings), _clock);
+        Ask("gemini");
+
+        (await mailer.RunOnceAsync(Token)).Should().Be(0);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        await mailer.RunOnceAsync(Token);
+
+        _log.CountSince(_clock.GetUtcNow().AddDays(-1), "gemini").Should().Be(1, "one attempt, then the pause");
+        _log.Last("gemini")!.Delivered.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task should_not_make_a_new_episode_wait_for_a_failure_of_an_earlier_one()
+    {
+        _sender.FailWith = "The mail server could not be reached.";
+        Ask("gemini");
+        await Mailer().RunOnceAsync(Token);
+        Calm("gemini");
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        _sender.FailWith = null;
+
+        Ask("gemini");
+
+        (await Mailer().RunOnceAsync(Token)).Should().Be(1, "the pause after a failure belongs to the episode that failed");
+    }
+
+    private sealed class ThrowingSender : INotificationSender
+    {
+        public Task<NotificationResult> SendAsync(Notification notification, CancellationToken cancellationToken) => throw new InvalidDataException("a sender that breaks its promise");
     }
 
     [Fact]

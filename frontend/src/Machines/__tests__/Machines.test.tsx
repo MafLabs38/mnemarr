@@ -158,7 +158,7 @@ describe('Machines', () => {
         attention: {
           code: 'needs-login',
           sentence: 'needs you to sign in again.',
-          url: 'https://geminarr.homelab.example/connection',
+          url: 'https://satellite.homelab.example/connection',
           since: '2026-11-12T08:00:00Z',
           mails: 0,
           mailProblem: null,
@@ -182,8 +182,8 @@ describe('Machines', () => {
 
     const row = rowOf(await screen.findByRole('rowheader', { name: 'gemini' }));
     expect(within(row).getByText(/gemini needs you to sign in again\./)).toBeInTheDocument();
-    const link = within(row).getByRole('link', { name: 'Open geminarr.homelab.example' });
-    expect(link).toHaveAttribute('href', 'https://geminarr.homelab.example/connection');
+    const link = within(row).getByRole('link', { name: 'Open satellite.homelab.example' });
+    expect(link).toHaveAttribute('href', 'https://satellite.homelab.example/connection');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer nofollow');
     const other = rowOf(screen.getByRole('rowheader', { name: 'no-link' }));
     expect(within(other).getByText(/no-link can no longer read what it comes for\./)).toBeInTheDocument();

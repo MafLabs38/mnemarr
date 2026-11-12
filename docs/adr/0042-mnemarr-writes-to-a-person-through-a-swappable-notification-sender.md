@@ -12,7 +12,7 @@ adapter is enough; but Mnemarr is a generic product and the channel must be repl
 
 ## Decision
 
-1. **A small notifications feature, not a Geminarr one.** `INotificationSender` takes a `Notification` (recipient, subject, text) and returns a result, delivered or a short reason; it never throws for a delivery that
+1. **A small notifications feature, not one for a single satellite.** `INotificationSender` takes a `Notification` (recipient, subject, text) and returns a result, delivered or a short reason; it never throws for a delivery that
    fails. The channel is chosen by name, `Notifications:Provider`, the way the title providers are (ADR 0028): an `INotificationProvider` says what settings it needs, checks them, and builds the sender. **One
    provider comes first, `Smtp`**, built on the framework's own client (no dependency added); another channel is one class and one registration line, documented in `docs/configuration.md`.
 2. **Off by default, an explicit recipient.** Nothing is ever sent to an address a machine, a note or a conversation gave: only to `Notifications:Recipient`. The password is a file, read at each send (so it can be

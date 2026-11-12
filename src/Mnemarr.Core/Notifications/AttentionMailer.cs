@@ -42,7 +42,7 @@ public sealed class AttentionMailer
         var sent = 0;
         foreach (var machine in _machines.List().Where(machine => machine.AttentionCode is not null && machine.RevokedAt is null))
         {
-            if (!IsDue(machine, options, now) || !MayTry(machine.Name, options, now))
+            if (!IsDue(machine, options, now) || !MayTry(machine.Name, machine.AttentionSince ?? DateTimeOffset.MinValue, options, now))
             {
                 continue;
             }
@@ -52,7 +52,7 @@ public sealed class AttentionMailer
                 break;
             }
 
-            var result = await _sender.SendAsync(Compose(machine, options), cancellationToken);
+            var result = await SendAsync(Compose(machine, options), cancellationToken);
             _log.Record(machine.Name, now, result.Delivered, result.Reason);
             if (result.Delivered)
             {
@@ -92,9 +92,22 @@ public sealed class AttentionMailer
             return NotificationResult.Failed("The daily limit of mails is reached.");
         }
 
-        var result = await _sender.SendAsync(new Notification(options.Recipient!, "Mnemarr: a test mail", "This mail was sent by Mnemarr to check that the notifications work. Nothing else is needed."), cancellationToken);
+        var result = await SendAsync(new Notification(options.Recipient!, "Mnemarr: a test mail", "This mail was sent by Mnemarr to check that the notifications work. Nothing else is needed."), cancellationToken);
         _log.Record(null, now, result.Delivered, result.Reason);
         return result;
+    }
+
+    /// <summary>A sender is asked not to throw, but one that does is a failed attempt like any other: it is recorded, so that the caps and the pause hold.</summary>
+    private async Task<NotificationResult> SendAsync(Notification notification, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _sender.SendAsync(notification, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return NotificationResult.Failed("The mail could not be sent.");
+        }
     }
 
     private static bool IsDue(Machine machine, NotificationOptions options, DateTimeOffset now)
@@ -108,15 +121,16 @@ public sealed class AttentionMailer
     }
 
     /// <summary>The caps of one machine and the pause after a mail that failed: a bounded retry, never a tight loop.</summary>
-    private bool MayTry(string machine, NotificationOptions options, DateTimeOffset now)
+    private bool MayTry(string machine, DateTimeOffset episodeStart, NotificationOptions options, DateTimeOffset now)
     {
         if (_log.CountSince(now - Day, machine) >= options.MaxPerMachinePerDay)
         {
             return false;
         }
 
+        // Only a failure of this episode makes it wait: one from an earlier episode is not the reason for a pause now.
         var last = _log.Last(machine);
-        return last is null || last.Delivered || now - last.At >= TimeSpan.FromMinutes(options.RetryMinutes);
+        return last is null || last.Delivered || last.At < episodeStart || now - last.At >= TimeSpan.FromMinutes(options.RetryMinutes);
     }
 
     private static Notification Compose(Machine machine, NotificationOptions options)

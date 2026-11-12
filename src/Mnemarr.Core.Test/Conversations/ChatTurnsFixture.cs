@@ -88,7 +88,7 @@ public sealed class ChatTurnsFixture : IDisposable
         var turns = ConversationFormats.Turns(ConversationFormats.ChatTurns, [secret, TurnLine("assistant", null, new string('x', ConversationFormats.MaxTurnChars + 500))]);
 
         turns[0].Text.Should().NotContain("ghp_");
-        turns[1].Text.Length.Should().BeLessThan(ConversationFormats.MaxTurnChars + 20);
+        turns[1].Text.Should().Be(new string('x', ConversationFormats.MaxTurnChars) + "\n… [cut]");
     }
 
     [Theory]
@@ -177,7 +177,7 @@ public sealed class ChatTurnsFixture : IDisposable
         (await _ingestor.IngestAsync(Batch(0, Sample), Token)).Should().Be(new IngestResult(3, 0));
         (await _ingestor.IngestAsync(Batch(2, Sample[2], TurnLine("user", null, "one more")), Token)).Should().Be(new IngestResult(4, 1));
         (await _ingestor.IngestAsync(Batch(9, TurnLine("user", null, "too far")), Token)).Should().Be(new IngestResult(4, 0), "a hole is not filled: the sender is told where to resume");
-        _ = _ingestor.Positions("gemini").Should().ContainSingle().Which.Lines.Should().Be(4);
+        _ingestor.Positions("gemini").Should().ContainSingle().Which.Lines.Should().Be(4);
     }
 
     [Fact]

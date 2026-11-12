@@ -250,9 +250,9 @@ export function useEraseMachine() {
 
 const isNotificationQuery = (query: { queryKey: readonly unknown[] }) => isApiPath(query, '/notifications');
 
-/** Only an administrator sees the notifications: the server refuses everybody else. */
-export function useNotifications(enabled: boolean) {
-  return useApiQuery<NotificationStatus>('/notifications', { enabled });
+/** Only an administrator sees the notifications (the page asks only if they may manage the machines): the server refuses everybody else. */
+export function useNotifications() {
+  return useApiQuery<NotificationStatus>('/notifications');
 }
 
 /** Sends a mail to the address that is set, to see that the settings work. */

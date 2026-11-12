@@ -196,12 +196,13 @@ Mnemarr can write to one person when a machine asks for them: a satellite whose 
 | `MNEMARR__NOTIFICATIONS__SMTP__USERNAME` | none | The sign-in of the mailbox (for Google, the whole address). Goes with `PASSWORDFILE`. |
 | `MNEMARR__NOTIFICATIONS__SMTP__PASSWORDFILE` | none | A file that holds the password (a mounted secret). For Google, an **application password** (the account needs two-step verification; create it under Security, then App passwords), not the account password. |
 | `MNEMARR__NOTIFICATIONS__SMTP__STARTTLS` | `true` | Whether the connection is made secure. Off only without a password (a catcher on a test machine): a password is never sent in clear. |
-| `MNEMARR__NOTIFICATIONS__SMTP__TIMEOUTSECONDS` | `30` | How long to wait for the server. |
+| `MNEMARR__NOTIFICATIONS__SMTP__TIMEOUTSECONDS` | `30` | How long to wait for the server before giving a mail up (it is tried again after the pause). |
 | `MNEMARR__NOTIFICATIONS__REMINDERHOURS` | `24` | Hours between two reminders while a machine still asks. |
 | `MNEMARR__NOTIFICATIONS__MAXREMINDERS` | `3` | How many reminders follow the first mail of an episode. |
 | `MNEMARR__NOTIFICATIONS__MAXPERDAY` | `10` | The most mails tried in a day, all machines together. |
 | `MNEMARR__NOTIFICATIONS__MAXPERMACHINEPERDAY` | `3` | The most mails tried for one machine in a day, sent or not. |
 | `MNEMARR__NOTIFICATIONS__RETRYMINUTES` | `15` | The pause after a mail that could not be sent. |
+| `MNEMARR__NOTIFICATIONS__PASSSECONDS` | `60` | How often Mnemarr looks for mails that are due (10 to 3600). |
 
 One mail leaves when an episode begins, a reminder at most once a day while it lasts, nothing when it ends; the two daily caps hold whatever a machine does. Only a machine that is enrolled and not revoked is mailed. An administrator sees where mails go, and sends a test mail, on the Machines page (`POST /api/v1/notifications/test`). `/health/ready` is degraded with `notifications-secret` (the password file cannot be read) or `notifications-failing` (the last mail did not leave); it is never unhealthy.
 

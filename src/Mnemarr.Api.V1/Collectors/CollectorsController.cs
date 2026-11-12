@@ -85,9 +85,9 @@ public sealed class CollectorsController : ControllerBase
     [Authorize(Policy = Permissions.ConversationsRead)]
     public IReadOnlyList<MachineResource> Machines() => [.. _collectors.Machines().Select(status => MachineResource.From(status, ProgramDiffers(status), _updates.NewerThan(status.Version, status.CanUpdate, status.Platform), MailProblem(status)))];
 
-    /// <summary>Why the last mail for a machine that asks for attention did not leave; null when it did, or when none was tried.</summary>
+    /// <summary>Why the last mail for the episode of a machine that asks for attention did not leave; null when it did, or when none was tried.</summary>
     private string? MailProblem(MachineStatus status) =>
-        status.AttentionCode is not null && _mails.Last(status.Name) is { Delivered: false } failed ? failed.Reason : null;
+        status.AttentionCode is not null && _mails.Last(status.Name) is { Delivered: false } failed && failed.At >= (status.AttentionSince ?? DateTimeOffset.MinValue) ? failed.Reason : null;
 
     private bool ProgramDiffers(MachineStatus status) =>
         status.Program is { } running && status.Platform is { } platform && _downloads.Find(platform) is { } carried && !string.Equals(carried.Sha256, running, StringComparison.Ordinal);

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Mail;
 using System.Net.Sockets;
 using System.Text;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -124,6 +125,27 @@ public sealed class SmtpNotificationFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_let_go_of_a_server_that_accepts_the_connection_and_says_nothing()
+    {
+        var silent = new TcpListener(IPAddress.Loopback, 0);
+        silent.Start();
+        try
+        {
+            var options = Settings(((IPEndPoint)silent.LocalEndpoint).Port, "127.0.0.1");
+            options.Smtp.StartTls = false;
+            options.Smtp.TimeoutSeconds = 1;
+
+            var result = await new SmtpNotificationSender(Options.Create(options)).SendAsync(new Notification("me@homelab.example", "s", "b"), Token);
+
+            result.Should().Be(NotificationResult.Failed("The mail server did not answer in time."));
+        }
+        finally
+        {
+            silent.Stop();
+        }
+    }
+
+    [Fact]
     public async Task should_say_that_the_file_of_the_password_cannot_be_read()
     {
         var options = Settings(2525, "127.0.0.1");
@@ -134,6 +156,24 @@ public sealed class SmtpNotificationFixture : IDisposable
 
         result.Should().Be(NotificationResult.Failed("The file of the mail password cannot be read."));
     }
+
+    [Theory]
+    [MemberData(nameof(Failures))]
+    public void should_say_in_a_sentence_what_the_operator_can_act_on(Exception failure, string contains)
+    {
+        SmtpNotificationSender.Describe(failure).Should().Contain(contains).And.NotContain("Exception");
+    }
+
+    public static TheoryData<Exception, string> Failures() => new()
+    {
+        { new SmtpException(SmtpStatusCode.MustIssueStartTlsFirst), "secure connection" },
+        { new SmtpException(SmtpStatusCode.ClientNotPermitted), "sign-in" },
+        { new SmtpException(SmtpStatusCode.GeneralFailure), "application password" },
+        { new SmtpException(SmtpStatusCode.MailboxUnavailable), "MailboxUnavailable" },
+        { new SmtpException("x", new SocketException()), "could not be reached" },
+        { new System.Security.Authentication.AuthenticationException("the certificate is not trusted"), "certificate" },
+        { new FormatException(), "could not be sent" },
+    };
 
     [Fact]
     public void should_accept_the_settings_of_a_google_mailbox()
@@ -176,14 +216,14 @@ public sealed class SmtpNotificationFixture : IDisposable
     }
 
     [Theory]
-    [InlineData("", "Host")]
-    [InlineData("two words", "Host")]
-    public void should_need_a_host(string host, string expected)
+    [InlineData("")]
+    [InlineData("two words")]
+    public void should_need_a_host(string host)
     {
         var options = Settings();
         options.Smtp.Host = host;
 
-        Problem(options).Should().Contain(expected);
+        Problem(options).Should().Contain("Host");
     }
 
     [Fact]

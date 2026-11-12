@@ -58,18 +58,31 @@ public sealed class SatelliteApiFixture : IClassFixture<MnemarrFactory>
     }
 
     [Fact]
+    public async Task should_end_the_episode_and_still_take_the_heartbeat_when_the_attention_has_no_code()
+    {
+        var (callers, machine, name) = await SatelliteAsync();
+        await BeatAsync(machine, new { code = "needs-login", url = "https://satellite.homelab.example/connection" });
+
+        (await BeatAsync(machine, new { url = "https://satellite.homelab.example/connection" })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var status = await StatusAsync(callers.Admin, name);
+        status.GetProperty("state").GetString().Should().Be("online");
+        status.GetProperty("attention").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task should_show_the_request_of_a_satellite_as_failing_with_the_sentence_of_mnemarr_and_end_it_with_the_next_heartbeat()
     {
         var (callers, machine, name) = await SatelliteAsync();
 
-        (await BeatAsync(machine, new { code = "needs-login", url = "https://geminarr.homelab.example/connection" })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await BeatAsync(machine, new { code = "needs-login", url = "https://satellite.homelab.example/connection" })).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var asking = await StatusAsync(callers.Admin, name);
         asking.GetProperty("state").GetString().Should().Be("failing");
         var attention = asking.GetProperty("attention");
         attention.GetProperty("code").GetString().Should().Be("needs-login");
         attention.GetProperty("sentence").GetString().Should().Contain("sign in");
-        attention.GetProperty("url").GetString().Should().Be("https://geminarr.homelab.example/connection");
+        attention.GetProperty("url").GetString().Should().Be("https://satellite.homelab.example/connection");
         attention.GetProperty("since").ValueKind.Should().Be(JsonValueKind.String);
 
         (await BeatAsync(machine, null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -80,10 +93,10 @@ public sealed class SatelliteApiFixture : IClassFixture<MnemarrFactory>
     }
 
     [Theory]
-    [InlineData("invented-code", "https://geminarr.homelab.example/connection", false, null)]
+    [InlineData("invented-code", "https://satellite.homelab.example/connection", false, null)]
     [InlineData("needs-login", "javascript:alert(1)", true, null)]
-    [InlineData("needs-login", "http://geminarr.homelab.example/connection", true, null)]
-    [InlineData("needs-login", "https://user:secret@geminarr.homelab.example/", true, null)]
+    [InlineData("needs-login", "http://satellite.homelab.example/connection", true, null)]
+    [InlineData("needs-login", "https://user:secret@satellite.homelab.example/", true, null)]
     public async Task should_ignore_a_code_that_is_not_on_the_list_and_drop_an_address_that_is_not_acceptable(string code, string url, bool shown, string? expectedUrl)
     {
         var (callers, machine, name) = await SatelliteAsync();

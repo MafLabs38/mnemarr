@@ -8,8 +8,11 @@ import styles from './Machines.module.css';
 
 /** Whether Mnemarr can write to a person when a machine needs them, and a way to try it (ADR 0042). The settings are in the configuration, not here. */
 export default function NotificationsCard() {
-  const status = useNotifications(true);
+  const status = useNotifications();
   const test = useSendTestMail();
+  if (status.error) {
+    return <Alert>{status.error.message}</Alert>;
+  }
   if (!status.data) {
     return null;
   }

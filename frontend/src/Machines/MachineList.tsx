@@ -16,6 +16,15 @@ import styles from './Machines.module.css';
 
 const kindText = { 'always-on': 'KindAlwaysOn', intermittent: 'KindIntermittent' } as const;
 
+/** The host of an address, read in the browser's own way; an address that the browser cannot read is shown whole. */
+function hostOf(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 /** What a machine asks of a person, in Mnemarr's own words, and the way to answer: a link whose host is read, to a place that is https. */
 function Attention({ machine }: Readonly<{ machine: MachineItem }>) {
   if (!machine.attention) {
@@ -27,7 +36,7 @@ function Attention({ machine }: Readonly<{ machine: MachineItem }>) {
       {machine.machine} {sentence}{' '}
       {url && (
         <a href={url} rel="noopener noreferrer nofollow" target="_blank">
-          {translate('AttentionOpen', { host: new URL(url).host })}
+          {translate('AttentionOpen', { host: hostOf(url) })}
         </a>
       )}
       {mails > 0 && <span className={styles.hint}> {translate('AttentionMailed', { count: mails })}</span>}

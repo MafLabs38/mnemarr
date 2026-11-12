@@ -28,24 +28,24 @@ public sealed class SatelliteSignalsFixture : IDisposable
     [InlineData("reader-broken")]
     public void should_keep_a_code_from_the_list_and_ignore_any_other(string code)
     {
-        AttentionSignal.Clean(new HeartbeatAttention(code, "https://geminarr.homelab.example/connection")).Should().Be(new HeartbeatAttention(code, "https://geminarr.homelab.example/connection"));
-        AttentionSignal.Clean(new HeartbeatAttention(code + "-x", "https://geminarr.homelab.example")).Should().BeNull();
+        AttentionSignal.Clean(new HeartbeatAttention(code, "https://satellite.homelab.example/connection")).Should().Be(new HeartbeatAttention(code, "https://satellite.homelab.example/connection"));
+        AttentionSignal.Clean(new HeartbeatAttention(code + "-x", "https://satellite.homelab.example")).Should().BeNull();
         AttentionSignal.Clean(null).Should().BeNull();
     }
 
     [Theory]
-    [InlineData("https://geminarr.homelab.example/connection", "https://geminarr.homelab.example/connection")]
+    [InlineData("https://satellite.homelab.example/connection", "https://satellite.homelab.example/connection")]
     [InlineData("http://127.0.0.1:8390/connection", "http://127.0.0.1:8390/connection")]
     [InlineData("http://localhost:3000/", "http://localhost:3000/")]
-    [InlineData("http://geminarr.homelab.example/connection", null)]
+    [InlineData("http://satellite.homelab.example/connection", null)]
     [InlineData("javascript:alert(1)", null)]
     [InlineData("data:text/html,<script>alert(1)</script>", null)]
-    [InlineData("ftp://geminarr.homelab.example/", null)]
-    [InlineData("https://user:secret@geminarr.homelab.example/", null)]
+    [InlineData("ftp://satellite.homelab.example/", null)]
+    [InlineData("https://user:secret@satellite.homelab.example/", null)]
     [InlineData("https:///nohost", null)]
     [InlineData("/relative/path", null)]
-    [InlineData("https://geminarr.homelab.example/a b", null)]
-    [InlineData("https://geminarr.homelab.example/\u0007", null)]
+    [InlineData("https://satellite.homelab.example/a b", null)]
+    [InlineData("https://satellite.homelab.example/\u0007", null)]
     [InlineData("", null)]
     [InlineData(null, null)]
     public void should_keep_an_address_only_if_it_is_https_or_http_to_this_host_with_a_host_and_nothing_else(string? url, string? expected)
@@ -56,7 +56,7 @@ public sealed class SatelliteSignalsFixture : IDisposable
     [Fact]
     public void should_drop_an_address_that_is_too_long_and_keep_the_code()
     {
-        var url = "https://geminarr.homelab.example/" + new string('a', AttentionSignal.MaxUrl);
+        var url = "https://satellite.homelab.example/" + new string('a', AttentionSignal.MaxUrl);
 
         AttentionSignal.Clean(new HeartbeatAttention("needs-login", url)).Should().Be(new HeartbeatAttention("needs-login", null));
     }
@@ -83,12 +83,12 @@ public sealed class SatelliteSignalsFixture : IDisposable
     [Fact]
     public void should_start_an_episode_with_the_first_heartbeat_that_asks_and_keep_its_beginning_while_it_goes_on()
     {
-        _machines.Seen("gemini", Now, Beat(new HeartbeatAttention("needs-login", "https://geminarr.homelab.example/connection")));
-        _machines.Seen("gemini", Now.AddMinutes(10), Beat(new HeartbeatAttention("needs-login", "https://geminarr.homelab.example/connection")));
+        _machines.Seen("gemini", Now, Beat(new HeartbeatAttention("needs-login", "https://satellite.homelab.example/connection")));
+        _machines.Seen("gemini", Now.AddMinutes(10), Beat(new HeartbeatAttention("needs-login", "https://satellite.homelab.example/connection")));
 
         var machine = _machines.Get("gemini")!;
 
-        machine.Should().Match<Machine>(found => found.AttentionCode == "needs-login" && found.AttentionUrl == "https://geminarr.homelab.example/connection" && found.AttentionSince == Now);
+        machine.Should().Match<Machine>(found => found.AttentionCode == "needs-login" && found.AttentionUrl == "https://satellite.homelab.example/connection" && found.AttentionSince == Now);
     }
 
     [Fact]

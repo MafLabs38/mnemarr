@@ -59,6 +59,22 @@ public sealed class SmtpNotificationSender : INotificationSender
     {
         var settings = _options.Value;
         var smtp = settings.Smtp;
+        string? password = null;
+        if (!string.IsNullOrWhiteSpace(smtp.UserName))
+        {
+            try
+            {
+                password = (await File.ReadAllTextAsync(smtp.PasswordFile!, cancellationToken)).Trim();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return NotificationResult.Failed("The file of the mail password cannot be read.");
+            }
+        }
+
+        // The client's own timeout does not apply to an asynchronous send: the time allowed is a token, so that a server that accepts the connection and then says nothing is let go.
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(TimeSpan.FromSeconds(smtp.TimeoutSeconds));
         try
         {
             using var message = new MailMessage(new MailAddress(settings.From!), new MailAddress(notification.Recipient))
@@ -73,27 +89,36 @@ public sealed class SmtpNotificationSender : INotificationSender
             using var client = new SmtpClient(smtp.Host, smtp.Port)
             {
                 EnableSsl = smtp.StartTls,
-                Timeout = smtp.TimeoutSeconds * 1000,
+                Timeout = (smtp.TimeoutSeconds + 10) * 1000,
                 DeliveryMethod = SmtpDeliveryMethod.Network,
             };
 #pragma warning restore S5332
-            if (!string.IsNullOrWhiteSpace(smtp.UserName))
+            if (password is not null)
             {
-                var password = (await File.ReadAllTextAsync(smtp.PasswordFile!, cancellationToken)).Trim();
                 client.Credentials = new NetworkCredential(smtp.UserName, password);
             }
 
-            await client.SendMailAsync(message, cancellationToken);
+            await client.SendMailAsync(message, limit.Token);
             return NotificationResult.Done;
         }
-        catch (Exception ex) when (ex is SmtpException or IOException or SocketException or FormatException or UnauthorizedAccessException or InvalidOperationException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Said in a short sentence the operator can act on; the exception itself may carry a server's text, which is not stored.
+            return NotificationResult.Failed("The mail server did not answer in time.");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (limit.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                // The framework may report the time that ran out as its own failure.
+                return NotificationResult.Failed("The mail server did not answer in time.");
+            }
+
+            // Whatever goes wrong with a delivery is told, never thrown: a refusal of the certificate, a malformed address, a network error. The exception may carry a server's text, which is not kept.
             return NotificationResult.Failed(Describe(ex));
         }
     }
 
-    private static string Describe(Exception ex)
+    internal static string Describe(Exception ex)
     {
         var text = ex switch
         {
@@ -102,7 +127,7 @@ public sealed class SmtpNotificationSender : INotificationSender
             SmtpException { InnerException: SocketException } or SocketException => "The mail server could not be reached.",
             SmtpException { StatusCode: SmtpStatusCode.GeneralFailure } => "The mail server could not be reached, or it refused the connection or the sign-in (for Google, use an application password).",
             SmtpException smtp => $"The mail server answered {smtp.StatusCode}.",
-            IOException or UnauthorizedAccessException => "The file of the mail password cannot be read.",
+            System.Security.Authentication.AuthenticationException => "The certificate of the mail server was not accepted.",
             _ => "The mail could not be sent.",
         };
         return text.Length <= MaxReason ? text : text[..MaxReason];

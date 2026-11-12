@@ -23,7 +23,7 @@ const asking = (over: Partial<NonNullable<MachineItem['attention']>>): MachineIt
   attention: {
     code: 'needs-login',
     sentence: 'needs you to sign in again.',
-    url: 'https://geminarr.homelab.example/connection',
+    url: 'https://satellite.homelab.example/connection',
     since: '2026-11-12T08:00:00Z',
     mails: 0,
     mailProblem: null,
@@ -130,12 +130,13 @@ describe('Notifications on the machines page', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not show the notifications to somebody who cannot manage the machines', async () => {
-    server([], on);
+  it('does not show the notifications to somebody who cannot manage the machines, and does not ask for them', async () => {
+    const fetchMock = server([], on);
 
     renderWithProviders(<Machines />, '/', readerSession);
 
     await screen.findByRole('heading', { level: 1, name: 'Machines' });
     expect(screen.queryByText('Notifications')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/notifications'))).toBe(false);
   });
 });

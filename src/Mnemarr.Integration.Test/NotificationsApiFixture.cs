@@ -87,14 +87,14 @@ public sealed class NotificationsApiFixture : IClassFixture<MnemarrFactory>, ICl
         _on.Sender.FailWith = null;
         var before = _on.Sender.Sent.Count(mail => mail.Subject.Contains(name, StringComparison.Ordinal));
 
-        await machine.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.3.0", pendingLines = 0, attention = new { code = "needs-login", url = "https://geminarr.homelab.example/connection" } }, Token);
+        await machine.PostAsJsonAsync("/api/v1/ingest/heartbeat", new { version = "0.3.0", pendingLines = 0, attention = new { code = "needs-login", url = "https://satellite.homelab.example/connection" } }, Token);
         var mailer = _on.Services.GetRequiredService<AttentionMailer>();
         await mailer.RunOnceAsync(Token);
         await mailer.RunOnceAsync(Token);
 
         var mails = _on.Sender.Sent.Where(mail => mail.Subject.Contains(name, StringComparison.Ordinal)).ToList();
         mails.Should().HaveCount(before + 1);
-        mails[^1].Body.Should().Contain($"{name} needs you to sign in again.").And.Contain("https://geminarr.homelab.example/connection");
+        mails[^1].Body.Should().Contain($"{name} needs you to sign in again.").And.Contain("https://satellite.homelab.example/connection");
         var attention = (await StatusAsync(callers.Admin, name)).GetProperty("attention");
         attention.GetProperty("mails").GetInt32().Should().Be(1);
         attention.GetProperty("mailProblem").ValueKind.Should().Be(JsonValueKind.Null);
