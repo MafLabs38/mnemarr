@@ -183,7 +183,7 @@ A person who holds `conversations.write` (`Admin`) changes a title, or asks the 
 
 ## Notifications (`Notifications`)
 
-Mnemarr can write to one person when a machine asks for them: a satellite whose session ended and that needs a sign-in ([ADR 0042](adr/0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **It is off by default.** The mail says the name of the machine, a sentence of Mnemarr's own and the address the satellite gave (an `https` address, checked); it never holds a token, a key or a conversation.
+Mnemarr can write to one person when a machine asks for them: a satellite whose session ended and that needs a sign-in ([ADR 0042](adr/0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **It is off by default.** The mail says the name of the machine, a sentence of Mnemarr's own and where to look (the Machines page of this Mnemarr, from `Collectors:PublicUrl`); it never holds a token, a key, a conversation or an address that a machine gave.
 
 | Setting | Default | Meaning |
 |---|---|---|

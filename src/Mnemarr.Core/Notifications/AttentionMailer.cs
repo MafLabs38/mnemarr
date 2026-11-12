@@ -9,7 +9,7 @@ public sealed record NotificationStatus(bool Enabled, string? Provider, string? 
 /// <summary>
 /// Tells a person that a machine asks for them (ADR 0042): one mail when the episode begins, a reminder at most once a day for a few days while it lasts, nothing when it ends.
 /// What is stored (the mails of the episode, when the last one left) means a restart sends nothing twice. The text is Mnemarr's own, made from the closed code of the signal; the only
-/// thing a machine contributes is its address, which was checked when it arrived. Only a machine that is enrolled and not revoked is ever mailed, and two caps hold whatever a machine does.
+/// thing a machine contributes is its name, a restricted charset: not even the address it gave is written in the mail. Only a machine that is enrolled and not revoked is ever mailed, and two caps hold whatever a machine does.
 /// </summary>
 public sealed class AttentionMailer
 {
@@ -18,10 +18,13 @@ public sealed class AttentionMailer
     private readonly INotificationSender _sender;
     private readonly INotificationLog _log;
     private readonly IOptions<NotificationOptions> _options;
+    private readonly IOptions<CollectorOptions> _collectors;
     private readonly TimeProvider _clock;
+    private readonly SemaphoreSlim _one = new(1, 1);
 
-    public AttentionMailer(IMachineStore machines, INotificationSender sender, INotificationLog log, IOptions<NotificationOptions> options, TimeProvider clock)
+    public AttentionMailer(IMachineStore machines, INotificationSender sender, INotificationLog log, IOptions<NotificationOptions> options, IOptions<CollectorOptions> collectors, TimeProvider clock)
     {
+        _collectors = collectors;
         _machines = machines;
         _sender = sender;
         _log = log;
@@ -38,6 +41,20 @@ public sealed class AttentionMailer
             return 0;
         }
 
+        // One look at the caps and one send at a time, whoever asks (the pass, a test mail): the caps are read, then the attempt is written.
+        await _one.WaitAsync(cancellationToken);
+        try
+        {
+            return await SendDueAsync(options, cancellationToken);
+        }
+        finally
+        {
+            _ = _one.Release();
+        }
+    }
+
+    private async Task<int> SendDueAsync(NotificationOptions options, CancellationToken cancellationToken)
+    {
         var now = _clock.GetUtcNow();
         var sent = 0;
         foreach (var machine in _machines.List().Where(machine => machine.AttentionCode is not null && machine.RevokedAt is null))
@@ -86,15 +103,23 @@ public sealed class AttentionMailer
             return NotificationResult.Failed("Notifications are off (Notifications:Enabled).");
         }
 
-        var now = _clock.GetUtcNow();
-        if (_log.CountSince(now - Day) >= options.MaxPerDay)
+        await _one.WaitAsync(cancellationToken);
+        try
         {
-            return NotificationResult.Failed("The daily limit of mails is reached.");
-        }
+            var now = _clock.GetUtcNow();
+            if (_log.CountSince(now - Day) >= options.MaxPerDay)
+            {
+                return NotificationResult.Failed("The daily limit of mails is reached.");
+            }
 
-        var result = await SendAsync(new Notification(options.Recipient!, "Mnemarr: a test mail", "This mail was sent by Mnemarr to check that the notifications work. Nothing else is needed."), cancellationToken);
-        _log.Record(null, now, result.Delivered, result.Reason);
-        return result;
+            var result = await SendAsync(new Notification(options.Recipient!, "Mnemarr: a test mail", "This mail was sent by Mnemarr to check that the notifications work. Nothing else is needed."), cancellationToken);
+            _log.Record(null, now, result.Delivered, result.Reason);
+            return result;
+        }
+        finally
+        {
+            _ = _one.Release();
+        }
     }
 
     /// <summary>A sender is asked not to throw, but one that does is a failed attempt like any other: it is recorded, so that the caps and the pause hold.</summary>
@@ -133,16 +158,22 @@ public sealed class AttentionMailer
         return last is null || last.Delivered || last.At < episodeStart || now - last.At >= TimeSpan.FromMinutes(options.RetryMinutes);
     }
 
-    private static Notification Compose(Machine machine, NotificationOptions options)
+    private Notification Compose(Machine machine, NotificationOptions options)
     {
         var reminder = machine.AttentionMails > 0;
         var subject = $"Mnemarr: {machine.Name} needs you" + (reminder ? " (reminder)" : string.Empty);
         var body = new System.Text.StringBuilder()
             .Append(machine.Name).Append(' ').AppendLine(AttentionSignal.Sentence(machine.AttentionCode!));
-        // Checked again here: the address is the only text from a machine that reaches a mailbox.
-        if (AttentionSignal.CleanUrl(machine.AttentionUrl) is { } url)
+        // The address a satellite gave is not in the mail: it is text from a machine, and a mail comes from the operator's own mailbox. The mail points to the Machines page of Mnemarr, where
+        // the person is signed in and the link is shown with its host.
+        body.AppendLine().Append("Open the Machines page of Mnemarr to see it");
+        if (_collectors.Value.PublicUrl is { Length: > 0 } publicUrl)
         {
-            body.AppendLine().AppendLine("Where to do it:").AppendLine(url);
+            body.AppendLine(":").AppendLine(publicUrl.TrimEnd('/') + "/machines");
+        }
+        else
+        {
+            body.AppendLine(".");
         }
 
         body.AppendLine().Append("Mnemarr sends this when a machine you enrolled asks for you. ");

@@ -94,7 +94,7 @@ public sealed class NotificationsApiFixture : IClassFixture<MnemarrFactory>, ICl
 
         var mails = _on.Sender.Sent.Where(mail => mail.Subject.Contains(name, StringComparison.Ordinal)).ToList();
         mails.Should().HaveCount(before + 1);
-        mails[^1].Body.Should().Contain($"{name} needs you to sign in again.").And.Contain("https://satellite.homelab.example/connection");
+        mails[^1].Body.Should().Contain($"{name} needs you to sign in again.").And.NotContain("satellite.homelab.example", "the address of a machine is not written in a mail");
         var attention = (await StatusAsync(callers.Admin, name)).GetProperty("attention");
         attention.GetProperty("mails").GetInt32().Should().Be(1);
         attention.GetProperty("mailProblem").ValueKind.Should().Be(JsonValueKind.Null);

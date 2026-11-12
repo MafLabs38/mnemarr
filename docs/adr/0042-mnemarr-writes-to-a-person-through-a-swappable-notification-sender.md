@@ -22,8 +22,10 @@ adapter is enough; but Mnemarr is a generic product and the channel must be repl
 4. **Caps that hold whatever a machine does.** Every attempt, sent or not, goes in a small log (`notification_log`): at most `MaxPerMachinePerDay` for one machine and `MaxPerDay` for all of them in the last
    24 hours. A satellite key that starts and stops asking in a loop (a new episode each time) cannot become a mail cannon, and a mail server that is down is not hammered. Only a machine that is enrolled and not
    revoked is ever mailed.
-5. **The text is Mnemarr's own.** The subject and the body are made from the machine's name (a restricted charset), the sentence of the closed code, and the address the satellite gave, which was validated when it
-   arrived and is checked again before it is written. No token, no key, no conversation text, no path, and nothing free that the satellite wrote.
+5. **The text is Mnemarr's own.** The subject and the body are made from the machine's name (a restricted charset) and the sentence of the closed code. **Not even the address the satellite gave is written
+   in the mail**: a mail comes from the operator's own mailbox, and an ingest key that leaked could make Mnemarr send a convincing "sign in here" to the person. The mail points to the Machines page of
+   this Mnemarr (`Collectors:PublicUrl` + `/machines`, when it is set), where the person is signed in and the satellite's link is shown with its host. No token, no key, no conversation text, no path, and
+   nothing free that the satellite wrote.
 6. **It is visible.** The machine's line says how many mails were sent and, when the last one did not leave, why (a sentence of Mnemarr, never the server's text). A card on the machines page, for an administrator,
    says where mails go and lets them send a test mail (`POST /api/v1/notifications/test`, `collectors.manage`, counted in the daily cap). The readiness probe `notifications` is degraded, never unhealthy, with the
    reason `notifications-secret` (the password file cannot be read) or `notifications-failing` (the last mail did not leave); off, it is always healthy.

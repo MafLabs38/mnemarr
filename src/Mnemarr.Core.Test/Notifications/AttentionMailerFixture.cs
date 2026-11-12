@@ -47,7 +47,9 @@ public sealed class AttentionMailerFixture : IDisposable
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private AttentionMailer Mailer() => new(_machines, _sender, _log, Options.Create(_settings), _clock);
+    private readonly CollectorOptions _collectorSettings = new();
+
+    private AttentionMailer Mailer() => new(_machines, _sender, _log, Options.Create(_settings), Options.Create(_collectorSettings), _clock);
 
     private void Enrol(string name) => _machines.Enrol(new Machine(name, MachineKind.AlwaysOn, Guid.NewGuid(), _clock.GetUtcNow().AddDays(-1), null, null, 0, null, null));
 
@@ -69,8 +71,9 @@ public sealed class AttentionMailerFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_write_to_the_address_that_is_set_in_mnemarrs_words_with_the_address_of_the_machine_and_nothing_else()
+    public async Task should_write_to_the_address_that_is_set_in_mnemarrs_words_and_point_to_the_machines_page()
     {
+        _collectorSettings.PublicUrl = "https://mnemarr.homelab.example/";
         Ask("gemini", "needs-login", "https://satellite.homelab.example/connection");
 
         await Mailer().RunOnceAsync(Token);
@@ -78,17 +81,18 @@ public sealed class AttentionMailerFixture : IDisposable
         var mail = _sender.Sent.Single();
         mail.Recipient.Should().Be("me@homelab.example");
         mail.Subject.Should().Be("Mnemarr: gemini needs you");
-        mail.Body.Should().Contain("gemini needs you to sign in again.").And.Contain("https://satellite.homelab.example/connection");
+        mail.Body.Should().Contain("gemini needs you to sign in again.").And.Contain("https://mnemarr.homelab.example/machines");
     }
 
     [Fact]
-    public async Task should_not_write_a_link_when_the_machine_gave_no_acceptable_one()
+    public async Task should_never_write_the_address_that_a_machine_gave_in_a_mail()
     {
-        Ask("gemini", "reader-broken", "http://not-secure.homelab.example/");
+        Ask("gemini", "reader-broken", "https://attacker.example/sign-in");
 
         await Mailer().RunOnceAsync(Token);
 
-        _sender.Sent.Single().Body.Should().Contain("can no longer read").And.NotContain("http");
+        var body = _sender.Sent.Single().Body;
+        body.Should().Contain("can no longer read").And.Contain("Machines page").And.NotContain("attacker").And.NotContain("http", "no address is known to be Mnemarr's without a public address set");
     }
 
     [Fact]
@@ -252,7 +256,7 @@ public sealed class AttentionMailerFixture : IDisposable
     [Fact]
     public async Task should_count_a_sender_that_throws_as_a_failed_attempt_so_that_the_pause_and_the_caps_hold()
     {
-        var mailer = new AttentionMailer(_machines, new ThrowingSender(), _log, Options.Create(_settings), _clock);
+        var mailer = new AttentionMailer(_machines, new ThrowingSender(), _log, Options.Create(_settings), Options.Create(_collectorSettings), _clock);
         Ask("gemini");
 
         (await mailer.RunOnceAsync(Token)).Should().Be(0);
