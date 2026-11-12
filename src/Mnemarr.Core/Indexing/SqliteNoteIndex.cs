@@ -18,10 +18,12 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
     private const int SnippetWords = 32;
     private const int MeaningSnippetLength = 240;
     private readonly IDatabase _database;
+    private readonly Embeddings.EmbeddingWakeUp? _wake;
 
-    public SqliteNoteIndex(IDatabase database)
+    public SqliteNoteIndex(IDatabase database, Embeddings.EmbeddingWakeUp? wake = null)
     {
         _database = database;
+        _wake = wake;
     }
 
     public IReadOnlyDictionary<string, NoteState> Notes(Guid sourceId)
@@ -42,51 +44,185 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
 
     public void Upsert(Guid sourceId, ScannedFile file, IndexedNote note, DateTimeOffset at)
     {
-        using var connection = _database.Open();
-        using var transaction = connection.BeginTransaction();
-        Delete(connection, transaction, sourceId, file.RelativePath);
-
-        long noteId;
-        using (var insert = connection.CreateCommand())
+        bool removed;
+        using (var connection = _database.Open())
         {
-            insert.Transaction = transaction;
-            insert.CommandText = """
-                INSERT INTO notes (source_id, path, topic, title, name, content_hash, chunker, meta_version, size, modified_ticks, indexed_at)
-                VALUES ($source, $path, $topic, $title, $name, $hash, $chunker, $metaVersion, $size, $modified, $at)
-                RETURNING id
-                """;
-            insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
-            insert.Parameters.AddWithValue(PathParameter, file.RelativePath);
-            insert.Parameters.AddWithValue("$topic", file.Topic);
-            insert.Parameters.AddWithValue("$title", note.Title);
-            insert.Parameters.AddWithValue("$name", System.IO.Path.GetFileNameWithoutExtension(file.RelativePath).ToLowerInvariant());
-            insert.Parameters.AddWithValue("$hash", note.ContentHash);
-            insert.Parameters.AddWithValue("$chunker", note.Chunker);
-            insert.Parameters.AddWithValue("$metaVersion", note.MetaVersion);
-            insert.Parameters.AddWithValue("$size", file.Length);
-            insert.Parameters.AddWithValue("$modified", file.ModifiedTicks);
-            insert.Parameters.AddWithValue("$at", StorageText.Format(at));
-            noteId = (long)insert.ExecuteScalar()!;
+            using var transaction = connection.BeginTransaction();
+            var existing = FindNote(connection, transaction, sourceId, file.RelativePath);
+            long noteId;
+            if (existing is { } found)
+            {
+                // The note stays, and so do its chunks that did not change (ADR 0039): a conversation that grows has the chunks it had and new ones, and the vectors that hang on the old
+                // ones are still good. Only what differs is written, and the model only reads that.
+                noteId = found.Id;
+                UpdateNote(connection, transaction, noteId, file, note, at);
+                removed = SyncChunks(connection, transaction, noteId, note.Chunks, found.Title != note.Title);
+                Execute(connection, transaction, "DELETE FROM note_links WHERE note_id = $note; DELETE FROM note_tags WHERE note_id = $note", noteId);
+            }
+            else
+            {
+                noteId = InsertNote(connection, transaction, sourceId, file, note, at);
+                removed = false;
+                InsertChunks(connection, transaction, noteId, note.Chunks, 0);
+            }
+
+            InsertLinks(connection, transaction, noteId, note.Meta.Links);
+            InsertTags(connection, transaction, noteId, note.Meta.Tags);
+            transaction.Commit();
         }
 
-        using var chunk = connection.CreateCommand();
-        chunk.Transaction = transaction;
-        chunk.CommandText = "INSERT INTO chunks (note_id, ordinal, heading, text) VALUES ($note, $ordinal, $heading, $text)";
-        var ordinalParameter = chunk.Parameters.AddWithValue("$ordinal", 0);
-        var headingParameter = chunk.Parameters.AddWithValue("$heading", string.Empty);
-        var textParameter = chunk.Parameters.AddWithValue("$text", string.Empty);
-        chunk.Parameters.AddWithValue(NoteParameter, noteId);
-        for (var ordinal = 0; ordinal < note.Chunks.Count; ordinal++)
+        _wake?.Notify();
+        if (removed)
         {
-            ordinalParameter.Value = ordinal;
-            headingParameter.Value = note.Chunks[ordinal].Heading;
-            textParameter.Value = note.Chunks[ordinal].Text;
-            chunk.ExecuteNonQuery();
+            _wake?.NotifyRemoved();
+        }
+    }
+
+    private static (long Id, string Title)? FindNote(SqliteConnection connection, SqliteTransaction transaction, Guid sourceId, string path)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT id, title FROM notes WHERE source_id = $source AND path = $path";
+        command.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        command.Parameters.AddWithValue(PathParameter, path);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? (reader.GetInt64(0), reader.GetString(1)) : null;
+    }
+
+    private static long InsertNote(SqliteConnection connection, SqliteTransaction transaction, Guid sourceId, ScannedFile file, IndexedNote note, DateTimeOffset at)
+    {
+        using var insert = connection.CreateCommand();
+        insert.Transaction = transaction;
+        insert.CommandText = """
+            INSERT INTO notes (source_id, path, topic, title, name, content_hash, chunker, meta_version, size, modified_ticks, indexed_at)
+            VALUES ($source, $path, $topic, $title, $name, $hash, $chunker, $metaVersion, $size, $modified, $at)
+            RETURNING id
+            """;
+        insert.Parameters.AddWithValue(SourceParameter, sourceId.ToString());
+        insert.Parameters.AddWithValue(PathParameter, file.RelativePath);
+        AddNoteValues(insert, file, note, at);
+        return (long)insert.ExecuteScalar()!;
+    }
+
+    private static void UpdateNote(SqliteConnection connection, SqliteTransaction transaction, long noteId, ScannedFile file, IndexedNote note, DateTimeOffset at)
+    {
+        using var update = connection.CreateCommand();
+        update.Transaction = transaction;
+        update.CommandText = """
+            UPDATE notes SET topic = $topic, title = $title, name = $name, content_hash = $hash, chunker = $chunker, meta_version = $metaVersion, size = $size, modified_ticks = $modified, indexed_at = $at
+            WHERE id = $id
+            """;
+        update.Parameters.AddWithValue("$id", noteId);
+        AddNoteValues(update, file, note, at);
+        update.ExecuteNonQuery();
+    }
+
+    private static void AddNoteValues(SqliteCommand command, ScannedFile file, IndexedNote note, DateTimeOffset at)
+    {
+        command.Parameters.AddWithValue("$topic", file.Topic);
+        command.Parameters.AddWithValue("$title", note.Title);
+        command.Parameters.AddWithValue("$name", System.IO.Path.GetFileNameWithoutExtension(file.RelativePath).ToLowerInvariant());
+        command.Parameters.AddWithValue("$hash", note.ContentHash);
+        command.Parameters.AddWithValue("$chunker", note.Chunker);
+        command.Parameters.AddWithValue("$metaVersion", note.MetaVersion);
+        command.Parameters.AddWithValue("$size", file.Length);
+        command.Parameters.AddWithValue("$modified", file.ModifiedTicks);
+        command.Parameters.AddWithValue("$at", StorageText.Format(at));
+    }
+
+    // Makes the chunks of a note the given ones, keeping the rows of the chunks that are in both (same heading, same text, whatever their place) and writing only the others. A new
+    // title changes the text the model reads for every chunk of the note, so their vectors are forgotten (the cache brings back the ones that are still good). Returns whether chunks went.
+    private static bool SyncChunks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IReadOnlyList<Chunk> chunks, bool titleChanged)
+    {
+        var existing = new Dictionary<(string Heading, string Text), Queue<(long Id, int Ordinal)>>();
+        using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT id, ordinal, heading, text FROM chunks WHERE note_id = $note ORDER BY ordinal";
+            read.Parameters.AddWithValue(NoteParameter, noteId);
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                var key = (reader.GetString(2), reader.GetString(3));
+                if (!existing.TryGetValue(key, out var queue))
+                {
+                    existing[key] = queue = new Queue<(long, int)>();
+                }
+
+                queue.Enqueue((reader.GetInt64(0), reader.GetInt32(1)));
+            }
         }
 
-        InsertLinks(connection, transaction, noteId, note.Meta.Links);
-        InsertTags(connection, transaction, noteId, note.Meta.Tags);
-        transaction.Commit();
+        var added = new List<(int Ordinal, Chunk Chunk)>();
+        using var reorder = connection.CreateCommand();
+        reorder.Transaction = transaction;
+        reorder.CommandText = "UPDATE chunks SET ordinal = $ordinal WHERE id = $id AND ordinal <> $ordinal";
+        var ordinalParameter = reorder.Parameters.AddWithValue("$ordinal", 0);
+        var idParameter = reorder.Parameters.AddWithValue("$id", 0L);
+        for (var ordinal = 0; ordinal < chunks.Count; ordinal++)
+        {
+            if (existing.TryGetValue((chunks[ordinal].Heading, chunks[ordinal].Text), out var queue) && queue.Count > 0)
+            {
+                ordinalParameter.Value = ordinal;
+                idParameter.Value = queue.Dequeue().Id;
+                reorder.ExecuteNonQuery();
+            }
+            else
+            {
+                added.Add((ordinal, chunks[ordinal]));
+            }
+        }
+
+        var gone = existing.Values.SelectMany(queue => queue).Select(item => item.Id).ToList();
+        if (gone.Count > 0)
+        {
+            using var delete = connection.CreateCommand();
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM chunks WHERE id IN (SELECT value FROM json_each($ids))";
+            delete.Parameters.AddWithValue("$ids", JsonSerializer.Serialize(gone));
+            delete.ExecuteNonQuery();
+        }
+
+        foreach (var (ordinal, chunk) in added)
+        {
+            InsertChunk(connection, transaction, noteId, ordinal, chunk);
+        }
+
+        if (titleChanged)
+        {
+            Execute(connection, transaction, "DELETE FROM chunk_embeddings WHERE chunk_id IN (SELECT id FROM chunks WHERE note_id = $note)", noteId);
+        }
+
+        return gone.Count > 0 || titleChanged;
+    }
+
+    private static void InsertChunks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IReadOnlyList<Chunk> chunks, int firstOrdinal)
+    {
+        for (var index = 0; index < chunks.Count; index++)
+        {
+            InsertChunk(connection, transaction, noteId, firstOrdinal + index, chunks[index]);
+        }
+    }
+
+    private static void InsertChunk(SqliteConnection connection, SqliteTransaction transaction, long noteId, int ordinal, Chunk chunk)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO chunks (note_id, ordinal, heading, text) VALUES ($note, $ordinal, $heading, $text)";
+        command.Parameters.AddWithValue(NoteParameter, noteId);
+        command.Parameters.AddWithValue("$ordinal", ordinal);
+        command.Parameters.AddWithValue("$heading", chunk.Heading);
+        command.Parameters.AddWithValue("$text", chunk.Text);
+        command.ExecuteNonQuery();
+    }
+
+    private static void Execute(SqliteConnection connection, SqliteTransaction transaction, string sql, long noteId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.AddWithValue(NoteParameter, noteId);
+        command.ExecuteNonQuery();
     }
 
     private static void InsertLinks(SqliteConnection connection, SqliteTransaction transaction, long noteId, IEnumerable<WikiLink> links) =>
@@ -198,6 +334,7 @@ public sealed class SqliteNoteIndex : INoteIndex, IChunkHits
         using var transaction = connection.BeginTransaction();
         Delete(connection, transaction, sourceId, path);
         transaction.Commit();
+        _wake?.NotifyRemoved();
     }
 
     public IndexCounts Counts(Guid sourceId)

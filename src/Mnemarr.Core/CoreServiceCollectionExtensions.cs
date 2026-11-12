@@ -78,6 +78,7 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<SourceLocks>();
         services.AddSingleton<SyncOutcomes>();
         services.AddSingleton<ISourceStore, SqliteSourceStore>();
+        services.AddSingleton<EmbeddingWakeUp>();
         services.AddSingleton<SqliteNoteIndex>();
         services.AddSingleton<INoteIndex>(sp => sp.GetRequiredService<SqliteNoteIndex>());
         services.AddSingleton<IChunkHits>(sp => sp.GetRequiredService<SqliteNoteIndex>());

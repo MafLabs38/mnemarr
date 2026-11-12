@@ -91,9 +91,8 @@ public sealed class SourceIndexer
     {
         var info = new FileInfo(Path.Combine(source.Path, relativePath));
         var file = new ScannedFile(relativePath, info.FullName, info.Length, info.LastWriteTimeUtc.Ticks);
-        var known = _index.Notes(source.Id);
-        known.TryGetValue(relativePath, out var previous);
-        await IndexFileAsync(source, file, previous, rebuild: true, cancellationToken);
+        // Written again whatever was there: the state of the note before is not needed, and loading every note of the source for it is what a conversation that grows must not pay for.
+        await IndexFileAsync(source, file, previous: null, rebuild: true, cancellationToken);
     }
 
     /// <summary>Forgets a note of a source that a change of notes has just removed or moved. The caller holds the lock of the source.</summary>

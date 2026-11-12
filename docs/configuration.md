@@ -65,7 +65,8 @@ The notes and the conversations are also searched by meaning, with a model that 
 | `MNEMARR__EMBEDDINGS__THREADS` | `2` | CPU threads of the model (1 to 64). The first run over a long history takes about a second per ten passages on two threads. |
 | `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together (1 to 64). |
 | `MNEMARR__EMBEDDINGS__MAXTOKENS` | `512` | The longest a passage may be read, in tokens (16 to 8192). |
-| `MNEMARR__EMBEDDINGS__IDLESECONDS` | `15` | How long it waits when everything is computed before it looks again (1 to 3600). |
+| `MNEMARR__EMBEDDINGS__IDLESECONDS` | `300` | The safety timer of the indexer (1 to 3600): it is woken when the index has a new passage, so it does not look for work every few seconds; this is how long it waits at most for a change it was not told of. |
+| `MNEMARR__EMBEDDINGS__CACHEDAYS` | `30` | How many days a computed vector is kept after it was last used (1 to 3650), so that a passage that comes back in a note that moved, was renamed or was indexed again is not computed again (ADR 0039). |
 | `MNEMARR__EMBEDDINGS__MAXDISTANCE` | the model's (`0.2` for the default one) | The cosine distance beyond which a passage is not an answer by meaning. Empty: the one measured for the model. Set it only to override, and measure. |
 
 ## Git sources (`Git`)

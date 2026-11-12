@@ -276,6 +276,18 @@ public static class Schema
             runs INTEGER NOT NULL
         );
         """,
+        // 21: the vectors that were computed, by the hash of the text the model read (ADR 0039): a passage that was embedded once is never embedded again, whichever note it comes
+        // back in (a note that grows, moves, is renamed, is indexed again from scratch). The row outlives the chunk that asked for it, and goes when it has not been used for a while.
+        """
+        CREATE TABLE embedding_cache (
+            model TEXT NOT NULL,
+            text_hash TEXT NOT NULL,
+            vector BLOB NOT NULL,
+            used_at TEXT NOT NULL,
+            PRIMARY KEY (model, text_hash)
+        ) WITHOUT ROWID;
+        CREATE INDEX embedding_cache_by_use ON embedding_cache (used_at);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>
