@@ -18,8 +18,9 @@ public static class MachineStates
             return MachineState.Waiting;
         }
 
-        if (!string.IsNullOrEmpty(machine.Error))
+        if (!string.IsNullOrEmpty(machine.Error) || machine.AttentionCode is not null)
         {
+            // An error, or a machine that asks for a person (ADR 0041): it is failing until the next pass says it no longer is.
             return MachineState.Failing;
         }
 
@@ -36,5 +37,6 @@ public static class MachineStates
     public static bool IsAlert(Machine machine, DateTimeOffset now, CollectorOptions options) =>
         machine.Kind == MachineKind.AlwaysOn && machine.RevokedAt is null && (
             !string.IsNullOrEmpty(machine.Error) ||
+            machine.AttentionCode is not null ||
             (machine.LastSeenAt is { } seen && now - seen > options.SilenceAfter));
 }

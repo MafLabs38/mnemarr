@@ -55,6 +55,7 @@ public sealed class EndpointsFixture
         "api/v1/chat/conversations/{id}/permissions/{requestId}",
         "api/v1/collectors",
         "api/v1/collectors/{machine}",
+        "api/v1/collectors/{machine}/consolidate",
         "api/v1/collectors/{machine}/erase",
         "api/v1/collectors/{machine}/forget",
         "api/v1/collectors/{machine}/merge",

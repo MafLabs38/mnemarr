@@ -21,6 +21,9 @@ const machine = (over: Partial<MachineItem>): MachineItem => ({
   updateTo: null,
   updateNote: null,
   watching: null,
+  attention: null,
+  consolidate: null,
+  consolidating: true,
   ...over,
 });
 
@@ -144,6 +147,58 @@ describe('Machines', () => {
     expect(within(quiet).getByText(/folder of its conversations is not there/)).toBeInTheDocument();
     const busy = rowOf(screen.getByRole('rowheader', { name: 'busy-pc' }));
     expect(within(busy).queryByText(/conversations found/)).not.toBeInTheDocument();
+  });
+
+  it("says what a machine asks of a person in Mnemarr's words, with a link to answer it that is safe to open", async () => {
+    server([
+      machine({
+        machine: 'gemini',
+        kind: 'always-on',
+        state: 'failing',
+        attention: {
+          code: 'needs-login',
+          sentence: 'needs you to sign in again.',
+          url: 'https://geminarr.homelab.example/connection',
+          since: '2026-11-12T08:00:00Z',
+        },
+      }),
+      machine({
+        machine: 'no-link',
+        state: 'failing',
+        attention: { code: 'reader-broken', sentence: 'can no longer read what it comes for.', url: null, since: null },
+      }),
+    ]);
+
+    renderWithProviders(<Machines />);
+
+    const row = rowOf(await screen.findByRole('rowheader', { name: 'gemini' }));
+    expect(within(row).getByText(/gemini needs you to sign in again\./)).toBeInTheDocument();
+    const link = within(row).getByRole('link', { name: 'Open geminarr.homelab.example' });
+    expect(link).toHaveAttribute('href', 'https://geminarr.homelab.example/connection');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer nofollow');
+    const other = rowOf(screen.getByRole('rowheader', { name: 'no-link' }));
+    expect(within(other).getByText(/no-link can no longer read what it comes for\./)).toBeInTheDocument();
+    expect(within(other).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('says that the conversations of a machine are not turned into notes, and says nothing of one that is', async () => {
+    server([
+      machine({ machine: 'web', consolidating: false }),
+      machine({ machine: 'cli', consolidating: true }),
+      machine({ machine: 'empty', consolidating: false, conversations: 0 }),
+    ]);
+
+    renderWithProviders(<Machines />);
+
+    expect(
+      within(rowOf(await screen.findByRole('rowheader', { name: 'web' }))).getByText(/Not turned into notes/),
+    ).toBeInTheDocument();
+    expect(
+      within(rowOf(screen.getByRole('rowheader', { name: 'cli' }))).queryByText(/Not turned into notes/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(rowOf(screen.getByRole('rowheader', { name: 'empty' }))).queryByText(/Not turned into notes/),
+    ).not.toBeInTheDocument();
   });
 
   it('says there is no machine yet, and how to add one', async () => {

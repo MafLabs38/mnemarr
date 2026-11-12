@@ -138,6 +138,16 @@ const en = {
   MeaningFailed: 'The search by meaning does not work, so the search is by words only: {reason}',
   MeaningCatchingUp:
     'The search by meaning is catching up: {computed} of {passages} passages are read. Until then it finds only those.',
+  AttentionOpen: 'Open {host}',
+  NotConsolidated: 'Not turned into notes (the setting of this machine).',
+  ConsolidateTitle: 'Notes of the memory',
+  ConsolidateHelp:
+    'Whether the conversations of this machine are turned into notes of the memory. By default the ones of a command-line assistant are, and the ones of a web assistant are kept as they were said and found, not consolidated.',
+  Consolidate: 'Consolidate its conversations',
+  ConsolidateDefaultYes: 'By default (yes)',
+  ConsolidateDefaultNo: 'By default (no)',
+  ConsolidateYes: 'Yes',
+  ConsolidateNo: 'No',
   MeaningDevice: 'The passages are read on: {device}.',
   SourceRoots: 'A source is a folder inside one of: {roots}',
   SourcesError: 'Could not read the sources.',
@@ -419,12 +429,13 @@ const en = {
   TitleFromFirstSentence: 'the first sentence of the conversation',
   TitleFromModel: 'written by a model',
   TitleFromPerson: 'typed by a person',
+  TitleFromSender: 'given by the assistant it comes from',
   ChangeTitle: 'Change the title',
   SaveTitle: 'Save the title',
   RewriteTitle: 'Rewrite with the model',
   WritingTitle: 'The model is writing…',
   TitleCounts:
-    '{summary} written by a model, {person} typed by a person, {firstSentence} with only the first sentence.',
+    '{summary} written by a model, {person} typed by a person, {sender} given by their assistant, {firstSentence} with only the first sentence.',
   TitlesModelOn:
     'A model writes a title and a summary for each conversation once it has been left alone for a while. What a person typed is never replaced.',
   TitlesModelOff:

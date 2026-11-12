@@ -585,7 +585,9 @@ describe('Notes', () => {
       ['ready', 472, 472],
     ])('says nothing of the search by meaning when it is %s', async (state, passages, computed) => {
       server(noteWith('# x'), (path) =>
-        path === '/search/status' ? { body: { state, model: 'm', passages, computed, reason: null, device: 'cpu' } } : undefined,
+        path === '/search/status'
+          ? { body: { state, model: 'm', passages, computed, reason: null, device: 'cpu' } }
+          : undefined,
       );
       renderWithProviders(<Notes />, '/notes', readerSession);
       const region = await screen.findByRole('region', { name: 'Search' });

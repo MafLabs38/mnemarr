@@ -100,6 +100,7 @@ describe('TitlesCard', () => {
     firstSentence: 30,
     summary: 5,
     person: 1,
+    sender: 2,
     lastError: null,
     lastErrorAt: null,
   };
@@ -126,7 +127,9 @@ describe('TitlesCard', () => {
     renderWithProviders(<TitlesCard />);
 
     expect(
-      await screen.findByText('5 written by a model, 1 typed by a person, 30 with only the first sentence.'),
+      await screen.findByText(
+        '5 written by a model, 1 typed by a person, 2 given by their assistant, 30 with only the first sentence.',
+      ),
     ).toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: 'Have the model write the titles that are only a first sentence' }),

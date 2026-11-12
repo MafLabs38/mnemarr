@@ -31,6 +31,12 @@ public interface IMachineStore
     /// <summary>Gives a machine that has no identifier the one of its computer. False when it has one, or when another machine holds it.</summary>
     bool SetComputer(string name, string computerId);
 
+    /// <summary>Says whether the conversations of a machine are consolidated; null puts it back to the default of their format. False when there is no such machine.</summary>
+    bool SetConsolidate(string name, bool? consolidate);
+
+    /// <summary>Records that a mail was sent for the attention a machine asks for now: when, and how many for this episode. False when it asks for nothing.</summary>
+    bool MarkAttentionMailed(string name, DateTimeOffset at);
+
     /// <summary>Takes a revoked machine out of the list. False when there is none, or it is not revoked.</summary>
     bool Remove(string name);
 }
@@ -59,8 +65,19 @@ public interface IEnrolmentStore
 public sealed class SqliteMachineStore : IMachineStore
 {
     private const string NameParameter = "$name";
-    private const string MachineColumns = "name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id, platform, program, interval_seconds, can_update, update_note, watching";
+    private const string MachineColumns = "name, kind, account_id, enrolled_at, last_seen_at, version, pending_lines, error, revoked_at, paused, computer_id, platform, program, interval_seconds, can_update, update_note, watching, consolidate, attention_code, attention_url, attention_since, attention_mailed_at, attention_mails";
     private readonly IDatabase _database;
+
+    // A heartbeat says everything a machine says of itself. Its attention (ADR 0041) starts an episode when it is new and ends it when it is not repeated: the mail that was sent for an episode is forgotten with it.
+    private const string HeartbeatUpdate = """
+        UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused, platform = $platform, program = $program,
+            interval_seconds = $interval, can_update = $canUpdate, update_note = $updateNote, watching = $watching,
+            attention_code = $attentionCode, attention_url = $attentionUrl,
+            attention_since = CASE WHEN $attentionCode IS NULL THEN NULL ELSE coalesce(attention_since, $at) END,
+            attention_mailed_at = CASE WHEN $attentionCode IS NULL THEN NULL ELSE attention_mailed_at END,
+            attention_mails = CASE WHEN $attentionCode IS NULL THEN 0 ELSE attention_mails END
+        WHERE name = $name
+        """;
 
     public SqliteMachineStore(IDatabase database)
     {
@@ -147,9 +164,7 @@ public sealed class SqliteMachineStore : IMachineStore
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
-        command.CommandText = heartbeat is null
-            ? "UPDATE machines SET last_seen_at = $at WHERE name = $name"
-            : "UPDATE machines SET last_seen_at = $at, version = $version, pending_lines = $pending, error = $error, paused = $paused, platform = $platform, program = $program, interval_seconds = $interval, can_update = $canUpdate, update_note = $updateNote, watching = $watching WHERE name = $name";
+        command.CommandText = heartbeat is null ? "UPDATE machines SET last_seen_at = $at WHERE name = $name" : HeartbeatUpdate;
         command.Parameters.AddWithValue(NameParameter, name);
         command.Parameters.AddWithValue("$at", StorageText.Format(at));
         if (heartbeat is not null)
@@ -164,9 +179,31 @@ public sealed class SqliteMachineStore : IMachineStore
             command.Parameters.AddWithValue("$canUpdate", heartbeat.CanUpdate ? 1 : 0);
             command.Parameters.AddWithValue("$updateNote", (object?)heartbeat.UpdateNote ?? DBNull.Value);
             command.Parameters.AddWithValue("$watching", (object?)heartbeat.Watching ?? DBNull.Value);
+            command.Parameters.AddWithValue("$attentionCode", (object?)heartbeat.Attention?.Code ?? DBNull.Value);
+            command.Parameters.AddWithValue("$attentionUrl", (object?)heartbeat.Attention?.Url ?? DBNull.Value);
         }
 
         command.ExecuteNonQuery();
+    }
+
+    public bool SetConsolidate(string name, bool? consolidate)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE machines SET consolidate = $consolidate WHERE name = $name";
+        command.Parameters.AddWithValue(NameParameter, name);
+        command.Parameters.AddWithValue("$consolidate", consolidate is null ? DBNull.Value : Convert.ToInt32(consolidate.Value));
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    public bool MarkAttentionMailed(string name, DateTimeOffset at)
+    {
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE machines SET attention_mailed_at = $at, attention_mails = attention_mails + 1 WHERE name = $name AND attention_code IS NOT NULL";
+        command.Parameters.AddWithValue(NameParameter, name);
+        command.Parameters.AddWithValue("$at", StorageText.Format(at));
+        return command.ExecuteNonQuery() > 0;
     }
 
     public bool Revoke(string name, DateTimeOffset at)
@@ -208,24 +245,34 @@ public sealed class SqliteMachineStore : IMachineStore
         return reader.Read() ? Read(reader) : null;
     }
 
+    private static string? TextAt(SqliteDataReader reader, int column) => reader.IsDBNull(column) ? null : reader.GetString(column);
+
+    private static DateTimeOffset? TimeAt(SqliteDataReader reader, int column) => reader.IsDBNull(column) ? null : StorageText.Parse(reader.GetString(column));
+
     private static Machine Read(SqliteDataReader reader) => new(
         reader.GetString(0),
         MachineKinds.TryParse(reader.GetString(1), out var kind) ? kind : MachineKind.Intermittent,
         Guid.Parse(reader.GetString(2)),
         StorageText.Parse(reader.GetString(3)),
-        reader.IsDBNull(4) ? null : StorageText.Parse(reader.GetString(4)),
-        reader.IsDBNull(5) ? null : reader.GetString(5),
+        TimeAt(reader, 4),
+        TextAt(reader, 5),
         reader.GetInt64(6),
-        reader.IsDBNull(7) ? null : reader.GetString(7),
-        reader.IsDBNull(8) ? null : StorageText.Parse(reader.GetString(8)),
+        TextAt(reader, 7),
+        TimeAt(reader, 8),
         reader.GetInt32(9) != 0,
-        reader.IsDBNull(10) ? null : reader.GetString(10),
-        reader.IsDBNull(11) ? null : reader.GetString(11),
-        reader.IsDBNull(12) ? null : reader.GetString(12),
+        TextAt(reader, 10),
+        TextAt(reader, 11),
+        TextAt(reader, 12),
         reader.IsDBNull(13) ? null : reader.GetInt32(13),
         reader.GetInt32(14) != 0,
-        reader.IsDBNull(15) ? null : reader.GetString(15),
-        reader.IsDBNull(16) ? null : reader.GetString(16));
+        TextAt(reader, 15),
+        TextAt(reader, 16),
+        reader.IsDBNull(17) ? null : reader.GetInt32(17) != 0,
+        TextAt(reader, 18),
+        TextAt(reader, 19),
+        TimeAt(reader, 20),
+        TimeAt(reader, 21),
+        reader.GetInt32(22));
 }
 
 public sealed class SqliteEnrolmentStore : IEnrolmentStore

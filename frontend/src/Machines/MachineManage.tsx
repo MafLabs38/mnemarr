@@ -15,6 +15,7 @@ import {
   useMergeMachine,
   useRemoveMachine,
   useRenameMachine,
+  useSetConsolidate,
 } from './machines';
 import styles from './Machines.module.css';
 import NewCode from './NewCode';
@@ -52,6 +53,49 @@ function Rename({ machine, onClose }: Readonly<Pick<ManageProps, 'machine' | 'on
         {translate('Rename')}
       </Button>
     </form>
+  );
+}
+
+const consolidateValues = { default: null, on: true, off: false } as const;
+
+function consolidateChoice(consolidate: boolean | null) {
+  if (consolidate === null) {
+    return 'default';
+  }
+  return consolidate ? 'on' : 'off';
+}
+
+/** Whether the conversations of the machine are turned into notes of the memory: by default only the ones of a command-line assistant are (ADR 0041). */
+function Consolidate({ machine }: Readonly<Pick<ManageProps, 'machine'>>) {
+  const set = useSetConsolidate();
+  const current = consolidateChoice(machine.consolidate);
+  return (
+    <div className={styles.form}>
+      <h4>{translate('ConsolidateTitle')}</h4>
+      <p className={styles.hint}>{translate('ConsolidateHelp')}</p>
+      {set.error && <Alert>{set.error.message}</Alert>}
+      <SelectField
+        disabled={set.isPending}
+        label={translate('Consolidate')}
+        onChange={(event) =>
+          set.mutate({
+            machine: machine.machine,
+            consolidate: consolidateValues[event.target.value as keyof typeof consolidateValues],
+          })
+        }
+        options={[
+          {
+            value: 'default',
+            label: translate(
+              machine.consolidating && machine.consolidate === null ? 'ConsolidateDefaultYes' : 'ConsolidateDefaultNo',
+            ),
+          },
+          { value: 'on', label: translate('ConsolidateYes') },
+          { value: 'off', label: translate('ConsolidateNo') },
+        ]}
+        value={current}
+      />
+    </div>
   );
 }
 
@@ -175,6 +219,7 @@ export default function MachineManage({ machine, others, onClose }: Readonly<Man
   return (
     <section aria-label={translate('ManageMachine', { name: machine.machine })} className={styles.manage}>
       <Rename machine={machine} onClose={onClose} />
+      {machine.kind !== null && <Consolidate machine={machine} />}
       <Merge machine={machine} onClose={onClose} others={others} />
       {machine.kind !== null && machine.state !== 'refused' && <Reinstall machine={machine} />}
       <Removal machine={machine} onClose={onClose} />

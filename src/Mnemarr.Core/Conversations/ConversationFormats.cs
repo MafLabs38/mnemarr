@@ -18,14 +18,89 @@ public static partial class ConversationFormats
     /// <summary>The conversation files of Claude Code: one JSON object per line.</summary>
     public const string ClaudeCode = "claude-code";
 
+    /// <summary>
+    /// A neutral format for an assistant that is not a command-line tool and has no file of its own (a web assistant, ADR 0041): one JSON object per line. Line 0 is always a
+    /// <c>meta</c> line (title, source, id of the conversation at the assistant); line <c>n + 1</c> is turn <c>n</c> (<c>role</c>, <c>at</c>, <c>text</c>). The <c>meta</c> line is not a turn,
+    /// but it is a line: it takes position 0, so that the positions of the sender and of Mnemarr stay aligned.
+    /// </summary>
+    public const string ChatTurns = "chat-turns";
+
+    /// <summary>The longest title a sender may give to a conversation, in characters.</summary>
+    public const int MaxSenderTitle = 200;
+
     /// <summary>A turn longer than this is cut: a pasted file or a long answer is not what a memory is made of.</summary>
     public const int MaxTurnChars = 20_000;
 
-    public static bool Supports(string format) => format == ClaudeCode;
+    public static bool Supports(string format) => format is ClaudeCode or ChatTurns;
 
     /// <summary>The turns of the lines, in order.</summary>
-    public static IReadOnlyList<Turn> Turns(string format, IEnumerable<string> lines) =>
-        format == ClaudeCode ? [.. lines.Select(ClaudeCodeTurn).OfType<Turn>()] : [];
+    public static IReadOnlyList<Turn> Turns(string format, IEnumerable<string> lines) => format switch
+    {
+        ClaudeCode => [.. lines.Select(ClaudeCodeTurn).OfType<Turn>()],
+        ChatTurns => [.. lines.Select(ChatTurn).OfType<Turn>()],
+        _ => [],
+    };
+
+    /// <summary>
+    /// The title the sender gave to a conversation, when its format has a place for one: the <c>meta</c> line of <c>chat-turns</c>, which is the first line. Null when there is none, or it is
+    /// empty. It is text from outside: the secrets are masked, a line break is a space, and it is cut.
+    /// </summary>
+    public static string? SenderTitle(string format, string? firstLine)
+    {
+        if (format != ChatTurns || firstLine is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(firstLine);
+            if (document.RootElement.ValueKind != JsonValueKind.Object || !IsVersionOne(document.RootElement) || !document.RootElement.TryGetProperty("meta", out var meta) || meta.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var title = WhitespaceRun().Replace(SecretMasker.Mask(Text(meta, "title")), " ").Trim();
+            return title.Length == 0 ? null : title[..Math.Min(title.Length, MaxSenderTitle)].TrimEnd();
+        }
+        catch (Exception ex) when (ex is JsonException or RegexMatchTimeoutException)
+        {
+            return null;
+        }
+    }
+
+    [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex WhitespaceRun();
+
+    private static bool IsVersionOne(JsonElement root) => root.TryGetProperty("v", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number == 1;
+
+    // A line of chat-turns: a turn is skipped, never a failure, when it is not what is expected (a web assistant's format is not a contract, and positions must not move). The meta line has no role: it is skipped here.
+    private static Turn? ChatTurn(string line)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !IsVersionOne(root))
+            {
+                return null;
+            }
+
+            var role = Text(root, "role");
+            if (role is not ("user" or "assistant"))
+            {
+                return null;
+            }
+
+            // Masked once decoded, like the other format: an escape in the JSON can spell what the mask looks for.
+            var text = SecretMasker.Mask(Text(root, "text")).Trim();
+            return text.Length == 0 ? null : new Turn(role, At(root, "at"), CutTurn(text));
+        }
+        catch (Exception ex) when (ex is JsonException or RegexMatchTimeoutException)
+        {
+            return null;
+        }
+    }
 
     [GeneratedRegex(@"<(system-reminder|ide_[a-z_]+|local-command-[a-z]+|command-(?:name|message|args))>.*?</\1>", RegexOptions.Singleline | RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 2000)]
     private static partial Regex Noise();
@@ -87,8 +162,8 @@ public static partial class ConversationFormats
 
     private static string Text(JsonElement element, string name) => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : string.Empty;
 
-    private static DateTimeOffset? At(JsonElement root) =>
-        DateTimeOffset.TryParse(Text(root, "timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at.ToUniversalTime() : null;
+    private static DateTimeOffset? At(JsonElement root, string name = "timestamp") =>
+        DateTimeOffset.TryParse(Text(root, name), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) ? at.ToUniversalTime() : null;
 }
 
 /// <summary>What says which conversation a note is of: the format of its lines, the machine, the application, the session and when it began.</summary>

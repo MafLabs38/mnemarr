@@ -163,6 +163,9 @@ describe('LinkMachine', () => {
       updateTo: null,
       updateNote: null,
       watching: null,
+      attention: null,
+      consolidate: null,
+      consolidating: true,
     };
     server({ machines: [existing] });
     renderWithProviders(<LinkMachine />, '/link?code=ABCD-EFGH-JKLM');

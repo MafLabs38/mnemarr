@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Consolidation;
 using Mnemarr.Core.Conversations;
 
 namespace Mnemarr.Core.Collectors;
@@ -258,7 +259,31 @@ public sealed class CollectorService
             _machines.SetComputer(machine.Name, beat.ComputerId!);
         }
 
-        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null, beat.IntervalSeconds is > 0 and <= MaxInterval ? beat.IntervalSeconds : null, beat.CanUpdate, beat.CanUpdate ? Short(beat.UpdateNote, MaxNote) : null, Short(beat.Watching, MaxWatching)));
+        _machines.Seen(machine.Name, _clock.GetUtcNow(), new Heartbeat(Short(beat.Version, MaxVersion) ?? "unknown", Math.Max(0, beat.PendingLines), Short(beat.Error, MaxError), beat.Paused, Short(beat.Platform, MaxPlatform), MachineJoining.IsComputerId(beat.Program) ? beat.Program : null, null, beat.IntervalSeconds is > 0 and <= MaxInterval ? beat.IntervalSeconds : null, beat.CanUpdate, beat.CanUpdate ? Short(beat.UpdateNote, MaxNote) : null, Short(beat.Watching, MaxWatching), AttentionSignal.Clean(beat.Attention)));
+    }
+
+    /// <summary>
+    /// Says whether the conversations of a machine are consolidated into notes of the memory (ADR 0041); null puts it back to the default of their format. Conversations that were not
+    /// consolidated before are picked up from the start when it is turned on.
+    /// </summary>
+    public void SetConsolidate(string machine, bool? consolidate, string actor)
+    {
+        if (!_machines.SetConsolidate(machine, consolidate))
+        {
+            throw new RejectedException(Problem.NotFound, NoSuchMachine);
+        }
+
+        _audit.Append(actor, "collector.consolidate", $"{machine}: {ConsolidateWord(consolidate)}");
+    }
+
+    private static string ConsolidateWord(bool? consolidate)
+    {
+        if (consolidate is not { } value)
+        {
+            return "default";
+        }
+
+        return value ? "on" : "off";
     }
 
     /// <summary>Every machine that joined, and every name conversations came from that never joined, each with its state.</summary>
@@ -271,7 +296,7 @@ public sealed class CollectorService
         {
             activity.Remove(machine.Name, out var sent);
             var seen = Latest(machine.LastSeenAt, sent?.LastSeen);
-            list.Add(new MachineStatus(machine.Name, machine.Kind, MachineStates.Of(machine, now, _options.Value), sent?.Conversations ?? 0, sent?.Lines ?? 0, seen, machine.EnrolledAt, machine.Version, machine.PendingLines, machine.Error, machine.Platform, machine.Program, machine.CanUpdate, machine.UpdateNote, machine.Watching));
+            list.Add(new MachineStatus(machine.Name, machine.Kind, MachineStates.Of(machine, now, _options.Value), sent?.Conversations ?? 0, sent?.Lines ?? 0, seen, machine.EnrolledAt, machine.Version, machine.PendingLines, machine.Error, machine.Platform, machine.Program, machine.CanUpdate, machine.UpdateNote, machine.Watching, machine.AttentionCode, machine.AttentionUrl, machine.AttentionSince, machine.Consolidate, ConsolidationDefaults.For(machine.Consolidate, sent?.Formats)));
         }
 
         list.AddRange(activity.Values.Select(sent => new MachineStatus(sent.Machine, null, MachineState.Unenrolled, sent.Conversations, sent.Lines, sent.LastSeen, null, null, 0, null)));

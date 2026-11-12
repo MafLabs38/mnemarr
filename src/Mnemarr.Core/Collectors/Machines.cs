@@ -90,14 +90,23 @@ public sealed record Machine(
     int? IntervalSeconds = null,
     bool CanUpdate = false,
     string? UpdateNote = null,
-    string? Watching = null);
+    string? Watching = null,
+    bool? Consolidate = null,
+    string? AttentionCode = null,
+    string? AttentionUrl = null,
+    DateTimeOffset? AttentionSince = null,
+    DateTimeOffset? AttentionMailedAt = null,
+    int AttentionMails = 0);
+
+/// <summary>What a machine asks a person for (ADR 0041): a code from a closed list, and the address where the person can answer it.</summary>
+public sealed record HeartbeatAttention(string Code, string? Url);
 
 /// <summary>
 /// What a collector says at the end of a pass. <paramref name="Paused"/>: a person asked it to be quiet. <paramref name="Platform"/> and <paramref name="Program"/>:
 /// the system the collector is for and the hash of the program it runs. <paramref name="ComputerId"/>: the identifier of its computer.
 /// <paramref name="IntervalSeconds"/>: how often it makes a pass. <paramref name="CanUpdate"/>: it was installed with the installer and can replace itself. <paramref name="UpdateNote"/>: why its last attempt to update failed.
 /// </summary>
-public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null, bool CanUpdate = false, string? UpdateNote = null, string? Watching = null);
+public sealed record Heartbeat(string Version, long PendingLines, string? Error, bool Paused = false, string? Platform = null, string? Program = null, string? ComputerId = null, int? IntervalSeconds = null, bool CanUpdate = false, string? UpdateNote = null, string? Watching = null, HeartbeatAttention? Attention = null);
 
 public enum EnrolmentState
 {
@@ -154,4 +163,51 @@ public sealed record MachineStatus(
     string? Program = null,
     bool CanUpdate = false,
     string? UpdateNote = null,
-    string? Watching = null);
+    string? Watching = null,
+    string? AttentionCode = null,
+    string? AttentionUrl = null,
+    DateTimeOffset? AttentionSince = null,
+    bool? Consolidate = null,
+    bool Consolidating = true);
+
+/// <summary>
+/// The attention a machine may ask for (ADR 0041). The codes are a closed list in Mnemarr's own words: a satellite never invents one, and what a person is told is Mnemarr's sentence,
+/// not text the satellite sent. The address is text from outside: it is kept only if it is an <c>https</c> address (or <c>http</c> to this host, for a sandbox) with a host and nothing else
+/// in it, short, and it is shown as a link with its host visible.
+/// </summary>
+public static class AttentionSignal
+{
+    public const string NeedsLogin = "needs-login";
+    public const string ReaderBroken = "reader-broken";
+    public const int MaxUrl = 512;
+
+    public static bool IsKnown(string? code) => code is NeedsLogin or ReaderBroken;
+
+    /// <summary>The signal as it is kept: null when the code is not one of the list (the heartbeat is kept, the attention ignored), and the address dropped when it is not acceptable.</summary>
+    public static HeartbeatAttention? Clean(HeartbeatAttention? raw) =>
+        raw is { } signal && IsKnown(signal.Code) ? new HeartbeatAttention(signal.Code, CleanUrl(signal.Url)) : null;
+
+    public static string? CleanUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || url.Length > MaxUrl || url.Any(char.IsControl) || url.Any(char.IsWhiteSpace))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var address) || address.UserInfo.Length > 0 || string.IsNullOrEmpty(address.Host))
+        {
+            return null;
+        }
+
+        var acceptable = address.Scheme == Uri.UriSchemeHttps || (address.Scheme == Uri.UriSchemeHttp && address.IsLoopback);
+        return acceptable ? address.AbsoluteUri : null;
+    }
+
+    /// <summary>The sentence a person is told, in Mnemarr's words, for a code.</summary>
+    public static string Sentence(string code) => code switch
+    {
+        NeedsLogin => "needs you to sign in again.",
+        ReaderBroken => "can no longer read what it comes for, and needs a person to look at it.",
+        _ => "needs a person.",
+    };
+}

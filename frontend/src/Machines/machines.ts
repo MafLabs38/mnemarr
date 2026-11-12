@@ -28,6 +28,20 @@ export interface MachineItem {
   updateNote: string | null;
   /** What the collector found where it looks for conversations: why a machine that is online sends nothing (a sentence with no path). */
   watching: string | null;
+  /** What the machine asks a person for (ADR 0041): Mnemarr's sentence for a code, and where the person can answer it. */
+  attention: MachineAttention | null;
+  /** What a person said about turning the conversations of this machine into notes: null, the default of their format. */
+  consolidate: boolean | null;
+  /** Whether they are turned into notes now, by what was said or by default. */
+  consolidating: boolean;
+}
+
+/** A machine that asks for a person: a satellite whose session ended, for one. `url` is https (or loopback) and null when none acceptable was given. */
+export interface MachineAttention {
+  code: 'needs-login' | 'reader-broken';
+  sentence: string;
+  url: string | null;
+  since: string | null;
 }
 
 /** A code that joins a machine, and where it stands. */
@@ -174,6 +188,18 @@ export function useRenameMachine() {
   return useMutation({
     mutationFn: (change: { machine: string; name: string }) =>
       apiSend('POST', `/collectors/${encodeURIComponent(change.machine)}/rename`, { name: change.name }),
+    onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
+  });
+}
+
+/** Says whether the conversations of a machine are turned into notes; null puts it back to the default of their format. */
+export function useSetConsolidate() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (change: { machine: string; consolidate: boolean | null }) =>
+      apiSend('POST', `/collectors/${encodeURIComponent(change.machine)}/consolidate`, {
+        consolidate: change.consolidate,
+      }),
     onSuccess: () => client.invalidateQueries({ predicate: isMachinesQuery }),
   });
 }
