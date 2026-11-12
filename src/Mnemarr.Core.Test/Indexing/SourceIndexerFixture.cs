@@ -90,6 +90,22 @@ public sealed class SourceIndexerFixture : IDisposable
         Paths(new SearchRequest("alpha") { ExcludeSources = [two.Id] }).Should().BeEquivalentTo("ops/a.md", "dev/b.md", "docs/c.md");
         Paths(new SearchRequest("alpha") { Topics = ["ops"], ExcludeSources = [one.Id] }).Should().Equal("ops/d.md");
         Paths(new SearchRequest("alpha")).Should().HaveCount(4, "nothing asked, nothing left out");
+        Paths(new SearchRequest("alpha") { ExcludeTopics = ["dev"], PerNote = 1 }).Should().BeEquivalentTo("ops/a.md", "docs/c.md", "ops/d.md");
+        Paths(new SearchRequest("alpha") { Topics = ["ops"] }).Should().BeEquivalentTo("ops/a.md", "ops/d.md");
+        _index.Search(new SearchRequest("alpha"), new SourceScope([two.Id])).Select(hit => hit.Path).Should().Equal("ops/d.md");
+        _index.Search(new SearchRequest("alpha") { ExcludeSources = [two.Id] }, new SourceScope([two.Id])).Should().BeEmpty("what is left out and what is allowed do not add up to more than the caller may see");
+    }
+
+    [Fact]
+    public async Task should_treat_the_root_of_a_source_as_a_topic_like_another_when_it_is_asked_for_by_its_empty_name()
+    {
+        var folder = _workspace.Folder("vault");
+        TestWorkspace.Write(folder, "root.md", "# Root\nThe alpha at the root.\n");
+        TestWorkspace.Write(folder, "ops/a.md", "# A\nThe alpha in ops.\n");
+        await _subject.IndexAsync(Declare("vault", folder), Token);
+
+        _index.Search(new SearchRequest("alpha", Topic: string.Empty), SourceScope.All).Select(hit => hit.Path).Should().Equal("root.md");
+        _index.Search(new SearchRequest("alpha"), SourceScope.All).Should().HaveCount(2);
     }
 
     [Fact]

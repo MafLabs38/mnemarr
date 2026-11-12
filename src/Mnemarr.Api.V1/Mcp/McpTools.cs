@@ -64,7 +64,7 @@ public sealed class McpTools
     [
         new("list_sources", "The sources of notes you may use: their name, kind, whether notes can be written in them, and how many notes they hold.", McpArguments.Schema(), Permissions.NotesRead, false),
         new("search", "Searches the notes by words and, when the host has the model, by meaning (the question may use other words than the note; the best matches first, each with the kind of its source and how it matched: keywords, meaning or both). A hit of kind Memory is a consolidated note (what was decided and learned, short and dated, with the conversations it came from); a hit of kind Conversations is the raw record. Start from Memory, go down to Conversations for a detail or to check. Optionally within one source or some topics (the first folder of a note), leaving topics out; one note gives at most per_note hits.",
-            McpArguments.Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note. Several, separated by commas: a note of any one of them.", false), ("exclude_topic", Str, "A topic to leave out (several, separated by commas).", false), ("per_note", Int, "At most this many hits from one note (1 to 25, default 3): a long conversation does not fill the answer.", false), ("limit", Int, "At most this many hits (1 to 25, default 10).", false)),
+            McpArguments.Schema(("query", Str, "The words to look for.", true), OptionalSourceArg, ("topic", Str, "A topic: the first folder of a note. Several, separated by commas: a note of any one of them.", false), ("exclude_topic", Str, "A topic to leave out (several, separated by commas).", false), ("per_note", Int, "At most this many hits from one note (1 to 50, default 3): a long conversation does not fill the answer.", false), ("limit", Int, "At most this many hits (1 to 25, default 10).", false)),
             Permissions.Search, false),
         new("list_notes", "Lists notes (source, path, title), of one source or carrying one tag.", McpArguments.Schema(OptionalSourceArg, ("tag", Str, "A tag, without #.", false)), Permissions.NotesRead, false),
         new("read_note", "Reads a note: its text, its tags, the notes that link to it, and its version. A long note (a conversation can be hundreds of thousands of characters) comes in a window of at most 20000 characters: the answer says the total length and where the next window starts. Ask for another window with offset, for the end of the note with tail (the latest of a conversation is at its end), or for the passage around some words with around. A note that came truncated cannot be replaced whole: use append_to_note.",
@@ -72,7 +72,7 @@ public sealed class McpTools
         new("list_tags", "The tags of the notes, most used first.", McpArguments.Schema(), Permissions.NotesRead, false),
         new("create_note", "Creates a note. The path ends in .md; folders are created. The text is the whole file, front matter included.",
             McpArguments.Schema((SourceKey, Str, "A source name (it must be open for writing).", true), (PathKey, Str, "Where the note goes, such as Topic/Note.md.", true), (ContentKey, Str, "The whole text of the note.", true)), Permissions.NotesWrite, true),
-        new("update_note", "Replaces the whole text of a note. Give the version you read: a note that changed since is refused, so that nothing is overwritten.",
+        new("update_note", "Replaces the whole text of a note. Give the version you read: a note that changed since is refused, so that nothing is overwritten. A note longer than 512 KB cannot be replaced whole (use append_to_note, or change a note of that length in its file).",
             McpArguments.Schema(SourceArg, PathArg, (ContentKey, Str, "The whole new text.", true), (VersionKey, Str, "The version of the note you read.", true)), Permissions.NotesWrite, true),
         new("append_to_note", "Adds text at the end of a note, whatever its version: to jot something down without reading the note first.",
             McpArguments.Schema(SourceArg, PathArg, ("text", Str, "The text to add.", true)), Permissions.NotesWrite, true),
@@ -156,7 +156,7 @@ public sealed class McpTools
         {
             Topics = Split(McpArguments.Optional(arguments, "topic")),
             ExcludeTopics = Split(McpArguments.Optional(arguments, "exclude_topic")),
-            PerNote = Math.Clamp(McpArguments.Integer(arguments, "per_note") ?? SearchRequest.DefaultPerNote, 1, 25),
+            PerNote = Math.Clamp(McpArguments.Integer(arguments, "per_note") ?? SearchRequest.DefaultPerNote, 1, SearchRequest.MaxLimit),
         };
         return _search.Search(request, scope)
             .Select(hit => new { source = hit.SourceName, kind = kinds.GetValueOrDefault(hit.SourceId, string.Empty), path = hit.Path, title = hit.Title, heading = hit.Heading, snippet = hit.Snippet, match = hit.Match }).ToList();

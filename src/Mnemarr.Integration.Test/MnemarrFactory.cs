@@ -447,6 +447,21 @@ public sealed class McpWriteFactory : MnemarrFactoryBase
     }
 }
 
+/// <summary>An application whose operator lowered the size of a note that is read to 1 MB (<c>Indexing:MaxNoteMegabytes</c>), so that a note above it is a test of a few megabytes, not of tens.</summary>
+public sealed class SmallNotesFactory : MnemarrFactoryBase
+{
+    public SmallNotesFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Indexing:MaxNoteMegabytes", "1");
+    }
+}
+
 /// <summary>An application whose operator turned the MCP write tools on for notes only (<c>Mcp:WriteTools</c>, not <c>Mcp:SourceTools</c>).</summary>
 public sealed class McpNotesOnlyFactory : MnemarrFactoryBase
 {

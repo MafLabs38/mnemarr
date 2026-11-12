@@ -235,6 +235,15 @@ public sealed class NoteReaderFixture : NotesFixtureBase
     }
 
     [Fact]
+    public async Task should_not_cut_a_note_of_exactly_one_page_and_cut_one_that_is_a_character_longer()
+    {
+        var one = await SourceWithAsync("chats", ("exact.md", new string('x', NoteReader.PageChars)), ("over.md", new string('x', NoteReader.PageChars + 1)));
+
+        Reader.Read(one.Id, "exact.md", SourceScope.All).Pages.Should().Be(1);
+        Reader.Read(one.Id, "over.md", SourceScope.All).Pages.Should().Be(2);
+    }
+
+    [Fact]
     public async Task should_cut_a_note_that_has_no_line_end_at_all_where_the_page_ends()
     {
         var text = new string('x', NoteReader.PageChars + 1000);

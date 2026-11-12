@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 import Alert from 'Components/Alert/Alert';
@@ -32,6 +32,15 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
   const [params] = useSearchParams();
   const { data: note, isPending, error } = useNote(sourceId, path, pageOf(params.get('page')));
   const { hash } = useLocation();
+  const article = useRef<HTMLElement>(null);
+  const shownPage = note?.page ?? -1;
+
+  // Another page of a long note starts at its top, not where the one before was left.
+  useEffect(() => {
+    if (shownPage >= 0) {
+      article.current?.scrollIntoView?.();
+    }
+  }, [shownPage]);
 
   // A link to a heading (`[[note#Heading]]`) leads to it, once the note is drawn.
   useEffect(() => {
@@ -58,7 +67,7 @@ export default function NoteView({ sourceId, path }: Readonly<{ sourceId: string
     );
   }
   return (
-    <article className={`${styles.noteCard} ${styles[kindLook[note.sourceKind].className] ?? ''}`}>
+    <article ref={article} className={`${styles.noteCard} ${styles[kindLook[note.sourceKind].className] ?? ''}`}>
       <header className={styles.noteHeader}>
         <KindBadge kind={note.sourceKind} />
         <p className={styles.noteWhere}>

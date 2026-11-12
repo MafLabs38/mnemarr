@@ -248,6 +248,22 @@ describe('Notes', () => {
     expect(screen.getByRole('status')).toHaveTextContent('This note is long, so it comes in pages');
   });
 
+  it.each([
+    ['2', '?page=2'],
+    ['abc', ''],
+    ['-1', ''],
+    ['1.5', ''],
+    ['0', ''],
+  ])('asks the server for the page %s of the address as %j', async (typed, asked) => {
+    const fetchMock = server(noteWith('# Docker'));
+    renderWithProviders(<Notes />, `${open}&page=${typed}`, readerSession);
+
+    await screen.findByRole('region', { name: 'What you may do with this note' });
+
+    const requested = fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes('/notes/1111'));
+    expect(requested).toEqual([`/api/v1/notes/${S1}/devops/docker.md${asked}`]);
+  });
+
   it('draws plain text, not links, for the ways that lead nowhere on the first and the last page', async () => {
     server(noteWith('# Docker', { cut: true, page: 0, pages: 3 }));
     const first = renderWithProviders(<Notes />, open, readerSession);

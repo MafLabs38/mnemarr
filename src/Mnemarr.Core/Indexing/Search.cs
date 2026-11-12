@@ -26,8 +26,8 @@ public sealed record SearchRequest(string Query, Guid? SourceId = null, string? 
     /// <summary>The most hits that one note gives, 1 to <see cref="MaxLimit"/>.</summary>
     public int PerNote { get; init; } = DefaultPerNote;
 
-    /// <summary>The topics to stay within, <see cref="Topic"/> included; empty when the search is not limited to topics.</summary>
-    public IReadOnlyList<string> StayWithin => [.. (Topic is null ? Topics : Topics.Prepend(Topic)).Where(topic => topic.Length > 0).Distinct(StringComparer.Ordinal)];
+    /// <summary>The topics to stay within, <see cref="Topic"/> included; empty when the search is not limited to topics. The empty topic is the root of a source, and is a topic like another.</summary>
+    public IReadOnlyList<string> StayWithin => [.. (Topic is null ? Topics : Topics.Prepend(Topic)).Distinct(StringComparer.Ordinal)];
 }
 
 /// <summary>A chunk that matches, with where it comes from. A higher score is a better match.</summary>

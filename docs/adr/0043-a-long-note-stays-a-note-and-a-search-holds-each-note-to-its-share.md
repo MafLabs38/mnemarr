@@ -21,7 +21,7 @@ A conversation is one note, and it grows with every exchange. Two limits made a 
    Sources page that names the setting. A limit that silently loses data is a defect; one that says what it left out is a setting.
 3. **The interface shows pages, an assistant reads the whole.** A note longer than a page (512 KB, drawn in about a second) comes to the interface in pages cut at line ends (`page` of `pages`, `?page=`),
    with the version of the whole note. A page is never a note: the editor is off for it (reason `note-too-long`, unless the source is read-only, which is the first reason), and **the server refuses to
-   replace such a note whole** (409), because a client that sends one page back with the version of the whole would cut the rest off; appending stays possible. The MCP `read_note` reads the whole in windows,
+   replace such a note whole** (409), because a client that sends one page back with the version of the whole would cut the rest off; appending stays possible up to the 2 MB that the editor writes (above it, a note is read and searched but not changed from here: its file is). The MCP `read_note` reads the whole in windows,
    the end included (`tail`), and draws nothing for it: that is how an assistant reads a conversation.
 4. **A search stays within some topics, leaves topics and sources out, and holds each note to its share.** `topic` may be repeated (any one of them), `notTopic` and `notSource` leave out, and `perNote` (3 by default,
    1 to 50) is how many passages one note may give. The share is applied inside the keyword query (every matching passage is ranked and held to its share before the best are completed) and again on the merged list, so that the other notes fill the answer. MCP `search`
