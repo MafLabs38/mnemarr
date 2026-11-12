@@ -82,14 +82,7 @@ public sealed class NoteWriter
                 throw new RejectedException(Problem.Conflict, "The note changed since it was read: read it again before changing it.");
             }
 
-            var existing = Encoding.UTF8.GetString(current);
-            if (existing.Length > NoteReader.PageChars)
-            {
-                // The note comes in pages: what a client holds is one page, with the version of the whole note, and sending it back would cut the rest off (ADR 0043). Appending stays possible.
-                throw new RejectedException(Problem.Conflict, "The note is longer than a page: it cannot be replaced whole from here. Append to it, or change the file itself.");
-            }
-
-            var bytes = Encode(KeepLineEndings(existing, content));
+            var bytes = Encode(KeepLineEndings(Encoding.UTF8.GetString(current), content));
             WriteAtomic(full, bytes, overwrite: true);
             await _indexer.IndexNoteAsync(source, path, cancellationToken);
             _audit.Append(actor.Name, "note.updated", Target(source, path));
@@ -149,8 +142,13 @@ public sealed class NoteWriter
         InLockAsync(actor, sourceId, cancellationToken, (source, folder) =>
         {
             var full = Resolve(folder, path);
-            var current = Existing(full, anySize: true);
-            if (expectedVersion is not null && !string.Equals(VersionOf(current), expectedVersion, StringComparison.OrdinalIgnoreCase))
+            if (!File.Exists(full))
+            {
+                throw new RejectedException(Problem.NotFound, "There is no such note.");
+            }
+
+            // Removing a note changes none of its text, whatever its size: the version is hashed from the stream, and nothing is read when none was given.
+            if (expectedVersion is not null && !string.Equals(VersionOfFile(full), expectedVersion, StringComparison.OrdinalIgnoreCase))
             {
                 throw new RejectedException(Problem.Conflict, "The note changed since it was read: read it again before removing it.");
             }
@@ -297,9 +295,13 @@ public sealed class NoteWriter
             : Encoding.UTF8.GetBytes(content);
     }
 
-    /// <param name="full">The file of the note.</param>
-    /// <param name="anySize">Whether a note above 2 MB may be read: to remove it, which changes none of its text, so that a note that the search finds can be taken out (a rename rewrites the note and stays within 2 MB).</param>
-    private static byte[] Existing(string full, bool anySize = false)
+    private static string VersionOfFile(string full)
+    {
+        using var stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private static byte[] Existing(string full)
     {
         if (!File.Exists(full))
         {
@@ -307,7 +309,7 @@ public sealed class NoteWriter
         }
 
         // The size is looked at before the file is read: a note of tens of megabytes is refused without being loaded.
-        return !anySize && new FileInfo(full).Length > MarkdownFileScanner.MaxFileBytes
+        return new FileInfo(full).Length > MarkdownFileScanner.MaxFileBytes
             ? throw new RejectedException(Problem.Conflict, $"The note is longer than {MarkdownFileScanner.MaxFileBytes / (1024 * 1024)} MB: it is read, but it is not changed from here. Change the file itself.")
             : File.ReadAllBytes(full);
     }

@@ -85,7 +85,9 @@ public sealed class NoteReader
         }
 
         var body = MarkdownNotes.Body(text);
-        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body), text, NoteWriter.VersionOf(bytes), source.Kind, source.Mode, page, pages);
+        // A page is not the note: its version is its own, which no file has, so that what is read as a page can never be sent back as the note (ADR 0043).
+        var version = pages > 1 ? $"{NoteWriter.VersionOf(bytes)}-page-{page}" : NoteWriter.VersionOf(bytes);
+        return new NoteContent(detail, body, new WikiLinkRenderer(_browser, sourceId, path, scope).Render(body), text, version, source.Kind, source.Mode, page, pages);
     }
 
     /// <summary>Where each page begins: about <see cref="PageChars"/> characters on, back to the end of a line so that no line is split (a line longer than a page is split where the page ends, never inside a surrogate pair).</summary>

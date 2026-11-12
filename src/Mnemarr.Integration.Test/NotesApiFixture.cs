@@ -67,7 +67,13 @@ public sealed class NotesApiFixture : IClassFixture<MnemarrFactory>, IAsyncLifet
         var mid = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/mid.md", Token);
         var replace = await _callers["Operator"].PutAsJsonAsync($"/api/v1/notes/{id}/mid.md", new { content = mid.GetProperty("raw").GetString(), version = mid.GetProperty("version").GetString() }, Token);
         mid.GetProperty("pages").GetInt32().Should().Be(2);
-        replace.StatusCode.Should().Be(HttpStatusCode.Conflict, "a page sent back with the version of the whole note would cut the rest of the note off");
+        var whole = await _callers["Operator"].GetFromJsonAsync<JsonElement>($"/api/v1/notes/{id}/mid.md?whole=true", Token);
+        whole.GetProperty("cut").GetBoolean().Should().BeFalse();
+        whole.GetProperty("raw").GetString()!.Length.Should().BeGreaterThan(512 * 1024);
+        whole.GetProperty("version").GetString().Should().HaveLength(64).And.NotBe(mid.GetProperty("version").GetString(), "the page has a version of its own");
+        var replaceWhole = await _callers["Operator"].PutAsJsonAsync($"/api/v1/notes/{id}/mid.md", new { content = whole.GetProperty("raw").GetString() + "more\n", version = whole.GetProperty("version").GetString() }, Token);
+        replaceWhole.StatusCode.Should().Be(HttpStatusCode.OK, "the whole text, with the version of the note, is replaced as before");
+        replace.StatusCode.Should().Be(HttpStatusCode.Conflict, "a page has a version of its own, so that it cannot be sent back as the note");
     }
 
     [Fact]

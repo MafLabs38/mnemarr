@@ -72,7 +72,7 @@ public sealed class McpTools
         new("list_tags", "The tags of the notes, most used first.", McpArguments.Schema(), Permissions.NotesRead, false),
         new("create_note", "Creates a note. The path ends in .md; folders are created. The text is the whole file, front matter included.",
             McpArguments.Schema((SourceKey, Str, "A source name (it must be open for writing).", true), (PathKey, Str, "Where the note goes, such as Topic/Note.md.", true), (ContentKey, Str, "The whole text of the note.", true)), Permissions.NotesWrite, true),
-        new("update_note", "Replaces the whole text of a note. Give the version you read: a note that changed since is refused, so that nothing is overwritten. A note longer than 512 KB cannot be replaced whole (use append_to_note, or change a note of that length in its file).",
+        new("update_note", "Replaces the whole text of a note. Give the version you read: a note that changed since is refused, so that nothing is overwritten.",
             McpArguments.Schema(SourceArg, PathArg, (ContentKey, Str, "The whole new text.", true), (VersionKey, Str, "The version of the note you read.", true)), Permissions.NotesWrite, true),
         new("append_to_note", "Adds text at the end of a note, whatever its version: to jot something down without reading the note first.",
             McpArguments.Schema(SourceArg, PathArg, ("text", Str, "The text to add.", true)), Permissions.NotesWrite, true),

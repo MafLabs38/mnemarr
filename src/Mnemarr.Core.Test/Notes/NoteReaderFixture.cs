@@ -216,7 +216,8 @@ public sealed class NoteReaderFixture : NotesFixtureBase
         pages.Select(page => page.Page).Should().Equal(Enumerable.Range(0, first.Pages));
         pages.SelectMany(page => page.Raw).Should().Equal(text, "the pages put end to end are the note, with nothing lost and nothing twice");
         pages.Take(first.Pages - 1).Should().OnlyContain(page => page.Raw.Length <= NoteReader.PageChars && page.Raw.EndsWith('\n'), "a page ends where a line ends");
-        pages.Should().OnlyContain(page => page.Version == whole.Version, "the version is the one of the whole note, so that a conflict is still seen");
+        pages.Select(page => page.Version).Distinct().Should().HaveCount(pages.Count, "each page has a version of its own");
+        pages.Should().OnlyContain(page => page.Version != whole.Version && page.Version.StartsWith(whole.Version, StringComparison.Ordinal), "and none is the version of the note, which no page can be sent back as");
         whole.Cut.Should().BeFalse();
         whole.Raw.Should().Be(text);
         whole.Markdown.Should().BeEmpty("an assistant reads the text in windows: nothing is drawn for it");

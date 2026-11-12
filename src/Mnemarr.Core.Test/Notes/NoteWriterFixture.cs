@@ -188,19 +188,21 @@ public sealed class NoteWriterFixture : IDisposable
     }
 
     [Fact]
-    public async Task should_refuse_to_replace_a_note_that_comes_in_pages_and_still_append_to_it()
+    public async Task should_refuse_a_page_sent_back_as_the_note_and_accept_the_whole_text_that_was_read()
     {
         var text = "# Long\n" + string.Concat(Enumerable.Repeat(new string('w', 99) + "\n", 6_000));
         var source = Declare("vault");
         await _writer.CreateAsync(Alice, source.Id, "long.md", text, Token);
         var page = _reader.Read(source.Id, "long.md", SourceScope.All);
+        var whole = _reader.Read(source.Id, "long.md", SourceScope.All, whole: true);
 
         var replace = () => _writer.UpdateAsync(Alice, source.Id, "long.md", page.Raw, page.Version, Token);
 
         text.Length.Should().BeGreaterThan(NoteReader.PageChars).And.BeLessThan((int)MarkdownFileScanner.MaxFileBytes);
-        (await replace.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict, "a page sent back would cut the rest of the note off");
-        (await _writer.AppendAsync(Alice, source.Id, "long.md", "one line more\n", Token)).Path.Should().Be("long.md");
-        File.ReadAllText(Path.Combine(source.Path, "long.md")).Should().StartWith(text, "the note was not touched").And.EndWith("one line more\n");
+        (await replace.Should().ThrowAsync<RejectedException>()).Which.Problem.Should().Be(Problem.Conflict, "a page has a version of its own, so that it cannot be sent back as the note");
+        File.ReadAllText(Path.Combine(source.Path, "long.md")).Should().Be(text, "the note was not touched");
+        await _writer.UpdateAsync(Alice, source.Id, "long.md", whole.Raw + "one line more\n", whole.Version, Token);
+        File.ReadAllText(Path.Combine(source.Path, "long.md")).Should().EndWith("one line more\n", "the whole text that was read, with the version of the note, is replaced as before");
     }
 
     [Fact]

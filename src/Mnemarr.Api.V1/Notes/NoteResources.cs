@@ -46,7 +46,7 @@ public sealed record NoteLinkResource(string Target, NoteRefResource? Note);
 /// links and images that lead where the caller may go (<c>mnemarr-note:{source}/{path}</c>, <c>mnemarr-file:{path}</c> for an image of the
 /// source of the note, <c>mnemarr-unresolved:</c> for what leads nowhere the caller may read), its tags, where its links lead, and the notes
 /// that link to it. An image is fetched from <c>/api/v1/sources/{id}/files/{path}</c>. <c>pages</c>: a note longer than a page of the interface comes in pages (<c>page</c>, from 0,
-/// of <c>pages</c>; <c>cut</c> is true then); the text is one page, and it cannot be replaced whole from here (an assistant reads it in windows, and a person has the file).
+/// of <c>pages</c>; <c>cut</c> is true then); the text is one page with a version of its own, which no file has, so that it cannot be sent back as the note (<c>?whole=true</c> gives the whole).
 /// </summary>
 public sealed record NoteResource(
     Guid SourceId, string SourceName, string Path, string Title, string Markdown, string Rendered, IReadOnlyList<string> Tags,
