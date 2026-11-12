@@ -88,7 +88,12 @@ public static class CoreServiceCollectionExtensions
         services.AddSingleton<OnnxEmbeddingProvider>();
         // No redirect is followed: the key of the server must not be sent to another address. The client is the one of this singleton, which lives as long as the host.
         services.AddSingleton(sp => new RemoteEmbeddingClient(
-            new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(2) }), sp.GetRequiredService<IOptions<EmbeddingOptions>>()));
+            new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, PooledConnectionLifetime = TimeSpan.FromMinutes(2) })
+            {
+                // The client times each call itself (Remote:TimeoutSeconds, up to 300); an answer is a few kilobytes of numbers, so a server cannot make the pod buffer more than this.
+                Timeout = Timeout.InfiniteTimeSpan,
+                MaxResponseContentBufferSize = 16 * 1024 * 1024,
+            }, sp.GetRequiredService<IOptions<EmbeddingOptions>>()));
         services.TryAddSingleton<IEmbeddingProvider>(sp =>
             sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value.Remote.Wanted
                 ? ActivatorUtilities.CreateInstance<FailoverEmbeddingProvider>(sp, (IEmbeddingProvider)sp.GetRequiredService<OnnxEmbeddingProvider>())

@@ -254,7 +254,8 @@ public sealed class SqliteVectorStore : IVectorStore
         var restricted = scope is { } given && (given.Sources is not null || given.ConversationsHidden) ? given : null;
         if (restricted is null)
         {
-            // Everything, for the probes of the host and for a caller who may see it all: two counts that read an index each, not a join over every chunk.
+            // Everything, for the probes of the host and for a caller who may see it all: two counts that read an index each, not a join over every chunk. It relies on the cascade that
+            // removes the vectors of a chunk with the chunk; a vector that is left until the next tidy would be counted for a moment.
             command.CommandText = "SELECT (SELECT COUNT(*) FROM chunks), (SELECT COUNT(*) FROM chunk_embeddings WHERE model = $model)";
             command.Parameters.AddWithValue(ModelParameter, model);
             using var all = command.ExecuteReader();

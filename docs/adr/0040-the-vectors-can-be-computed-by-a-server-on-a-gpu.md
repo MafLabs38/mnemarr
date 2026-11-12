@@ -28,7 +28,7 @@ stops the memory), or keep Mnemarr where it is and add a small server that compu
    `https` (or `http` to the same host, or an explicit `AllowInsecureHttp` for a network the operator trusts), refuses credentials in the address, and never follows a redirect, so the key cannot be sent elsewhere.
 5. **Same model, interchangeable vectors.** Both sides use the same pinned files and the same code; the cache of computed vectors ([0039](0039-a-passage-is-embedded-once.md)) does not depend on where a vector was
    computed. A client that expects another model is refused (`409`), not given vectors of another space.
-6. **Visible.** The status says where the passages are read (`cpu`, `cuda`, `remote (cuda)`), on the notes page and in `GET /api/v1/search/status` (`device`).
+6. **Visible.** The status says where the passages are read (`device`: `cpu`, `cuda` or `unknown`, never text from the server) and, when a server is set, whether the last passages came from it and why it was left alone when it was (`server.inUse`, `server.problem`, a sentence of Mnemarr's), on the notes page and in `GET /api/v1/search/status`.
 
 ## Consequences
 

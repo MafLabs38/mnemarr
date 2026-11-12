@@ -358,7 +358,7 @@ Status: ❓ open · 💬 under discussion · ✅ resolved (with a reference to t
 | 2026-11-07 | A machine is a computer, not a name; two ways to delete it; one installer for everyone (D-51, ADR 0031). Q-40: the installer tool. |
 | 2026-11-08 | The installer and the updates of the collector (D-52, ADR 0032): Velopack, one installer with no secret, the Mnemarr serves the updates; Q-40 answered. |
 | 2026-11-09 | A new session resumes the thread of the last one (D-59, ADR 0038): a rolling digest that fades with age, and the end of the last conversation; replaces the content of the pack of D-57. |
+| 2026-11-12 | A passage is embedded once (D-60, ADR 0039): the index keeps the chunks that did not change, the vectors are kept by the hash of their text, the indexer is woken instead of polling. |
+| 2026-11-12 | The vectors can be computed by a server on a GPU (D-61, ADR 0040), with a fallback to the CPU of the host. |
 | 2026-11-12 | A satellite sends a neutral format, is not consolidated by default, and can ask a person for attention (D-62, ADR 0041). |
 | 2026-11-12 | Mnemarr writes to a person through a swappable notification sender (D-63, ADR 0042). |
-| 2026-11-12 | The vectors can be computed by a server on a GPU (D-61, ADR 0040), with a fallback to the CPU of the host. |
-| 2026-11-12 | A passage is embedded once (D-60, ADR 0039): the index keeps the chunks that did not change, the vectors are kept by the hash of their text, the indexer is woken instead of polling. |

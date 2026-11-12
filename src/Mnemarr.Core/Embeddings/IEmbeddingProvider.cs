@@ -1,5 +1,8 @@
 namespace Mnemarr.Core.Embeddings;
 
+/// <summary>Where the embedding server stands: <paramref name="InUse"/> when the last vectors came from it, and <paramref name="Problem"/>, a sentence of Mnemarr's, when it was left alone and the CPU of the host computed.</summary>
+public sealed record EmbeddingServer(bool InUse, string? Problem);
+
 /// <summary>The engine of a provider failed on a text. Whatever the engine, this is what the callers catch.</summary>
 public sealed class EmbeddingException : Exception
 {
@@ -46,8 +49,11 @@ public interface IEmbeddingProvider
     /// <summary>The cosine distance beyond which a passage is not an answer, for this model: measured, and different from a model to another.</summary>
     double DefaultMaxDistance { get; }
 
-    /// <summary>Where the last vectors were computed, for the people who ask where the search is at (<c>cpu</c>, <c>cuda</c>, or a server and its device).</summary>
+    /// <summary>Where the last vectors were computed, for the people who ask where the search is at: <c>cpu</c>, <c>cuda</c> or <c>unknown</c>, never free text.</summary>
     string Device => "cpu";
+
+    /// <summary>The embedding server, when one is set (ADR 0040): whether the last vectors came from it and, when it was left alone, why. Null when no server is set.</summary>
+    EmbeddingServer? Server => null;
 
     float[] EmbedQuery(string text);
 

@@ -3,6 +3,8 @@ namespace Mnemarr.Embedder;
 // Not top-level statements: they would make a type named Program, which the test assembly (it also reaches the host's Program) would then find twice.
 internal static class EmbedderHost
 {
+    private const string LoopbackAddress = "127.0.0.1";
+
     private static async Task<int> Main(string[] args)
     {
         // The probe of the container: the image has no curl, so the program asks itself. It exits 0 when the model is loaded.
@@ -32,7 +34,13 @@ internal static class EmbedderHost
             return 1;
         }
 
-        var address = urls.Split(';')[0].Replace("0.0.0.0", "127.0.0.1", StringComparison.Ordinal).Replace("+", "127.0.0.1", StringComparison.Ordinal);
+        // Where the server listens as seen from inside: a wildcard address is the local one.
+        var address = urls.Split(';')[0];
+        foreach (var wildcard in new[] { "0.0.0.0", "[::]", "+", "*" })
+        {
+            address = address.Replace(wildcard, LoopbackAddress, StringComparison.Ordinal);
+        }
+
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };

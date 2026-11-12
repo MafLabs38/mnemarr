@@ -556,12 +556,46 @@ describe('Notes', () => {
     });
 
     it('says where the passages are read when it is not the CPU of the host', async () => {
-      const status = { state: 'ready', model: 'm', passages: 10, computed: 10, reason: null, device: 'remote (cuda)' };
+      const status = {
+        state: 'ready',
+        model: 'm',
+        passages: 10,
+        computed: 10,
+        reason: null,
+        device: 'cuda',
+        server: null,
+      };
       server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
       renderWithProviders(<Notes />, '/notes', readerSession);
       const region = await screen.findByRole('region', { name: 'Search' });
 
-      expect(await within(region).findByText('The passages are read on: remote (cuda).')).toBeInTheDocument();
+      expect(await within(region).findByText('The passages are read on: cuda.')).toBeInTheDocument();
+    });
+
+    it('says that the passages are read on the embedding server, and why it is not used when it is not', async () => {
+      const base = { state: 'ready', model: 'm', passages: 10, computed: 10, reason: null };
+      let status: object = { ...base, device: 'cuda', server: { inUse: true, problem: null } };
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
+      const first = renderWithProviders(<Notes />, '/notes', readerSession);
+      const region = await screen.findByRole('region', { name: 'Search' });
+
+      expect(
+        await within(region).findByText('The passages are read on the embedding server (cuda).'),
+      ).toBeInTheDocument();
+      first.unmount();
+
+      status = {
+        ...base,
+        device: 'cpu',
+        server: { inUse: false, problem: 'The embedding server answered 401.' },
+      };
+      server(noteWith('# x'), (path) => (path === '/search/status' ? { body: status } : undefined));
+      renderWithProviders(<Notes />, '/notes', readerSession);
+      expect(
+        await screen.findByText(
+          'The embedding server is not used: The embedding server answered 401. The passages are read on this host meanwhile.',
+        ),
+      ).toBeInTheDocument();
     });
 
     it.each([

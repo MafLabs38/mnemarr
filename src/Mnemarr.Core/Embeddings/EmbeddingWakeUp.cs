@@ -32,7 +32,7 @@ public sealed class EmbeddingWakeUp
     /// <summary>Whether chunks went since the last time this was asked.</summary>
     public bool TakeRemoved() => Interlocked.Exchange(ref _removed, 0) == 1;
 
-    /// <summary>Waits to be told, for at most <paramref name="timeout"/>. Throws when cancelled.</summary>
-    public async Task WaitAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
-        _ = await _signal.WaitAsync(timeout, cancellationToken);
+    /// <summary>Waits to be told, for at most <paramref name="timeout"/>: true when it was told, false when the time ran out. Throws when cancelled.</summary>
+    public Task<bool> WaitAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+        _signal.WaitAsync(timeout, cancellationToken);
 }

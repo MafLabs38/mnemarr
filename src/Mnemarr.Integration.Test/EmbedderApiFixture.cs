@@ -102,6 +102,44 @@ public sealed class EmbedderApiFixture : IAsyncLifetime
     }
 
     [Fact]
+    public async Task should_check_the_key_before_reading_the_body_and_refuse_a_body_that_is_not_a_request()
+    {
+        async Task<HttpStatusCode> PostRawAsync(string? key)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/embeddings") { Content = new StringContent("{ not json", System.Text.Encoding.UTF8, "application/json") };
+            if (key is not null)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            }
+
+            return (await _http!.SendAsync(request, Token)).StatusCode;
+        }
+
+        (await PostRawAsync(null)).Should().Be(HttpStatusCode.Unauthorized, "somebody without the key is told so before anything is parsed");
+        (await PostRawAsync(Key)).Should().Be(HttpStatusCode.BadRequest);
+        _provider.Computed.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("Embeddings:BatchSize", "0")]
+    [InlineData("Embeddings:Threads", "0")]
+    [InlineData("Embeddings:GpuMemoryMb", "1")]
+    [InlineData("Embeddings:Model", "no-such-model")]
+    public async Task should_refuse_to_start_with_settings_of_the_model_that_are_out_of_range(string setting, string value)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Embedder:KeyFile"] = _keyFile, [setting] = value });
+        builder.Services.AddEmbedder(builder.Configuration);
+        builder.Services.AddSingleton<IEmbeddingProvider>(_provider);
+        await using var app = builder.Build();
+
+        var act = async () => await app.StartAsync(Token);
+
+        await act.Should().ThrowAsync<OptionsValidationException>();
+    }
+
+    [Fact]
     public async Task should_give_the_vectors_of_passages_and_where_they_were_computed()
     {
         var response = await PostAsync(Ask(["a", "bb"]));
@@ -165,7 +203,7 @@ public sealed class EmbedderApiFixture : IAsyncLifetime
         var vectors = await Task.Run(() => client.Embed(["abc", "d"], "passage", "fake-model", 2), Token);
 
         vectors.Select(vector => vector[0]).Should().Equal(3f, 1f);
-        client.Device.Should().Be("remote (cuda)");
+        client.Device.Should().Be("cuda");
     }
 
     [Fact]
