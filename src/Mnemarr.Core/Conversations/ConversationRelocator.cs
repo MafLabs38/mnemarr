@@ -165,14 +165,22 @@ public sealed class ConversationRelocator
 
     private void Drop(Source source, ConversationRecord conversation)
     {
-        RemoveNote(source, conversation.NotePath);
+        RemoveNote(source, conversation.NotePath, forget: true);
         _raw.Delete(conversation.Machine, conversation.Session);
         _store.Delete(conversation.Machine, conversation.Session);
     }
 
-    private void RemoveNote(Source source, string relativePath)
+    private void RemoveNote(Source source, string relativePath, bool forget = false)
     {
-        _indexer.RemoveNote(source, relativePath);
+        if (forget)
+        {
+            _indexer.ForgetNote(source, relativePath);
+        }
+        else
+        {
+            _indexer.RemoveNote(source, relativePath);
+        }
+
         var full = Path.Combine(source.Path, relativePath);
         if (File.Exists(full))
         {

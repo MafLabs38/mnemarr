@@ -157,8 +157,14 @@ public sealed partial class EmbeddingIndexer : BackgroundService
     public async Task PassAsync(bool tidy, CancellationToken cancellationToken)
     {
         var removed = false;
+        var purge = _wake.TakePurge();
         try
         {
+            if (purge)
+            {
+                _store.ForgetComputed();
+            }
+
             await RunAsync(cancellationToken);
             removed = _wake.TakeRemoved();
             if (removed || tidy)
@@ -170,6 +176,11 @@ public sealed partial class EmbeddingIndexer : BackgroundService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            if (purge)
+            {
+                _wake.RequestPurge();
+            }
+
             if (removed)
             {
                 // The vectors of the chunks that went are still there: the next pass tidies again.
