@@ -28,13 +28,14 @@ public sealed class IdentityController : ControllerBase
     /// <summary>The name, the colors, the logo and the version of this Mnemarr.</summary>
     [HttpGet]
     [ProducesResponseType<IdentityResource>(StatusCodes.Status200OK)]
-    public IdentityResource Get() => IdentityResource.From(_identity.Get(), MayKnowTheVersion);
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<IdentityResource> Get() => MayRead ? IdentityResource.From(_identity.Get()) : Forbid();
 
     /// <summary>
-    /// The version of the running Mnemarr is behind <c>system.read</c> for a service key (a collector's key may be held by a machine on the Internet): a person who is signed in sees it,
-    /// since the menu shows it to them, and so does a key that may read the status.
+    /// Who reads the identity: a person who is signed in (the menu shows it to them) and a key that may read the status of the system. A key that does other work (a collector's, which may be held by a
+    /// machine on the Internet, or an assistant's) learns nothing of the name, the picture or the version of the environment it sends to.
     /// </summary>
-    private bool MayKnowTheVersion => User.HasClaim(MnemarrClaims.Permission, Permissions.SystemRead) || User.FindFirst(MnemarrClaims.Kind)?.Value == nameof(AccountKind.User);
+    private bool MayRead => User.HasClaim(MnemarrClaims.Permission, Permissions.SystemRead) || User.FindFirst(MnemarrClaims.Kind)?.Value == nameof(AccountKind.User);
 
     /// <summary>
     /// The logo, served like an icon: an SVG gets a policy that forbids scripts and styles, so that opening it directly cannot run code in Mnemarr's origin. With the <c>v</c> of
@@ -45,9 +46,15 @@ public sealed class IdentityController : ControllerBase
     [KeepsItsOwnHeaders]
     [Produces("image/png", "image/webp", "image/svg+xml")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetLogo([FromQuery] string? v)
     {
+        if (!MayRead)
+        {
+            return Forbid();
+        }
+
         if (_identity.Get().Logo is not { } logo)
         {
             return NotFound();

@@ -59,20 +59,32 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
     }
 
     [Theory]
-    [InlineData("Admin", true)]
-    [InlineData("Operator", true)]
-    [InlineData("Reader", true)]
-    [InlineData("Monitor", true)]
-    [InlineData("Assistant", false)]
-    [InlineData("Collector", false)]
-    public async Task should_tell_the_version_to_a_person_and_to_a_key_that_reads_the_status_and_not_to_the_other_keys(string caller, bool knows)
+    [InlineData("Admin")]
+    [InlineData("Operator")]
+    [InlineData("Reader")]
+    [InlineData("Monitor")]
+    public async Task should_tell_the_name_and_the_version_to_a_person_and_to_a_key_that_reads_the_status(string caller)
     {
         var client = caller == "Admin" ? _callers.Admin : _callers[caller];
 
         var identity = await client.GetFromJsonAsync<JsonElement>("/api/v1/identity", Token);
 
-        identity.GetProperty("name").GetString().Should().Be("Mnemarr", "everyone reads the name");
-        identity.GetProperty("version").GetString().Should().Be(knows ? Mnemarr.Core.SystemInfo.BuildInfo.Version : string.Empty);
+        identity.GetProperty("name").GetString().Should().Be("Mnemarr");
+        identity.GetProperty("version").GetString().Should().Be(Mnemarr.Core.SystemInfo.BuildInfo.Version);
+    }
+
+    [Theory]
+    [InlineData("Assistant")]
+    [InlineData("Collector")]
+    public async Task should_tell_nothing_of_the_environment_to_a_key_that_does_other_work_and_may_be_held_by_a_machine_on_the_internet(string caller)
+    {
+        await _callers.Admin.PutAsync("/api/v1/identity/logo", Form(Png, "lab.png"), Token);
+        var identity = await _callers[caller].GetAsync("/api/v1/identity", Token);
+        var logo = await _callers[caller].GetAsync("/api/v1/identity/logo", Token);
+
+        identity.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        logo.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await identity.Content.ReadAsStringAsync(Token)).Should().NotContain("version").And.NotContain("Mnemarr");
     }
 
     [Fact]

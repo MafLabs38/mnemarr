@@ -27,7 +27,9 @@ same style, and for it to be the lab's name and picture, not the product's: the 
    minutes without it, an ETag, `nosniff` and `default-src 'none'; sandbox`. The general headers of the host (no cache, the application's content policy) leave alone what the response of that address has said, so that this
    image can be cached by the browser of the person while every other answer of the API is not. The exception is an endpoint that says so (`[KeepsItsOwnHeaders]`, endpoint metadata: the host knows a capability, not a route) and only when the image is served (200, or 304 for a
    browser that has it): a refusal or a failure on the same address has the application's headers like any other.
-5. **Anyone who is signed in reads it, an administrator changes it.** `GET /api/v1/identity` (name, colors, logo address, version, why a logo is not used) answers every role: the menu shows it to everyone. A change
+5. **A person who is signed in reads it, an administrator changes it.** `GET /api/v1/identity` (name, colors, logo address, version, why a logo is not used) answers every person, whatever their role (the menu
+   shows it to everyone), and a key that holds `system.read`; **a key that does other work, a collector's or an assistant's, gets a 403**: it may be held by a machine on the Internet, and it has no reason to learn the
+   name, the picture or the version of the environment it sends to. A change
    (`PUT /api/v1/identity`, `PUT` and `DELETE /api/v1/identity/logo`) is the new permission **`settings.manage`**, which only `Admin` holds (everyone sees it: it is an administrator's), and is audited
    (`identity.updated`, `identity.logo.updated`, `identity.logo.removed`; the values are not written in the log). The identity is one row of the database (the logo in it, at most 1 MiB), so it is backed up with it.
 6. **The version follows the system status** where the role may read it (the badge asks every 30 seconds, so a new version shows up without a reload) and is the one the identity carries elsewhere.
