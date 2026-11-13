@@ -42,6 +42,7 @@ public sealed class IdentityController : ControllerBase
     /// </summary>
     /// <param name="v">The hash from <c>logoUrl</c>.</param>
     [HttpGet("logo")]
+    [KeepsItsOwnHeaders]
     [Produces("image/png", "image/webp", "image/svg+xml")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
