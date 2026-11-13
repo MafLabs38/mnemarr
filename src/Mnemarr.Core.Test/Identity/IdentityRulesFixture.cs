@@ -13,7 +13,7 @@ public sealed class IdentityRulesFixture
     [Fact]
     public void should_accept_a_name_of_at_most_forty_characters_on_one_line_and_refuse_the_others()
     {
-        IdentityRules.ValidateName("MafLabs").Should().BeNull();
+        IdentityRules.ValidateName("Example Lab").Should().BeNull();
         IdentityRules.ValidateName(new string('a', IdentityRules.MaxNameLength)).Should().BeNull();
         IdentityRules.ValidateName(new string('a', IdentityRules.MaxNameLength + 1)).Should().Contain("at most 40");
         IdentityRules.ValidateName("two\nlines").Should().Contain("one line");
@@ -58,6 +58,13 @@ public sealed class IdentityRulesFixture
     }
 
     [Fact]
+    public void should_refuse_a_file_that_is_only_a_signature_or_a_header_with_nothing_after_it()
+    {
+        IdentityRules.InspectLogo(Png[..8], "png").Format.Should().NotBeNull("a png is what its signature says; the browser tells whether it draws");
+        IdentityRules.InspectLogo(Encoding.ASCII.GetBytes("RIFF").Concat(new byte[4]).Concat(Encoding.ASCII.GetBytes("WEBP")).ToArray(), "webp").Format.Should().BeNull();
+    }
+
+    [Fact]
     public void should_refuse_an_extension_that_is_not_an_image_an_empty_file_and_a_file_that_is_too_large()
     {
         IdentityRules.InspectLogo(Png, "gif").Error.Should().Contain("png, webp, svg");
@@ -79,6 +86,7 @@ public sealed class IdentityRulesFixture
     [InlineData("""<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>""")]
     [InlineData("""<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div/></foreignObject></svg>""")]
     [InlineData("""<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"/></svg>""")]
+    [InlineData("""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><a xlink:href="https://example.test/x"/></svg>""")]
     [InlineData("""<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.test/x.png"/></svg>""")]
     [InlineData("""<svg xmlns="http://www.w3.org/2000/svg"><style>@import url(https://example.test/a.css);</style></svg>""")]
     [InlineData("""<svg xmlns="http://www.w3.org/2000/svg"><style>.a{background:url(https://example.test/a.png)}</style></svg>""")]

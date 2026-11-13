@@ -58,14 +58,31 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
         json.Headers.GetValues("Content-Security-Policy").Should().ContainSingle().Which.Should().Contain("default-src 'self'");
     }
 
+    [Theory]
+    [InlineData("Admin", true)]
+    [InlineData("Operator", true)]
+    [InlineData("Reader", true)]
+    [InlineData("Monitor", true)]
+    [InlineData("Assistant", false)]
+    [InlineData("Collector", false)]
+    public async Task should_tell_the_version_to_a_person_and_to_a_key_that_reads_the_status_and_not_to_the_other_keys(string caller, bool knows)
+    {
+        var client = caller == "Admin" ? _callers.Admin : _callers[caller];
+
+        var identity = await client.GetFromJsonAsync<JsonElement>("/api/v1/identity", Token);
+
+        identity.GetProperty("name").GetString().Should().Be("Mnemarr", "everyone reads the name");
+        identity.GetProperty("version").GetString().Should().Be(knows ? Mnemarr.Core.SystemInfo.BuildInfo.Version : string.Empty);
+    }
+
     [Fact]
     public async Task should_let_an_administrator_name_the_lab_and_color_its_texts_and_show_it_to_everyone()
     {
-        var response = await _callers.Admin.PutAsJsonAsync("/api/v1/identity", new { name = "MafLabs", colors = new { name = "#3ee0c5", version = "inkMuted" } }, Token);
+        var response = await _callers.Admin.PutAsJsonAsync("/api/v1/identity", new { name = "Example Lab", colors = new { name = "#3ee0c5", version = "inkMuted" } }, Token);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var seen = await _callers["Operator"].GetFromJsonAsync<JsonElement>("/api/v1/identity", Token);
-        seen.GetProperty("name").GetString().Should().Be("MafLabs");
+        seen.GetProperty("name").GetString().Should().Be("Example Lab");
         seen.GetProperty("colors").GetProperty("name").GetString().Should().Be("#3ee0c5");
         seen.GetProperty("colors").GetProperty("version").GetString().Should().Be("inkMuted");
     }
@@ -79,21 +96,21 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
     public async Task should_refuse_to_whoever_is_not_an_administrator_every_change_of_the_identity(string caller)
     {
         var client = _callers[caller];
-        var attempts = new[]
+        var attempts = new Dictionary<string, HttpResponseMessage>
         {
-            await client.PutAsJsonAsync("/api/v1/identity", new { name = "Taken over" }, Token),
-            await client.PutAsync("/api/v1/identity/logo", Form(Png, "a.png"), Token),
-            await client.DeleteAsync("/api/v1/identity/logo", Token),
+            ["PUT identity"] = await client.PutAsJsonAsync("/api/v1/identity", new { name = "Taken over" }, Token),
+            ["PUT logo"] = await client.PutAsync("/api/v1/identity/logo", Form(Png, "a.png"), Token),
+            ["DELETE logo"] = await client.DeleteAsync("/api/v1/identity/logo", Token),
         };
 
-        attempts.Select(attempt => (int)attempt.StatusCode).Should().OnlyContain(status => status == 403);
+        attempts.Where(attempt => attempt.Value.StatusCode != HttpStatusCode.Forbidden).Select(attempt => attempt.Key).Should().BeEmpty();
         (await _callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/identity", Token)).GetProperty("name").GetString().Should().Be("Mnemarr");
     }
 
     [Theory]
     [InlineData("two\nlines", null)]
-    [InlineData("MafLabs", "red")]
-    [InlineData("MafLabs", "url(javascript:alert(1))")]
+    [InlineData("Example Lab", "red")]
+    [InlineData("Example Lab", "url(javascript:alert(1))")]
     public async Task should_refuse_a_name_or_a_color_that_is_not_valid_with_the_reason_and_change_nothing(string name, string? color)
     {
         var response = await _callers.Admin.PutAsJsonAsync("/api/v1/identity", new { name, colors = new { name = color } }, Token);
@@ -120,6 +137,22 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
         served.Headers.GetValues("X-Content-Type-Options").Should().Equal("nosniff");
         served.Headers.GetValues("Content-Security-Policy").Should().Equal("default-src 'none'; sandbox");
         (await _callers["Reader"].GetAsync("/api/v1/identity/logo?v=old", Token)).Headers.CacheControl!.ToString().Should().Contain("max-age=300").And.NotContain("immutable");
+    }
+
+    [Fact]
+    public async Task should_keep_the_policy_and_the_cache_of_the_logo_on_a_304_too()
+    {
+        var uploaded = await _callers.Admin.PutAsync("/api/v1/identity/logo", Form(Png, "lab.png"), Token);
+        var url = (await uploaded.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("logoUrl").GetString()!;
+        var first = await _callers["Reader"].GetAsync(url, Token);
+        using var again = new HttpRequestMessage(HttpMethod.Get, url);
+        again.Headers.IfNoneMatch.Add(first.Headers.ETag!);
+
+        var answer = await _callers["Reader"].SendAsync(again, Token);
+
+        answer.StatusCode.Should().Be(HttpStatusCode.NotModified);
+        answer.Headers.CacheControl!.ToString().Should().Contain("immutable");
+        answer.Headers.GetValues("Content-Security-Policy").Should().Equal("default-src 'none'; sandbox");
     }
 
     [Fact]
@@ -156,7 +189,7 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
         var large = await _callers.Admin.PutAsync("/api/v1/identity/logo", Form([.. Png, .. new byte[1024 * 1024]], "big.png"), Token);
 
         none.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        ((int)large.StatusCode).Should().BeOneOf(400, 413);
+        large.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the file is a little above a mebibyte, under what the host reads, so the rule of the identity answers");
     }
 
     [Fact]
@@ -174,7 +207,7 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
     [Fact]
     public async Task should_record_a_change_in_the_audit_log_under_the_name_of_the_administrator()
     {
-        await _callers.Admin.PutAsJsonAsync("/api/v1/identity", new { name = "MafLabs" }, Token);
+        await _callers.Admin.PutAsJsonAsync("/api/v1/identity", new { name = "Example Lab" }, Token);
         await _callers.Admin.PutAsync("/api/v1/identity/logo", Form(Png, "lab.png"), Token);
 
         var events = await _callers.Admin.GetFromJsonAsync<JsonElement>("/api/v1/audit?limit=20", Token);

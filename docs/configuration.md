@@ -217,7 +217,7 @@ The block at the bottom of the menu says which environment this Mnemarr is: a na
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `MNEMARR__IDENTITY__NAME` | `Mnemarr` | The name of the environment, one line of 40 characters at most (`MafLabs`, `homelab.example`). |
+| `MNEMARR__IDENTITY__NAME` | `Mnemarr` | The name of the environment, one line of 40 characters at most (`Example Lab`, `homelab.example`). |
 | `MNEMARR__IDENTITY__COLORS__NAME` | `accent` | The color of the name: a hex color (`#3ee0c5`) or a token of the theme (`accent`, `accentDeep`, `secondary`, `ink`, `inkSoft`, `inkMuted`). |
 | `MNEMARR__IDENTITY__COLORS__VERSION` | `accent` | The color of the version, the same values. |
 | `MNEMARR__IDENTITY__LOGOFILE` | none | The path of an image (png, webp or svg, 1 MiB at most) in the container, such as a mounted file or a ConfigMap. It is checked like an upload and read again when it changes; if it cannot be used, Settings says why and Mnemarr's own drawing stays. |

@@ -8,7 +8,7 @@
 
 The sandbox, the test host and the production Mnemarr look the same, and a person who has several tabs open does not know which one they are in, nor which version runs. Portarr already solves it: a small block at
 the bottom of the menu with the name of the **laboratory** (the environment, not the application), a picture and the version, in the accent color. The maintainer asked for exactly the same in Mnemarr, with the
-same style, and for it to be the lab's name and picture ("MafLabs", the maintainer's own avatar), not the product's: the product already has its name and its drawing in the header.
+same style, and for it to be the lab's name and picture, not the product's: the product already has its name and its drawing in the header.
 
 ## Decision
 

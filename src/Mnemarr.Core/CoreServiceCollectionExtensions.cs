@@ -34,7 +34,7 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<MnemarrOptions>().Bind(configuration).ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISystemStatusService, SystemStatusService>();
-        services.AddOptions<BrandingOptions>().Bind(configuration.GetSection("Identity")).ValidateOnStart();
+        services.AddOptions<BrandingOptions>().Bind(configuration.GetSection(BrandingOptions.SectionName)).ValidateOnStart();
         services.AddSingleton<IValidateOptions<BrandingOptions>, BrandingOptionsValidator>();
         services.AddSingleton<IIdentityStore, SqliteIdentityStore>();
         services.AddSingleton<IdentityService>();

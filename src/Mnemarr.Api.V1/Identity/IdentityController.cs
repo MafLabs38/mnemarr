@@ -28,7 +28,13 @@ public sealed class IdentityController : ControllerBase
     /// <summary>The name, the colors, the logo and the version of this Mnemarr.</summary>
     [HttpGet]
     [ProducesResponseType<IdentityResource>(StatusCodes.Status200OK)]
-    public IdentityResource Get() => IdentityResource.From(_identity.Get());
+    public IdentityResource Get() => IdentityResource.From(_identity.Get(), MayKnowTheVersion);
+
+    /// <summary>
+    /// The version of the running Mnemarr is behind <c>system.read</c> for a service key (a collector's key may be held by a machine on the Internet): a person who is signed in sees it,
+    /// since the menu shows it to them, and so does a key that may read the status.
+    /// </summary>
+    private bool MayKnowTheVersion => User.HasClaim(MnemarrClaims.Permission, Permissions.SystemRead) || User.FindFirst(MnemarrClaims.Kind)?.Value == nameof(AccountKind.User);
 
     /// <summary>
     /// The logo, served like an icon: an SVG gets a policy that forbids scripts and styles, so that opening it directly cannot run code in Mnemarr's origin. With the <c>v</c> of
@@ -49,7 +55,16 @@ public sealed class IdentityController : ControllerBase
         Response.Headers.CacheControl = v == logo.Hash ? "private, max-age=31536000, immutable" : "private, max-age=300";
         Response.Headers.ContentSecurityPolicy = "default-src 'none'; sandbox";
         Response.Headers.XContentTypeOptions = "nosniff";
-        return File(logo.Content, logo.ContentType, logo.Modified, new EntityTagHeaderValue($"\"{logo.Hash}\""));
+        var etag = new EntityTagHeaderValue($"\"{logo.Hash}\"");
+        Response.Headers.ETag = etag.ToString();
+
+        // A browser that has the image says so: the image is not read from the database to be told it has not changed.
+        if (Request.Headers.IfNoneMatch.Any(value => value == etag.ToString() || value == "*"))
+        {
+            return StatusCode(StatusCodes.Status304NotModified);
+        }
+
+        return logo.Load() is { } content ? File(content, logo.ContentType, logo.Modified, etag) : NotFound();
     }
 
     /// <summary>Changes the name and/or the colors of the two texts. A part that is missing stays; an empty one goes back to the default.</summary>

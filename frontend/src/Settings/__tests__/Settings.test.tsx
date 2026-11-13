@@ -6,7 +6,7 @@ import type { Identity } from 'Identity/identity';
 import Settings from 'Settings/Settings';
 
 const lab: Identity = {
-  name: 'MafLabs',
+  name: 'Example Lab',
   logoUrl: '/api/v1/identity/logo?v=abc',
   version: '0.6.0',
   logoProblem: null,
@@ -56,7 +56,7 @@ describe('Settings', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument();
     expect(within(identity).getByText(/what tells this Mnemarr from another/)).toBeInTheDocument();
-    expect(within(identity).getByLabelText('Name')).toHaveValue('MafLabs');
+    expect(within(identity).getByLabelText('Name')).toHaveValue('Example Lab');
     expect(within(identity).getByLabelText('Color of the name')).toHaveValue('accent');
     expect(within(identity).getByLabelText('Color of the version')).toHaveValue('#3ee0c5');
   });
@@ -125,6 +125,41 @@ describe('Settings', () => {
     await userEvent.click(within(identity).getByRole('button', { name: 'Save the identity' }));
 
     expect(await within(identity).findByRole('alert')).toHaveTextContent('The file is not a valid png image.');
+    expect(within(identity).queryByText('Saved.')).not.toBeInTheDocument();
+  });
+
+  it('does not say saved when the name was saved and the image was refused, and keeps what was typed', async () => {
+    const { calls } = serve(lab, ({ method, path }) =>
+      method === 'PUT' && path === '/identity/logo'
+        ? { status: 400, body: { title: 'The file is not a valid png image.' } }
+        : undefined,
+    );
+    renderWithProviders(<Settings />, '/settings');
+    const identity = await card();
+
+    await userEvent.clear(within(identity).getByLabelText('Name'));
+    await userEvent.type(within(identity).getByLabelText('Name'), 'Lab 3');
+    await userEvent.upload(
+      identity.querySelector<HTMLInputElement>('input[type=file]') as HTMLInputElement,
+      new File(['x'], 'lab.png', { type: 'image/png' }),
+    );
+    await userEvent.click(within(identity).getByRole('button', { name: 'Save the identity' }));
+
+    expect(await within(identity).findByRole('alert')).toHaveTextContent('not a valid png');
+    expect(within(identity).queryByText('Saved.')).not.toBeInTheDocument();
+    expect(calls.map((call) => call.path)).toEqual(['/identity', '/identity/logo']);
+  });
+
+  it('stops saying saved as soon as something is edited again', async () => {
+    serve(lab);
+    renderWithProviders(<Settings />, '/settings');
+    const identity = await card();
+    await userEvent.type(within(identity).getByLabelText('Name'), '!');
+    await userEvent.click(within(identity).getByRole('button', { name: 'Save the identity' }));
+    expect(await within(identity).findByText('Saved.')).toBeInTheDocument();
+
+    await userEvent.type(within(identity).getByLabelText('Name'), '?');
+
     expect(within(identity).queryByText('Saved.')).not.toBeInTheDocument();
   });
 

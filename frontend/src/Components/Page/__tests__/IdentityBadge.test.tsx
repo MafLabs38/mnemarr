@@ -5,7 +5,7 @@ import IdentityBadge from 'Components/Page/IdentityBadge';
 import type { Identity } from 'Identity/identity';
 
 const lab: Identity = {
-  name: 'MafLabs',
+  name: 'Example Lab',
   logoUrl: '/api/v1/identity/logo?v=abc',
   version: '0.6.0',
   logoProblem: null,
@@ -41,19 +41,21 @@ describe('IdentityBadge', () => {
     serve(lab);
     renderWithProviders(<IdentityBadge />);
 
-    const name = await screen.findByText('MafLabs');
+    const name = await screen.findByText('Example Lab');
     expect(name).toHaveStyle({ color: '#3ee0c5' });
-    expect(screen.getByRole('img', { name: 'MafLabs' })).toHaveAttribute('src', '/api/v1/identity/logo?v=abc');
+    expect(screen.getByRole('img', { name: 'Example Lab' })).toHaveAttribute('src', '/api/v1/identity/logo?v=abc');
     expect(await screen.findByText('v0.6.1')).toHaveStyle({ color: 'var(--inkMuted)' });
-    expect(name.closest('div')).toHaveAttribute('title', 'MafLabs');
+    expect(name.closest('div')).toHaveAttribute('title', 'Example Lab');
   });
 
-  it('follows the version of the system status where the role may read it, and keeps the one of the identity where it may not', async () => {
+  it('follows the version of the system status where the role may read it', async () => {
     serve(lab, '0.6.1');
-    const admin = renderWithProviders(<IdentityBadge />, '/', adminSession);
-    expect(await screen.findByText('v0.6.1')).toBeInTheDocument();
-    admin.unmount();
+    renderWithProviders(<IdentityBadge />, '/', adminSession);
 
+    expect(await screen.findByText('v0.6.1')).toBeInTheDocument();
+  });
+
+  it('keeps the version of the identity where the role may not read the status, and does not ask for it', async () => {
     const fetchMock = serve(lab, '0.6.1');
     renderWithProviders(<IdentityBadge />, '/', readerSession);
 
@@ -65,7 +67,7 @@ describe('IdentityBadge', () => {
     serve({ ...lab, version: '' }, '');
     renderWithProviders(<IdentityBadge />);
 
-    await screen.findByText('MafLabs');
+    await screen.findByText('Example Lab');
 
     expect(screen.queryByText(/^v/)).not.toBeInTheDocument();
   });
@@ -74,11 +76,11 @@ describe('IdentityBadge', () => {
     serve(lab);
     const { container } = renderWithProviders(<IdentityBadge />);
 
-    fireEvent.error(await screen.findByRole('img', { name: 'MafLabs' }));
+    fireEvent.error(await screen.findByRole('img', { name: 'Example Lab' }));
 
-    expect(screen.queryByRole('img', { name: 'MafLabs' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Example Lab' })).not.toBeInTheDocument();
     expect(container.querySelector('img')).toHaveAttribute('src', '/logo.png');
-    expect(screen.getByText('MafLabs')).toBeInTheDocument();
+    expect(screen.getByText('Example Lab')).toBeInTheDocument();
   });
 
   it('draws nothing while the identity is being read', () => {

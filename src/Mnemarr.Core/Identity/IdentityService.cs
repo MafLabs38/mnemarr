@@ -4,8 +4,8 @@ using Mnemarr.Core.Audit;
 
 namespace Mnemarr.Core.Identity;
 
-/// <summary>An image that is the logo: its bytes, how it is served, the hash that goes in its address, and when it was set.</summary>
-public sealed record IdentityLogoFile(byte[] Content, string ContentType, string Hash, DateTimeOffset Modified);
+/// <summary>An image that is the logo: how it is served, the hash that goes in its address, when it was set, and a way to read its bytes, which only the one who serves the image needs.</summary>
+public sealed record IdentityLogoFile(string ContentType, string Hash, DateTimeOffset Modified, Func<byte[]?> Load);
 
 /// <summary>The colors of the two texts, resolved: each is a theme token name or a hex color.</summary>
 public sealed record IdentityColors(string Name, string Version);
@@ -27,6 +27,7 @@ public sealed class IdentityService
     private readonly BrandingOptions _options;
     private readonly TimeProvider _clock;
     private readonly object _fileLock = new();
+    private readonly object _writes = new();
     private (string Path, DateTime Modified, long Length, IdentityLogoFile? Logo, string? Problem)? _file;
 
     public IdentityService(IIdentityStore store, IAuditLog audit, IOptions<BrandingOptions> options, TimeProvider clock)
@@ -41,11 +42,11 @@ public sealed class IdentityService
     {
         var stored = _store.Get();
         var colors = new IdentityColors(
-            Pick(stored.NameColor, _options.Colors.Name), Pick(stored.VersionColor, _options.Colors.Version));
+            Pick(stored.NameColor, _options.Colors.Name, IdentityRules.DefaultColor), Pick(stored.VersionColor, _options.Colors.Version, IdentityRules.DefaultColor));
         var name = Pick(stored.Name, _options.Name, IdentityRules.DefaultName);
-        if (stored.Logo is { } content && stored.LogoType is { } type && stored.LogoHash is { } hash)
+        if (stored.LogoType is { } type && stored.LogoHash is { } hash)
         {
-            return new ResolvedIdentity(name, colors, new IdentityLogoFile(content, type, hash, stored.LogoAt ?? DateTimeOffset.UnixEpoch), null);
+            return new ResolvedIdentity(name, colors, new IdentityLogoFile(type, hash, stored.LogoAt ?? DateTimeOffset.UnixEpoch, _store.GetLogo), null);
         }
 
         var (logo, problem) = DeploymentLogo();
@@ -55,12 +56,16 @@ public sealed class IdentityService
     /// <summary>Changes the name and the colors. A value that is not valid refuses the whole change.</summary>
     public ResolvedIdentity Set(IdentityChange change, string actor)
     {
-        var stored = _store.Get();
-        var name = Merge(stored.Name, change.Name, IdentityRules.ValidateName);
-        var nameColor = Merge(stored.NameColor, change.NameColor, value => IdentityRules.ValidateColor("name", value));
-        var versionColor = Merge(stored.VersionColor, change.VersionColor, value => IdentityRules.ValidateColor("version", value));
-        _store.Save(stored with { Name = name, NameColor = nameColor, VersionColor = versionColor });
-        _audit.Append(actor, "identity.updated", "identity");
+        lock (_writes)
+        {
+            var stored = _store.Get();
+            var name = Merge(stored.Name, change.Name, IdentityRules.ValidateName);
+            var nameColor = Merge(stored.NameColor, change.NameColor, value => IdentityRules.ValidateColor("name", value));
+            var versionColor = Merge(stored.VersionColor, change.VersionColor, value => IdentityRules.ValidateColor("version", value));
+            _store.SaveTexts(name, nameColor, versionColor);
+            _audit.Append(actor, "identity.updated", "identity");
+        }
+
         return Get();
     }
 
@@ -74,20 +79,28 @@ public sealed class IdentityService
         }
 
         var hash = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
-        _store.Save(_store.Get() with { Logo = content, LogoType = format.ContentType, LogoHash = hash, LogoAt = _clock.GetUtcNow() });
-        _audit.Append(actor, "identity.logo.updated", "identity", format.Extension);
+        lock (_writes)
+        {
+            _store.SaveLogo(content, format.ContentType, hash, _clock.GetUtcNow());
+            _audit.Append(actor, "identity.logo.updated", "identity", format.Extension);
+        }
+
         return Get();
     }
 
     /// <summary>Stops using the uploaded logo: the one of the deployment, or the product's own, applies again.</summary>
     public ResolvedIdentity RemoveLogo(string actor)
     {
-        _store.Save(_store.Get() with { Logo = null, LogoType = null, LogoHash = null, LogoAt = null });
-        _audit.Append(actor, "identity.logo.removed", "identity");
+        lock (_writes)
+        {
+            _store.ClearLogo();
+            _audit.Append(actor, "identity.logo.removed", "identity");
+        }
+
         return Get();
     }
 
-    private static string Pick(string? stored, string? deployed, string fallback = IdentityRules.DefaultColor)
+    private static string Pick(string? stored, string? deployed, string fallback)
     {
         if (!string.IsNullOrWhiteSpace(stored))
         {
@@ -154,7 +167,7 @@ public sealed class IdentityService
             var (format, error) = IdentityRules.InspectLogo(content, info.Extension);
             return format is null
                 ? (null, $"The logo file of the settings is not used: {error}")
-                : (new IdentityLogoFile(content, format.ContentType, Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), info.LastWriteTimeUtc), null);
+                : (new IdentityLogoFile(format.ContentType, Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant(), info.LastWriteTimeUtc, () => content), null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

@@ -16,6 +16,8 @@ public sealed class BrandingColorOptions
 /// </summary>
 public sealed class BrandingOptions
 {
+    public const string SectionName = "Identity";
+
     /// <summary>The name shown at the bottom of the menu; <see cref="IdentityRules.DefaultName"/> when empty.</summary>
     public string? Name { get; set; }
 

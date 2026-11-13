@@ -7,6 +7,8 @@ public static class SecurityHeaders
     private const string ContentSecurityPolicy =
         "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
+    private const string IdentityLogoPath = "/api/v1/identity/logo";
+
     /// <summary>
     /// Conservative headers on every response, errors included: they are set when the response starts, because the
     /// exception handler clears the response, headers and all, before it writes its own.
@@ -21,16 +23,17 @@ public static class SecurityHeaders
                 headers["X-Content-Type-Options"] = "nosniff";
                 headers["X-Frame-Options"] = "DENY";
                 headers["Referrer-Policy"] = "no-referrer";
-                // A response that has said its own policy keeps it: the logo of the identity is an image served with the strictest one (ADR 0044).
-                if (!headers.ContainsKey("Content-Security-Policy"))
+                // The one answer that keeps what it said itself: the logo of the identity, an image that is the same until its hash changes, served with the strictest policy and kept
+                // by the browser of the person (ADR 0044). Every other answer has the application's policy and is not cached, whatever its controller wrote.
+                var logo = context.Request.Path.Equals(IdentityLogoPath, StringComparison.Ordinal);
+                if (!logo)
                 {
                     headers["Content-Security-Policy"] = ContentSecurityPolicy;
                 }
 
-                if (ApiPaths.IsApi(context.Request.Path) && !headers.ContainsKey("Cache-Control"))
+                if (ApiPaths.IsApi(context.Request.Path) && !logo)
                 {
-                    // What the API says is for the person who asked, and sometimes once (the secret of a new key): no cache keeps it. A response that has said how long it may be kept
-                    // (an image that is the same until its hash changes) keeps what it said, private to the browser of the person.
+                    // What the API says is for the person who asked, and sometimes once (the secret of a new key): no cache keeps it.
                     headers.CacheControl = "no-store";
                     headers.Pragma = "no-cache";
                 }

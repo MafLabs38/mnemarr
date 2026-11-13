@@ -75,14 +75,20 @@ export default function IdentityCard() {
         <TextField
           label={translate('IdentityName')}
           maxLength={40}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setSaved(false);
+            setName(event.target.value);
+          }}
           value={currentName}
         />
         <TextField
           autoCapitalize="off"
           label={translate('IdentityNameColor')}
           maxLength={12}
-          onChange={(event) => setNameColor(event.target.value)}
+          onChange={(event) => {
+            setSaved(false);
+            setNameColor(event.target.value);
+          }}
           spellCheck={false}
           value={currentNameColor}
         />
@@ -90,7 +96,10 @@ export default function IdentityCard() {
           autoCapitalize="off"
           label={translate('IdentityVersionColor')}
           maxLength={12}
-          onChange={(event) => setVersionColor(event.target.value)}
+          onChange={(event) => {
+            setSaved(false);
+            setVersionColor(event.target.value);
+          }}
           spellCheck={false}
           value={currentVersionColor}
         />
@@ -101,7 +110,10 @@ export default function IdentityCard() {
             accept={ACCEPTED_LOGOS}
             className={fieldStyles.control}
             key={fileKey}
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            onChange={(event) => {
+              setSaved(false);
+              setFile(event.target.files?.[0] ?? null);
+            }}
             type="file"
           />
         </label>
@@ -113,7 +125,14 @@ export default function IdentityCard() {
             {translate('IdentitySave')}
           </Button>
           {data.logoUrl && (
-            <Button disabled={pending} onClick={() => remove.mutate(undefined)} variant="quiet">
+            <Button
+              disabled={pending}
+              onClick={() => {
+                setSaved(false);
+                remove.mutate(undefined);
+              }}
+              variant="quiet"
+            >
               {translate('IdentityRemoveLogo')}
             </Button>
           )}

@@ -107,7 +107,7 @@ test.describe('smoke @smoke', () => {
     await expect(menu.getByRole('link', { name: 'Settings' })).toBeVisible();
 
     // The identity of the environment, at the bottom of the menu: the product's own until somebody says another, with the version that runs.
-    const badge = page.locator('aside').getByTitle(/./).last();
+    const badge = page.locator('aside > div').last();
     await expect(badge.getByText(/^v\d/)).toBeVisible();
     await expect(badge.locator('img')).toBeVisible();
   });

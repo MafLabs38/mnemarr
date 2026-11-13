@@ -45,12 +45,12 @@ public sealed class IdentityServiceFixture : IDisposable
     [Fact]
     public void should_take_what_the_deployment_says_until_an_administrator_says_something_else()
     {
-        var options = new BrandingOptions { Name = "MafLabs", Colors = new BrandingColorOptions { Name = "#3ee0c5", Version = "inkMuted" } };
+        var options = new BrandingOptions { Name = "Example Lab", Colors = new BrandingColorOptions { Name = "#3ee0c5", Version = "inkMuted" } };
         var service = Service(options);
 
-        service.Get().Should().Match<ResolvedIdentity>(identity => identity.Name == "MafLabs" && identity.Colors.Name == "#3ee0c5" && identity.Colors.Version == "inkMuted");
+        service.Get().Should().Match<ResolvedIdentity>(identity => identity.Name == "Example Lab" && identity.Colors.Name == "#3ee0c5" && identity.Colors.Version == "inkMuted");
         service.Set(new IdentityChange(Name: "Sandbox"), "admin").Name.Should().Be("Sandbox", "what is set in the interface wins");
-        service.Set(new IdentityChange(Name: string.Empty), "admin").Name.Should().Be("MafLabs", "an empty name goes back to the deployment's");
+        service.Set(new IdentityChange(Name: string.Empty), "admin").Name.Should().Be("Example Lab", "an empty name goes back to the deployment's");
     }
 
     [Fact]
@@ -87,9 +87,11 @@ public sealed class IdentityServiceFixture : IDisposable
         var service = Service();
 
         var set = service.SetLogo("lab.PNG", Png, "admin");
+        var content = set.Logo!.Load();
         var removed = service.RemoveLogo("admin");
 
-        set.Logo.Should().Match<IdentityLogoFile>(logo => logo.ContentType == "image/png" && logo.Hash.Length == 64 && logo.Content.SequenceEqual(Png) && logo.Modified == _clock.GetUtcNow());
+        set.Logo.Should().Match<IdentityLogoFile>(logo => logo.ContentType == "image/png" && logo.Hash.Length == 64 && logo.Modified == _clock.GetUtcNow());
+        content.Should().Equal(Png);
         removed.Logo.Should().BeNull();
     }
 
@@ -102,7 +104,7 @@ public sealed class IdentityServiceFixture : IDisposable
         var act = () => service.SetLogo("lab.png", "<html></html>"u8.ToArray(), "admin");
 
         act.Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
-        service.Get().Logo!.Content.Should().Equal(Png);
+        service.Get().Logo!.Load().Should().Equal(Png);
     }
 
     [Fact]
@@ -121,9 +123,9 @@ public sealed class IdentityServiceFixture : IDisposable
     {
         var service = Service(new BrandingOptions { LogoFile = Write("lab.png", Png) });
 
-        service.Get().Logo!.Content.Should().Equal(Png);
-        service.SetLogo("mine.png", [.. Png, 7], "admin").Logo!.Content.Should().Equal([.. Png, 7]);
-        service.RemoveLogo("admin").Logo!.Content.Should().Equal(Png);
+        service.Get().Logo!.Load().Should().Equal(Png);
+        service.SetLogo("mine.png", [.. Png, 7], "admin").Logo!.Load().Should().Equal([.. Png, 7]);
+        service.RemoveLogo("admin").Logo!.Load().Should().Equal(Png);
     }
 
     [Fact]
@@ -137,6 +139,20 @@ public sealed class IdentityServiceFixture : IDisposable
         File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
 
         service.Get().Logo!.Hash.Should().NotBe(before);
+    }
+
+    [Fact]
+    public void should_not_read_the_logo_file_of_the_deployment_again_while_it_has_not_changed()
+    {
+        var path = Write("lab.png", Png);
+        var service = Service(new BrandingOptions { LogoFile = path });
+        var first = service.Get().Logo!;
+
+        File.Delete(path);
+        File.WriteAllBytes(path, Png);
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path));
+
+        service.Get().Logo!.Hash.Should().Be(first.Hash);
     }
 
     [Fact]
@@ -167,6 +183,33 @@ public sealed class IdentityServiceFixture : IDisposable
     }
 
     [Fact]
+    public void should_not_read_the_content_of_the_logo_to_say_what_the_identity_is()
+    {
+        var service = Service();
+        service.SetLogo("a.png", Png, "admin");
+
+        var identity = service.Get();
+
+        identity.Logo!.Hash.Should().HaveLength(64);
+        identity.Logo.Load().Should().Equal(Png, "the bytes are read when the image is sent, by whoever sends it");
+    }
+
+    [Fact]
+    public void should_not_undo_a_change_of_the_texts_with_a_change_of_the_logo_and_the_other_way_round()
+    {
+        var service = Service();
+        service.SetLogo("a.png", Png, "admin");
+        service.Set(new IdentityChange("Lab", "#fff", null), "admin");
+
+        service.RemoveLogo("admin");
+        var afterRemoval = service.Get();
+        service.SetLogo("b.png", Png, "admin");
+
+        afterRemoval.Should().Match<ResolvedIdentity>(identity => identity.Name == "Lab" && identity.Colors.Name == "#fff" && identity.Logo == null);
+        service.Get().Should().Match<ResolvedIdentity>(identity => identity.Name == "Lab" && identity.Logo != null);
+    }
+
+    [Fact]
     public void should_keep_what_is_set_between_two_services()
     {
         Service().Set(new IdentityChange("Lab", "#fff", null), "admin");
@@ -192,6 +235,6 @@ public sealed class IdentityServiceFixture : IDisposable
     public void should_accept_the_settings_of_a_deployment_that_says_nothing_or_says_it_right()
     {
         new BrandingOptionsValidator().Validate(null, new BrandingOptions()).Succeeded.Should().BeTrue();
-        new BrandingOptionsValidator().Validate(null, new BrandingOptions { Name = "MafLabs", Colors = new BrandingColorOptions { Name = "accent", Version = "#fff" }, LogoFile = "/branding/a.png" }).Succeeded.Should().BeTrue();
+        new BrandingOptionsValidator().Validate(null, new BrandingOptions { Name = "Example Lab", Colors = new BrandingColorOptions { Name = "accent", Version = "#fff" }, LogoFile = "/branding/a.png" }).Succeeded.Should().BeTrue();
     }
 }
