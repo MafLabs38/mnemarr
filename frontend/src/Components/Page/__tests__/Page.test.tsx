@@ -13,7 +13,7 @@ describe('Page', () => {
       route,
     );
 
-  it('lists every entry of the menu in order, as links when the page exists and as disabled entries when it does not', () => {
+  it('lists every entry of the menu in order, as links', () => {
     renderPage();
 
     const menu = screen.getByRole('navigation', { name: 'Main menu' });
@@ -22,11 +22,7 @@ describe('Page', () => {
     expect(screen.getByRole('link', { name: 'System' })).toHaveAttribute('href', '/system/status');
     expect(screen.getByRole('link', { name: 'Sources' })).toHaveAttribute('href', '/sources');
     expect(screen.getByRole('link', { name: 'Machines' })).toHaveAttribute('href', '/machines');
-    for (const name of ['Settings']) {
-      expect(screen.queryByRole('link', { name: new RegExp(name) })).not.toBeInTheDocument();
-      const entry = screen.getByText(name).closest('[aria-disabled="true"]');
-      expect(entry).toHaveTextContent('Soon');
-    }
+    expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
   });
 
   it('marks the page being shown as the current one', () => {

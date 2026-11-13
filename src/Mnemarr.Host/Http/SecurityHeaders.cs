@@ -1,3 +1,5 @@
+using Mnemarr.Api.V1.Security;
+
 namespace Mnemarr.Host.Http;
 
 public static class SecurityHeaders
@@ -21,8 +23,16 @@ public static class SecurityHeaders
                 headers["X-Content-Type-Options"] = "nosniff";
                 headers["X-Frame-Options"] = "DENY";
                 headers["Referrer-Policy"] = "no-referrer";
-                headers["Content-Security-Policy"] = ContentSecurityPolicy;
-                if (ApiPaths.IsApi(context.Request.Path))
+                // An endpoint that says it keeps its own headers (the logo of the identity: an image that is the same until its hash changes, with the strictest policy, kept by the browser
+                // of the person; ADR 0044) does so when it is served. An error of the same endpoint, a refusal or a failure, has the application's policy and is not cached, like every other answer.
+                var logo = context.Response.StatusCode is StatusCodes.Status200OK or StatusCodes.Status304NotModified
+                    && context.GetEndpoint()?.Metadata.GetMetadata<KeepsItsOwnHeadersAttribute>() is not null;
+                if (!logo)
+                {
+                    headers["Content-Security-Policy"] = ContentSecurityPolicy;
+                }
+
+                if (ApiPaths.IsApi(context.Request.Path) && !logo)
                 {
                     // What the API says is for the person who asked, and sometimes once (the secret of a new key): no cache keeps it.
                     headers.CacheControl = "no-store";

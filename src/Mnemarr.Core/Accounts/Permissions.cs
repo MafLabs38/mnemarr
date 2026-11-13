@@ -36,6 +36,9 @@ public static class Permissions
     /// </summary>
     public const string ChatUse = "chat.use";
 
+    /// <summary>Changing how this Mnemarr presents itself: the name, the colors and the logo at the bottom of the menu (ADR 0044). An administrator's: it is what everyone sees.</summary>
+    public const string SettingsManage = "settings.manage";
+
     public static IReadOnlyList<string> All { get; } =
-        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, ConversationsWrite, CollectorsManage, CollectorsRequest, ChatUse];
+        [SystemRead, NotesRead, NotesWrite, Search, SourcesManage, AccountsManage, AuditRead, IngestWrite, ConversationsRead, ConversationsWrite, CollectorsManage, CollectorsRequest, ChatUse, SettingsManage];
 }

@@ -72,6 +72,7 @@
     align-self: stretch;
     height: auto;
     padding: 8px 12px;
+    gap: 8px;
     border-right: none;
     border-bottom: var(--borderWidth) solid var(--hairline);
   }

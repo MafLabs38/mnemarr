@@ -211,6 +211,19 @@ One mail leaves when an episode begins, a reminder at most once a day while it l
 
 A channel is one small interface, `INotificationSender` (a recipient, a subject and a text in; delivered or a short reason out); the name in `Notifications:Provider` selects the `INotificationProvider` that checks its settings and builds the sender. To add one (a chat message, a push, another mail service), write a class that implements `INotificationProvider` and register it with `services.AddSingleton<INotificationProvider, MyProvider>()`. [SmtpNotificationSender.cs](../src/Mnemarr.Core/Notifications/SmtpNotificationSender.cs) is the built-in example; the policy (when, how often, the caps) is not the provider's.
 
+## Identity of the environment (`Identity`)
+
+The block at the bottom of the menu says which environment this Mnemarr is: a name, an image and the version ([ADR 0044](adr/0044-the-menu-says-which-environment-it-is-with-a-name-a-logo-and-the-version.md)). These settings say what a deployment is called; an administrator can change them in **Settings, General** (what is set there wins, and removing it brings these back). Nothing is needed: without them the block says "Mnemarr", with Mnemarr's own drawing.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__IDENTITY__NAME` | `Mnemarr` | The name of the environment, one line of 40 characters at most (`Example Lab`, `homelab.example`). |
+| `MNEMARR__IDENTITY__COLORS__NAME` | `accent` | The color of the name: a hex color (`#3ee0c5`) or a token of the theme (`accent`, `accentDeep`, `secondary`, `ink`, `inkSoft`, `inkMuted`). |
+| `MNEMARR__IDENTITY__COLORS__VERSION` | `accent` | The color of the version, the same values. |
+| `MNEMARR__IDENTITY__LOGOFILE` | none | The path of an image (png, webp or svg, 1 MiB at most) in the container, such as a mounted file or a ConfigMap. It is checked like an upload and read again when it changes; if it cannot be used, Settings says why and Mnemarr's own drawing stays. |
+
+A value that is not valid stops the start, with the name of the setting.
+
 ## Configuration as code (`Config`)
 
 `GET /api/v1/config/status` says whether a file is in charge, whether it was applied and why not (in words that give no path); the interface shows it and does not offer to apply a document while a file is in charge.
