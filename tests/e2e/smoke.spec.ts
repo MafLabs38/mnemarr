@@ -87,7 +87,7 @@ test.describe('smoke @smoke', () => {
     },
   );
 
-  test('the shell shows the brand, a logo that loaded, and the whole menu with the unbuilt pages marked as soon', async ({
+  test('the shell shows the brand, a logo that loaded, the whole menu and the identity of the environment at its bottom', async ({
     page,
   }) => {
     await signIn(page);
@@ -104,9 +104,12 @@ test.describe('smoke @smoke', () => {
     await expect(menu.getByRole('link', { name: 'Notes' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Sources' })).toBeVisible();
     await expect(menu.getByRole('link', { name: 'Machines' })).toBeVisible();
-    await expect(menu.getByRole('link', { name: 'Settings' })).toHaveCount(0);
-    await expect(menu).toContainText('Settings');
-    await expect(menu).toContainText('Soon');
+    await expect(menu.getByRole('link', { name: 'Settings' })).toBeVisible();
+
+    // The identity of the environment, at the bottom of the menu: the product's own until somebody says another, with the version that runs.
+    const badge = page.locator('aside > div').last();
+    await expect(badge.getByText(/^v\d/)).toBeVisible();
+    await expect(badge.locator('img')).toBeVisible();
   });
 
   test('the overview says the API is reachable', async ({ page }) => {
@@ -858,5 +861,50 @@ test.describe('smoke @smoke', () => {
     await card.getByRole('button', { name: 'Preview' }).click();
     await expect(card.getByText('Remove Knowledge seeded')).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+
+  test('an administrator names the lab and gives it a logo and the menu shows them at its bottom, for everyone', async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const lab = unique('lab');
+    const logo = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const admin = await signedInRequest(playwright, baseURL ?? '');
+    try {
+      await signIn(page, '/settings');
+      const card = page.getByRole('region', { name: 'Identity' });
+      await card.getByLabel('Name', { exact: true }).fill(lab);
+      await card.getByLabel('Color of the version').fill('#3ee0c5');
+      await card.locator('input[type=file]').setInputFiles({ name: 'lab.png', mimeType: 'image/png', buffer: logo });
+      await card.getByRole('button', { name: 'Save the identity' }).click();
+      await expect(card.getByText('Saved.')).toBeVisible();
+
+      // At the bottom of the menu, with the version, and still there after a reload.
+      await page.reload();
+      const badge = page.locator('aside').getByTitle(lab);
+      await expect(badge.getByText(lab)).toBeVisible();
+      await expect(badge.getByText(/^v/)).toHaveCSS('color', 'rgb(62, 224, 197)');
+      const image = badge.getByRole('img', { name: lab });
+      await expect(image).toBeVisible();
+      expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(1);
+      const sidebar = await page.locator('aside').boundingBox();
+      const place = await badge.boundingBox();
+      expect((place?.y ?? 0) + (place?.height ?? 0)).toBeLessThanOrEqual((sidebar?.y ?? 0) + (sidebar?.height ?? 0));
+
+      // A refused image says why, and the logo stays.
+      await card
+        .locator('input[type=file]')
+        .setInputFiles({ name: 'x.png', mimeType: 'image/png', buffer: Buffer.from('not a png') });
+      await card.getByRole('button', { name: 'Save the identity' }).click();
+      await expect(card.getByRole('alert')).toContainText('not a valid png');
+      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    } finally {
+      await admin.delete('/api/v1/identity/logo');
+      await admin.put('/api/v1/identity', { data: { name: '', colors: { name: '', version: '' } } });
+    }
   });
 });

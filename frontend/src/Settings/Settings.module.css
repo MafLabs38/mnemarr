@@ -1,0 +1,19 @@
+.help {
+  margin: 0 0 12px;
+  color: var(--inkMuted);
+  font-size: var(--fontSizeMeta);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  max-width: 460px;
+  gap: 12px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}

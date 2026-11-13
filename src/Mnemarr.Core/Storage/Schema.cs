@@ -309,6 +309,19 @@ public static class Schema
         );
         CREATE INDEX notification_log_by_time ON notification_log (at);
         """,
+        // 24: how this Mnemarr presents itself (ADR 0044): one row, each part null until an administrator sets it. The logo is kept in the row (at most 1 MiB), so that it is backed up with the rest.
+        """
+        CREATE TABLE identity (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            name TEXT,
+            name_color TEXT,
+            version_color TEXT,
+            logo BLOB,
+            logo_type TEXT,
+            logo_hash TEXT,
+            logo_at TEXT
+        );
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>
