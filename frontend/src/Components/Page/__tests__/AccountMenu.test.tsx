@@ -57,7 +57,8 @@ describe('the menu of a person who may only read notes', () => {
     renderPage();
 
     const menu = screen.getByRole('navigation', { name: 'Main menu' });
-    expect(menu).toHaveTextContent(/Overview.*Settings/s);
+    expect(menu).toHaveTextContent(/Overview.*Notes/s);
+    expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Sources' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'System' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument();

@@ -526,6 +526,15 @@ public sealed class AccessFixture : IClassFixture<MnemarrFactory>, IAsyncLifetim
     [InlineData("Collector", "GET", "/api/v1/system/status", 403)]
     [InlineData("Collector", "GET", "/api/v1/auth/session", 200)]
     [InlineData("Collector", "GET", "/api/v1/does-not-exist", 404)]
+    [InlineData("anonymous", "GET", "/api/v1/identity", 401)]
+    [InlineData("anonymous", "GET", "/api/v1/identity/logo", 401)]
+    [InlineData("Admin", "GET", "/api/v1/identity", 200)]
+    [InlineData("Operator", "GET", "/api/v1/identity", 200)]
+    [InlineData("Reader", "GET", "/api/v1/identity", 200)]
+    [InlineData("Assistant", "GET", "/api/v1/identity", 200)]
+    [InlineData("Collector", "GET", "/api/v1/identity", 200)]
+    [InlineData("Monitor", "GET", "/api/v1/identity", 200)]
+    [InlineData("Reader", "GET", "/api/v1/identity/logo", 404)]
     public async Task should_answer_each_kind_of_caller_as_the_matrix_says_for_a_read(string caller, string method, string path, int expected)
     {
         var client = caller == "anonymous" ? _callers.Anonymous : _callers[caller];

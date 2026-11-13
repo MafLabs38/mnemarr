@@ -69,6 +69,17 @@ export async function apiSend<T = void>(method: 'POST' | 'PUT' | 'DELETE', path:
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
+/** A write that carries a file (a multipart form, the field `file`): the browser sets the type of the body and its boundary, so none is given here. */
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`${API_BASE}${path}`, { method: 'PUT', headers: { [REQUEST_HEADER]: '1' }, body: form });
+  if (!response.ok) {
+    throw await failure(response);
+  }
+  return (await response.json()) as T;
+}
+
 /** A read whose answer is text (a YAML document), not JSON. */
 export async function apiGetText(path: string, signal?: AbortSignal): Promise<string> {
   const response = await fetch(`${API_BASE}${path}`, { signal });

@@ -9,6 +9,7 @@ import Notes from 'Notes/Notes';
 import Overview from 'Overview/Overview';
 import RequirePermission from 'Session/RequirePermission';
 import { permissions } from 'Session/session';
+import Settings from 'Settings/Settings';
 import Sources from 'Sources/Sources';
 import Status from 'System/Status/Status';
 
@@ -34,6 +35,14 @@ export default function AppRoutes() {
           </RequirePermission>
         }
         path="/notes"
+      />
+      <Route
+        element={
+          <RequirePermission permission={permissions.settingsManage}>
+            <Settings />
+          </RequirePermission>
+        }
+        path="/settings"
       />
       <Route
         element={

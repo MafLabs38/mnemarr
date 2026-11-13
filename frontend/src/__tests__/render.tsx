@@ -3,6 +3,7 @@ import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
+import type { Identity } from 'Identity/identity';
 import type { Session } from 'Session/session';
 import { SessionProvider } from 'Session/SessionContext';
 import type { SystemStatus } from 'System/Status/useSystemStatus';
@@ -24,6 +25,7 @@ export const adminSession: Session = {
     'notes.read',
     'notes.write',
     'search',
+    'settings.manage',
     'sources.manage',
     'system.read',
   ],
@@ -53,6 +55,19 @@ export function renderWithProviders(ui: ReactElement, route = '/', session: Sess
   return { ...result, client };
 }
 
+/** The identity a fake server gives when a test says nothing about it: the product's own. */
+export const defaultIdentity: Identity = {
+  name: 'Mnemarr',
+  logoUrl: null,
+  version: '1.2.3',
+  logoProblem: null,
+  colors: { name: 'accent', version: 'accent' },
+};
+
+function isIdentity(body: unknown): boolean {
+  return typeof body === 'object' && body !== null && 'colors' in body && 'name' in body;
+}
+
 /** What a fake answer carries: a status, JSON, and text for the calls that read a document. */
 export interface FakeResponse {
   ok: boolean;
@@ -73,7 +88,12 @@ export interface ApiAnswer {
  */
 export function stubApi(handler: (method: string, path: string, init?: RequestInit) => ApiAnswer | undefined) {
   const fetchMock = vi.fn((url: string, init?: RequestInit): Promise<FakeResponse> => {
-    const answer = handler(init?.method ?? 'GET', url.replace('/api/v1', ''), init) ?? { status: 404 };
+    const method = init?.method ?? 'GET';
+    const path = url.replace('/api/v1', '');
+    const given = handler(method, path, init) ?? { status: 404 };
+    // The menu draws the identity of the product on every page: a test that does not care about it (and answers every address with the same body) still gets one.
+    const answer =
+      method === 'GET' && path === '/identity' && !isIdentity(given.body) ? { body: defaultIdentity } : given;
     const code = answer.status ?? 200;
     return Promise.resolve({
       ok: code < 400,

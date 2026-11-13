@@ -14,6 +14,7 @@ using Mnemarr.Core.Conversations;
 using Mnemarr.Core.Declarative;
 using Mnemarr.Core.Embeddings;
 using Mnemarr.Core.Git;
+using Mnemarr.Core.Identity;
 using Mnemarr.Core.Indexing;
 using Mnemarr.Core.Notes;
 using Mnemarr.Core.Notifications;
@@ -33,6 +34,10 @@ public static class CoreServiceCollectionExtensions
         services.AddOptions<MnemarrOptions>().Bind(configuration).ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<ISystemStatusService, SystemStatusService>();
+        services.AddOptions<BrandingOptions>().Bind(configuration.GetSection("Identity")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<BrandingOptions>, BrandingOptionsValidator>();
+        services.AddSingleton<IIdentityStore, SqliteIdentityStore>();
+        services.AddSingleton<IdentityService>();
         services.AddOptions<AgentOptions>().Bind(configuration.GetSection(AgentOptions.SectionName)).ValidateOnStart();
         services.AddSingleton<IValidateOptions<AgentOptions>, AgentOptionsValidator>();
         services.AddSingleton<ChatAccess>();

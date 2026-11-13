@@ -4,6 +4,7 @@ import { menuEntries } from 'App/navigation';
 import { usePermissions } from 'Session/SessionContext';
 import translate from 'Utilities/String/translate';
 
+import IdentityBadge from './IdentityBadge';
 import styles from './PageSidebar.module.css';
 
 export default function PageSidebar() {
@@ -33,6 +34,7 @@ export default function PageSidebar() {
           ),
         )}
       </nav>
+      <IdentityBadge />
     </aside>
   );
 }

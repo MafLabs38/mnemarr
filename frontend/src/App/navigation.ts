@@ -26,7 +26,13 @@ export const menuEntries: ReadonlyArray<MenuEntry> = [
     available: true,
     permission: permissions.conversationsRead,
   },
-  { to: '/settings', label: 'Settings', icon: icons.SETTINGS, available: false },
+  {
+    to: '/settings',
+    label: 'Settings',
+    icon: icons.SETTINGS,
+    available: true,
+    permission: permissions.settingsManage,
+  },
   { to: '/system/status', label: 'System', icon: icons.SYSTEM, available: true, permission: permissions.systemRead },
   { to: '/accounts', label: 'Accounts', icon: icons.ACCOUNTS, available: true, permission: permissions.accountsManage },
 ];

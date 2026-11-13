@@ -21,10 +21,16 @@ public static class SecurityHeaders
                 headers["X-Content-Type-Options"] = "nosniff";
                 headers["X-Frame-Options"] = "DENY";
                 headers["Referrer-Policy"] = "no-referrer";
-                headers["Content-Security-Policy"] = ContentSecurityPolicy;
-                if (ApiPaths.IsApi(context.Request.Path))
+                // A response that has said its own policy keeps it: the logo of the identity is an image served with the strictest one (ADR 0044).
+                if (!headers.ContainsKey("Content-Security-Policy"))
                 {
-                    // What the API says is for the person who asked, and sometimes once (the secret of a new key): no cache keeps it.
+                    headers["Content-Security-Policy"] = ContentSecurityPolicy;
+                }
+
+                if (ApiPaths.IsApi(context.Request.Path) && !headers.ContainsKey("Cache-Control"))
+                {
+                    // What the API says is for the person who asked, and sometimes once (the secret of a new key): no cache keeps it. A response that has said how long it may be kept
+                    // (an image that is the same until its hash changes) keeps what it said, private to the browser of the person.
                     headers.CacheControl = "no-store";
                     headers.Pragma = "no-cache";
                 }
