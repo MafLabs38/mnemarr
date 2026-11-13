@@ -51,9 +51,14 @@ export default function IdentityCard() {
     remove.reset();
     try {
       if (textsChanged) {
+        // Only what was changed: the form shows what applies, which may come from the deployment, and what was not touched must stay the deployment's.
+        const colors = {
+          ...(currentNameColor.trim() !== data.colors.name && { name: currentNameColor.trim() }),
+          ...(currentVersionColor.trim() !== data.colors.version && { version: currentVersionColor.trim() }),
+        };
         await setIdentity.mutateAsync({
-          name: currentName.trim(),
-          colors: { name: currentNameColor.trim(), version: currentVersionColor.trim() },
+          ...(currentName.trim() !== data.name && { name: currentName.trim() }),
+          ...(Object.keys(colors).length > 0 && { colors }),
         });
       }
       if (file) {

@@ -79,9 +79,22 @@ describe('Settings', () => {
       {
         method: 'PUT',
         path: '/identity',
-        body: JSON.stringify({ name: 'Lab 2', colors: { name: '#fff', version: '#3ee0c5' } }),
+        body: JSON.stringify({ name: 'Lab 2', colors: { name: '#fff' } }),
       },
     ]);
+  });
+
+  it('sends only the color that was changed, so that the name and the other color stay the ones of the deployment', async () => {
+    const { calls } = serve(lab);
+    renderWithProviders(<Settings />, '/settings');
+    const identity = await card();
+
+    await userEvent.clear(within(identity).getByLabelText('Color of the version'));
+    await userEvent.type(within(identity).getByLabelText('Color of the version'), 'ink');
+    await userEvent.click(within(identity).getByRole('button', { name: 'Save the identity' }));
+
+    expect(await within(identity).findByText('Saved.')).toBeInTheDocument();
+    expect(calls).toEqual([{ method: 'PUT', path: '/identity', body: JSON.stringify({ colors: { version: 'ink' } }) }]);
   });
 
   it('sends the image as a form with the field file, and nothing else when the texts did not change', async () => {
