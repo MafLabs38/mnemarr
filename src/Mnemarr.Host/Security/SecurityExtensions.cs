@@ -53,6 +53,8 @@ public static class SecurityExtensions
             {
                 options.AddPolicy(permission, policy => policy.RequireClaim(MnemarrClaims.Permission, permission));
             }
+
+            AccessPolicies.Add(options);
         });
         return services;
     }
