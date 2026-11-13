@@ -862,6 +862,7 @@ test.describe('smoke @smoke', () => {
     await expect(card.getByText('Remove Knowledge seeded')).toBeVisible();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
+
   test('an administrator names the lab and gives it a logo and the menu shows them at its bottom, for everyone', async ({
     page,
     playwright,

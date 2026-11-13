@@ -52,7 +52,8 @@ public static partial class IdentityRules
             return $"The name must be at most {MaxNameLength} characters.";
         }
 
-        return name.Any(char.IsControl) ? "The name must be one line of text." : null;
+        // A control character, and a format one (a zero-width space, a right-to-left mark) that would make a name read as another: one line of visible text.
+        return name.Any(character => char.IsControl(character) || char.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.Format) ? "The name must be one line of text." : null;
     }
 
     /// <summary>Whether the value is a hex color (<c>#rgb</c>, <c>#rrggbb</c>) or one of <see cref="ColorTokens"/>: nothing else, so that a value never carries CSS beyond one color.</summary>

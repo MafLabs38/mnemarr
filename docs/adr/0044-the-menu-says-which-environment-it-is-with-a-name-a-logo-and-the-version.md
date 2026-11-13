@@ -24,8 +24,9 @@ same style, and for it to be the lab's name and picture, not the product's: the 
    of a png or a webp; an svg is well formed, has the SVG root, and no script, event handler, `foreignObject`, link to another document, DTD or style that loads from outside. A logo that fails is not used and
    the reason is shown (never its path). The same rules as Portarr's.
 4. **The image is served like an icon.** `GET /api/v1/identity/logo?v=<hash>` (sign-in required, like the rest) with the hash of the file in its address: `private, max-age=31536000, immutable` with the hash, five
-   minutes without it, an ETag, `nosniff` and `default-src 'none'; sandbox`. The general headers of the host (no cache, the application's content policy) leave alone what a response has already said, so that this
-   image can be cached by the browser of the person while every other answer of the API is not.
+   minutes without it, an ETag, `nosniff` and `default-src 'none'; sandbox`. The general headers of the host (no cache, the application's content policy) leave alone what the response of that address has said, so that this
+   image can be cached by the browser of the person while every other answer of the API is not. The exception is for that one address and only when the image is served (200, or 304 for a
+   browser that has it): a refusal or a failure on the same address has the application's headers like any other.
 5. **Anyone who is signed in reads it, an administrator changes it.** `GET /api/v1/identity` (name, colors, logo address, version, why a logo is not used) answers every role: the menu shows it to everyone. A change
    (`PUT /api/v1/identity`, `PUT` and `DELETE /api/v1/identity/logo`) is the new permission **`settings.manage`**, which only `Admin` holds (everyone sees it: it is an administrator's), and is audited
    (`identity.updated`, `identity.logo.updated`, `identity.logo.removed`; the values are not written in the log). The identity is one row of the database (the logo in it, at most 1 MiB), so it is backed up with it.

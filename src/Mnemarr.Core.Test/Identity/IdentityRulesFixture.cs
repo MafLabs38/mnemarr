@@ -17,6 +17,9 @@ public sealed class IdentityRulesFixture
         IdentityRules.ValidateName(new string('a', IdentityRules.MaxNameLength)).Should().BeNull();
         IdentityRules.ValidateName(new string('a', IdentityRules.MaxNameLength + 1)).Should().Contain("at most 40");
         IdentityRules.ValidateName("two\nlines").Should().Contain("one line");
+        IdentityRules.ValidateName("zero\u200Bwidth").Should().Contain("one line");
+        IdentityRules.ValidateName("right\u202Eto-left").Should().Contain("one line");
+        IdentityRules.ValidateName("Laboratoire café — 研究室").Should().BeNull("letters of any language are a name");
     }
 
     [Theory]

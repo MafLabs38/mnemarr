@@ -45,6 +45,10 @@ export default function IdentityCard() {
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSaved(false);
+    // What went wrong the last time is not what is shown for this time.
+    setIdentity.reset();
+    upload.reset();
+    remove.reset();
     try {
       if (textsChanged) {
         await setIdentity.mutateAsync({
@@ -129,6 +133,8 @@ export default function IdentityCard() {
               disabled={pending}
               onClick={() => {
                 setSaved(false);
+                setIdentity.reset();
+                upload.reset();
                 remove.mutate(undefined);
               }}
               variant="quiet"

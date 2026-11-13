@@ -150,6 +150,30 @@ describe('Settings', () => {
     expect(calls.map((call) => call.path)).toEqual(['/identity', '/identity/logo']);
   });
 
+  it('does not keep showing the refusal of an image once the next save worked', async () => {
+    let refuse = true;
+    serve(lab, ({ method, path }) =>
+      method === 'PUT' && path === '/identity/logo' && refuse
+        ? { status: 400, body: { title: 'The file is not a valid png image.' } }
+        : undefined,
+    );
+    renderWithProviders(<Settings />, '/settings');
+    const identity = await card();
+    await userEvent.upload(
+      identity.querySelector<HTMLInputElement>('input[type=file]') as HTMLInputElement,
+      new File(['x'], 'lab.png', { type: 'image/png' }),
+    );
+    await userEvent.click(within(identity).getByRole('button', { name: 'Save the identity' }));
+    expect(await within(identity).findByRole('alert')).toBeInTheDocument();
+
+    refuse = false;
+    await userEvent.type(within(identity).getByLabelText('Name'), '!');
+    await userEvent.click(within(identity).getByRole('button', { name: 'Save the identity' }));
+
+    expect(await within(identity).findByText('Saved.')).toBeInTheDocument();
+    expect(within(identity).queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('stops saying saved as soon as something is edited again', async () => {
     serve(lab);
     renderWithProviders(<Settings />, '/settings');

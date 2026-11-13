@@ -23,9 +23,10 @@ public static class SecurityHeaders
                 headers["X-Content-Type-Options"] = "nosniff";
                 headers["X-Frame-Options"] = "DENY";
                 headers["Referrer-Policy"] = "no-referrer";
-                // The one answer that keeps what it said itself: the logo of the identity, an image that is the same until its hash changes, served with the strictest policy and kept
-                // by the browser of the person (ADR 0044). Every other answer has the application's policy and is not cached, whatever its controller wrote.
-                var logo = context.Request.Path.Equals(IdentityLogoPath, StringComparison.Ordinal);
+                // The one answer that keeps what it said itself: the logo of the identity when it is served (an image that is the same until its hash changes, with the strictest policy,
+                // kept by the browser of the person; ADR 0044). An error on the same address, a refusal or a failure, has the application's policy and is not cached, like every other answer.
+                var logo = context.Request.Path.Equals(IdentityLogoPath, StringComparison.OrdinalIgnoreCase)
+                    && context.Response.StatusCode is StatusCodes.Status200OK or StatusCodes.Status304NotModified;
                 if (!logo)
                 {
                     headers["Content-Security-Policy"] = ContentSecurityPolicy;

@@ -76,6 +76,22 @@ public sealed class IdentityApiFixture : IClassFixture<MnemarrFactory>, IAsyncLi
     }
 
     [Fact]
+    public async Task should_give_the_application_s_headers_to_a_refusal_or_a_missing_logo_on_the_address_of_the_logo()
+    {
+        var anonymous = await _callers.Anonymous.GetAsync("/api/v1/identity/logo", Token);
+        var missing = await _callers["Reader"].GetAsync("/api/v1/identity/logo", Token);
+
+        foreach (var answer in new[] { anonymous, missing })
+        {
+            answer.Headers.CacheControl!.NoStore.Should().BeTrue();
+            answer.Headers.GetValues("Content-Security-Policy").Should().ContainSingle().Which.Should().Contain("default-src 'self'");
+        }
+
+        anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task should_let_an_administrator_name_the_lab_and_color_its_texts_and_show_it_to_everyone()
     {
         var response = await _callers.Admin.PutAsJsonAsync("/api/v1/identity", new { name = "Example Lab", colors = new { name = "#3ee0c5", version = "inkMuted" } }, Token);
