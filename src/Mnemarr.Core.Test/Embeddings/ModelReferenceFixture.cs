@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Embeddings;
 
 namespace Mnemarr.Core.Test.Embeddings;
@@ -77,6 +78,126 @@ public sealed class ModelReferenceFixture
             // Summed in double: the same vector on another CPU or another build of the runtime differs in the last digits, not in the direction.
             var cosine = vectors[index].Zip(cases[index].Embedding, (left, right) => (double)left * right).Sum();
             cosine.Should().BeGreaterThan(0.999, $"the text {cases[index].Text}");
+        }
+    }
+
+    [Fact]
+    public void should_let_go_of_the_model_when_nobody_asked_and_compute_the_same_vector_after_it_is_built_again()
+    {
+        Assert.SkipUnless(Model is not null, "No model folder given.");
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 21, 3, 0, 0, TimeSpan.Zero));
+        var options = new EmbeddingOptions { ModelFolder = Model, ExtensionPath = "unused" };
+        using var provider = new OnnxEmbeddingProvider(Options.Create(options), NullLogger<OnnxEmbeddingProvider>.Instance, clock);
+        provider.Status().Should().Be(new EmbeddingStatus(EmbeddingState.Ready));
+        var before = provider.EmbedPassages(["a passage"])[0];
+        var tenMinutes = TimeSpan.FromMinutes(10);
+
+        clock.Advance(TimeSpan.FromMinutes(9));
+        provider.UnloadIfIdle(tenMinutes).Should().BeFalse("it was used nine minutes ago");
+        clock.Advance(TimeSpan.FromMinutes(2));
+        provider.UnloadIfIdle(tenMinutes).Should().BeTrue("nobody asked for eleven minutes");
+        provider.UnloadIfIdle(tenMinutes).Should().BeFalse("there is nothing left to let go of");
+        provider.Known().Should().Be(new EmbeddingStatus(EmbeddingState.Ready), "the files were verified and are not asked again: the model only sleeps");
+
+        provider.EmbedPassages(["a passage"])[0].Should().Equal(before, "the same model computes the same vector once it is built again");
+        clock.Advance(TimeSpan.FromMinutes(5));
+        provider.UnloadIfIdle(tenMinutes).Should().BeFalse("the request that built it again counts as a use");
+    }
+
+    [Fact]
+    public async Task should_never_fail_a_request_that_meets_an_unload()
+    {
+        Assert.SkipUnless(Model is not null, "No model folder given.");
+        var options = new EmbeddingOptions { ModelFolder = Model, ExtensionPath = "unused" };
+        using var provider = new OnnxEmbeddingProvider(Options.Create(options), NullLogger<OnnxEmbeddingProvider>.Instance);
+        provider.Status().Should().Be(new EmbeddingStatus(EmbeddingState.Ready));
+        var expected = provider.EmbedPassages(["a passage"])[0];
+        using var stop = new CancellationTokenSource();
+        var token = TestContext.Current.CancellationToken;
+
+        // An unload asked all the time (a delay of nothing), against requests from three threads: whichever one wins the turn, a request is answered with the same vector.
+        const int Threads = 3;
+        const int RequestsPerThread = 5;
+        var unloads = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                provider.UnloadIfIdle(TimeSpan.Zero);
+                stop.Token.WaitHandle.WaitOne(20);
+            }
+        }, token);
+        var requests = Enumerable.Range(0, Threads).Select(_ => Task.Run(() => Enumerable.Range(0, RequestsPerThread).Select(_ => provider.EmbedPassages(["a passage"])[0]).ToList(), token)).ToList();
+
+        var answers = (await Task.WhenAll(requests)).SelectMany(list => list).ToList();
+        await stop.CancelAsync();
+
+        await unloads;
+        answers.Should().HaveCount(Threads * RequestsPerThread).And.OnlyContain(vector => vector.SequenceEqual(expected));
+    }
+
+    // A folder of links to the real files of the model (a copy is 390 MB), and a provider that has loaded them and then let go of the model, as a server does after ten minutes of silence.
+    private static (string Folder, FakeTimeProvider Clock, OnnxEmbeddingProvider Provider) AsleepModel()
+    {
+        var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
+        foreach (var file in Directory.EnumerateFiles(Model!))
+        {
+            File.CreateSymbolicLink(Path.Combine(folder, Path.GetFileName(file)), file);
+        }
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 21, 3, 0, 0, TimeSpan.Zero));
+        var provider = new OnnxEmbeddingProvider(Options.Create(new EmbeddingOptions { ModelFolder = folder, ExtensionPath = "unused" }), NullLogger<OnnxEmbeddingProvider>.Instance, clock);
+        provider.Status().Should().Be(new EmbeddingStatus(EmbeddingState.Ready));
+        clock.Advance(TimeSpan.FromMinutes(11));
+        provider.UnloadIfIdle(TimeSpan.FromMinutes(10)).Should().BeTrue();
+        return (folder, clock, provider);
+    }
+
+    [Fact]
+    public void should_not_build_again_a_model_file_that_was_swapped_while_it_slept_and_say_so()
+    {
+        Assert.SkipUnless(Model is not null && OperatingSystem.IsLinux(), "No model folder given, or no symbolic links.");
+        var (folder, clock, provider) = AsleepModel();
+        try
+        {
+            File.Delete(Path.Combine(folder, "model.onnx"));
+            File.WriteAllText(Path.Combine(folder, "model.onnx"), "not the model");
+
+            var embed = () => provider.EmbedPassages(["a passage"]);
+
+            embed.Should().Throw<EmbeddingException>();
+            provider.Known()!.State.Should().Be(EmbeddingState.Failed, "the health tells that the model is down");
+            provider.Known()!.Reason.Should().Contain("not the one pinned");
+            clock.Advance(TimeSpan.FromMinutes(6));
+            File.Delete(Path.Combine(folder, "model.onnx"));
+            File.CreateSymbolicLink(Path.Combine(folder, "model.onnx"), Path.Combine(Model!, "model.onnx"));
+            provider.EmbedPassages(["a passage"]).Should().ContainSingle("the file is back, and the model is tried again after a while");
+        }
+        finally
+        {
+            provider.Dispose();
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void should_say_that_the_model_is_down_when_its_file_is_gone_while_it_slept()
+    {
+        Assert.SkipUnless(Model is not null && OperatingSystem.IsLinux(), "No model folder given, or no symbolic links.");
+        var (folder, _, provider) = AsleepModel();
+        try
+        {
+            File.Delete(Path.Combine(folder, "model.onnx"));
+
+            var embed = () => provider.EmbedPassages(["a passage"]);
+
+            embed.Should().Throw<EmbeddingException>();
+            provider.Known().Should().Be(new EmbeddingStatus(EmbeddingState.Failed, "The file model.onnx of the model is not in the model folder."));
+            embed.Should().Throw<EmbeddingException>("the next request does not try again before the delay");
+        }
+        finally
+        {
+            provider.Dispose();
+            Directory.Delete(folder, recursive: true);
         }
     }
 

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Embeddings;
 
@@ -23,7 +24,10 @@ public static class EmbedderEndpoints
         services.AddSingleton<EmbedderKey>();
         services.AddSingleton<OnnxEmbeddingProvider>();
         services.AddSingleton<IEmbeddingProvider>(sp => sp.GetRequiredService<OnnxEmbeddingProvider>());
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<IIdleUnload>(sp => sp.GetRequiredService<OnnxEmbeddingProvider>());
         services.AddHostedService<ModelWarmUp>();
+        services.AddHostedService<IdleModelUnload>();
         return services;
     }
 
@@ -107,4 +111,40 @@ public sealed class ModelWarmUp(IEmbeddingProvider provider, EmbedderKey key) : 
         GC.KeepAlive(key);
         return Task.Run(() => provider.Status(), stoppingToken);
     }
+}
+
+/// <summary>
+/// Lets go of the model when nobody has asked for a while (ADR 0045). The engine keeps the video memory it took, and more of it as the days go, for as long as its session lives;
+/// a card that a media server and an image generator share cannot give it away for a model that sleeps. The next request builds the session again.
+/// </summary>
+public sealed partial class IdleModelUnload(IIdleUnload model, IOptions<EmbedderOptions> options, TimeProvider clock, ILogger<IdleModelUnload> logger) : BackgroundService
+{
+    // How often it looks: a minute is soon enough for a delay of minutes, and a short delay (a test) is looked at twice as often.
+    private static readonly TimeSpan LongestLook = TimeSpan.FromMinutes(1);
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        if (options.Value.IdleUnloadMinutes <= 0)
+        {
+            return;
+        }
+
+        var idle = TimeSpan.FromMinutes(options.Value.IdleUnloadMinutes);
+        using var timer = new PeriodicTimer(idle / 2 < LongestLook ? idle / 2 : LongestLook, clock);
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            try
+            {
+                model.UnloadIfIdle(idle);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The engine is native code: a session that will not let go is a memory that stays taken, not a reason to stop the server that answers.
+                LogUnloadFailed(ex);
+            }
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The model could not be let go of: it stays loaded and the next check tries again.")]
+    private partial void LogUnloadFailed(Exception exception);
 }

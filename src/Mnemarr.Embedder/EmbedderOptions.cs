@@ -17,6 +17,12 @@ public sealed class EmbedderOptions
 
     /// <summary>The largest request body, in bytes.</summary>
     public int MaxBodyBytes { get; set; } = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// Minutes without a request after which the server lets go of the model, and so of its video memory (ADR 0045): the GPU is shared, and the engine keeps what it took for as long
+    /// as its session lives. The next request builds the session again, in about a second and a half. 0 keeps the model loaded.
+    /// </summary>
+    public int IdleUnloadMinutes { get; set; } = 10;
 }
 
 public sealed class EmbedderOptionsValidator : IValidateOptions<EmbedderOptions>
@@ -31,6 +37,11 @@ public sealed class EmbedderOptionsValidator : IValidateOptions<EmbedderOptions>
         if (!File.Exists(options.KeyFile))
         {
             return ValidateOptionsResult.Fail("Embedder:KeyFile does not name a file that exists.");
+        }
+
+        if (options.IdleUnloadMinutes is < 0 or > 1440)
+        {
+            return ValidateOptionsResult.Fail("Embedder:IdleUnloadMinutes is 0 (never) to 1440.");
         }
 
         return options.MaxTexts is < 1 or > 1024 || options.MaxTextChars is < 100 or > 100_000 || options.MaxBodyBytes is < 1024 or > 64 * 1024 * 1024

@@ -53,6 +53,12 @@ public sealed class EmbeddingOptions
     /// </summary>
     public int GpuMemoryMb { get; set; } = 1024;
 
+    /// <summary>
+    /// Gives the video memory the engine does not use back to the driver after each batch (ADR 0045). Without it the engine keeps what it took, in blocks of the sizes it was asked
+    /// for that a batch of another size cannot reuse: the pool fills up to its limit and the GPU stays taken, which a card that is shared cannot afford.
+    /// </summary>
+    public bool GpuShrinkAfterRun { get; set; } = true;
+
     /// <summary>A server that computes the vectors for this host (ADR 0040). Empty: they are computed here.</summary>
     public RemoteEmbeddingOptions Remote { get; set; } = new();
 
