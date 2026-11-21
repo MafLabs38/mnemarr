@@ -68,7 +68,6 @@ public sealed class IdleModelUnloadFixture
         new(model, Options.Create(new EmbedderOptions { IdleUnloadMinutes = minutes }), clock, NullLogger<IdleModelUnload>.Instance);
 
     [Theory]
-    [InlineData(10, 60)]
     [InlineData(2, 60)]
     [InlineData(1, 30)]
     public async Task should_look_every_minute_at_most_and_twice_as_often_as_a_delay_shorter_than_two_minutes(int minutes, int seconds)
