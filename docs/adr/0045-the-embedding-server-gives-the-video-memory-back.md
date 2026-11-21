@@ -17,7 +17,7 @@ Measured on a GeForce RTX 2070, with the image of 0.4.0 and then with this chang
   person: the search goes on, slower.
 - **Giving back what a batch does not use** (a setting of the engine, applied to each batch) keeps the server at 570 MB over 260 batches, without a failure, at the same speed (135 passages a second against
   127, measured with 32 passages of 512 tokens per request).
-- **Letting go of the session** when nobody asks takes the process from 570 MB to 98 MB (what is left is the context of the driver). Building it again takes 0.7 s; the vectors are the same (cosine 1.000000
+- **Letting go of the session** when nobody asks takes the process from 570 MB to 98 MB (what is left is the context of the driver). Building it again takes 1.5 s with the files checked again (0.7 s of it is the hash of the model); the vectors are the same (cosine 1.000000
   against the first ones), on eight cycles, with no creep.
 
 ## Decision
@@ -25,13 +25,13 @@ Measured on a GeForce RTX 2070, with the image of 0.4.0 and then with this chang
 1. **The engine gives back the memory a batch does not use** (`Embeddings:GpuShrinkAfterRun`, on by default): after each run the unused blocks of the pool go back to the driver. The pool no longer fills with blocks
    of the wrong sizes, and the card is not held between two batches. It only applies to a GPU.
 2. **The server lets go of the model when nobody asks** (`Embedder:IdleUnloadMinutes`, 10 by default, 0 to keep it loaded). A check every minute at most; a run that is going on is never cut. The next request builds
-   the session again (about a second) and counts as a use. The model file is read again from its folder, so it is hashed again against the pinned one before it is loaded: a folder that is not read-only may have
+   the session again (about a second and a half) and counts as a use. The model file is read again from its folder, so it is hashed again against the pinned one before it is loaded: a folder that is not read-only may have
    been written to since the start, and the file is then not loaded. This is one lock with the runs, so an unload and a request never meet.
 3. **A refused card is not a failure, and a model that cannot be built again is not hidden.** If the card cannot give the memory when the session is built again, the server in `Auto` mode computes on its CPU and says
    so (`device: cpu`), as it already does at start; it tries the card again the next time it lets go of the model, which a server that is never silent for ten minutes does not reach. Any other reason (the file
    swapped, the engine failing) puts the model down like a load that failed: `GET /health` answers `503`, Mnemarr computes on its own CPU, and the server tries again after five minutes.
 4. **No restart, no cron, no second program.** Both mechanisms are in the server, so that it holds for someone who runs it without a restart policy, and Mnemarr is unchanged: a first request after a long silence takes
-   about a second longer, well under the delay Mnemarr waits for the server.
+   about a second and a half longer, well under the delay Mnemarr waits for the server.
 
 Not done: rewriting the server in another language (the memory is the engine's and the driver's, not the language's), and an exit of the process with a restart by the container runtime (it would give back the
 last 98 MB at the price of a dependency on a restart policy).
@@ -39,7 +39,8 @@ last 98 MB at the price of a dependency on a restart policy).
 ## Consequences
 
 - At rest the server holds about 100 MB of a card instead of up to 2.8 GB; in service it holds about 570 MB and does not grow with the days.
-- The first search after a long silence is slower by about a second (75 ms warm, 1.35 s measured after a rest, same results, still on the GPU).
+- The first search after a long silence is slower by about a second and a half (75 ms warm, 1.4 to 1.5 s after a rest, same results, still on the GPU).
 - The release of the unused blocks after each batch is a setting of the engine, so it also applies to a Mnemarr that runs the model on a GPU itself; the unload when nobody asks is the embedding server's.
 - `GpuMemoryMb` stays as a ceiling; with the unused blocks given back it is no longer reached by a long run.
+- The files are hashed and then opened by their path: a folder that someone else can write to can still be changed between the two, as it can at the start. The shipped image holds the model read-only.
 - A person who wants the old behaviour sets `Embedder:IdleUnloadMinutes` to 0 and `Embeddings:GpuShrinkAfterRun` to false.

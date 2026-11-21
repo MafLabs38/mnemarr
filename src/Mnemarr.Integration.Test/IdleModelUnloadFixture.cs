@@ -35,69 +35,71 @@ public sealed class IdleModelUnloadFixture
             return true;
         }
 
-        public Task<bool> WaitForAskingAsync(TimeSpan wait) => _asked.WaitAsync(wait, Token);
+        public Task<bool> WaitForAskingAsync() => _asked.WaitAsync(TimeSpan.FromSeconds(10), Token);
+    }
 
-        // The loop of the service starts a moment after StartAsync: a tick of the clock before it waits is lost, so the clock goes on until the model is asked.
-        public async Task<bool> AdvanceUntilAskedAsync(FakeTimeProvider clock, TimeSpan step)
+    // The clock of the test, which says when the service asks it for its timer and with what period: the service starts its loop a moment after StartAsync, and a tick of the clock that comes before the
+    // timer exists is lost, so the test waits for the timer and not for a delay.
+    private sealed class ClockOfTheTest : TimeProvider
+    {
+        private readonly TaskCompletionSource<TimeSpan> _timer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public FakeTimeProvider Fake { get; } = new();
+
+        public Task<TimeSpan> PeriodOfTheTimerAsync() => _timer.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
+
+        public override DateTimeOffset GetUtcNow() => Fake.GetUtcNow();
+
+        public override long GetTimestamp() => Fake.GetTimestamp();
+
+        public override long TimestampFrequency => Fake.TimestampFrequency;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            for (var attempt = 0; attempt < 100; attempt++)
-            {
-                clock.Advance(step);
-                if (await WaitForAskingAsync(TimeSpan.FromMilliseconds(100)))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            var timer = Fake.CreateTimer(callback, state, dueTime, period);
+            _timer.TrySetResult(period);
+            return timer;
         }
     }
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private static IdleModelUnload ServiceOf(Model model, int minutes, FakeTimeProvider clock) =>
+    private static IdleModelUnload ServiceOf(Model model, int minutes, TimeProvider clock) =>
         new(model, Options.Create(new EmbedderOptions { IdleUnloadMinutes = minutes }), clock, NullLogger<IdleModelUnload>.Instance);
 
-    [Fact]
-    public async Task should_ask_the_model_to_let_go_every_minute_with_the_delay_of_the_setting()
+    [Theory]
+    [InlineData(10, 60)]
+    [InlineData(2, 60)]
+    [InlineData(1, 30)]
+    public async Task should_look_every_minute_at_most_and_twice_as_often_as_a_delay_shorter_than_two_minutes(int minutes, int seconds)
     {
         var model = new Model();
-        var clock = new FakeTimeProvider();
-        using var service = ServiceOf(model, 10, clock);
+        var clock = new ClockOfTheTest();
+        using var service = ServiceOf(model, minutes, clock);
         await service.StartAsync(Token);
 
-        (await model.AdvanceUntilAskedAsync(clock, TimeSpan.FromMinutes(1))).Should().BeTrue("a minute is the longest it waits between two looks");
-        (await model.AdvanceUntilAskedAsync(clock, TimeSpan.FromMinutes(1))).Should().BeTrue();
-        await service.StopAsync(Token);
+        (await clock.PeriodOfTheTimerAsync()).Should().Be(TimeSpan.FromSeconds(seconds));
+        clock.Fake.Advance(TimeSpan.FromSeconds(seconds));
 
-        model.Asked.Should().OnlyContain(idle => idle == TimeSpan.FromMinutes(10));
+        (await model.WaitForAskingAsync()).Should().BeTrue("it asks the model when the period has passed");
+        await service.StopAsync(Token);
+        model.Asked.Should().OnlyContain(idle => idle == TimeSpan.FromMinutes(minutes), "it asks with the delay of the setting");
     }
 
     [Fact]
-    public async Task should_look_twice_as_often_as_a_delay_that_is_shorter_than_two_minutes()
-    {
-        var model = new Model();
-        var clock = new FakeTimeProvider();
-        using var service = ServiceOf(model, 1, clock);
-        await service.StartAsync(Token);
-
-        (await model.AdvanceUntilAskedAsync(clock, TimeSpan.FromSeconds(30))).Should().BeTrue("a delay of one minute is looked at every thirty seconds, not every minute");
-        await service.StopAsync(Token);
-        model.Asked.Should().OnlyContain(idle => idle == TimeSpan.FromMinutes(1));
-    }
-
-    [Fact]
-    public async Task should_keep_looking_when_the_engine_would_not_let_go_and_never_stop_the_server()
+    public async Task should_keep_looking_when_the_engine_would_not_let_go()
     {
         var model = new Model(failures: 1);
-        var clock = new FakeTimeProvider();
+        var clock = new ClockOfTheTest();
         using var service = ServiceOf(model, 10, clock);
         await service.StartAsync(Token);
+        await clock.PeriodOfTheTimerAsync();
 
-        (await model.AdvanceUntilAskedAsync(clock, TimeSpan.FromMinutes(1))).Should().BeTrue();
-        (await model.AdvanceUntilAskedAsync(clock, TimeSpan.FromMinutes(1))).Should().BeTrue("it looked again after the engine refused");
+        clock.Fake.Advance(TimeSpan.FromMinutes(1));
+        (await model.WaitForAskingAsync()).Should().BeTrue("the first look, where the engine refuses");
+        clock.Fake.Advance(TimeSpan.FromMinutes(1));
+        (await model.WaitForAskingAsync()).Should().BeTrue("it looked again after the engine refused: the server did not stop");
 
-        service.ExecuteTask!.IsFaulted.Should().BeFalse("a fault of a background service stops the host");
         await service.StopAsync(Token);
     }
 

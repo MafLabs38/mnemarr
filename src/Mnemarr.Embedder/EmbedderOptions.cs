@@ -20,7 +20,7 @@ public sealed class EmbedderOptions
 
     /// <summary>
     /// Minutes without a request after which the server lets go of the model, and so of its video memory (ADR 0045): the GPU is shared, and the engine keeps what it took for as long
-    /// as its session lives. The next request builds the session again, in a few seconds. 0 keeps the model loaded.
+    /// as its session lives. The next request builds the session again, in about a second and a half. 0 keeps the model loaded.
     /// </summary>
     public int IdleUnloadMinutes { get; set; } = 10;
 }

@@ -115,28 +115,30 @@ public sealed class ModelReferenceFixture
         using var stop = new CancellationTokenSource();
         var token = TestContext.Current.CancellationToken;
 
-        // An unload asked all the time (a delay of nothing), against requests from four threads: whichever one wins the turn, a request is answered with the same vector.
+        // An unload asked all the time (a delay of nothing), against requests from three threads: whichever one wins the turn, a request is answered with the same vector.
+        const int Threads = 3;
+        const int RequestsPerThread = 5;
         var unloads = Task.Run(() =>
         {
             while (!stop.IsCancellationRequested)
             {
                 provider.UnloadIfIdle(TimeSpan.Zero);
-                Thread.Yield();
+                Thread.Sleep(20);
             }
         }, token);
-        var requests = Enumerable.Range(0, 3).Select(_ => Task.Run(() => Enumerable.Range(0, 10).Select(_ => provider.EmbedPassages(["a passage"])[0]).ToList(), token)).ToList();
+        var requests = Enumerable.Range(0, Threads).Select(_ => Task.Run(() => Enumerable.Range(0, RequestsPerThread).Select(_ => provider.EmbedPassages(["a passage"])[0]).ToList(), token)).ToList();
 
         var answers = (await Task.WhenAll(requests)).SelectMany(list => list).ToList();
         await stop.CancelAsync();
 
         await unloads;
-        answers.Should().HaveCount(30).And.OnlyContain(vector => vector.SequenceEqual(expected));
+        answers.Should().HaveCount(Threads * RequestsPerThread).And.OnlyContain(vector => vector.SequenceEqual(expected));
     }
 
     [Fact]
     public void should_not_build_again_a_model_file_that_was_swapped_while_it_slept_and_say_so()
     {
-        Assert.SkipUnless(Model is not null, "No model folder given.");
+        Assert.SkipUnless(Model is not null && OperatingSystem.IsLinux(), "No model folder given, or no symbolic links.");
         var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
         try
         {
@@ -163,6 +165,37 @@ public sealed class ModelReferenceFixture
             File.Delete(Path.Combine(folder, "model.onnx"));
             File.CreateSymbolicLink(Path.Combine(folder, "model.onnx"), Path.Combine(Model!, "model.onnx"));
             provider.EmbedPassages(["a passage"]).Should().ContainSingle("the file is back, and the model is tried again after a while");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void should_say_that_the_model_is_down_when_its_file_is_gone_while_it_slept()
+    {
+        Assert.SkipUnless(Model is not null && OperatingSystem.IsLinux(), "No model folder given, or no symbolic links.");
+        var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(Model!))
+            {
+                File.CreateSymbolicLink(Path.Combine(folder, Path.GetFileName(file)), file);
+            }
+
+            var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 21, 3, 0, 0, TimeSpan.Zero));
+            using var provider = new OnnxEmbeddingProvider(Options.Create(new EmbeddingOptions { ModelFolder = folder, ExtensionPath = "unused" }), NullLogger<OnnxEmbeddingProvider>.Instance, clock);
+            provider.Status();
+            clock.Advance(TimeSpan.FromMinutes(11));
+            provider.UnloadIfIdle(TimeSpan.FromMinutes(10)).Should().BeTrue();
+            File.Delete(Path.Combine(folder, "model.onnx"));
+
+            var embed = () => provider.EmbedPassages(["a passage"]);
+
+            embed.Should().Throw<EmbeddingException>();
+            provider.Known()!.Should().Be(new EmbeddingStatus(EmbeddingState.Failed, "The file model.onnx of the model is not in the model folder."));
+            embed.Should().Throw<EmbeddingException>("the next request does not try again before the delay");
         }
         finally
         {

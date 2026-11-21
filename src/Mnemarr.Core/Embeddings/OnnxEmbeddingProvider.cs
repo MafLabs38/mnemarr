@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,8 +14,6 @@ namespace Mnemarr.Core.Embeddings;
 /// </summary>
 public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnload, IDisposable
 {
-    private readonly EmbeddingOptions _options;
-    private readonly ILogger<OnnxEmbeddingProvider> _logger;
     private const string CudaDevice = "cuda";
     private const string ShrinkageEntry = "memory.enable_memory_arena_shrinkage";
     private const string ModelFile = "model.onnx";
@@ -23,6 +22,8 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
     // A question waits at most this long for the model's turn: a batch of the indexer takes about a second, and a question that cannot have its turn is answered by its words.
     private static readonly TimeSpan QuestionWaits = TimeSpan.FromSeconds(2);
 
+    private readonly EmbeddingOptions _options;
+    private readonly ILogger<OnnxEmbeddingProvider> _logger;
     private readonly Lock _gate = new();
     private readonly Lock _run = new();
     private readonly TimeProvider _clock;
@@ -32,6 +33,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
     private ByteLevelBpeTokenizer? _tokenizer;
     private volatile string _device = "cpu";
     private long _lastUseTicks;
+    private bool _disposed;
 
     public OnnxEmbeddingProvider(IOptions<EmbeddingOptions> options, ILogger<OnnxEmbeddingProvider> logger, TimeProvider? clock = null)
     {
@@ -84,7 +86,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
 
     /// <summary>
     /// Lets go of the model when nobody asked for <paramref name="idle"/> (ADR 0045): the engine keeps the video memory it took for as long as its session lives, and a GPU is shared.
-    /// The files stay verified and the tokenizer stays, so the next request builds the session again, in a few seconds. Returns whether it unloaded.
+    /// The files stay verified and the tokenizer stays, so the next request builds the session again, in about a second and a half. Returns whether it unloaded.
     /// </summary>
     public bool UnloadIfIdle(TimeSpan idle)
     {
@@ -122,6 +124,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
         // The lock of the runs and of the unload: a session is disposed once, and not under a run.
         lock (_run)
         {
+            _disposed = true;
             _session?.Dispose();
             _session = null;
         }
@@ -162,29 +165,16 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
     {
         try
         {
-            if (!KnownModels.TryGet(_options.Model, out var model))
+            if (PinnedFilesProblem() is { } problem)
             {
-                return Failed($"The model '{_options.Model}' is not one that is supported.");
+                return Failed(problem);
             }
 
-            foreach (var (file, expected) in model.Files)
-            {
-                var path = Path.Combine(_options.ModelFolder!, file);
-                if (!File.Exists(path))
-                {
-                    return Failed($"The file {file} of the model is not in the model folder.");
-                }
-
-                if (!string.Equals(Sha256Of(path), expected, StringComparison.Ordinal))
-                {
-                    return Failed($"The file {file} is not the one pinned for {model.Id} (revision {model.Revision}): it is not loaded.");
-                }
-            }
-
+            KnownModels.TryGet(_options.Model, out var model);
             _tokenizer = ByteLevelBpeTokenizer.Load(Path.Combine(_options.ModelFolder!, "tokenizer.json"));
             _session = CreateSession(ModelPath);
             Touch();
-            LogLoaded(model.Id, _device, _options.Threads);
+            LogLoaded(model!.Id, _device, _options.Threads);
             return new EmbeddingStatus(EmbeddingState.Ready);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -236,6 +226,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
 
     private float[][] Embed(IReadOnlyList<string> texts, TimeSpan? waits)
     {
+        // A request counts as a use as soon as it arrives, before it has the lock: a queue behind a slow run is not a silence.
         Touch();
         if (Status().State != EmbeddingState.Ready)
         {
@@ -301,8 +292,19 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
         try
         {
             // The session is built again here when it was let go of while nobody asked (ADR 0045); the lock is the one the unload takes, so the two never meet.
-            var session = _session ?? Rebuild();
-            _session = session;
+            var session = _session;
+            if (session is null)
+            {
+                // A request that waited for its turn while another one found the model down does not try again before the delay: the status says it is down.
+                if (_disposed || _status is not { State: EmbeddingState.Ready })
+                {
+                    throw new EmbeddingException("The model is not loaded.");
+                }
+
+                session = Rebuild();
+                _session = session;
+            }
+
             var vectors = Infer(session, inputs, batch.Count);
             Touch();
             return vectors;
@@ -313,30 +315,48 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
         }
     }
 
-    // The model builds again after it was let go of (ADR 0045). The file is hashed again: it is read again from the folder, and a folder that is not read-only may have been written to since the start.
-    // A model that cannot be built again is a model that is down, like one that cannot be loaded: the health says so, and it is tried again after a while.
+    // What is wrong with the files of the model, as a sentence, or null when every one is there and is the pinned one. Used when the model loads and when it is built again.
+    private string? PinnedFilesProblem()
+    {
+        if (!KnownModels.TryGet(_options.Model, out var model))
+        {
+            return $"The model '{_options.Model}' is not one that is supported.";
+        }
+
+        foreach (var (file, expected) in model.Files)
+        {
+            var path = Path.Combine(_options.ModelFolder!, file);
+            if (!File.Exists(path))
+            {
+                return $"The file {file} of the model is not in the model folder.";
+            }
+
+            if (!string.Equals(Sha256Of(path), expected, StringComparison.Ordinal))
+            {
+                return $"The file {file} is not the one pinned for {model.Id} (revision {model.Revision}): it is not loaded.";
+            }
+        }
+
+        return null;
+    }
+
+    // The model builds again after it was let go of (ADR 0045). The files are checked again like at the start: they are read again from the folder, and a folder that is not read-only may have
+    // been written to since. A model that cannot be built again is a model that is down, like one that cannot be loaded: the health says so, and it is tried again after a while.
     private InferenceSession Rebuild()
     {
         string problem;
         try
         {
-            if (!KnownModels.TryGet(_options.Model, out var model) || !model.Files.TryGetValue(ModelFile, out var expected))
+            if (PinnedFilesProblem() is not { } found)
             {
-                problem = $"The model '{_options.Model}' is not one that is supported.";
+                return CreateSession(ModelPath);
             }
-            else if (!string.Equals(Sha256Of(ModelPath), expected, StringComparison.Ordinal))
-            {
-                problem = $"The file {ModelFile} is not the one pinned for {model.Id} (revision {model.Revision}): it is not loaded.";
-            }
-            else
-            {
-                var session = CreateSession(ModelPath);
-                Touch();
-                return session;
-            }
+
+            problem = found;
         }
-        catch (Exception ex) when (ex is OnnxRuntimeException or IOException or UnauthorizedAccessException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Whatever the engine, which is native code, fails with: the same as when the model loads.
             LogLoadFailed(ex);
             problem = "The model could not be loaded: see the log of Mnemarr.";
         }
@@ -355,7 +375,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
         using var run = new RunOptions();
         if (_device == CudaDevice && _options.GpuShrinkAfterRun)
         {
-            run.AddRunConfigEntry(ShrinkageEntry, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"gpu:{_options.GpuDeviceId}"));
+            run.AddRunConfigEntry(ShrinkageEntry, string.Create(CultureInfo.InvariantCulture, $"gpu:{_options.GpuDeviceId}"));
         }
 
         using var outputs = session.Run(inputs, session.OutputNames, run);
