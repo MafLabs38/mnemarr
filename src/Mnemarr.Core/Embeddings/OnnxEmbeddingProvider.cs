@@ -11,7 +11,7 @@ namespace Mnemarr.Core.Embeddings;
 /// their SHA-256 were verified against the pinned ones; a file that differs is not loaded and the reason is kept for the health page. The pooling is the
 /// one of the model (the first token), and the vectors are normalised.
 /// </summary>
-public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposable
+public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnload, IDisposable
 {
     private readonly EmbeddingOptions _options;
     private readonly ILogger<OnnxEmbeddingProvider> _logger;
@@ -25,9 +25,10 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     private readonly TimeProvider _clock;
     private volatile EmbeddingStatus? _status;
     private DateTimeOffset _checkedAt;
-    private InferenceSession? _session;
+    private volatile InferenceSession? _session;
     private ByteLevelBpeTokenizer? _tokenizer;
     private volatile string _device = "cpu";
+    private long _lastUseTicks;
 
     public OnnxEmbeddingProvider(IOptions<EmbeddingOptions> options, ILogger<OnnxEmbeddingProvider> logger, TimeProvider? clock = null)
     {
@@ -78,7 +79,46 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     public IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts) => Embed(texts, null);
 
+    /// <summary>
+    /// Lets go of the model when nobody asked for <paramref name="idle"/> (ADR 0045): the engine keeps the video memory it took for as long as its session lives, and a GPU is shared.
+    /// The files stay verified and the tokenizer stays, so the next request builds the session again, in a few seconds. Returns whether it unloaded.
+    /// </summary>
+    public bool UnloadIfIdle(TimeSpan idle)
+    {
+        if (_session is null || IdleFor() < idle)
+        {
+            return false;
+        }
+
+        // A run in progress is not idle: the lock is not waited for, the next pass asks again.
+        if (!_run.TryEnter(TimeSpan.Zero))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (_session is null || IdleFor() < idle)
+            {
+                return false;
+            }
+
+            _session.Dispose();
+            _session = null;
+            LogUnloaded(idle.TotalMinutes);
+            return true;
+        }
+        finally
+        {
+            _run.Exit();
+        }
+    }
+
     public void Dispose() => _session?.Dispose();
+
+    private TimeSpan IdleFor() => _clock.GetUtcNow() - new DateTimeOffset(Interlocked.Read(ref _lastUseTicks), TimeSpan.Zero);
+
+    private void Touch() => Interlocked.Exchange(ref _lastUseTicks, _clock.GetUtcNow().UtcTicks);
 
     private static string Sha256Of(string path)
     {
@@ -131,7 +171,8 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
             }
 
             _tokenizer = ByteLevelBpeTokenizer.Load(Path.Combine(_options.ModelFolder!, "tokenizer.json"));
-            _session = CreateSession(Path.Combine(_options.ModelFolder!, "model.onnx"));
+            _session = CreateSession(ModelPath);
+            Touch();
             LogLoaded(model.Id, _device, _options.Threads);
             return new EmbeddingStatus(EmbeddingState.Ready);
         }
@@ -178,10 +219,13 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     private SessionOptions Settings() => new() { IntraOpNumThreads = _options.Threads, InterOpNumThreads = 1, GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
 
+    private string ModelPath => Path.Combine(_options.ModelFolder!, "model.onnx");
+
     private static EmbeddingStatus Failed(string reason) => new(EmbeddingState.Failed, reason);
 
     private float[][] Embed(IReadOnlyList<string> texts, TimeSpan? waits)
     {
+        Touch();
         if (Status().State != EmbeddingState.Ready)
         {
             throw new EmbeddingException("The model is not loaded.");
@@ -245,27 +289,41 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
         try
         {
-            using var outputs = _session!.Run(inputs);
-            var hidden = outputs[0].AsTensor<float>();
-            var vectors = new float[batch.Count][];
-            for (var row = 0; row < batch.Count; row++)
-            {
-                var vector = new float[hidden.Dimensions[2]];
-                for (var column = 0; column < vector.Length; column++)
-                {
-                    vector[column] = hidden[row, 0, column];
-                }
-
-                Normalise(vector);
-                vectors[row] = vector;
-            }
-
-            return vectors;
+            // The session is built again here when it was let go of while nobody asked (ADR 0045); the lock is the one the unload takes, so the two never meet.
+            _session ??= CreateSession(ModelPath);
+            return Infer(_session, inputs, batch.Count);
         }
         finally
         {
+            Touch();
             _run.Exit();
         }
+    }
+
+    private float[][] Infer(InferenceSession session, List<NamedOnnxValue> inputs, int rows)
+    {
+        using var run = new RunOptions();
+        if (_device == "cuda" && _options.GpuShrinkAfterRun)
+        {
+            run.AddRunConfigEntry("memory.enable_memory_arena_shrinkage", string.Create(System.Globalization.CultureInfo.InvariantCulture, $"gpu:{_options.GpuDeviceId}"));
+        }
+
+        using var outputs = session.Run(inputs, session.OutputNames, run);
+        var hidden = outputs[0].AsTensor<float>();
+        var vectors = new float[rows][];
+        for (var row = 0; row < rows; row++)
+        {
+            var vector = new float[hidden.Dimensions[2]];
+            for (var column = 0; column < vector.Length; column++)
+            {
+                vector[column] = hidden[row, 0, column];
+            }
+
+            Normalise(vector);
+            vectors[row] = vector;
+        }
+
+        return vectors;
     }
 
     private bool EnterAlways()
@@ -276,6 +334,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The model {Model} is loaded, on the {Device}, with {Threads} CPU threads.")]
     private partial void LogLoaded(string model, string device, int threads);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Nobody asked for {Minutes} minutes: the model is let go of, and loaded again at the next request.")]
+    private partial void LogUnloaded(double minutes);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The GPU cannot be used by the engine: the model runs on the CPU.")]
     private partial void LogGpuUnavailable(Exception exception);

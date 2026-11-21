@@ -15,6 +15,8 @@ services:
       MNEMARR__EMBEDDINGS__DEVICE: Auto
       # The video memory the model may take, in megabytes: the pool of the engine grows without a limit by default, and the GPU may be shared (a media server that transcodes).
       MNEMARR__EMBEDDINGS__GPUMEMORYMB: "1024"
+      # Minutes without a request after which the server lets go of the model and its video memory (0 keeps it loaded).
+      MNEMARR__EMBEDDER__IDLEUNLOADMINUTES: "10"
       MNEMARR__EMBEDDINGS__BATCHSIZE: "32"
     volumes:
       - ./embedder-key:/run/secrets/embedder-key:ro
