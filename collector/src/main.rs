@@ -738,7 +738,8 @@ fn context(options: &Options) -> ExitCode {
         session.as_deref(),
     ) {
         Ok(text) if !text.trim().is_empty() => {
-            write_stdout(&mnemarr_collector::context::render(&text, format));
+            // A hook never fails the assistant that runs it: a context that cannot be written is simply not read.
+            let _ = write_stdout(&mnemarr_collector::context::render(&text, format));
             ExitCode::SUCCESS
         }
         Ok(_) => quiet("the memory knows nothing of this application"),
@@ -806,7 +807,8 @@ fn context_hook(options: &Options) -> ExitCode {
                 HookChange::Removed => "removed",
                 HookChange::NotThere => "there was none",
             };
-            write_stdout(&format!("{said} ({})\n", path.display()));
+            // The hook is in place whatever happens to the message: the result of writing it does not change the exit code.
+            let _ = write_stdout(&format!("{said} ({})\n", path.display()));
             ExitCode::SUCCESS
         }
         Err(error) => {
