@@ -123,7 +123,7 @@ public sealed class ModelReferenceFixture
             while (!stop.IsCancellationRequested)
             {
                 provider.UnloadIfIdle(TimeSpan.Zero);
-                Thread.Sleep(20);
+                stop.Token.WaitHandle.WaitOne(20);
             }
         }, token);
         var requests = Enumerable.Range(0, Threads).Select(_ => Task.Run(() => Enumerable.Range(0, RequestsPerThread).Select(_ => provider.EmbedPassages(["a passage"])[0]).ToList(), token)).ToList();
@@ -135,24 +135,30 @@ public sealed class ModelReferenceFixture
         answers.Should().HaveCount(Threads * RequestsPerThread).And.OnlyContain(vector => vector.SequenceEqual(expected));
     }
 
+    // A folder of links to the real files of the model (a copy is 390 MB), and a provider that has loaded them and then let go of the model, as a server does after ten minutes of silence.
+    private static (string Folder, FakeTimeProvider Clock, OnnxEmbeddingProvider Provider) AsleepModel()
+    {
+        var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
+        foreach (var file in Directory.EnumerateFiles(Model!))
+        {
+            File.CreateSymbolicLink(Path.Combine(folder, Path.GetFileName(file)), file);
+        }
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 21, 3, 0, 0, TimeSpan.Zero));
+        var provider = new OnnxEmbeddingProvider(Options.Create(new EmbeddingOptions { ModelFolder = folder, ExtensionPath = "unused" }), NullLogger<OnnxEmbeddingProvider>.Instance, clock);
+        provider.Status().Should().Be(new EmbeddingStatus(EmbeddingState.Ready));
+        clock.Advance(TimeSpan.FromMinutes(11));
+        provider.UnloadIfIdle(TimeSpan.FromMinutes(10)).Should().BeTrue();
+        return (folder, clock, provider);
+    }
+
     [Fact]
     public void should_not_build_again_a_model_file_that_was_swapped_while_it_slept_and_say_so()
     {
         Assert.SkipUnless(Model is not null && OperatingSystem.IsLinux(), "No model folder given, or no symbolic links.");
-        var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
+        var (folder, clock, provider) = AsleepModel();
         try
         {
-            // The real files by links: a copy of the model is 390 MB. The model file is then replaced by another one, as a writable folder allows.
-            foreach (var file in Directory.EnumerateFiles(Model!))
-            {
-                File.CreateSymbolicLink(Path.Combine(folder, Path.GetFileName(file)), file);
-            }
-
-            var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 21, 3, 0, 0, TimeSpan.Zero));
-            using var provider = new OnnxEmbeddingProvider(Options.Create(new EmbeddingOptions { ModelFolder = folder, ExtensionPath = "unused" }), NullLogger<OnnxEmbeddingProvider>.Instance, clock);
-            provider.Status().Should().Be(new EmbeddingStatus(EmbeddingState.Ready));
-            clock.Advance(TimeSpan.FromMinutes(11));
-            provider.UnloadIfIdle(TimeSpan.FromMinutes(10)).Should().BeTrue();
             File.Delete(Path.Combine(folder, "model.onnx"));
             File.WriteAllText(Path.Combine(folder, "model.onnx"), "not the model");
 
@@ -168,6 +174,7 @@ public sealed class ModelReferenceFixture
         }
         finally
         {
+            provider.Dispose();
             Directory.Delete(folder, recursive: true);
         }
     }
@@ -176,29 +183,20 @@ public sealed class ModelReferenceFixture
     public void should_say_that_the_model_is_down_when_its_file_is_gone_while_it_slept()
     {
         Assert.SkipUnless(Model is not null && OperatingSystem.IsLinux(), "No model folder given, or no symbolic links.");
-        var folder = Directory.CreateTempSubdirectory("mnemarr-model-").FullName;
+        var (folder, _, provider) = AsleepModel();
         try
         {
-            foreach (var file in Directory.EnumerateFiles(Model!))
-            {
-                File.CreateSymbolicLink(Path.Combine(folder, Path.GetFileName(file)), file);
-            }
-
-            var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 21, 3, 0, 0, TimeSpan.Zero));
-            using var provider = new OnnxEmbeddingProvider(Options.Create(new EmbeddingOptions { ModelFolder = folder, ExtensionPath = "unused" }), NullLogger<OnnxEmbeddingProvider>.Instance, clock);
-            provider.Status();
-            clock.Advance(TimeSpan.FromMinutes(11));
-            provider.UnloadIfIdle(TimeSpan.FromMinutes(10)).Should().BeTrue();
             File.Delete(Path.Combine(folder, "model.onnx"));
 
             var embed = () => provider.EmbedPassages(["a passage"]);
 
             embed.Should().Throw<EmbeddingException>();
-            provider.Known()!.Should().Be(new EmbeddingStatus(EmbeddingState.Failed, "The file model.onnx of the model is not in the model folder."));
+            provider.Known().Should().Be(new EmbeddingStatus(EmbeddingState.Failed, "The file model.onnx of the model is not in the model folder."));
             embed.Should().Throw<EmbeddingException>("the next request does not try again before the delay");
         }
         finally
         {
+            provider.Dispose();
             Directory.Delete(folder, recursive: true);
         }
     }
