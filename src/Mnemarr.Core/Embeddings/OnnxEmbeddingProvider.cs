@@ -15,6 +15,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
 {
     private readonly EmbeddingOptions _options;
     private readonly ILogger<OnnxEmbeddingProvider> _logger;
+    private const string CudaDevice = "cuda";
+    private const string ShrinkageEntry = "memory.enable_memory_arena_shrinkage";
+    private const string ModelFile = "model.onnx";
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
 
     // A question waits at most this long for the model's turn: a batch of the indexer takes about a second, and a question that cannot have its turn is answered by its words.
@@ -114,7 +117,15 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
         }
     }
 
-    public void Dispose() => _session?.Dispose();
+    public void Dispose()
+    {
+        // The lock of the runs and of the unload: a session is disposed once, and not under a run.
+        lock (_run)
+        {
+            _session?.Dispose();
+            _session = null;
+        }
+    }
 
     private TimeSpan IdleFor() => _clock.GetUtcNow() - new DateTimeOffset(Interlocked.Read(ref _lastUseTicks), TimeSpan.Zero);
 
@@ -203,7 +214,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
                 });
                 gpu.AppendExecutionProvider_CUDA(cuda);
                 var session = new InferenceSession(modelPath, gpu);
-                _device = "cuda";
+                _device = CudaDevice;
                 return session;
             }
             catch (Exception ex) when (_options.Device == EmbeddingDevice.Auto && ex is OnnxRuntimeException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
@@ -219,7 +230,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
 
     private SessionOptions Settings() => new() { IntraOpNumThreads = _options.Threads, InterOpNumThreads = 1, GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
 
-    private string ModelPath => Path.Combine(_options.ModelFolder!, "model.onnx");
+    private string ModelPath => Path.Combine(_options.ModelFolder!, ModelFile);
 
     private static EmbeddingStatus Failed(string reason) => new(EmbeddingState.Failed, reason);
 
@@ -290,22 +301,61 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnl
         try
         {
             // The session is built again here when it was let go of while nobody asked (ADR 0045); the lock is the one the unload takes, so the two never meet.
-            _session ??= CreateSession(ModelPath);
-            return Infer(_session, inputs, batch.Count);
+            var session = _session ?? Rebuild();
+            _session = session;
+            var vectors = Infer(session, inputs, batch.Count);
+            Touch();
+            return vectors;
         }
         finally
         {
-            Touch();
             _run.Exit();
         }
+    }
+
+    // The model builds again after it was let go of (ADR 0045). The file is hashed again: it is read again from the folder, and a folder that is not read-only may have been written to since the start.
+    // A model that cannot be built again is a model that is down, like one that cannot be loaded: the health says so, and it is tried again after a while.
+    private InferenceSession Rebuild()
+    {
+        string problem;
+        try
+        {
+            if (!KnownModels.TryGet(_options.Model, out var model) || !model.Files.TryGetValue(ModelFile, out var expected))
+            {
+                problem = $"The model '{_options.Model}' is not one that is supported.";
+            }
+            else if (!string.Equals(Sha256Of(ModelPath), expected, StringComparison.Ordinal))
+            {
+                problem = $"The file {ModelFile} is not the one pinned for {model.Id} (revision {model.Revision}): it is not loaded.";
+            }
+            else
+            {
+                var session = CreateSession(ModelPath);
+                Touch();
+                return session;
+            }
+        }
+        catch (Exception ex) when (ex is OnnxRuntimeException or IOException or UnauthorizedAccessException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            LogLoadFailed(ex);
+            problem = "The model could not be loaded: see the log of Mnemarr.";
+        }
+
+        lock (_gate)
+        {
+            _status = Failed(problem);
+            _checkedAt = _clock.GetUtcNow();
+        }
+
+        throw new EmbeddingException("The model could not be built again.");
     }
 
     private float[][] Infer(InferenceSession session, List<NamedOnnxValue> inputs, int rows)
     {
         using var run = new RunOptions();
-        if (_device == "cuda" && _options.GpuShrinkAfterRun)
+        if (_device == CudaDevice && _options.GpuShrinkAfterRun)
         {
-            run.AddRunConfigEntry("memory.enable_memory_arena_shrinkage", string.Create(System.Globalization.CultureInfo.InvariantCulture, $"gpu:{_options.GpuDeviceId}"));
+            run.AddRunConfigEntry(ShrinkageEntry, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"gpu:{_options.GpuDeviceId}"));
         }
 
         using var outputs = session.Run(inputs, session.OutputNames, run);
