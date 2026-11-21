@@ -11,6 +11,8 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       # The key a client must present: a file with at least 16 random characters, readable by the user of the container (uid 1654), one line.
       MNEMARR__EMBEDDER__KEYFILE: /run/secrets/embedder-key
+      # Minutes without a request after which the server lets go of the model and its video memory (0 keeps it loaded).
+      MNEMARR__EMBEDDER__IDLEUNLOADMINUTES: "10"
       # Auto: the GPU when the engine can use it, the CPU when it cannot. Cuda: the GPU or nothing.
       MNEMARR__EMBEDDINGS__DEVICE: Auto
       # The video memory the model may take, in megabytes: the pool of the engine grows without a limit by default, and the GPU may be shared (a media server that transcodes).

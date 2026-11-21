@@ -33,8 +33,10 @@ An example for a Docker host is in [deploy/docker-compose.embedder.example.yml](
 | `MNEMARR__EMBEDDER__MAXTEXTS` | `64` | The most texts in one request. |
 | `MNEMARR__EMBEDDER__MAXTEXTCHARS` | `8000` | The longest text, in characters. |
 | `MNEMARR__EMBEDDER__MAXBODYBYTES` | `2097152` | The largest request body. |
+| `MNEMARR__EMBEDDER__IDLEUNLOADMINUTES` | `10` | Minutes without a request after which the server lets go of the model and of its video memory (0 to 1440; 0 keeps it loaded). The next request builds it again, in about a second and a half. |
 | `MNEMARR__EMBEDDINGS__DEVICE` | `Auto` in the image | `Cuda` (the GPU or nothing), `Auto` (the GPU when the engine can use it, else the CPU), `Cpu`. |
 | `MNEMARR__EMBEDDINGS__GPUMEMORYMB` | `1024` | The most video memory the model may take (256 to 262144). |
+| `MNEMARR__EMBEDDINGS__GPUSHRINKAFTERRUN` | `true` | Gives the video memory a batch did not use back to the driver after each batch. |
 | `MNEMARR__EMBEDDINGS__GPUDEVICEID` | `0` | Which GPU. |
 | `MNEMARR__EMBEDDINGS__BATCHSIZE` | `8` | Passages computed together. A GPU likes more (32). |
 
@@ -55,6 +57,10 @@ On the Mnemarr that should use it:
 The address must be `https`, or `http` to this host, or `http` with `AllowInsecureHttp`. No credentials in the address; a redirect is never followed, so the key cannot be sent elsewhere.
 
 The model files must still be in the Mnemarr image (`Embeddings:ModelFolder`): they are what Mnemarr computes with when the server is down.
+
+## The video memory it holds
+
+The card may be shared, so the server does not keep what it does not use ([ADR 0045](adr/0045-the-embedding-server-gives-the-video-memory-back.md)). In service it holds about 570 MB (the model and a work area) and does not grow with the days: after each batch the unused memory goes back to the driver. After `IdleUnloadMinutes` without a request (ten by default) it lets go of the model too, and holds about 100 MB, the context of the driver; the next request builds the model again, about a second and a half later, and the vectors are the same. If the card cannot give the memory at that moment the server computes on its CPU, says so (`device: cpu`), and asks the card again the next time it lets go of the model. If the model cannot be built again at all (its file was changed or removed, the engine fails), `GET /health` answers `503`, Mnemarr computes on its own CPU, and the server tries again after five minutes; a file that is not the pinned one is never loaded. `GET /health` stays `ready` while the model sleeps.
 
 ## What happens when the server is not there
 

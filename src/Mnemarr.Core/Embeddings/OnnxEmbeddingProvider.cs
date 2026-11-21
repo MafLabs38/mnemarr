@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -11,23 +12,28 @@ namespace Mnemarr.Core.Embeddings;
 /// their SHA-256 were verified against the pinned ones; a file that differs is not loaded and the reason is kept for the health page. The pooling is the
 /// one of the model (the first token), and the vectors are normalised.
 /// </summary>
-public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposable
+public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IIdleUnload, IDisposable
 {
-    private readonly EmbeddingOptions _options;
-    private readonly ILogger<OnnxEmbeddingProvider> _logger;
+    private const string CudaDevice = "cuda";
+    private const string ShrinkageEntry = "memory.enable_memory_arena_shrinkage";
+    private const string ModelFile = "model.onnx";
     private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(5);
 
     // A question waits at most this long for the model's turn: a batch of the indexer takes about a second, and a question that cannot have its turn is answered by its words.
     private static readonly TimeSpan QuestionWaits = TimeSpan.FromSeconds(2);
 
+    private readonly EmbeddingOptions _options;
+    private readonly ILogger<OnnxEmbeddingProvider> _logger;
     private readonly Lock _gate = new();
     private readonly Lock _run = new();
     private readonly TimeProvider _clock;
     private volatile EmbeddingStatus? _status;
     private DateTimeOffset _checkedAt;
-    private InferenceSession? _session;
+    private volatile InferenceSession? _session;
     private ByteLevelBpeTokenizer? _tokenizer;
     private volatile string _device = "cpu";
+    private long _lastUseTicks;
+    private bool _disposed;
 
     public OnnxEmbeddingProvider(IOptions<EmbeddingOptions> options, ILogger<OnnxEmbeddingProvider> logger, TimeProvider? clock = null)
     {
@@ -78,7 +84,55 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     public IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts) => Embed(texts, null);
 
-    public void Dispose() => _session?.Dispose();
+    /// <summary>
+    /// Lets go of the model when nobody asked for <paramref name="idle"/> (ADR 0045): the engine keeps the video memory it took for as long as its session lives, and a GPU is shared.
+    /// The files stay verified and the tokenizer stays, so the next request builds the session again, in about a second and a half. Returns whether it unloaded.
+    /// </summary>
+    public bool UnloadIfIdle(TimeSpan idle)
+    {
+        if (_session is null || IdleFor() < idle)
+        {
+            return false;
+        }
+
+        // A run in progress is not idle: the lock is not waited for, the next pass asks again.
+        if (!_run.TryEnter(TimeSpan.Zero))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (_session is null || IdleFor() < idle)
+            {
+                return false;
+            }
+
+            _session.Dispose();
+            _session = null;
+            LogUnloaded(idle.TotalMinutes);
+            return true;
+        }
+        finally
+        {
+            _run.Exit();
+        }
+    }
+
+    public void Dispose()
+    {
+        // The lock of the runs and of the unload: a session is disposed once, and not under a run.
+        lock (_run)
+        {
+            _disposed = true;
+            _session?.Dispose();
+            _session = null;
+        }
+    }
+
+    private TimeSpan IdleFor() => _clock.GetUtcNow() - new DateTimeOffset(Interlocked.Read(ref _lastUseTicks), TimeSpan.Zero);
+
+    private void Touch() => Interlocked.Exchange(ref _lastUseTicks, _clock.GetUtcNow().UtcTicks);
 
     private static string Sha256Of(string path)
     {
@@ -111,28 +165,16 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
     {
         try
         {
-            if (!KnownModels.TryGet(_options.Model, out var model))
+            if (PinnedFilesProblem() is { } problem)
             {
-                return Failed($"The model '{_options.Model}' is not one that is supported.");
+                return Failed(problem);
             }
 
-            foreach (var (file, expected) in model.Files)
-            {
-                var path = Path.Combine(_options.ModelFolder!, file);
-                if (!File.Exists(path))
-                {
-                    return Failed($"The file {file} of the model is not in the model folder.");
-                }
-
-                if (!string.Equals(Sha256Of(path), expected, StringComparison.Ordinal))
-                {
-                    return Failed($"The file {file} is not the one pinned for {model.Id} (revision {model.Revision}): it is not loaded.");
-                }
-            }
-
+            KnownModels.TryGet(_options.Model, out var model);
             _tokenizer = ByteLevelBpeTokenizer.Load(Path.Combine(_options.ModelFolder!, "tokenizer.json"));
-            _session = CreateSession(Path.Combine(_options.ModelFolder!, "model.onnx"));
-            LogLoaded(model.Id, _device, _options.Threads);
+            _session = CreateSession(ModelPath);
+            Touch();
+            LogLoaded(model!.Id, _device, _options.Threads);
             return new EmbeddingStatus(EmbeddingState.Ready);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -162,7 +204,7 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
                 });
                 gpu.AppendExecutionProvider_CUDA(cuda);
                 var session = new InferenceSession(modelPath, gpu);
-                _device = "cuda";
+                _device = CudaDevice;
                 return session;
             }
             catch (Exception ex) when (_options.Device == EmbeddingDevice.Auto && ex is OnnxRuntimeException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
@@ -178,10 +220,14 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     private SessionOptions Settings() => new() { IntraOpNumThreads = _options.Threads, InterOpNumThreads = 1, GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL };
 
+    private string ModelPath => Path.Combine(_options.ModelFolder!, ModelFile);
+
     private static EmbeddingStatus Failed(string reason) => new(EmbeddingState.Failed, reason);
 
     private float[][] Embed(IReadOnlyList<string> texts, TimeSpan? waits)
     {
+        // A request counts as a use as soon as it arrives, before it has the lock: a queue behind a slow run is not a silence.
+        Touch();
         if (Status().State != EmbeddingState.Ready)
         {
             throw new EmbeddingException("The model is not loaded.");
@@ -245,27 +291,109 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
         try
         {
-            using var outputs = _session!.Run(inputs);
-            var hidden = outputs[0].AsTensor<float>();
-            var vectors = new float[batch.Count][];
-            for (var row = 0; row < batch.Count; row++)
+            // The session is built again here when it was let go of while nobody asked (ADR 0045); the lock is the one the unload takes, so the two never meet.
+            var session = _session;
+            if (session is null)
             {
-                var vector = new float[hidden.Dimensions[2]];
-                for (var column = 0; column < vector.Length; column++)
+                // A request that waited for its turn while another one found the model down does not try again before the delay: the status says it is down.
+                if (_disposed || _status is not { State: EmbeddingState.Ready })
                 {
-                    vector[column] = hidden[row, 0, column];
+                    throw new EmbeddingException("The model is not loaded.");
                 }
 
-                Normalise(vector);
-                vectors[row] = vector;
+                session = Rebuild();
+                _session = session;
             }
 
+            var vectors = Infer(session, inputs, batch.Count);
+            Touch();
             return vectors;
         }
         finally
         {
             _run.Exit();
         }
+    }
+
+    // What is wrong with the files of the model, as a sentence, or null when every one is there and is the pinned one. Used when the model loads and when it is built again.
+    private string? PinnedFilesProblem()
+    {
+        if (!KnownModels.TryGet(_options.Model, out var model))
+        {
+            return $"The model '{_options.Model}' is not one that is supported.";
+        }
+
+        foreach (var (file, expected) in model.Files)
+        {
+            var path = Path.Combine(_options.ModelFolder!, file);
+            if (!File.Exists(path))
+            {
+                return $"The file {file} of the model is not in the model folder.";
+            }
+
+            if (!string.Equals(Sha256Of(path), expected, StringComparison.Ordinal))
+            {
+                return $"The file {file} is not the one pinned for {model.Id} (revision {model.Revision}): it is not loaded.";
+            }
+        }
+
+        return null;
+    }
+
+    // The model builds again after it was let go of (ADR 0045). The files are checked again like at the start: they are read again from the folder, and a folder that is not read-only may have
+    // been written to since. A model that cannot be built again is a model that is down, like one that cannot be loaded: the health says so, and it is tried again after a while.
+    private InferenceSession Rebuild()
+    {
+        string problem;
+        try
+        {
+            if (PinnedFilesProblem() is not { } found)
+            {
+                return CreateSession(ModelPath);
+            }
+
+            problem = found;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Whatever the engine, which is native code, fails with: the same as when the model loads.
+            LogLoadFailed(ex);
+            problem = "The model could not be loaded: see the log of Mnemarr.";
+        }
+
+        lock (_gate)
+        {
+            _status = Failed(problem);
+            _checkedAt = _clock.GetUtcNow();
+        }
+
+        throw new EmbeddingException("The model could not be built again.");
+    }
+
+    private float[][] Infer(InferenceSession session, List<NamedOnnxValue> inputs, int rows)
+    {
+        using var run = new RunOptions();
+        if (_device == CudaDevice && _options.GpuShrinkAfterRun)
+        {
+            run.AddRunConfigEntry(ShrinkageEntry, string.Create(CultureInfo.InvariantCulture, $"gpu:{_options.GpuDeviceId}"));
+        }
+
+        using var outputs = session.Run(inputs, session.OutputNames, run);
+        var hidden = outputs[0].AsTensor<float>();
+        var vectors = new float[rows][];
+        for (var row = 0; row < rows; row++)
+        {
+            var vector = new float[hidden.Dimensions[2]];
+            for (var column = 0; column < vector.Length; column++)
+            {
+                vector[column] = hidden[row, 0, column];
+            }
+
+            Normalise(vector);
+            vectors[row] = vector;
+        }
+
+        return vectors;
     }
 
     private bool EnterAlways()
@@ -276,6 +404,9 @@ public sealed partial class OnnxEmbeddingProvider : IEmbeddingProvider, IDisposa
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The model {Model} is loaded, on the {Device}, with {Threads} CPU threads.")]
     private partial void LogLoaded(string model, string device, int threads);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Nobody asked for {Minutes} minutes: the model is let go of, and loaded again at the next request.")]
+    private partial void LogUnloaded(double minutes);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The GPU cannot be used by the engine: the model runs on the CPU.")]
     private partial void LogGpuUnavailable(Exception exception);

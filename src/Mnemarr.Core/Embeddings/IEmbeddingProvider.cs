@@ -59,3 +59,10 @@ public interface IEmbeddingProvider
 
     IReadOnlyList<float[]> EmbedPassages(IReadOnlyList<string> texts);
 }
+
+/// <summary>A model that can let go of the memory it holds when nobody uses it (ADR 0045).</summary>
+public interface IIdleUnload
+{
+    /// <summary>Lets go of the model when nobody asked for <paramref name="idle"/>; true when it did. A run that is going on is never cut.</summary>
+    bool UnloadIfIdle(TimeSpan idle);
+}
