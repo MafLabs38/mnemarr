@@ -201,8 +201,9 @@ jobs:
     name: sonarqube
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend]
-    # Runs once a SonarQube server is configured (repository variable + secret).
-    if: vars.SONAR_HOST_URL != ''
+    # Runs once a SonarQube server is configured (repository variable + secret). Skipped on a Dependabot pull request:
+    # GitHub gives its runs no repository secret (the token would be empty); the build and the tests still check it.
+    if: vars.SONAR_HOST_URL != '' && (github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
