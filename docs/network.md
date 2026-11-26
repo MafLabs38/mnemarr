@@ -43,7 +43,7 @@ The hook ([connect Claude](user/connect-claude.md)) makes one `GET /api/v1/conte
 
 ### Without a single sign-on
 
-A Mnemarr whose interface is not behind a single sign-on is protected by its own password and its lockout. That is enough for notes; but with the dictation of the chat turned on ([ADR 0047](adr/0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)), whoever has a password can also spend the transcription key: put the interface behind a single sign-on before turning it on.
+A Mnemarr whose interface is not behind a single sign-on is protected by its own password and its lockout. That is enough for notes; but with the dictation of the chat turned on ([ADR 0047](adr/0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)), whoever has a password can also spend the transcription key, within the cap per person per day: a single sign-on in front of the interface is recommended before turning it on. Mnemarr cannot check that it is there; the cap and the audit are what it holds itself.
 
 ## Try it on a home network without TLS
 

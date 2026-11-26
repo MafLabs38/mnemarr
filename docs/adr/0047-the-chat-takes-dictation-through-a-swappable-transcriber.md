@@ -49,12 +49,15 @@ not be code.
    that counts, so that recordings sent at once cannot all pass; a call that is cancelled while the service works still counts (the service may bill it). Every attempt is audited (who, size, model, the duration the provider reports when it reports one, the result), never with the text.
 6. **It is visible when it breaks.** The readiness probe `transcription` is degraded, never unhealthy, with `transcription-secret` (the key file cannot be read) or `transcription-failing` (the last call failed on the
    service's side: the key refused, the quota spent, the address wrong, no answer in time); a recording the service refused says nothing about the setup and does not count, and
-   a later success clears it. Off, it is healthy. In the panel, a failure is Mnemarr's sentence, never the provider's text.
+   a later success clears it. Off, it is healthy. The API keeps the same line: a recording the service refused is a 422
+   (`recording-refused`: speak again), a failure on its side a 502 (`transcription-failed`: the operator has something to fix). In the panel, a failure is Mnemarr's sentence, never
+   the provider's text.
 
 ## Consequences
 
 - From a phone, Mnemarr becomes something to talk to; the incubator, a later decision, will be fed this way.
-- The paid key is behind the interface, so behind the single sign-on ([ADR 0046](0046-the-start-of-session-hook-is-published-like-ingestion-and-mcp.md)) and Mnemarr's own session: nobody without both can spend it.
+- The paid key is behind the interface: behind Mnemarr's own session with `chat.use`, the cap per person per day and the audit, which Mnemarr holds itself, and behind the single
+  sign-on that is recommended in front of the interface ([ADR 0046](0046-the-start-of-session-hook-is-published-like-ingestion-and-mcp.md)), which Mnemarr cannot see.
 - One more outbound call, opt-in, on a path the operator names. The browser's own speech recognition was not used: on Chrome it also sends the sound to a third party, without a choice of model, and its quality in
   French is lower.
 - A test environment needs HTTPS for the microphone: it is reached through its HTTPS address behind the proxy.

@@ -82,7 +82,14 @@ public sealed class TranscriptionServiceFixture : IDisposable
         var service = Service();
 
         var calls = Enumerable.Range(0, 3).Select(_ => Task.Run(() => service.TranscribeAsync("alice", Sound, "audio/webm", Token), Token)).ToList();
-        await Task.WhenAny(Task.WhenAll(calls), Task.Delay(TimeSpan.FromMilliseconds(500), Token));
+
+        // One call reaches the service and waits there; the two others are refused without it. Only then is the service let go.
+        await _transcriber.Entered.WaitAsync(Token);
+        while (calls.Count(call => call.IsCompleted) < 2)
+        {
+            await Task.WhenAny(calls.Where(call => !call.IsCompleted));
+        }
+
         gate.SetResult(TranscriptionResult.Done("hello", null));
         var outcomes = await Task.WhenAll(calls.Select(async call =>
         {
@@ -109,6 +116,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
         _transcriber.Pending = gate.Task;
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
         var call = Service().TranscribeAsync("alice", Sound, "audio/webm", cancel.Token);
+        await _transcriber.Entered.WaitAsync(Token);
         await cancel.CancelAsync();
 
         await call.Awaiting(pending => pending).Should().ThrowAsync<OperationCanceledException>();
@@ -117,6 +125,32 @@ public sealed class TranscriptionServiceFixture : IDisposable
         _audit.Events.Should().ContainSingle().Which.Detail.Should().Contain("Cancelled");
         var again = () => Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
         await again.Should().ThrowAsync<RejectedException>();
+    }
+
+    [Fact]
+    public async Task should_count_a_call_that_broke_on_the_way_as_a_failure_of_the_service_not_a_cancellation()
+    {
+        _transcriber.Throw = new InvalidOperationException("broken");
+
+        var act = () => Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        _audit.Events.Should().ContainSingle().Which.Detail.Should().Be("4 bytes; ServiceFailed: The transcription failed unexpectedly.");
+    }
+
+    [Fact]
+    public async Task should_refuse_before_a_recording_is_read_what_it_would_refuse_after()
+    {
+        _options.MaxPerPersonPerDay = 1;
+        var service = Service();
+
+        service.Admit("alice", "audio/webm", 4);
+        FluentActions.Invoking(() => service.Admit("alice", "text/plain", 4)).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Invalid);
+        await service.TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        FluentActions.Invoking(() => service.Admit("alice", "audio/webm", 4)).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.Busy);
+        _options.Provider = null;
+        FluentActions.Invoking(() => service.Admit("bob", "audio/webm", 4)).Should().Throw<RejectedException>().Which.Problem.Should().Be(Problem.NotFound);
     }
 
     [Fact]
@@ -286,14 +320,27 @@ public sealed class TranscriptionServiceFixture : IDisposable
         /// <summary>When set, a call waits for it (or for its cancellation), as a slow service does.</summary>
         public Task<TranscriptionResult>? Pending { get; set; }
 
+        /// <summary>When set, a call throws it, as a broken connection does.</summary>
+        public Exception? Throw { get; set; }
+
+        /// <summary>Done as soon as a call reaches the service.</summary>
+        public Task Entered => _entered.Task;
+
         public int Calls => _calls;
 
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _calls;
 
         public async Task<TranscriptionResult> TranscribeAsync(TranscriptionRequest request, CancellationToken cancellationToken)
         {
             Last = request;
             Interlocked.Increment(ref _calls);
+            _entered.TrySetResult();
+            if (Throw is not null)
+            {
+                throw Throw;
+            }
+
             return Pending is null ? Answer : await Pending.WaitAsync(cancellationToken);
         }
     }

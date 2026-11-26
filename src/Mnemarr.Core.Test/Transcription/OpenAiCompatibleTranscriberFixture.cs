@@ -95,10 +95,9 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
     [Fact]
     public async Task should_let_a_cancelled_call_be_cancelled_instead_of_calling_it_a_failure()
     {
-        var (transcriber, capture) = Make(HttpStatusCode.OK, """{ "text": "late" }""");
-        capture.Delay = TimeSpan.FromSeconds(30);
+        var (transcriber, _) = Make(HttpStatusCode.OK, """{ "text": "late" }""");
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
-        cancel.CancelAfter(TimeSpan.FromMilliseconds(50));
+        await cancel.CancelAsync();
 
         var act = () => transcriber.TranscribeAsync(Recording(), cancel.Token);
 

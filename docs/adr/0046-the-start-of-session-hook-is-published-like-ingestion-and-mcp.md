@@ -11,8 +11,8 @@ start-of-session hook ([ADR 0037](0037-an-assistant-is-told-what-the-memory-know
 of the same kind: it makes one `GET /api/v1/context` with a read key. Whether to publish it too was left open (Q-42), because its answer is the most sensitive text Mnemarr gives.
 
 Nothing in the product prevented an installation from running with no single sign-on in front of the interface, with only Mnemarr's own password to protect it. The dictation of the chat
-([ADR 0047](0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)) puts a paid key behind the interface, which makes that gap a cost as well as an exposure: the interface must
-be behind a single sign-on before dictation is turned on.
+([ADR 0047](0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)) puts a paid key behind the interface, which makes that gap a cost as well as an exposure. A single sign-on in front of the interface
+is recommended before dictation is turned on; Mnemarr cannot see the proxy, so what it holds itself is a person's session with `chat.use`, the cap per person per day and the audit.
 
 ## Decision
 

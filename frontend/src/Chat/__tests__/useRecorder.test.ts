@@ -126,6 +126,42 @@ describe('useRecorder', () => {
     expect(hook.result.current.state).toBe('idle');
   });
 
+  it('counts the seconds while it records', async () => {
+    vi.useFakeTimers();
+    const { hook } = await recording();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100);
+    });
+
+    expect(hook.result.current.elapsed).toBe(3);
+  });
+
+  it('releases the microphone and can start again when the browser cannot record what it gave', async () => {
+    vi.stubGlobal(
+      'MediaRecorder',
+      Object.assign(
+        function MediaRecorder() {
+          throw new DOMException('unsupported', 'NotSupportedError');
+        },
+        { isTypeSupported: () => false },
+      ),
+    );
+    const hook = renderHook(() => useRecorder(vi.fn()));
+    let started: Promise<void> | undefined;
+    act(() => {
+      started = hook.result.current.start();
+    });
+
+    await act(async () => {
+      grant?.();
+      await expect(started).rejects.toThrow('unsupported');
+    });
+
+    expect(tracks[0]?.stop).toHaveBeenCalled();
+    expect(hook.result.current.state).toBe('idle');
+  });
+
   it('goes back to idle and says why when the browser does not give the microphone', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,

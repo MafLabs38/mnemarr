@@ -1,4 +1,4 @@
-import { canRecord, transcribe } from 'Chat/dictation';
+import { canRecord, recordingType, transcribe } from 'Chat/dictation';
 
 const upload = vi.hoisted(() => vi.fn<(path: string, file: Blob, options: object) => Promise<{ text: string }>>());
 vi.mock('Helpers/Api/apiGet', () => ({ apiUpload: upload }));
@@ -24,6 +24,14 @@ describe('dictation', () => {
       method: 'POST',
       fileName: name,
     });
+  });
+
+  it('records in the best format the browser has, or lets the browser choose', () => {
+    vi.stubGlobal('MediaRecorder', { isTypeSupported: (type: string) => type === 'audio/mp4' });
+    expect(recordingType()).toBe('audio/mp4');
+
+    vi.stubGlobal('MediaRecorder', { isTypeSupported: () => false });
+    expect(recordingType()).toBeUndefined();
   });
 
   it('records only on a secure page of a browser that can', () => {

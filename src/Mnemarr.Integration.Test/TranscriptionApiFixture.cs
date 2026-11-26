@@ -99,6 +99,27 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
     }
 
     [Fact]
+    public async Task should_answer_unprocessable_when_the_service_refused_the_recording_and_keep_the_probe_healthy()
+    {
+        var callers = await Callers.ForAsync(_on);
+        _on.Transcriber.RefuseWith = "The transcription service refused the recording.";
+        try
+        {
+            var response = await callers["Operator"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
+
+            response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, "the person may speak again: nothing is wrong with the setup");
+            var problem = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
+            problem.GetProperty("type").GetString().Should().Be("urn:mnemarr:problem:recording-refused");
+            var ready = await _on.CreateClient().GetStringAsync("/health/ready", Token);
+            ready.Should().NotContain("transcription-failing");
+        }
+        finally
+        {
+            _on.Transcriber.RefuseWith = null;
+        }
+    }
+
+    [Fact]
     public async Task should_answer_a_bad_gateway_with_mnemarrs_own_sentence_when_the_service_fails()
     {
         var callers = await Callers.ForAsync(_on);

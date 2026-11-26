@@ -78,7 +78,7 @@ public sealed class TranscriptionsController : ControllerBase
 
     /// <summary>
     /// Turns a recording (a multipart form, the field <c>file</c>, webm, ogg, mp4, mp3 or wav) into text. 404 when dictation is off, 413 above <c>Transcription:MaxMegabytes</c>, 429 past
-    /// the daily cap, 502 when the service fails.
+    /// the daily cap, 422 when the service refused this recording (another one may work), 502 when the service fails (the operator has something to fix).
     /// </summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
@@ -88,6 +88,7 @@ public sealed class TranscriptionsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<TranscriptResource>> TranscribeAsync(IFormFile? file, CancellationToken cancellationToken)
@@ -102,7 +103,7 @@ public sealed class TranscriptionsController : ControllerBase
             throw new RejectedException(Core.Problem.Invalid, "The recording is required: the field file of a multipart form.");
         }
 
-        // Refused before it is read into memory: the request ceiling is the largest the settings allow, this is what this Mnemarr allows.
+        // Refused before Mnemarr reads it: the request ceiling is the largest the settings allow, this is what this Mnemarr allows.
         if (file.Length > _transcription.MaxBytes)
         {
             return Problem(
@@ -111,12 +112,23 @@ public sealed class TranscriptionsController : ControllerBase
                 type: "urn:mnemarr:problem:recording-too-large");
         }
 
-        using var content = new MemoryStream((int)file.Length);
-        await file.CopyToAsync(content, cancellationToken);
-        var result = await _transcription.TranscribeAsync(User.ActorName(), content.GetBuffer().AsMemory(0, (int)content.Length), file.ContentType, cancellationToken);
-        return result.Succeeded
-            ? new TranscriptResource(result.Text!)
-            : Problem(statusCode: StatusCodes.Status502BadGateway, title: result.Reason, type: "urn:mnemarr:problem:transcription-failed");
+        // Off, a format it does not take, the cap reached: refused before the recording is read.
+        _transcription.Admit(User.ActorName(), file.ContentType, file.Length);
+        var audio = new byte[file.Length];
+        await using (var stream = file.OpenReadStream())
+        {
+            await stream.ReadExactlyAsync(audio, cancellationToken);
+        }
+
+        var result = await _transcription.TranscribeAsync(User.ActorName(), audio, file.ContentType, cancellationToken);
+        if (result.Succeeded)
+        {
+            return new TranscriptResource(result.Text!);
+        }
+
+        return result.ServiceAtFault
+            ? Problem(statusCode: StatusCodes.Status502BadGateway, title: result.Reason, type: "urn:mnemarr:problem:transcription-failed")
+            : Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: result.Reason, type: "urn:mnemarr:problem:recording-refused");
     }
 }
 

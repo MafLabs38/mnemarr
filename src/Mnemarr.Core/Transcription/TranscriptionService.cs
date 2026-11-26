@@ -106,10 +106,60 @@ public sealed class TranscriptionService
         return Status();
     }
 
+    /// <summary>
+    /// What can be refused before a recording is read: dictation off, a format it does not take, a size it does not take, a person who reached the cap. The API asks it first, so
+    /// that a recording that would be refused is not read into memory; the reservation in <see cref="TranscribeAsync"/> settles the cap.
+    /// </summary>
+    public void Admit(string actor, string? contentType, long length)
+    {
+        var options = _options.Value;
+        Check(options, contentType, length);
+        var now = _time.GetUtcNow();
+        if (_store.CountSince(actor, now - Day) >= options.MaxPerPersonPerDay)
+        {
+            throw Busy(options, actor, now);
+        }
+    }
+
     /// <summary>Turns one recording into text, or refuses it (off, a format it does not take, too big, the cap reached). A service that fails is a result, not an exception.</summary>
     public async Task<TranscriptionResult> TranscribeAsync(string actor, ReadOnlyMemory<byte> audio, string? contentType, CancellationToken cancellationToken)
     {
         var options = _options.Value;
+        var mediaType = Check(options, contentType, audio.Length);
+        var now = _time.GetUtcNow();
+        _store.Prune(now - Kept);
+        var (model, _, _) = Resolve(_models.Current(), options);
+
+        // The place in the cap is taken before the service is called, so that recordings sent at once cannot all pass, and a call that is cancelled still counts.
+        if (_store.Reserve(actor, now, audio.Length, model.Id, now - Day, options.MaxPerPersonPerDay) is not { } id)
+        {
+            throw Busy(options, actor, now);
+        }
+
+        TranscriptionResult? result = null;
+        try
+        {
+            result = await _transcriber.TranscribeAsync(new TranscriptionRequest(audio, mediaType, model.Id, options.Language), cancellationToken);
+            return result;
+        }
+        finally
+        {
+            // No result: the call was cancelled (the cap still counts it), or something broke on the way to the service.
+            var outcome = result is null && !cancellationToken.IsCancellationRequested ? TranscriptionOutcome.ServiceFailed : Outcome(result);
+            var reason = result?.Reason ?? outcome switch
+            {
+                TranscriptionOutcome.Cancelled => "The recording was cancelled while the service worked on it.",
+                TranscriptionOutcome.ServiceFailed => "The transcription failed unexpectedly.",
+                _ => null,
+            };
+            _store.Complete(id, outcome, result?.Seconds, reason);
+            _audit.Append(actor, "transcription.used", model.Id, outcome == TranscriptionOutcome.Succeeded ? $"{audio.Length} bytes" : $"{audio.Length} bytes; {outcome}: {reason}");
+        }
+    }
+
+    /// <summary>The media type of a recording Mnemarr takes, or a refusal: off, a format it does not take, empty or too big.</summary>
+    private static string Check(TranscriptionOptions options, string? contentType, long length)
+    {
         if (!options.Enabled)
         {
             throw new RejectedException(Problem.NotFound, "Dictation is not turned on.");
@@ -121,38 +171,15 @@ public sealed class TranscriptionService
             throw new RejectedException(Problem.Invalid, "The recording is not in a format the dictation takes (webm, ogg, mp4, mp3 or wav).");
         }
 
-        if (audio.Length == 0 || audio.Length > options.MaxBytes)
-        {
-            throw new RejectedException(Problem.Invalid, $"A recording is at most {options.MaxMegabytes} MB.");
-        }
-
-        var now = _time.GetUtcNow();
-        _store.Prune(now - Kept);
-        var (model, _, _) = Resolve(_models.Current(), options);
-
-        // The place in the cap is taken before the service is called, so that recordings sent at once cannot all pass, and a call that is cancelled still counts.
-        if (_store.Reserve(actor, now, audio.Length, model.Id, now - Day, options.MaxPerPersonPerDay) is not { } id)
-        {
-            throw new RejectedException(
-                Problem.Busy, $"You have sent {options.MaxPerPersonPerDay} recordings in 24 hours, the most this Mnemarr allows: try again later.", RetryAfter(actor, now));
-        }
-
-        TranscriptionResult? result = null;
-        try
-        {
-            result = await _transcriber.TranscribeAsync(new TranscriptionRequest(audio, mediaType, model.Id, options.Language), cancellationToken);
-            return result;
-        }
-        finally
-        {
-            var outcome = Outcome(result);
-            var reason = result?.Reason ?? (outcome == TranscriptionOutcome.Cancelled ? "The recording was cancelled while the service worked on it." : null);
-            _store.Complete(id, outcome, result?.Seconds, reason);
-            _audit.Append(actor, "transcription.used", model.Id, outcome == TranscriptionOutcome.Succeeded ? $"{audio.Length} bytes" : $"{audio.Length} bytes; {outcome}: {reason}");
-        }
+        return length == 0 || length > options.MaxBytes
+            ? throw new RejectedException(Problem.Invalid, $"A recording is at most {options.MaxMegabytes} MB.")
+            : mediaType;
     }
 
-    /// <summary>What came of a call: no result means it was cancelled (or broke), which the cap still counts.</summary>
+    private RejectedException Busy(TranscriptionOptions options, string actor, DateTimeOffset now) =>
+        new(Problem.Busy, $"You have sent {options.MaxPerPersonPerDay} recordings in 24 hours, the most this Mnemarr allows: try again later.", RetryAfter(actor, now));
+
+    /// <summary>What came of a call that ended: no result means it was cancelled, which the cap still counts.</summary>
     private static TranscriptionOutcome Outcome(TranscriptionResult? result) => result switch
     {
         null => TranscriptionOutcome.Cancelled,

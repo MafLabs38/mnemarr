@@ -80,13 +80,17 @@ describe('DictationButton', () => {
     expect(state.transcribe).toHaveBeenCalledWith(recording);
   });
 
-  it('says why when the server refuses, in its words', async () => {
-    state.transcribe.mockRejectedValue(new ApiError(502, 'The transcription service refused the key.'));
+  it.each([
+    [502, 'The transcription service refused the key.'],
+    [422, 'The transcription service refused the recording.'],
+    [429, 'You have sent 100 recordings in 24 hours, the most this Mnemarr allows: try again later.'],
+  ])('says why when the server refuses with a %i, in its words', async (status, words) => {
+    state.transcribe.mockRejectedValue(new ApiError(status, words));
     render(<DictationButton disabled={false} onText={vi.fn()} />);
 
     state.onRecorded?.(recording);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('The transcription service refused the key.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(words);
   });
 
   it.each([

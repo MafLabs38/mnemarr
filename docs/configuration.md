@@ -196,7 +196,7 @@ The chat can take dictation: a microphone in the field where a person writes rec
 | `MNEMARR__TRANSCRIPTION__MODELSFILE` | none | A YAML file of the models to choose from (below); without it, the provider's own list. |
 | `MNEMARR__TRANSCRIPTION__MODEL` | none | The model of the deployment, used when an administrator chose none on the Settings page; one of the catalog, or the catalog's first applies. |
 | `MNEMARR__TRANSCRIPTION__LANGUAGE` | none | A language hint, an ISO 639-1 code in lower case (`fr`, `en`); without it the model detects the language. |
-| `MNEMARR__TRANSCRIPTION__MAXMEGABYTES` | `10` | The largest recording, 1 to 25 MB (about ten minutes of speech in the browser's format); a larger one is refused with a 413 before it is read. |
+| `MNEMARR__TRANSCRIPTION__MAXMEGABYTES` | `10` | The largest recording, 1 to 25 MB (about ten minutes of speech in the browser's format); a larger one is refused with a 413 and never sent to the service. |
 | `MNEMARR__TRANSCRIPTION__MAXPERPERSONPERDAY` | `100` | How many recordings one person can send in 24 hours, whatever came of them; then a 429. |
 
 **The models are a file, so that a new one is a line and not a release.** Model names change every few months; `Transcription:ModelsFile` names a YAML file (a mounted ConfigMap, a file of a repository), read again whenever it changes:
@@ -214,7 +214,7 @@ An administrator chooses the model on the **Settings** page, among the catalog's
 
 ### Another transcription service
 
-A service is one small interface, `ITranscriber` (a recording, its type, the model and a language in; a text or a short reason out); the name in `Transcription:Provider` selects the `ITranscriptionProvider` that checks its settings and builds it. Most services, local Whisper servers included, already speak OpenAI's API: change the address, not the code. For one that does not, write a class that implements `ITranscriptionProvider` and register it with `services.AddSingleton<ITranscriptionProvider, MyProvider>()`; [OpenAiCompatibleTranscriber.cs](../src/Mnemarr.Core/Transcription/OpenAiCompatibleTranscriber.cs) is the built-in example.
+A service is one small interface, `ITranscriber` (a recording, its type, the model and a language in; a text or a short reason out); the name in `Transcription:Provider` selects the `ITranscriptionProvider` that checks its settings and builds it. Most services, local Whisper servers included, already speak OpenAI's API: change the address, not the code, **and name its models** in `Transcription:ModelsFile`: without it the catalog is OpenAI's list, and a local server answers that it does not know `gpt-transcribe`. For one that does not, write a class that implements `ITranscriptionProvider` and register it with `services.AddSingleton<ITranscriptionProvider, MyProvider>()`; [OpenAiCompatibleTranscriber.cs](../src/Mnemarr.Core/Transcription/OpenAiCompatibleTranscriber.cs) is the built-in example.
 
 ## Notifications (`Notifications`)
 

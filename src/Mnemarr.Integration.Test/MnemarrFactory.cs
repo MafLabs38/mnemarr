@@ -910,10 +910,31 @@ public sealed class TranscriptionFactory : MnemarrFactoryBase
     }
 }
 
-/// <summary>A transcriber that sends nothing anywhere: it answers a text, or fails with a reason a test sets.</summary>
+/// <summary>An application where the dictation is on and a person may send one recording a day: what the cap answers through the API.</summary>
+public sealed class CappedTranscriptionFactory : MnemarrFactoryBase
+{
+    public CappedTranscriptionFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<Mnemarr.Core.Transcription.ITranscriber>(new FakeTranscriber());
+        services.PostConfigure<Mnemarr.Core.Transcription.TranscriptionOptions>(options =>
+        {
+            options.Provider = Mnemarr.Core.Transcription.TranscriptionProviders.OpenAiCompatible;
+            options.MaxPerPersonPerDay = 1;
+        });
+    }
+}
+
+/// <summary>A transcriber that sends nothing anywhere: it answers a text, fails with a reason a test sets, or refuses the recording.</summary>
 public sealed class FakeTranscriber : Mnemarr.Core.Transcription.ITranscriber
 {
     public string? FailWith { get; set; }
+
+    public string? RefuseWith { get; set; }
 
     public List<Mnemarr.Core.Transcription.TranscriptionRequest> Received { get; } = [];
 
@@ -922,6 +943,11 @@ public sealed class FakeTranscriber : Mnemarr.Core.Transcription.ITranscriber
         lock (Received)
         {
             Received.Add(request);
+        }
+
+        if (RefuseWith is { } refusal)
+        {
+            return Task.FromResult(Mnemarr.Core.Transcription.TranscriptionResult.Refused(refusal));
         }
 
         return Task.FromResult(FailWith is { } reason

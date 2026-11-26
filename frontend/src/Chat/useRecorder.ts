@@ -56,16 +56,29 @@ export function useRecorder(onRecorded: (recording: Blob) => void): Recorder {
       throw error;
     }
 
-    // The panel closed while the browser asked for the microphone: nothing records, and the microphone is released.
-    if (!mounted.current) {
+    const release = () => {
       for (const track of stream.getTracks()) {
         track.stop();
       }
+    };
+
+    // The panel closed while the browser asked for the microphone: nothing records, and the microphone is released.
+    if (!mounted.current) {
+      release();
       return;
     }
 
     const type = recordingType();
-    const media = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    let media: MediaRecorder;
+    try {
+      media = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      media.start();
+    } catch (error) {
+      // A browser that cannot record what it was given: the microphone is released, and the button can be pressed again.
+      release();
+      setState('idle');
+      throw error;
+    }
     const chunks: Blob[] = [];
     media.addEventListener('dataavailable', (event) => {
       if (event.data.size > 0) {
@@ -73,9 +86,7 @@ export function useRecorder(onRecorded: (recording: Blob) => void): Recorder {
       }
     });
     media.addEventListener('stop', () => {
-      for (const track of stream.getTracks()) {
-        track.stop();
-      }
+      release();
       if (timer.current) {
         clearInterval(timer.current);
         timer.current = null;
@@ -98,7 +109,6 @@ export function useRecorder(onRecorded: (recording: Blob) => void): Recorder {
         media.stop();
       }
     }, 250);
-    media.start();
     setState('recording');
   }, []);
 

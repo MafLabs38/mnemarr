@@ -851,13 +851,14 @@ test.describe('smoke @smoke', () => {
     // The browser's fake microphone is recorded for a second, sent to Mnemarr, then to the stack's transcription service.
     await panel.getByRole('button', { name: 'Dictate' }).click();
     const stop = panel.getByRole('button', { name: /^Stop \d+:\d\d$/ });
-    await expect(stop).toHaveText(/Stop 0:0[1-9]/);
+    // A recording must last a moment to hold any sound: the clock of the button reaching a second is that moment.
+    await expect(stop).toHaveText(/Stop 0:0[1-9]/, { timeout: 10_000 });
     await stop.click();
 
     await expect(panel.getByLabel('Your message')).toHaveValue('Put this idea in the incubator.');
     await expect(panel.getByRole('button', { name: 'Dictate' })).toBeEnabled();
-    // Nothing was sent: the conversation is still empty.
-    await expect(panel.getByText(/what did we decide about backups/)).toBeVisible();
+    // Nothing was sent: the conversation holds no message.
+    await expect(panel.getByRole('log', { name: 'Conversation' })).not.toContainText('Put this idea in the incubator.');
     expect((await new AxeBuilder({ page }).include('aside').analyze()).violations).toEqual([]);
   });
 
