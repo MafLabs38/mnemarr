@@ -166,6 +166,7 @@ internal sealed class OpenAiCompatibleTranscriber : ITranscriber
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => TranscriptionResult.Failed("The transcription service refused the key."),
         HttpStatusCode.TooManyRequests => TranscriptionResult.Failed("The transcription service is busy, or the account's quota is spent."),
         HttpStatusCode.NotFound => TranscriptionResult.Failed("The transcription service does not know this model or this address."),
+        >= HttpStatusCode.MultipleChoices and < HttpStatusCode.BadRequest => TranscriptionResult.Failed("The transcription service answered with a redirect: check its address."),
         >= HttpStatusCode.InternalServerError => TranscriptionResult.Failed("The transcription service failed."),
         _ => TranscriptionResult.Refused("The transcription service refused the recording."),
     };

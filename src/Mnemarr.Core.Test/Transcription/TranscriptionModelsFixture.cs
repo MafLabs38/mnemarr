@@ -82,6 +82,17 @@ public sealed class TranscriptionModelsFixture : IDisposable
     }
 
     [Fact]
+    public void should_take_the_model_the_deployment_names_without_a_file_so_that_a_local_server_works_from_its_address_and_its_model()
+    {
+        var options = Options.Create(new TranscriptionOptions { Provider = TranscriptionProviders.OpenAiCompatible, Model = "Systran/faster-whisper-large-v3" });
+
+        var catalog = new TranscriptionModels(options, TranscriptionProviders.BuiltIn).Current();
+
+        catalog.Models[0].Should().Be(new TranscriptionModel("Systran/faster-whisper-large-v3", "Systran/faster-whisper-large-v3", null));
+        catalog.Models.Skip(1).Should().Equal(OpenAiCompatibleTranscriptionProvider.Models);
+    }
+
+    [Fact]
     public void should_offer_the_models_of_the_selected_provider_without_a_file()
     {
         var other = new OtherProvider();

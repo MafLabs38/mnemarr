@@ -83,7 +83,8 @@ public sealed class TranscriptionsController : ControllerBase
     [HttpPost]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxRequestBytes)]
-    [RequestFormLimits(MultipartBodyLengthLimit = MaxRequestBytes)]
+    // The form is held in memory up to the ceiling: above the default threshold (64 KB) ASP.NET would write the recording to a temporary file, and the sound is never stored.
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxRequestBytes, MemoryBufferThreshold = (int)MaxRequestBytes)]
     [ProducesResponseType<TranscriptResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

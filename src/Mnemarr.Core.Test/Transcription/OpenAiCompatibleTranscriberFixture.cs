@@ -67,6 +67,7 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
     [InlineData(HttpStatusCode.TooManyRequests, "quota", true)]
     [InlineData(HttpStatusCode.NotFound, "does not know this model", true)]
     [InlineData(HttpStatusCode.BadGateway, "failed", true)]
+    [InlineData(HttpStatusCode.MovedPermanently, "redirect", true)]
     [InlineData(HttpStatusCode.BadRequest, "refused the recording", false)]
     [InlineData(HttpStatusCode.UnsupportedMediaType, "refused the recording", false)]
     public async Task should_say_in_its_own_words_why_a_service_refused_and_whose_side_it_is(HttpStatusCode status, string reason, bool serviceAtFault)

@@ -29,6 +29,7 @@ public sealed class TranscriptionCapApiFixture : IClassFixture<CappedTranscripti
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-        second.Headers.RetryAfter?.Delta.Should().BeCloseTo(TimeSpan.FromDays(1), TimeSpan.FromMinutes(5), "a place frees one day after the first recording");
+        second.Headers.RetryAfter.Should().NotBeNull();
+        second.Headers.RetryAfter!.Delta.Should().BeCloseTo(TimeSpan.FromDays(1), TimeSpan.FromMinutes(5), "a place frees one day after the first recording");
     }
 }

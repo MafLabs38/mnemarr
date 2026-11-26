@@ -34,6 +34,16 @@ public sealed class TranscriptionModels
         _providers = providers;
     }
 
+    /// <summary>
+    /// Without a file, a model the deployment names (<c>Transcription:Model</c>) that the provider's list does not have is part of the catalog too, first: a local server
+    /// reached by changing the address and naming its model works without a file.
+    /// </summary>
+    private IReadOnlyList<TranscriptionModel> WithDeploymentModel(IReadOnlyList<TranscriptionModel> models)
+    {
+        var named = _options.Value.Model?.Trim();
+        return !IsModelId(named) || models.Any(model => model.Id == named) ? models : [new TranscriptionModel(named!, named!, null), .. models];
+    }
+
     /// <summary>The selected provider's own models; OpenAI's while dictation is off, so that the page has a list to show (nothing is sent then).</summary>
     public IReadOnlyList<TranscriptionModel> Defaults =>
         TranscriptionProviders.Find(_providers, _options.Value.Provider)?.DefaultModels is { Count: > 0 } models ? models : OpenAiCompatibleTranscriptionProvider.Models;
@@ -44,7 +54,7 @@ public sealed class TranscriptionModels
         var path = _options.Value.ModelsFile;
         if (string.IsNullOrWhiteSpace(path))
         {
-            return new TranscriptionCatalog(Defaults, false, null);
+            return new TranscriptionCatalog(WithDeploymentModel(Defaults), false, null);
         }
 
         var file = new FileInfo(path);

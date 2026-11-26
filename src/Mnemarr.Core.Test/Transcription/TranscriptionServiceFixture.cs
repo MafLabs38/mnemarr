@@ -87,7 +87,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
         await _transcriber.Entered.WaitAsync(Token);
         while (calls.Count(call => call.IsCompleted) < 2)
         {
-            await Task.WhenAny(calls.Where(call => !call.IsCompleted));
+            await Task.WhenAny(calls.Where(call => !call.IsCompleted)).WaitAsync(TimeSpan.FromSeconds(10), Token);
         }
 
         gate.SetResult(TranscriptionResult.Done("hello", null));
@@ -223,7 +223,8 @@ public sealed class TranscriptionServiceFixture : IDisposable
     [Fact]
     public void should_say_when_the_model_asked_for_is_not_in_the_catalog_any_more_and_use_another()
     {
-        _options.Model = "retired-model";
+        // An administrator chose it when the catalog had it; the catalog changed since.
+        _store.ChooseModel("retired-model");
 
         var status = Service().Status();
 
