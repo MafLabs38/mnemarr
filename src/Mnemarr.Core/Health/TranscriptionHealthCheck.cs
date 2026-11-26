@@ -6,8 +6,8 @@ using Mnemarr.Core.Transcription;
 namespace Mnemarr.Core.Health;
 
 /// <summary>
-/// Readiness of the dictation (ADR 0047): when it is on and cannot work (the key cannot be read, or the last recording got no text), it is degraded with the reason, never unhealthy.
-/// Off, it is always healthy.
+/// Readiness of the dictation (ADR 0047): when it is on and cannot work (the key cannot be read, or the last call failed on the service's side: a key, a quota, an address, a
+/// timeout), it is degraded with the reason, never unhealthy. A recording the service refused says nothing about the setup and does not count. Off, it is always healthy.
 /// </summary>
 public sealed class TranscriptionHealthCheck : IHealthCheck
 {
@@ -48,7 +48,7 @@ public sealed class TranscriptionHealthCheck : IHealthCheck
             return HealthReasons.Degraded("transcription-secret", secret);
         }
 
-        return _store.Last() is { Succeeded: false } failed
+        return _store.LastOfService() is { Outcome: TranscriptionOutcome.ServiceFailed } failed
             ? HealthReasons.Degraded("transcription-failing", $"The last recording got no text: {failed.Reason}")
             : HealthCheckResult.Healthy();
     }

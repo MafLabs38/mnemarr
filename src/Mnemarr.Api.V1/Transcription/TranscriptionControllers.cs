@@ -64,8 +64,8 @@ public sealed record TranscriptionModelRequest(string? Model);
 [Route("api/v1/chat/transcriptions")]
 public sealed class TranscriptionsController : ControllerBase
 {
-    /// <summary>The ceiling of a request whatever the settings say (the settings allow at most 25 MB), with room for the form around the file.</summary>
-    private const long MaxRequestBytes = (25L * 1024 * 1024) + (64 * 1024);
+    /// <summary>The ceiling of a request whatever the settings say (the largest the settings allow), with room for the form around the file.</summary>
+    private const long MaxRequestBytes = (TranscriptionOptions.LargestMegabytes * 1024L * 1024L) + (64 * 1024);
 
     private readonly TranscriptionService _transcription;
 
@@ -74,9 +74,12 @@ public sealed class TranscriptionsController : ControllerBase
     /// <summary>Whether the microphone is offered.</summary>
     [HttpGet("status")]
     [ProducesResponseType<DictationResource>(StatusCodes.Status200OK)]
-    public DictationResource Status() => new(_transcription.Enabled, _transcription.Status().MaxMegabytes);
+    public DictationResource Status() => new(_transcription.Enabled, _transcription.MaxMegabytes);
 
-    /// <summary>Turns a recording (a multipart form, the field <c>file</c>, webm, ogg, mp4, mp3 or wav) into text. 404 when dictation is off, 429 past the daily cap, 502 when the service fails.</summary>
+    /// <summary>
+    /// Turns a recording (a multipart form, the field <c>file</c>, webm, ogg, mp4, mp3 or wav) into text. 404 when dictation is off, 413 above <c>Transcription:MaxMegabytes</c>, 429 past
+    /// the daily cap, 502 when the service fails.
+    /// </summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxRequestBytes)]
@@ -84,6 +87,7 @@ public sealed class TranscriptionsController : ControllerBase
     [ProducesResponseType<TranscriptResource>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<TranscriptResource>> TranscribeAsync(IFormFile? file, CancellationToken cancellationToken)
@@ -96,6 +100,15 @@ public sealed class TranscriptionsController : ControllerBase
         if (file is null || file.Length == 0)
         {
             throw new RejectedException(Core.Problem.Invalid, "The recording is required: the field file of a multipart form.");
+        }
+
+        // Refused before it is read into memory: the request ceiling is the largest the settings allow, this is what this Mnemarr allows.
+        if (file.Length > _transcription.MaxBytes)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status413PayloadTooLarge,
+                title: $"A recording is at most {_transcription.MaxMegabytes} MB.",
+                type: "urn:mnemarr:problem:recording-too-large");
         }
 
         using var content = new MemoryStream((int)file.Length);

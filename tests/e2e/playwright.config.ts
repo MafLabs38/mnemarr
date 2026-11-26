@@ -11,8 +11,24 @@ export default defineConfig({
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL, trace: 'on-first-retry' },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Each browser has a fake microphone (a tone) that it gives without asking: the chat's dictation records it.
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+      },
+    },
     // Requests that need no browser give the same answer in each: they run once, in the first project.
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] }, grepInvert: /@browserless/ },
+    {
+      name: 'firefox',
+      use: {
+        ...devices['Desktop Firefox'],
+        launchOptions: {
+          firefoxUserPrefs: { 'media.navigator.streams.fake': true, 'media.navigator.permission.disabled': true },
+        },
+      },
+      grepInvert: /@browserless/,
+    },
   ],
 });

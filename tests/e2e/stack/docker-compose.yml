@@ -16,6 +16,12 @@ services:
       MNEMARR_AGENT_DATA: /data
       # Every journey of both browsers may leave a conversation that waits for its person: room for all of them.
       MNEMARR_AGENT_MAX_SESSIONS: '20'
+  # The transcription service of the chat's dictation (tests/e2e/stack/fake-transcriber): OpenAI's API, a fixed sentence, nothing sent anywhere.
+  transcriber:
+    image: node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+    command: ['node', '/fake/main.ts']
+    volumes:
+      - ./fake-transcriber:/fake:ro
   mnemarr:
     build:
       context: ../../..
@@ -56,6 +62,9 @@ services:
       MNEMARR__CONSOLIDATION__ENABLED: 'true'
       # The model reads the notes of the stack on one thread: the journeys run beside it on a small runner, and must not wait for it.
       MNEMARR__EMBEDDINGS__THREADS: '1'
+      # The chat's dictation, through the real provider, to the stack's fake service: plain HTTP is allowed because no key is sent.
+      MNEMARR__TRANSCRIPTION__PROVIDER: OpenAiCompatible
+      MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__BASEURL: http://transcriber:8492/v1
     configs:
       - source: admin_password
         target: /run/admin-password

@@ -29,6 +29,8 @@ export function useRecorder(onRecorded: (recording: Blob) => void): Recorder {
   const [elapsed, setElapsed] = useState(0);
   const recorder = useRef<MediaRecorder | null>(null);
   const keep = useRef(true);
+  // False once the panel is gone: a microphone granted after that is let go at once.
+  const mounted = useRef(true);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const handOver = useRef(onRecorded);
   useEffect(() => {
@@ -48,8 +50,18 @@ export function useRecorder(onRecorded: (recording: Blob) => void): Recorder {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
-      setState('idle');
+      if (mounted.current) {
+        setState('idle');
+      }
       throw error;
+    }
+
+    // The panel closed while the browser asked for the microphone: nothing records, and the microphone is released.
+    if (!mounted.current) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      return;
     }
 
     const type = recordingType();
@@ -90,8 +102,14 @@ export function useRecorder(onRecorded: (recording: Blob) => void): Recorder {
     setState('recording');
   }, []);
 
-  // A panel that closes while it records lets go of the microphone and keeps nothing.
-  useEffect(() => () => end(false), [end]);
+  // A panel that closes while it records, or while it asks for the microphone, lets go of the microphone and keeps nothing.
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      end(false);
+    };
+  }, [end]);
 
   return { state, elapsed, start, stop: () => end(true), cancel: () => end(false) };
 }

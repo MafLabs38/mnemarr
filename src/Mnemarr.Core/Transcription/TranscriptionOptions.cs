@@ -17,8 +17,11 @@ public sealed class TranscriptionOptions
     /// <summary>A language hint (an ISO 639-1 code such as <c>fr</c>); without it, the model detects the language.</summary>
     public string? Language { get; set; }
 
-    /// <summary>A YAML file that lists the models to choose from (<c>models: [{ id, label, pricePerMinute }]</c>); without it, the product's own list.</summary>
+    /// <summary>A YAML file that lists the models to choose from (<c>models: [{ id, label, pricePerMinute }]</c>); without it, the provider's own list.</summary>
     public string? ModelsFile { get; set; }
+
+    /// <summary>The most <see cref="MaxMegabytes"/> can be: the limit of the transcription services.</summary>
+    public const int LargestMegabytes = 25;
 
     /// <summary>The largest recording a person can send, in megabytes.</summary>
     public int MaxMegabytes { get; set; } = 10;
@@ -66,12 +69,13 @@ public sealed class TranscriptionOptionsValidator : IValidateOptions<Transcripti
             return ValidateOptionsResult.Fail(failure);
         }
 
-        if (options.MaxMegabytes is < 1 or > 25 || options.MaxPerPersonPerDay is < 1 or > 10_000)
+        if (options.MaxMegabytes is < 1 or > TranscriptionOptions.LargestMegabytes || options.MaxPerPersonPerDay is < 1 or > 10_000)
         {
-            return ValidateOptionsResult.Fail("Transcription: MaxMegabytes is 1 to 25 (the limit of the transcription services), MaxPerPersonPerDay 1 to 10000.");
+            return ValidateOptionsResult.Fail(
+                $"Transcription: MaxMegabytes is 1 to {TranscriptionOptions.LargestMegabytes} (the limit of the transcription services), MaxPerPersonPerDay 1 to 10000.");
         }
 
-        return options.Language is { Length: > 0 } language && (language.Length is < 2 or > 3 || !language.All(char.IsAsciiLetterLower))
+        return options.Language is { Length: > 0 } language && (language.Length != 2 || !language.All(char.IsAsciiLetterLower))
             ? ValidateOptionsResult.Fail("Transcription:Language is an ISO 639-1 code in lower case, such as fr or en, or empty.")
             : ValidateOptionsResult.Success;
     }

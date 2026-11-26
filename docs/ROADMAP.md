@@ -122,7 +122,7 @@
 
 *Demo: on a phone, open Mnemarr, open the chat, press the microphone, speak; the text appears in the field, the person sends it.*
 
-- Before it: the interface behind the single sign-on, with the three paths of programs outside it ([ADR 0046](adr/0046-the-start-of-session-hook-is-published-like-ingestion-and-mcp.md)); done in production on 2026-11-26.
+- Before it: the interface behind the single sign-on, with the three paths of programs outside it ([ADR 0046](adr/0046-the-start-of-session-hook-is-published-like-ingestion-and-mcp.md)); the interface must be behind it before dictation is turned on.
 - The microphone in the composer, the chat panel full screen on a phone, `POST /api/v1/chat/transcriptions`, the `OpenAiCompatible` transcriber, the catalog of models as a YAML file and the model on the Settings page, the cap, the audit, the probe.
 - The microphone needs HTTPS: a test environment is reached through its HTTPS address behind the proxy.
 - Not now: a local Whisper server (it is the same provider with another address), speaking the answers back.

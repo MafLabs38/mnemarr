@@ -89,13 +89,44 @@ describe('DictationButton', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('The transcription service refused the key.');
   });
 
-  it('says that the browser did not give the microphone', async () => {
-    state.start.mockRejectedValue(new DOMException('denied', 'NotAllowedError'));
+  it.each([
+    [new DOMException('denied', 'NotAllowedError'), 'did not give the microphone'],
+    [new DOMException('insecure', 'SecurityError'), 'did not give the microphone'],
+    [new DOMException('none', 'NotFoundError'), 'No microphone was found'],
+    [new Error('something else'), 'could not be turned into text'],
+  ])('says why the microphone did not start (%s)', async (error, words) => {
+    state.start.mockRejectedValue(error);
     render(<DictationButton disabled={false} onText={vi.fn()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Dictate' }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('did not give the microphone');
+    expect(await screen.findByRole('alert')).toHaveTextContent(words);
+  });
+
+  it('cannot be pressed while the chat is busy, while the browser asks, or while a recording is turned into text', async () => {
+    const { rerender } = render(<DictationButton disabled onText={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Dictate' })).toBeDisabled();
+
+    state.recorder = { state: 'starting', elapsed: 0 };
+    rerender(<DictationButton disabled={false} onText={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Dictate' })).toBeDisabled();
+
+    state.recorder = { state: 'idle', elapsed: 0 };
+    state.transcribe.mockReturnValue(new Promise(() => undefined));
+    rerender(<DictationButton disabled={false} onText={vi.fn()} />);
+    state.onRecorded?.(recording);
+    expect(await screen.findByRole('button', { name: 'Turning the recording into text' })).toBeDisabled();
+  });
+
+  it('clears the last problem when the person tries again', async () => {
+    state.start.mockRejectedValueOnce(new DOMException('none', 'NotFoundError'));
+    render(<DictationButton disabled={false} onText={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Dictate' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dictate' }));
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
 
   it('does not send a recording larger than the server takes', async () => {

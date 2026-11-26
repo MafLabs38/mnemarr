@@ -842,6 +842,25 @@ test.describe('smoke @smoke', () => {
     await expect(page.getByRole('region', { name: 'Backlinks' }).getByRole('link', { name: 'Docker' })).toBeVisible();
   });
 
+  test('a person dictates to the chat on a phone: the text lands in the field and is not sent', async ({ page }) => {
+    await signIn(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Chat' }).click();
+    const panel = page.getByRole('complementary', { name: 'Chat' });
+
+    // The browser's fake microphone is recorded for a second, sent to Mnemarr, then to the stack's transcription service.
+    await panel.getByRole('button', { name: 'Dictate' }).click();
+    const stop = panel.getByRole('button', { name: /^Stop \d+:\d\d$/ });
+    await expect(stop).toHaveText(/Stop 0:0[1-9]/);
+    await stop.click();
+
+    await expect(panel.getByLabel('Your message')).toHaveValue('Put this idea in the incubator.');
+    await expect(panel.getByRole('button', { name: 'Dictate' })).toBeEnabled();
+    // Nothing was sent: the conversation is still empty.
+    await expect(panel.getByText(/what did we decide about backups/)).toBeVisible();
+    expect((await new AxeBuilder({ page }).include('aside').analyze()).violations).toEqual([]);
+  });
+
   test('the configuration file given at start is applied: its sources are managed and cannot be changed by hand', async ({
     page,
   }) => {

@@ -28,7 +28,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
     private TranscriptionService Service() =>
-        new(Options.Create(_options), TranscriptionProviders.BuiltIn, _transcriber, new TranscriptionModels(Options.Create(_options)), _store, _audit, _time);
+        new(Options.Create(_options), TranscriptionProviders.BuiltIn, _transcriber, new TranscriptionModels(Options.Create(_options), TranscriptionProviders.BuiltIn), _store, _audit, _time);
 
     [Fact]
     public async Task should_turn_a_recording_into_text_with_the_first_model_of_the_catalog_and_record_it_without_the_text()
@@ -39,7 +39,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
 
         result.Text.Should().Be("Put this idea in the incubator.");
         _transcriber.Last.Should().BeEquivalentTo(new { Model = "gpt-transcribe", ContentType = "audio/webm", Language = "fr" });
-        _store.Last().Should().Be(new TranscriptionAttempt("alice", _time.GetUtcNow(), 4, "gpt-transcribe", true, 3.5, null));
+        _store.LastOfService().Should().Be(new TranscriptionAttempt("alice", _time.GetUtcNow(), 4, "gpt-transcribe", TranscriptionOutcome.Succeeded, 3.5, null));
         _audit.Events.Should().ContainSingle().Which.Should().Be(("alice", "transcription.used", "gpt-transcribe", "4 bytes"));
         _audit.Events.Single().Detail.Should().NotContain("incubator", "the text is never audited");
     }
@@ -52,9 +52,83 @@ public sealed class TranscriptionServiceFixture : IDisposable
         var result = await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
 
         result.Succeeded.Should().BeFalse();
+        _audit.Events.Should().ContainSingle().Which.Detail.Should().Be("4 bytes; ServiceFailed: The transcription service refused the key.");
         var health = await Probe().CheckHealthAsync(new HealthCheckContext(), Token);
         health.Status.Should().Be(HealthStatus.Degraded);
         health.Data[HealthReasons.Key].Should().Be("transcription-failing");
+
+        _transcriber.Answer = TranscriptionResult.Done("hello", null);
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "a later success clears it");
+    }
+
+    [Fact]
+    public async Task should_not_degrade_the_probe_for_a_recording_the_service_refused()
+    {
+        _transcriber.Answer = TranscriptionResult.Refused("The transcription service refused the recording.");
+
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "a bad sound says nothing about the setup");
+        _audit.Events.Single().Detail.Should().Contain("RecordingRefused");
+    }
+
+    [Fact]
+    public async Task should_hold_the_cap_when_recordings_are_sent_at_the_same_time()
+    {
+        _options.MaxPerPersonPerDay = 1;
+        var gate = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _transcriber.Pending = gate.Task;
+        var service = Service();
+
+        var calls = Enumerable.Range(0, 3).Select(_ => Task.Run(() => service.TranscribeAsync("alice", Sound, "audio/webm", Token), Token)).ToList();
+        await Task.WhenAny(Task.WhenAll(calls), Task.Delay(TimeSpan.FromMilliseconds(500), Token));
+        gate.SetResult(TranscriptionResult.Done("hello", null));
+        var outcomes = await Task.WhenAll(calls.Select(async call =>
+        {
+            try
+            {
+                await call;
+                return "done";
+            }
+            catch (RejectedException ex) when (ex.Problem == Problem.Busy)
+            {
+                return "busy";
+            }
+        }));
+
+        outcomes.Should().BeEquivalentTo(["done", "busy", "busy"], "the place in the cap is taken before the service is called");
+        _transcriber.Calls.Should().Be(1, "the paid service is called once");
+    }
+
+    [Fact]
+    public async Task should_count_and_audit_a_call_that_was_cancelled_while_the_service_worked()
+    {
+        _options.MaxPerPersonPerDay = 1;
+        var gate = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _transcriber.Pending = gate.Task;
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        var call = Service().TranscribeAsync("alice", Sound, "audio/webm", cancel.Token);
+        await cancel.CancelAsync();
+
+        await call.Awaiting(pending => pending).Should().ThrowAsync<OperationCanceledException>();
+
+        _store.CountSince("alice", _time.GetUtcNow() - TimeSpan.FromDays(1)).Should().Be(1, "the service may still count it: so does the cap");
+        _audit.Events.Should().ContainSingle().Which.Detail.Should().Contain("Cancelled");
+        var again = () => Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+        await again.Should().ThrowAsync<RejectedException>();
+    }
+
+    [Fact]
+    public async Task should_say_when_the_cap_frees_a_place_one_day_after_the_oldest_recording()
+    {
+        _options.MaxPerPersonPerDay = 1;
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+        _time.Advance(TimeSpan.FromHours(2));
+
+        var refused = () => Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        (await refused.Should().ThrowAsync<RejectedException>()).Which.RetryAfter.Should().Be(TimeSpan.FromHours(22));
     }
 
     [Theory]
@@ -153,11 +227,52 @@ public sealed class TranscriptionServiceFixture : IDisposable
     [InlineData("", true)]
     [InlineData("French", false)]
     [InlineData("FR", false)]
+    [InlineData("fra", false)]
     public void should_take_a_language_code_or_none(string language, bool valid)
     {
         _options.Language = language;
 
         new TranscriptionOptionsValidator(TranscriptionProviders.BuiltIn).Validate(null, _options).Succeeded.Should().Be(valid);
+    }
+
+    [Theory]
+    [InlineData(1, 1, true)]
+    [InlineData(25, 10_000, true)]
+    [InlineData(0, 100, false)]
+    [InlineData(26, 100, false)]
+    [InlineData(10, 0, false)]
+    [InlineData(10, 10_001, false)]
+    public void should_keep_the_size_and_the_cap_within_their_bounds(int megabytes, int perDay, bool valid)
+    {
+        _options.MaxMegabytes = megabytes;
+        _options.MaxPerPersonPerDay = perDay;
+
+        new TranscriptionOptionsValidator(TranscriptionProviders.BuiltIn).Validate(null, _options).Succeeded.Should().Be(valid);
+    }
+
+    [Theory]
+    [InlineData("Whisperer", false)]
+    [InlineData("openaicompatible", true)]
+    public void should_name_the_providers_it_knows(string provider, bool valid)
+    {
+        _options.Provider = provider;
+
+        var result = new TranscriptionOptionsValidator(TranscriptionProviders.BuiltIn).Validate(null, _options);
+
+        result.Succeeded.Should().Be(valid);
+        if (!valid)
+        {
+            result.FailureMessage.Should().Contain(TranscriptionProviders.OpenAiCompatible);
+        }
+    }
+
+    [Fact]
+    public void should_check_nothing_while_dictation_is_off()
+    {
+        _options.Provider = "  ";
+        _options.MaxMegabytes = 0;
+
+        new TranscriptionOptionsValidator(TranscriptionProviders.BuiltIn).Validate(null, _options).Succeeded.Should().BeTrue();
     }
 
     private TranscriptionHealthCheck Probe() => new(Options.Create(_options), TranscriptionProviders.BuiltIn, _store);
@@ -168,10 +283,18 @@ public sealed class TranscriptionServiceFixture : IDisposable
 
         public TranscriptionRequest? Last { get; private set; }
 
-        public Task<TranscriptionResult> TranscribeAsync(TranscriptionRequest request, CancellationToken cancellationToken)
+        /// <summary>When set, a call waits for it (or for its cancellation), as a slow service does.</summary>
+        public Task<TranscriptionResult>? Pending { get; set; }
+
+        public int Calls => _calls;
+
+        private int _calls;
+
+        public async Task<TranscriptionResult> TranscribeAsync(TranscriptionRequest request, CancellationToken cancellationToken)
         {
             Last = request;
-            return Task.FromResult(Answer);
+            Interlocked.Increment(ref _calls);
+            return Pending is null ? Answer : await Pending.WaitAsync(cancellationToken);
         }
     }
 

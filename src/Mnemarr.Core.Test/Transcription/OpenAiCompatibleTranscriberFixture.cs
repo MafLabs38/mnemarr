@@ -63,12 +63,13 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, "refused the key")]
-    [InlineData(HttpStatusCode.TooManyRequests, "quota")]
-    [InlineData(HttpStatusCode.NotFound, "does not know this model")]
-    [InlineData(HttpStatusCode.BadGateway, "failed")]
-    [InlineData(HttpStatusCode.BadRequest, "refused the recording")]
-    public async Task should_say_in_its_own_words_why_a_service_refused(HttpStatusCode status, string reason)
+    [InlineData(HttpStatusCode.Unauthorized, "refused the key", true)]
+    [InlineData(HttpStatusCode.TooManyRequests, "quota", true)]
+    [InlineData(HttpStatusCode.NotFound, "does not know this model", true)]
+    [InlineData(HttpStatusCode.BadGateway, "failed", true)]
+    [InlineData(HttpStatusCode.BadRequest, "refused the recording", false)]
+    [InlineData(HttpStatusCode.UnsupportedMediaType, "refused the recording", false)]
+    public async Task should_say_in_its_own_words_why_a_service_refused_and_whose_side_it_is(HttpStatusCode status, string reason, bool serviceAtFault)
     {
         var (transcriber, _) = Make(status, """{ "error": { "message": "test-key-0000 is invalid" } }""");
 
@@ -76,6 +77,45 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
 
         result.Succeeded.Should().BeFalse();
         result.Reason.Should().Contain(reason).And.NotContain("test-key", "the service's text is never repeated");
+        result.ServiceAtFault.Should().Be(serviceAtFault, "a key, a quota or an address is the operator's to fix; a refused sound is not");
+    }
+
+    [Fact]
+    public async Task should_say_that_a_service_that_does_not_answer_in_time_did_not()
+    {
+        var (transcriber, capture) = Make(HttpStatusCode.OK, """{ "text": "late" }""", timeoutSeconds: 0);
+        capture.Delay = TimeSpan.FromSeconds(30);
+
+        var result = await transcriber.TranscribeAsync(Recording(), Token);
+
+        result.Should().BeEquivalentTo(new { Succeeded = false, ServiceAtFault = true }, options => options.ExcludingMissingMembers());
+        result.Reason.Should().Contain("did not answer in time");
+    }
+
+    [Fact]
+    public async Task should_let_a_cancelled_call_be_cancelled_instead_of_calling_it_a_failure()
+    {
+        var (transcriber, capture) = Make(HttpStatusCode.OK, """{ "text": "late" }""");
+        capture.Delay = TimeSpan.FromSeconds(30);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        cancel.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var act = () => transcriber.TranscribeAsync(Recording(), cancel.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public void should_say_that_a_key_file_that_cannot_be_opened_cannot_be_read()
+    {
+        var provider = new OpenAiCompatibleTranscriptionProvider();
+        var options = new TranscriptionOptions { OpenAiCompatible = { KeyFile = _workspace.Root } };
+
+        provider.CheckSecrets(options).Should().Contain("cannot be read", "a folder exists but is not a key");
+        options.OpenAiCompatible.KeyFile = Path.Combine(_workspace.Root, "absent");
+        provider.CheckSecrets(options).Should().Contain("cannot be read");
+        options.OpenAiCompatible.KeyFile = null;
+        provider.CheckSecrets(options).Should().BeNull("a local service may need no key");
     }
 
     [Theory]
@@ -155,12 +195,16 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
 
         public bool Throw { get; set; }
 
+        public TimeSpan Delay { get; set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (Throw)
             {
                 throw new HttpRequestException("refused");
             }
+
+            await Task.Delay(Delay, cancellationToken);
 
             Uri = request.RequestUri!.ToString();
             Authorization = request.Headers.Authorization?.ToString();

@@ -81,19 +81,21 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
 
         var response = await callers.Anonymous.PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
 
-        response.StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Theory]
-    [InlineData("text/plain", 64)]
-    [InlineData("audio/webm", (1024 * 1024) + 1)]
-    public async Task should_refuse_a_recording_it_cannot_take(string type, int length)
+    [InlineData("text/plain", 64, HttpStatusCode.BadRequest)]
+    [InlineData("audio/webm", (1024 * 1024) + 1, HttpStatusCode.RequestEntityTooLarge)]
+    public async Task should_refuse_a_recording_it_cannot_take_without_calling_the_service(string type, int length, HttpStatusCode status)
     {
         var callers = await Callers.ForAsync(_on);
+        var before = _on.Transcriber.Received.Count;
 
         var response = await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(type, length), Token);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(status);
+        _on.Transcriber.Received.Should().HaveCount(before);
     }
 
     [Fact]

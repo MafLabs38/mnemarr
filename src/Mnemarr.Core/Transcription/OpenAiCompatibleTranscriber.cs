@@ -8,7 +8,18 @@ namespace Mnemarr.Core.Transcription;
 /// <summary>The <c>OpenAiCompatible</c> provider: OpenAI's <c>/audio/transcriptions</c>, or any service that speaks it at another address (ADR 0047).</summary>
 public sealed class OpenAiCompatibleTranscriptionProvider : ITranscriptionProvider
 {
+    /// <summary>OpenAI's models, in the order of preference: the first is the default.</summary>
+    public static IReadOnlyList<TranscriptionModel> Models { get; } =
+    [
+        new("gpt-transcribe", "GPT Transcribe", 0.0045m),
+        new("gpt-4o-mini-transcribe", "GPT-4o mini Transcribe", 0.003m),
+        new("gpt-4o-transcribe", "GPT-4o Transcribe", 0.006m),
+        new("whisper-1", "Whisper", 0.006m),
+    ];
+
     public string Name => TranscriptionProviders.OpenAiCompatible;
+
+    public IReadOnlyList<TranscriptionModel> DefaultModels => Models;
 
     public string? Validate(TranscriptionOptions options)
     {
@@ -28,10 +39,24 @@ public sealed class OpenAiCompatibleTranscriptionProvider : ITranscriptionProvid
 
     public ITranscriber Create(IOptions<TranscriptionOptions> options) => new OpenAiCompatibleTranscriber(options);
 
+    /// <summary>The key file is opened for reading, as a call does: a file that exists but cannot be read is reported too.</summary>
     public string? CheckSecrets(TranscriptionOptions options)
     {
         var file = options.OpenAiCompatible.KeyFile;
-        return string.IsNullOrWhiteSpace(file) || File.Exists(file) ? null : "The file of the transcription key cannot be read.";
+        if (string.IsNullOrWhiteSpace(file))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(file);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "The file of the transcription key cannot be read.";
+        }
     }
 
     public string? Destination(TranscriptionOptions options) =>
@@ -86,7 +111,7 @@ internal sealed class OpenAiCompatibleTranscriber : ITranscriber
             using var response = await _http.SendAsync(message, timeout.Token);
             if (!response.IsSuccessStatusCode)
             {
-                return TranscriptionResult.Failed(Refusal(response.StatusCode));
+                return Refusal(response.StatusCode);
             }
 
             return Read(await response.Content.ReadAsStringAsync(timeout.Token));
@@ -135,13 +160,14 @@ internal sealed class OpenAiCompatibleTranscriber : ITranscriber
         return content;
     }
 
-    private static string Refusal(HttpStatusCode status) => status switch
+    /// <summary>What a refusal means, and whose it is: a refused key, a spent quota, a wrong address or a failing service are the operator's to fix; any other refusal is about the recording.</summary>
+    private static TranscriptionResult Refusal(HttpStatusCode status) => status switch
     {
-        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "The transcription service refused the key.",
-        HttpStatusCode.TooManyRequests => "The transcription service is busy, or the account's quota is spent.",
-        HttpStatusCode.NotFound => "The transcription service does not know this model or this address.",
-        >= HttpStatusCode.InternalServerError => "The transcription service failed.",
-        _ => "The transcription service refused the recording.",
+        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => TranscriptionResult.Failed("The transcription service refused the key."),
+        HttpStatusCode.TooManyRequests => TranscriptionResult.Failed("The transcription service is busy, or the account's quota is spent."),
+        HttpStatusCode.NotFound => TranscriptionResult.Failed("The transcription service does not know this model or this address."),
+        >= HttpStatusCode.InternalServerError => TranscriptionResult.Failed("The transcription service failed."),
+        _ => TranscriptionResult.Refused("The transcription service refused the recording."),
     };
 
     /// <summary>The text, and the duration when the service reports it as a <c>usage</c> of type <c>duration</c>.</summary>

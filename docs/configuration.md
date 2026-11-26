@@ -189,14 +189,14 @@ The chat can take dictation: a microphone in the field where a person writes rec
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `MNEMARR__TRANSCRIPTION__PROVIDER` | empty | The service: `OpenAiCompatible`, or empty for no dictation (the chat has no microphone, the endpoints answer 404). |
+| `MNEMARR__TRANSCRIPTION__PROVIDER` | empty | The service: `OpenAiCompatible`, or empty for no dictation (the chat has no microphone: `GET /api/v1/chat/transcriptions/status` says `enabled: false` and a recording gets a 404). |
 | `MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__BASEURL` | `https://api.openai.com/v1` | Any service that answers `POST {BaseUrl}/audio/transcriptions` the way OpenAI does: OpenAI, a local Whisper server, a gateway. `http` only without a key. |
 | `MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__KEYFILE` | none | A file that holds the key (a mounted secret), read at each recording so that it can be rotated. Empty for a local server without a key. |
 | `MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__TIMEOUTSECONDS` | `120` | How long a recording may take to come back as text (5 to 600). |
-| `MNEMARR__TRANSCRIPTION__MODELSFILE` | none | A YAML file of the models to choose from (below); without it, Mnemarr's own list. |
+| `MNEMARR__TRANSCRIPTION__MODELSFILE` | none | A YAML file of the models to choose from (below); without it, the provider's own list. |
 | `MNEMARR__TRANSCRIPTION__MODEL` | none | The model of the deployment, used when an administrator chose none on the Settings page; one of the catalog, or the catalog's first applies. |
 | `MNEMARR__TRANSCRIPTION__LANGUAGE` | none | A language hint, an ISO 639-1 code in lower case (`fr`, `en`); without it the model detects the language. |
-| `MNEMARR__TRANSCRIPTION__MAXMEGABYTES` | `10` | The largest recording, 1 to 25 MB (about ten minutes of speech in the browser's format). |
+| `MNEMARR__TRANSCRIPTION__MAXMEGABYTES` | `10` | The largest recording, 1 to 25 MB (about ten minutes of speech in the browser's format); a larger one is refused with a 413 before it is read. |
 | `MNEMARR__TRANSCRIPTION__MAXPERPERSONPERDAY` | `100` | How many recordings one person can send in 24 hours, whatever came of them; then a 429. |
 
 **The models are a file, so that a new one is a line and not a release.** Model names change every few months; `Transcription:ModelsFile` names a YAML file (a mounted ConfigMap, a file of a repository), read again whenever it changes:

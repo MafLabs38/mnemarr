@@ -34,18 +34,22 @@ not be code.
      - { id: gpt-4o-transcribe, label: "GPT-4o Transcribe", pricePerMinute: 0.006 }
      - { id: whisper-1, label: "Whisper", pricePerMinute: 0.006 }
    ```
-   Without the file, this list is the product's own; a file that cannot be used falls back to it, and the Settings page says why. A new model is one line of the file, not a release. It is not a section of the
+   Without the file, the catalog is the selected provider's own list (each provider brings its models: a second service does not start with OpenAI's names and prices); a
+   file that cannot be used falls back to it, and the Settings page says why. A new model is one line of the file, not a release. It is not a section of the
    configuration document ([ADR 0020](0020-configuration-as-code.md)): that document is the wanted state of the sources, applied to the database with a plan, owners and removals; a list of models is reference
    data that nothing applies, and a section would have to carry those rules for nothing. Which model is used is chosen on the **Settings** page,
    among the catalog's, by an administrator (`settings.manage`), with three layers as for the identity ([ADR 0044](0044-the-menu-says-which-environment-it-is-with-a-name-a-logo-and-the-version.md)): the interface,
    then the deployment (`Transcription:Model`), then the first model of the catalog (`GET /api/v1/transcription`, `PUT /api/v1/transcription/model`, audited). A model removed from the catalog falls back to the next layer, and the page says so.
-   The panel asks `GET /api/v1/chat/transcriptions/status` whether to show the microphone. An optional `Transcription:Language`
+   The panel asks `GET /api/v1/chat/transcriptions/status` whether to show the microphone. The two roots are deliberate: `/api/v1/chat/transcriptions` is what a person
+   uses (`chat.use`), `/api/v1/transcription` what an administrator sets (`settings.manage`); a later capability of the same kind (speaking the answers back) follows the same split. An optional `Transcription:Language`
    (an ISO code) is passed as a hint; without it the model detects the language.
 5. **Off by default, and it says what it costs.** Nothing leaves the host until the operator sets a provider and a key: that is the opt-in of rule 5, and `docs/configuration.md` says that the sound goes to the
    provider. The Settings card shows the provider, the host it sends to, the model and its price per minute. A cap holds whatever happens: `Transcription:MaxPerPersonPerDay` (100 by default) recordings a person
-   can send in 24 hours, then a 429 with a sentence; every attempt is audited (who, size, model, the duration the provider reports when it reports one, the result), never with the text.
-6. **It is visible when it breaks.** The readiness probe `transcription` is degraded, never unhealthy, with `transcription-secret` (the key file cannot be read) or `transcription-failing` (the last attempt did not get
-   a text); off, it is healthy. In the panel, a failure is Mnemarr's sentence, never the provider's text.
+   can send in 24 hours, then a 429 with a sentence and a `Retry-After` that says when a place frees. The place is taken **before** the service is called, in the same statement
+   that counts, so that recordings sent at once cannot all pass; a call that is cancelled while the service works still counts (the service may bill it). Every attempt is audited (who, size, model, the duration the provider reports when it reports one, the result), never with the text.
+6. **It is visible when it breaks.** The readiness probe `transcription` is degraded, never unhealthy, with `transcription-secret` (the key file cannot be read) or `transcription-failing` (the last call failed on the
+   service's side: the key refused, the quota spent, the address wrong, no answer in time); a recording the service refused says nothing about the setup and does not count, and
+   a later success clears it. Off, it is healthy. In the panel, a failure is Mnemarr's sentence, never the provider's text.
 
 ## Consequences
 

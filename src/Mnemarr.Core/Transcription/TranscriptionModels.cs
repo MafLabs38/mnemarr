@@ -10,11 +10,11 @@ namespace Mnemarr.Core.Transcription;
 /// <summary>A model the dictation can use: the name the service knows, a label for a person, and its price per minute in dollars when it is known.</summary>
 public sealed record TranscriptionModel(string Id, string Label, decimal? PricePerMinute);
 
-/// <summary>The models to choose from, and why the file could not be read when it could not (the product's own list then applies).</summary>
+/// <summary>The models to choose from, and why the file could not be read when it could not (the provider's own list then applies).</summary>
 public sealed record TranscriptionCatalog(IReadOnlyList<TranscriptionModel> Models, bool FromFile, string? Error);
 
 /// <summary>
-/// The catalog of models (ADR 0047): a YAML file of the deployment (<c>Transcription:ModelsFile</c>), read again when it changes, or the product's own list. Model names change every few
+/// The catalog of models (ADR 0047): a YAML file of the deployment (<c>Transcription:ModelsFile</c>), read again when it changes, or the list of the selected provider. Model names change every few
 /// months: a new one is a line of the file, not a release. The file is read strictly, as the configuration document is: one document, no anchors, no tags, no unknown key.
 /// </summary>
 public sealed class TranscriptionModels
@@ -22,21 +22,21 @@ public sealed class TranscriptionModels
     public const int MaxBytes = 64 * 1024;
     public const int MaxModels = 50;
 
-    /// <summary>The product's own list, in the order of preference: the first is the default.</summary>
-    public static IReadOnlyList<TranscriptionModel> BuiltIn { get; } =
-    [
-        new("gpt-transcribe", "GPT Transcribe", 0.0045m),
-        new("gpt-4o-mini-transcribe", "GPT-4o mini Transcribe", 0.003m),
-        new("gpt-4o-transcribe", "GPT-4o Transcribe", 0.006m),
-        new("whisper-1", "Whisper", 0.006m),
-    ];
-
     private static readonly IDeserializer Reader = new DeserializerBuilder().WithNamingConvention(CamelCaseNamingConvention.Instance).Build();
     private readonly IOptions<TranscriptionOptions> _options;
+    private readonly IEnumerable<ITranscriptionProvider> _providers;
     private readonly Lock _gate = new();
     private (string? Path, DateTime Written, long Length, TranscriptionCatalog Catalog)? _cache;
 
-    public TranscriptionModels(IOptions<TranscriptionOptions> options) => _options = options;
+    public TranscriptionModels(IOptions<TranscriptionOptions> options, IEnumerable<ITranscriptionProvider> providers)
+    {
+        _options = options;
+        _providers = providers;
+    }
+
+    /// <summary>The selected provider's own models; OpenAI's while dictation is off, so that the page has a list to show (nothing is sent then).</summary>
+    public IReadOnlyList<TranscriptionModel> Defaults =>
+        TranscriptionProviders.Find(_providers, _options.Value.Provider)?.DefaultModels is { Count: > 0 } models ? models : OpenAiCompatibleTranscriptionProvider.Models;
 
     /// <summary>The catalog as it is now: the file is read again only when its time or size changed.</summary>
     public TranscriptionCatalog Current()
@@ -44,13 +44,13 @@ public sealed class TranscriptionModels
         var path = _options.Value.ModelsFile;
         if (string.IsNullOrWhiteSpace(path))
         {
-            return new TranscriptionCatalog(BuiltIn, false, null);
+            return new TranscriptionCatalog(Defaults, false, null);
         }
 
         var file = new FileInfo(path);
         if (!file.Exists)
         {
-            return new TranscriptionCatalog(BuiltIn, false, "The file of the transcription models cannot be read: the product's own list applies.");
+            return new TranscriptionCatalog(Defaults, false, "The file of the transcription models cannot be read: the provider's own list applies.");
         }
 
         lock (_gate)
@@ -60,14 +60,16 @@ public sealed class TranscriptionModels
                 return cached.Catalog;
             }
 
-            var catalog = Read(file);
+            var catalog = Read(file, Defaults);
             _cache = (path, file.LastWriteTimeUtc, file.Length, catalog);
             return catalog;
         }
     }
 
-    private static TranscriptionCatalog Read(FileInfo file)
+    private static TranscriptionCatalog Read(FileInfo file, IReadOnlyList<TranscriptionModel> defaults)
     {
+        TranscriptionCatalog Fallback(string why) => new(defaults, false, $"The file of the transcription models cannot be used ({why}): the provider's own list applies.");
+
         if (file.Length > MaxBytes)
         {
             return Fallback($"it is larger than {MaxBytes / 1024} KB");
@@ -119,14 +121,19 @@ public sealed class TranscriptionModels
                 return ([], problem);
             }
 
-            models.Add(new TranscriptionModel(entry.Id!, string.IsNullOrWhiteSpace(entry.Label) ? entry.Id! : entry.Label.Trim(), entry.PricePerMinute));
+            models.Add(new TranscriptionModel(entry!.Id!, string.IsNullOrWhiteSpace(entry.Label) ? entry.Id! : entry.Label.Trim(), entry.PricePerMinute));
         }
 
         return (models, null);
     }
 
-    private static string? Check(ModelEntry entry, List<TranscriptionModel> before)
+    private static string? Check(ModelEntry? entry, List<TranscriptionModel> before)
     {
+        if (entry is null)
+        {
+            return "a model entry is empty";
+        }
+
         if (!IsModelId(entry.Id))
         {
             return "a model has no id, or an id that is not 1 to 100 letters, digits and . _ : - /";
@@ -149,13 +156,10 @@ public sealed class TranscriptionModels
     public static bool IsModelId(string? id) =>
         id is { Length: > 0 and <= 100 } && id.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or ':' or '-' or '/');
 
-    private static TranscriptionCatalog Fallback(string why) =>
-        new(BuiltIn, false, $"The file of the transcription models cannot be used ({why}): the product's own list applies.");
-
     /// <summary>The shape of the file, as YamlDotNet fills it (it sets the properties).</summary>
     internal sealed class ModelsFile
     {
-        public List<ModelEntry>? Models { get; set; }
+        public List<ModelEntry?>? Models { get; set; }
     }
 
     internal sealed class ModelEntry

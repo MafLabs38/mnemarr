@@ -51,12 +51,15 @@ export default function PromptBox({
   };
 
   /** What was dictated goes where the cursor is (or at the end), with a space between it and the words around it. */
+  // The text comes back seconds after the recording, and the person may have typed meanwhile: it goes into the field as it is now (the field's own value, not the
+  // text of the render the recording ended in), at the cursor as it is now.
   const insert = (dictated: string) => {
     const area = field.current;
-    const start = area?.selectionStart ?? text.length;
-    const end = area?.selectionEnd ?? text.length;
-    const before = text.slice(0, start);
-    const after = text.slice(end);
+    const current = area?.value ?? text;
+    const start = area?.selectionStart ?? current.length;
+    const end = area?.selectionEnd ?? current.length;
+    const before = current.slice(0, start);
+    const after = current.slice(end);
     const left = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
     // Before a word, a space; before punctuation or a space, none.
     const right = /^[\p{L}\p{N}]/u.test(after) ? ' ' : '';

@@ -3,7 +3,7 @@ using Mnemarr.Core.Transcription;
 
 namespace Mnemarr.Core.Test.Transcription;
 
-/// <summary>The catalog of models (ADR 0047): the product's own list, or a YAML file read strictly and again when it changes.</summary>
+/// <summary>The catalog of models (ADR 0047): the provider's own list, or a YAML file read strictly and again when it changes.</summary>
 public sealed class TranscriptionModelsFixture : IDisposable
 {
     private readonly TestWorkspace _workspace = new();
@@ -17,10 +17,11 @@ public sealed class TranscriptionModelsFixture : IDisposable
         return path;
     }
 
-    private static TranscriptionModels Models(string? file) => new(Options.Create(new TranscriptionOptions { ModelsFile = file }));
+    private static TranscriptionModels Models(string? file) =>
+        new(Options.Create(new TranscriptionOptions { Provider = TranscriptionProviders.OpenAiCompatible, ModelsFile = file }), TranscriptionProviders.BuiltIn);
 
     [Fact]
-    public void should_be_the_products_own_list_without_a_file_with_the_preferred_model_first()
+    public void should_be_the_providers_own_list_without_a_file_with_the_preferred_model_first()
     {
         var catalog = Models(null).Current();
 
@@ -60,13 +61,15 @@ public sealed class TranscriptionModelsFixture : IDisposable
     [InlineData("models:\n  - id: 'a b'\n", "letters, digits")]
     [InlineData("models:\n  - { id: a, pricePerMinute: -1 }\n", "price")]
     [InlineData("models: [\n", "not valid YAML")]
-    public void should_fall_back_to_the_products_list_and_say_why_when_the_file_cannot_be_used(string content, string why)
+    [InlineData("models:\n  - \n", "entry is empty")]
+    [InlineData("models:\n  - ~\n  - { id: a }\n", "entry is empty")]
+    public void should_fall_back_to_the_providers_list_and_say_why_when_the_file_cannot_be_used(string content, string why)
     {
         var catalog = Models(File(content)).Current();
 
         catalog.FromFile.Should().BeFalse();
-        catalog.Models.Should().Equal(TranscriptionModels.BuiltIn);
-        catalog.Error.Should().Contain(why).And.Contain("the product's own list applies").And.NotContain(_workspace.Root, "a sentence for a page gives no path");
+        catalog.Models.Should().Equal(OpenAiCompatibleTranscriptionProvider.Models);
+        catalog.Error.Should().Contain(why).And.Contain("the provider's own list applies").And.NotContain(_workspace.Root, "a sentence for a page gives no path");
     }
 
     [Fact]
@@ -74,8 +77,34 @@ public sealed class TranscriptionModelsFixture : IDisposable
     {
         var catalog = Models(Path.Combine(_workspace.Root, "absent.yaml")).Current();
 
-        catalog.Models.Should().Equal(TranscriptionModels.BuiltIn);
+        catalog.Models.Should().Equal(OpenAiCompatibleTranscriptionProvider.Models);
         catalog.Error.Should().Contain("cannot be read");
+    }
+
+    [Fact]
+    public void should_offer_the_models_of_the_selected_provider_without_a_file()
+    {
+        var other = new OtherProvider();
+        var options = Options.Create(new TranscriptionOptions { Provider = "Other" });
+
+        var catalog = new TranscriptionModels(options, [.. TranscriptionProviders.BuiltIn, other]).Current();
+
+        catalog.Models.Should().Equal(other.DefaultModels, "another service starts with its own models, not OpenAI's");
+    }
+
+    private sealed class OtherProvider : ITranscriptionProvider
+    {
+        public string Name => "Other";
+
+        public IReadOnlyList<TranscriptionModel> DefaultModels { get; } = [new("local-large", "Local large", null)];
+
+        public string? Validate(TranscriptionOptions options) => null;
+
+        public ITranscriber Create(IOptions<TranscriptionOptions> options) => throw new NotSupportedException();
+
+        public string? CheckSecrets(TranscriptionOptions options) => null;
+
+        public string? Destination(TranscriptionOptions options) => "speech.homelab.example";
     }
 
     [Fact]

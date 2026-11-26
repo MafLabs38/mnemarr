@@ -77,6 +77,32 @@ describe('DictationCard', () => {
       ([url, init]) => url === '/api/v1/transcription/model' && init?.method === 'PUT',
     );
     expect(put && sentBody(put)).toEqual({ model: 'whisper-local' });
+
+    await userEvent.selectOptions(within(dictation).getByLabelText('Model'), '');
+
+    await waitFor(() => expect(within(dictation).getByLabelText('Model')).toHaveValue(''));
+    const back = fetchMock.mock.calls
+      .filter(([url, init]) => url === '/api/v1/transcription/model' && init?.method === 'PUT')
+      .at(-1);
+    expect(back && sentBody(back)).toEqual({ model: null });
+  });
+
+  it('says why a choice was refused, and why the settings could not be read', async () => {
+    stubApi((method, path) => {
+      if (path === '/transcription' && method === 'GET') {
+        return { body: on };
+      }
+      if (method === 'PUT' && path === '/transcription/model') {
+        return { status: 400, body: { title: 'The model is not one of the catalog.' } };
+      }
+      return undefined;
+    });
+    renderWithProviders(<Settings />, '/settings');
+    const dictation = await card();
+
+    await userEvent.selectOptions(within(dictation).getByLabelText('Model'), 'whisper-local');
+
+    expect(await within(dictation).findByText('The model is not one of the catalog.')).toBeInTheDocument();
   });
 
   it('shows why the file of the models or the model asked for is not used', async () => {

@@ -322,8 +322,8 @@ public static class Schema
             logo_at TEXT
         );
         """,
-        // 25: the dictation of the chat (ADR 0047): the model an administrator chose (one row, null until they choose), and the attempts (who, when, how big, which model, what came of it;
-        // never the text nor the sound), which the daily cap per person counts and the readiness probe looks at.
+        // 25: the dictation of the chat, ADR 0047. One row holds the model an administrator chose, empty until they choose. The log keeps each attempt: who, when,
+        // how big, which model and what came of it, never the text nor the sound. The daily cap per person counts it and the readiness probe reads it.
         """
         CREATE TABLE transcription_settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -335,7 +335,7 @@ public static class Schema
             at TEXT NOT NULL,
             bytes INTEGER NOT NULL,
             model TEXT NOT NULL,
-            succeeded INTEGER NOT NULL,
+            outcome TEXT NOT NULL,
             seconds REAL,
             reason TEXT
         );

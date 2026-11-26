@@ -515,7 +515,7 @@ const en = {
   Dictate: 'Dictate',
   Dictation: 'Dictation',
   DictationCancel: 'Drop the recording',
-  DictationCatalogBuiltIn: "The models are Mnemarr's own list (Transcription:ModelsFile names a file of your own).",
+  DictationCatalogBuiltIn: "The models are the service's own list (Transcription:ModelsFile names a file of your own).",
   DictationCatalogFromFile: 'The models come from the file of the deployment (Transcription:ModelsFile).',
   DictationFailed: 'The recording could not be turned into text.',
   DictationLayer_catalog: 'the first of the catalog',

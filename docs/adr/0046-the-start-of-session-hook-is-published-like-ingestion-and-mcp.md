@@ -10,8 +10,9 @@ D-27 lets the two paths that programs use, `/api/v1/ingest/` (collectors, satell
 start-of-session hook ([ADR 0037](0037-an-assistant-is-told-what-the-memory-knows-when-it-opens-a-session.md), [ADR 0038](0038-a-new-session-resumes-the-thread-of-the-last-one.md)) is a third program
 of the same kind: it makes one `GET /api/v1/context` with a read key. Whether to publish it too was left open (Q-42), because its answer is the most sensitive text Mnemarr gives.
 
-Meanwhile an installation ran with no single sign-on at all in front of the interface: only Mnemarr's own password protected it. The dictation of the chat ([ADR 0047](0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)) puts a
-paid key behind the interface, which makes that gap a cost as well as an exposure: the operator asked for the interface to be behind the single sign-on before it ships.
+Nothing in the product prevented an installation from running with no single sign-on in front of the interface, with only Mnemarr's own password to protect it. The dictation of the chat
+([ADR 0047](0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)) puts a paid key behind the interface, which makes that gap a cost as well as an exposure: the interface must
+be behind a single sign-on before dictation is turned on.
 
 ## Decision
 
