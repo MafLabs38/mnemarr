@@ -1,8 +1,9 @@
-import { type KeyboardEvent, useId, useState } from 'react';
+import { type KeyboardEvent, useId, useRef, useState } from 'react';
 
 import { icons } from 'Helpers/Props/icons';
 import translate from 'Utilities/String/translate';
 
+import DictationButton from './DictationButton';
 import styles from './PromptBox.module.css';
 import type { ChatAgent } from './typings';
 
@@ -22,7 +23,8 @@ interface PromptBoxProps {
 
 /**
  * The prompt (ADR 0035): a textarea that takes typing and pasting (dictation tools paste), several lines; Enter sends,
- * Shift+Enter breaks the line. Agent and model under it; Stop while a turn runs.
+ * Shift+Enter breaks the line. Agent and model under it; Stop while a turn runs. The microphone (ADR 0047) puts what was said where the cursor is,
+ * and never sends it: the person reads it first.
  */
 export default function PromptBox({
   agents,
@@ -36,6 +38,7 @@ export default function PromptBox({
   onStop,
 }: Readonly<PromptBoxProps>) {
   const [text, setText] = useState('');
+  const field = useRef<HTMLTextAreaElement>(null);
   const id = useId();
   const models = agents.find((option) => option.id === agent)?.models ?? [];
   const canSend = !running && !disabled && text.trim().length > 0;
@@ -45,6 +48,25 @@ export default function PromptBox({
       onSend(text);
       setText('');
     }
+  };
+
+  /** What was dictated goes where the cursor is (or at the end), with a space between it and the words around it. */
+  const insert = (dictated: string) => {
+    const area = field.current;
+    const start = area?.selectionStart ?? text.length;
+    const end = area?.selectionEnd ?? text.length;
+    const before = text.slice(0, start);
+    const after = text.slice(end);
+    const left = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+    // Before a word, a space; before punctuation or a space, none.
+    const right = /^[\p{L}\p{N}]/u.test(after) ? ' ' : '';
+    const next = `${before}${left}${dictated}${right}${after}`.slice(0, maxMessageLength);
+    setText(next);
+    const cursor = Math.min(before.length + left.length + dictated.length, next.length);
+    requestAnimationFrame(() => {
+      area?.focus();
+      area?.setSelectionRange(cursor, cursor);
+    });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -72,6 +94,7 @@ export default function PromptBox({
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
         placeholder={translate('ChatPromptPlaceholder')}
+        ref={field}
         rows={3}
         value={text}
       />
@@ -108,6 +131,7 @@ export default function PromptBox({
             </option>
           ))}
         </select>
+        <DictationButton disabled={disabled} onText={insert} />
         {running ? (
           <button className={styles.stop} onClick={onStop} type="button">
             <icons.STOP aria-hidden="true" size={14} strokeWidth={2.5} />

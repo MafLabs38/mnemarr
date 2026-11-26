@@ -322,6 +322,25 @@ public static class Schema
             logo_at TEXT
         );
         """,
+        // 25: the dictation of the chat (ADR 0047): the model an administrator chose (one row, null until they choose), and the attempts (who, when, how big, which model, what came of it;
+        // never the text nor the sound), which the daily cap per person counts and the readiness probe looks at.
+        """
+        CREATE TABLE transcription_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            model TEXT
+        );
+        CREATE TABLE transcription_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor TEXT NOT NULL,
+            at TEXT NOT NULL,
+            bytes INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            succeeded INTEGER NOT NULL,
+            seconds REAL,
+            reason TEXT
+        );
+        CREATE INDEX transcription_log_by_actor ON transcription_log (actor, at);
+        """,
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

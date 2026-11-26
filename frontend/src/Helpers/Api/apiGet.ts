@@ -69,11 +69,22 @@ export async function apiSend<T = void>(method: 'POST' | 'PUT' | 'DELETE', path:
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
-/** A write that carries a file (a multipart form, the field `file`): the browser sets the type of the body and its boundary, so none is given here. */
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
+/**
+ * A write that carries a file (a multipart form, the field `file`): the browser sets the type of the body and its boundary, so none is given here.
+ * A recording is a `Blob` without a name: `fileName` gives it one.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: Blob,
+  { method = 'PUT', fileName }: { method?: 'PUT' | 'POST'; fileName?: string } = {},
+): Promise<T> {
   const form = new FormData();
-  form.append('file', file);
-  const response = await fetch(`${API_BASE}${path}`, { method: 'PUT', headers: { [REQUEST_HEADER]: '1' }, body: form });
+  if (fileName === undefined) {
+    form.append('file', file);
+  } else {
+    form.append('file', file, fileName);
+  }
+  const response = await fetch(`${API_BASE}${path}`, { method, headers: { [REQUEST_HEADER]: '1' }, body: form });
   if (!response.ok) {
     throw await failure(response);
   }

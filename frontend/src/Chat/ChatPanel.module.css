@@ -156,6 +156,12 @@
   .resizer {
     display: none;
   }
+
+  /* A finger needs about 44px. */
+  .iconButton {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .notice {

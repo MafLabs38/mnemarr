@@ -220,9 +220,9 @@ describe('Settings', () => {
   it('warns that a logo that was given is not used, and why', async () => {
     serve({ ...lab, logoUrl: null, logoProblem: 'The logo file of the settings is not there.' });
     renderWithProviders(<Settings />, '/settings');
-    await card();
+    const identity = await card();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
+    expect(await within(identity).findByRole('alert')).toHaveTextContent(
       'The logo is not used: The logo file of the settings is not there.',
     );
   });

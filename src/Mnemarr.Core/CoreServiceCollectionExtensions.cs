@@ -22,6 +22,7 @@ using Mnemarr.Core.Sources;
 using Mnemarr.Core.Storage;
 using Mnemarr.Core.SystemInfo;
 using Mnemarr.Core.Titles;
+using Mnemarr.Core.Transcription;
 
 namespace Mnemarr.Core;
 
@@ -152,6 +153,17 @@ public static class CoreServiceCollectionExtensions
 
         services.TryAddSingleton<INotificationSender>(sp => NotificationProviders.Select(sp.GetServices<INotificationProvider>(), sp.GetRequiredService<IOptions<NotificationOptions>>()));
         services.AddSingleton<INotificationLog, SqliteNotificationLog>();
+        services.AddOptions<TranscriptionOptions>().Bind(configuration.GetSection("Transcription")).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<TranscriptionOptions>, TranscriptionOptionsValidator>();
+        foreach (var provider in TranscriptionProviders.BuiltIn)
+        {
+            services.AddSingleton(typeof(ITranscriptionProvider), provider);
+        }
+
+        services.TryAddSingleton<ITranscriber>(sp => TranscriptionProviders.Select(sp.GetServices<ITranscriptionProvider>(), sp.GetRequiredService<IOptions<TranscriptionOptions>>()));
+        services.AddSingleton<TranscriptionModels>();
+        services.AddSingleton<ITranscriptionStore, SqliteTranscriptionStore>();
+        services.AddSingleton<TranscriptionService>();
         services.AddSingleton<AttentionMailer>();
         services.AddHostedService<AttentionMailService>();
         services.AddSingleton<ConversationTitles>();
