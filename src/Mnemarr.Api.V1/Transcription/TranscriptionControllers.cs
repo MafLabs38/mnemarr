@@ -81,6 +81,7 @@ public sealed class TranscriptionsController : ControllerBase
     /// the daily cap, 422 when the service refused this recording (another one may work), 502 when the service fails (the operator has something to fix).
     /// </summary>
     [HttpPost]
+    [DictationAdmission]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxRequestBytes)]
     // The form is held in memory up to the ceiling: above the default threshold (64 KB) ASP.NET would write the recording to a temporary file, and the sound is never stored.
@@ -104,7 +105,7 @@ public sealed class TranscriptionsController : ControllerBase
             throw new RejectedException(Core.Problem.Invalid, "The recording is required: the field file of a multipart form.");
         }
 
-        // Refused before Mnemarr reads it: the request ceiling is the largest the settings allow, this is what this Mnemarr allows.
+        // The file alone may still be above the size this Mnemarr takes, inside the room left for the form.
         if (file.Length > _transcription.MaxBytes)
         {
             return Problem(
@@ -113,7 +114,7 @@ public sealed class TranscriptionsController : ControllerBase
                 type: "urn:mnemarr:problem:recording-too-large");
         }
 
-        // Off, a format it does not take, the cap reached: refused before the recording is read.
+        // The format and the size of the file itself; off, a service key and the cap were refused before the form was read (DictationAdmission).
         _transcription.Admit(User.ActorName(), file.ContentType, file.Length);
         var audio = new byte[file.Length];
         await using (var stream = file.OpenReadStream())

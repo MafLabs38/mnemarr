@@ -87,6 +87,7 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
     [Theory]
     [InlineData("text/plain", 64, HttpStatusCode.BadRequest)]
     [InlineData("audio/webm", (1024 * 1024) + 1, HttpStatusCode.RequestEntityTooLarge)]
+    [InlineData("audio/webm", 2 * 1024 * 1024, HttpStatusCode.RequestEntityTooLarge)]
     public async Task should_refuse_a_recording_it_cannot_take_without_calling_the_service(string type, int length, HttpStatusCode status)
     {
         var callers = await Callers.ForAsync(_on);

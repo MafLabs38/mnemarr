@@ -143,7 +143,12 @@
 }
 
 @media (width <= 768px) {
+  /* On a phone the chat is read at arm's length and is what dictation is for: a larger type inside it (16px also keeps a phone from zooming into the field). The rest of the
+     interface keeps its type until a pass over every page. */
   .panel {
+    --fontSizeMeta: 14px;
+    --fontSizeBody: 16px;
+
     position: fixed;
     inset: var(--headerHeight) 0 0;
     z-index: 10;
@@ -151,6 +156,7 @@
     max-width: none;
     height: auto;
     border-left: 0;
+    font-size: var(--fontSizeBody);
   }
 
   .resizer {

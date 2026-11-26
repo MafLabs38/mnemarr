@@ -25,13 +25,3 @@
   --pageContentBodyPadding: 32px;
   --pageContentBodyPaddingSmall: 16px;
 }
-
-/* On a phone the same page is read at arm's length and touched with a finger: a larger type (16px also keeps a phone from zooming into a field). */
-@media (width <= 768px) {
-  :root {
-    --fontSizeMeta: 14px;
-    --fontSizeBody: 16px;
-    --fontSizeCardTitle: 19px;
-    --fontSizePageTitle: 26px;
-  }
-}

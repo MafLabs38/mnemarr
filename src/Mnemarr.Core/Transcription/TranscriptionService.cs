@@ -112,8 +112,19 @@ public sealed class TranscriptionService
     /// </summary>
     public void Admit(string actor, string? contentType, long length)
     {
+        Check(_options.Value, contentType, length);
+        AdmitPerson(actor);
+    }
+
+    /// <summary>What can be refused before even the form is read: dictation off, a person who reached the cap.</summary>
+    public void AdmitPerson(string actor)
+    {
         var options = _options.Value;
-        Check(options, contentType, length);
+        if (!options.Enabled)
+        {
+            throw new RejectedException(Problem.NotFound, "Dictation is not turned on.");
+        }
+
         var now = _time.GetUtcNow();
         if (_store.CountSince(actor, now - Day) >= options.MaxPerPersonPerDay)
         {

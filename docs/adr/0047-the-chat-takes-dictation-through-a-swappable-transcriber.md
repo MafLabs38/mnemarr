@@ -20,7 +20,8 @@ not be code.
    context (a browser gives the microphone only to HTTPS or `localhost`). The chat panel becomes usable on a phone (full screen under 768 px) in the same vertical: dictation is for the phone.
 2. **One endpoint, for a person.** `POST /api/v1/chat/transcriptions` takes the recording (multipart, at most `Transcription:MaxMegabytes`, 10 by default, a 413 above) and returns `{ text }` or a reason. Permission
    `chat.use` and a session of a person: keys of services cannot transcribe. The sound is held in memory, sent to the transcriber and dropped: **never stored, never logged, never indexed**. The text is
-   returned to the person only; it becomes part of a conversation only if they send it.
+   returned to the person only; it becomes part of a conversation only if they send it. What would be refused is refused **before the form is read**: dictation off, a key of a
+   service, a person past the cap, a body larger than `Transcription:MaxMegabytes` (the limit is set on the request itself).
 3. **A swappable transcriber.** `ITranscriber` (sound, its content type, an optional language → text, or a short reason; it never throws for a transcription that fails), chosen by `Transcription:Provider` like
    the notification sender ([ADR 0042](0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **One provider first, `OpenAiCompatible`**: `POST {BaseUrl}/audio/transcriptions` with the model of
    the catalog, `BaseUrl` `https://api.openai.com/v1` by default. Any server that speaks the same API (a local Whisper server, a gateway) is the same provider with another address: no code to add. The key is a
