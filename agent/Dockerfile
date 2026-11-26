@@ -5,7 +5,7 @@
 #
 # Node 22 runs the TypeScript sources directly (type stripping): no build step, no runtime dependency.
 # The base image is pinned by its digest alone (node 22.18, bookworm-slim); a change of it is a pull request like any other.
-FROM node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+FROM node@sha256:e18c3ccdf7d71619990b0e85639f506e2028a95410999cab24cc373cbd10e0ac
 
 # The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI, of its native binary and of
 # everything else are fixed there; adapters for other CLIs add theirs). No install script of any package runs. The one
