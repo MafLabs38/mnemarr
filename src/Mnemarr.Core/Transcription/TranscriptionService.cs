@@ -221,24 +221,32 @@ public sealed partial class TranscriptionService
     }
 
     /// <summary>
-    /// Writes what came of an attempt and audits it. A database that cannot be written to is logged and does not take the text from the person: the service
-    /// already did the work (and it may be paid for); the cap still counts the attempt, which stays pending.
+    /// Writes what came of an attempt, then audits it, each on its own. A database that cannot be written to is logged (with who and which model) and does not take
+    /// the text from the person: the service already did the work, and it may be paid for. An attempt that cannot be completed stays pending, and the cap still counts it.
     /// </summary>
     private void Record(long id, string actor, string model, int bytes, TranscriptionOutcome outcome, double? seconds, string? reason)
     {
         try
         {
             _store.Complete(id, outcome, seconds, reason);
+        }
+        catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
+        {
+            LogNotRecorded(ex, "recorded", actor, model, outcome);
+        }
+
+        try
+        {
             _audit.Append(actor, "transcription.used", model, outcome == TranscriptionOutcome.Succeeded ? $"{bytes} bytes" : $"{bytes} bytes; {outcome}: {reason}");
         }
         catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
         {
-            LogNotRecorded(ex, outcome);
+            LogNotRecorded(ex, "audited", actor, model, outcome);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "A recording ended ({Outcome}) but could not be recorded: the database cannot be written to.")]
-    private partial void LogNotRecorded(Exception exception, TranscriptionOutcome outcome);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A recording of {Actor} with {Model} ended ({Outcome}) but could not be {Step}: the database cannot be written to.")]
+    private partial void LogNotRecorded(Exception exception, string step, string actor, string model, TranscriptionOutcome outcome);
 
     /// <summary>The media type of a recording Mnemarr takes, or a refusal: off, a format it does not take, empty or too big.</summary>
     private static string Check(TranscriptionOptions options, string? contentType, long length)

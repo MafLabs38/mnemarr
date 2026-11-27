@@ -62,6 +62,18 @@ public sealed class TranscriptionStoreFixture : IDisposable
     }
 
     [Fact]
+    public void should_forget_an_old_failure_once_a_success_came_after_it()
+    {
+        _store.Complete(Reserve("alice", Now - TimeSpan.FromDays(10)), TranscriptionOutcome.ServiceFailed, null, "The transcription service refused the key.");
+        _store.Complete(Reserve("alice", Now - TimeSpan.FromDays(9)), TranscriptionOutcome.Succeeded, 2, null);
+
+        _store.Prune(Now - TimeSpan.FromDays(7));
+
+        _store.LastOfService()!.Outcome.Should().Be(TranscriptionOutcome.Succeeded);
+        _store.CountSince("alice", Now - TimeSpan.FromDays(30)).Should().Be(1, "the failure the success cleared is forgotten");
+    }
+
+    [Fact]
     public void should_give_the_probe_the_last_word_of_the_service_and_not_a_refused_or_cancelled_recording()
     {
         _store.LastOfService().Should().BeNull();

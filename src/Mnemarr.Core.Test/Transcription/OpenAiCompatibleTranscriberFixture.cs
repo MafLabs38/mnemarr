@@ -149,7 +149,8 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
     public async Task should_say_that_a_service_that_cannot_be_reached_cannot_be_reached(bool brokenWhileRead)
     {
         var (transcriber, capture) = Make(HttpStatusCode.OK, "{}");
-        capture.Throw = brokenWhileRead ? new IOException("The connection was reset.") : new HttpRequestException("refused");
+        capture.Throw = brokenWhileRead ? null : new HttpRequestException("refused");
+        capture.BrokenAnswer = brokenWhileRead;
 
         var result = await transcriber.TranscribeAsync(Recording(), Token);
 
@@ -197,6 +198,9 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
 
         public Exception? Throw { get; set; }
 
+        /// <summary>The service answers 200, and the connection breaks while the answer is read.</summary>
+        public bool BrokenAnswer { get; set; }
+
         public TimeSpan Delay { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -211,7 +215,19 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
             Uri = request.RequestUri!.ToString();
             Authorization = request.Headers.Authorization?.ToString();
             Body = Encoding.UTF8.GetString(await request.Content!.ReadAsByteArrayAsync(cancellationToken));
-            return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+            return new HttpResponseMessage(status) { Content = BrokenAnswer ? new BrokenContent() : new StringContent(body, Encoding.UTF8, "application/json") };
+        }
+    }
+
+    /// <summary>An answer whose connection breaks while it is read.</summary>
+    private sealed class BrokenContent : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) => throw new IOException("The connection was reset.");
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
         }
     }
 }

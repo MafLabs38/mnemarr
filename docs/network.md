@@ -43,7 +43,7 @@ The hook ([connect Claude](user/connect-claude.md)) makes one `GET /api/v1/conte
 
 ### The size of a recording
 
-With the dictation of the chat turned on, the proxy in front of the interface must accept a body as large as `Transcription:MaxMegabytes` plus 64 KB for the form (11 MB with the default of 10). nginx accepts 1 MB by default: set `client_max_body_size 11m;` (or more) on the interface's host name, or a recording longer than about a minute gets the proxy's own 413, which Mnemarr never sees nor audits.
+With the dictation of the chat turned on, the proxy in front of the interface must accept a body as large as `Transcription:MaxMegabytes` plus 64 KB for the form (11 MB with the default of 10), or a recording gets the proxy's own 413, which Mnemarr never sees nor audits. nginx accepts 1 MB by default (`client_max_body_size 11m;`, or the `nginx.ingress.kubernetes.io/proxy-body-size` annotation of its Kubernetes ingress); Traefik and Caddy set no limit by default; HAProxy and cloud load balancers have their own setting.
 
 ### Without a single sign-on
 
