@@ -918,9 +918,11 @@ public sealed class CappedTranscriptionFactory : MnemarrFactoryBase
     {
     }
 
+    public FakeTranscriber Transcriber { get; } = new();
+
     protected override void ConfigureServices(IServiceCollection services)
     {
-        services.AddSingleton<Mnemarr.Core.Transcription.ITranscriber>(new FakeTranscriber());
+        services.AddSingleton<Mnemarr.Core.Transcription.ITranscriber>(Transcriber);
         services.PostConfigure<Mnemarr.Core.Transcription.TranscriptionOptions>(options =>
         {
             options.Provider = Mnemarr.Core.Transcription.TranscriptionProviders.OpenAiCompatible;

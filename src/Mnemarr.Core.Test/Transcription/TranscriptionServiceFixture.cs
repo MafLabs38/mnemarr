@@ -63,6 +63,32 @@ public sealed class TranscriptionServiceFixture : IDisposable
     }
 
     [Fact]
+    public async Task should_forget_a_failure_from_before_a_restart_so_that_a_fixed_setup_is_healthy_again()
+    {
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service refused the key.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        _time.Advance(TimeSpan.FromMinutes(5));
+        var restarted = Service();
+
+        (await Probe(restarted).CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "the operator fixed the key and restarted");
+    }
+
+    [Fact]
+    public void should_transcribe_two_recordings_at_once_and_ask_the_next_one_to_wait_a_few_seconds()
+    {
+        var service = Service();
+        service.Enter();
+        service.Enter();
+
+        var third = () => service.Enter();
+
+        third.Should().Throw<RejectedException>().Which.Should().BeEquivalentTo(new { Problem = Problem.Busy, RetryAfter = (TimeSpan?)TimeSpan.FromSeconds(5) });
+        service.Leave();
+        third.Should().NotThrow("a place was given back");
+    }
+
+    [Fact]
     public async Task should_not_degrade_the_probe_for_a_recording_the_service_refused()
     {
         _transcriber.Answer = TranscriptionResult.Refused("The transcription service refused the recording.");
@@ -310,7 +336,8 @@ public sealed class TranscriptionServiceFixture : IDisposable
         new TranscriptionOptionsValidator(TranscriptionProviders.BuiltIn).Validate(null, _options).Succeeded.Should().BeTrue();
     }
 
-    private TranscriptionHealthCheck Probe() => new(Options.Create(_options), TranscriptionProviders.BuiltIn, _store);
+    private TranscriptionHealthCheck Probe(TranscriptionService? started = null) =>
+        new(Options.Create(_options), TranscriptionProviders.BuiltIn, _store, started ?? Service());
 
     private sealed class FakeTranscriber : ITranscriber
     {

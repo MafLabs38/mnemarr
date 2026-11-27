@@ -57,6 +57,8 @@ public sealed class TranscriptionModelsFixture : IDisposable
     [InlineData("models:\n  - id: a\n    color: red\n", "not valid YAML")]
     [InlineData("models: []\n", "lists no model")]
     [InlineData("models:\n  - &x { id: a }\n", "anchors")]
+    [InlineData("models:\n  - { id: a }\n---\nmodels:\n  - { id: b }\n", "The file of the transcription models is one YAML document")]
+    [InlineData("models:\n  - !secret { id: a }\n", "The file of the transcription models has no tags")]
     [InlineData("models:\n  - id: a\n  - id: a\n", "listed twice")]
     [InlineData("models:\n  - id: 'a b'\n", "letters, digits")]
     [InlineData("models:\n  - { id: a, pricePerMinute: -1 }\n", "price")]
@@ -121,8 +123,17 @@ public sealed class TranscriptionModelsFixture : IDisposable
     [Fact]
     public void should_refuse_a_file_larger_than_the_limit()
     {
-        var catalog = Models(File("models:\n" + string.Concat(Enumerable.Repeat("  - id: a\n", 8000)))).Current();
+        var label = new string('x', 2000);
+        var catalog = Models(File("models:\n" + string.Concat(Enumerable.Range(0, 40).Select(i => $"  - {{ id: m{i}, label: {label} }}\n")))).Current();
 
-        catalog.Error.Should().Contain("larger than");
+        catalog.Error.Should().Contain("larger than 64 KB");
+    }
+
+    [Fact]
+    public void should_refuse_more_models_than_the_limit()
+    {
+        var catalog = Models(File("models:\n" + string.Concat(Enumerable.Range(0, TranscriptionModels.MaxModels + 1).Select(i => $"  - id: m{i}\n")))).Current();
+
+        catalog.Error.Should().Contain($"more than {TranscriptionModels.MaxModels}");
     }
 }

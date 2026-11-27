@@ -41,6 +41,15 @@ public sealed class TranscriptionService
 
     private static readonly TimeSpan Day = TimeSpan.FromDays(1);
     private static readonly TimeSpan Kept = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// How many recordings this Mnemarr transcribes at once, across all people. Each one is held in memory while it is read and sent (up to
+    /// <c>Transcription:MaxMegabytes</c>, twice), so the brake keeps a burst of recordings from filling the memory of a small host; the next ones wait a few seconds.
+    /// </summary>
+    public const int InFlight = 2;
+
+    private static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(5);
+    private int _inFlight;
     private readonly IOptions<TranscriptionOptions> _options;
     private readonly IEnumerable<ITranscriptionProvider> _providers;
     private readonly ITranscriber _transcriber;
@@ -65,7 +74,11 @@ public sealed class TranscriptionService
         _store = store;
         _audit = audit;
         _time = time;
+        StartedAt = time.GetUtcNow();
     }
+
+    /// <summary>When this Mnemarr started: the probe looks only at the calls made since, so that a setup fixed and restarted is healthy again.</summary>
+    public DateTimeOffset StartedAt { get; }
 
     public bool Enabled => _options.Value.Enabled;
 
@@ -131,6 +144,22 @@ public sealed class TranscriptionService
             throw Busy(options, actor, now);
         }
     }
+
+    /// <summary>
+    /// Takes one of the <see cref="InFlight"/> places for a recording, before its form is read, or refuses it for a few seconds when they are all taken. The place is given back
+    /// with <see cref="Leave"/>, whatever comes of the recording.
+    /// </summary>
+    public void Enter()
+    {
+        if (Interlocked.Increment(ref _inFlight) > InFlight)
+        {
+            Interlocked.Decrement(ref _inFlight);
+            throw new RejectedException(Problem.Busy, "Other recordings are being turned into text: try again in a few seconds.", SlotWait);
+        }
+    }
+
+    /// <summary>Gives back the place <see cref="Enter"/> took.</summary>
+    public void Leave() => Interlocked.Decrement(ref _inFlight);
 
     /// <summary>Turns one recording into text, or refuses it (off, a format it does not take, too big, the cap reached). A service that fails is a result, not an exception.</summary>
     public async Task<TranscriptionResult> TranscribeAsync(string actor, ReadOnlyMemory<byte> audio, string? contentType, CancellationToken cancellationToken)
