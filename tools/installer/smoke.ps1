@@ -45,8 +45,15 @@ Wait-Until { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') 
 $env:Path = $env:Path + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $typed = (cmd /c 'mnemarr-collector --version 2>&1') -join ' '
 if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a command in a terminal: '$typed'" }
-$said = (& $real --version) -join ' '
-if ($said -notmatch 'mnemarr-collector') { throw "The program does not answer: '$said'" }
+# Right after the install, the hook has just started the collector in the background and the installer stopped it again: on a CI runner, the first call
+# of the program can come back empty in that moment. It is asked again, the way the other checks wait, and what it said last is shown if it never answers.
+$said = ''
+$code = $null
+try {
+    Wait-Until { $script:said = (& $real --version 2>&1) -join ' '; $script:code = $LASTEXITCODE; $script:said -match 'mnemarr-collector' } 'the program to say its version' -Seconds 30
+} catch {
+    throw "The program does not answer: '$said' (exit code $code)"
+}
 Write-Host "installed: $said"
 # The application the installer starts is a program of windows, not of a console (no window to close that would close the collector); the one for the
 # terminal is a console program. The subsystem is a field of the header of the file: 2 = windows, 3 = console.
