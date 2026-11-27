@@ -118,6 +118,15 @@
 - Not now: a thread per branch or task, other assistants (vertical 4), an on-request "resume" tool.
 - Follow-up: a freshness line for the thread on the consolidation card of the status page (today only the date in the pack says that it stopped being updated).
 
+### 9. Dictation in the chat — **built** ([ADR 0047](adr/0047-the-chat-takes-dictation-through-a-swappable-transcriber.md))
+
+*Demo: on a phone, open Mnemarr, open the chat, press the microphone, speak; the text appears in the field, the person sends it.*
+
+- Before it: the interface behind the single sign-on, with the three paths of programs outside it ([ADR 0046](adr/0046-the-start-of-session-hook-is-published-like-ingestion-and-mcp.md)); an interface behind a single sign-on is recommended before dictation is turned on.
+- The microphone in the composer, the chat panel full screen on a phone, `POST /api/v1/chat/transcriptions`, the `OpenAiCompatible` transcriber, the catalog of models as a YAML file and the model on the Settings page, the cap, the audit, the probe.
+- The microphone needs HTTPS: a test environment is reached through its HTTPS address behind the proxy.
+- Not now: speaking the answers back; a global daily cap for all people together. A local Whisper server needs no code: it is the same provider with another address and its own models file.
+
 ## Not now
 
 The reader and editor of notes beyond what exists, more kinds of sources, retention policies. The chat panel and the assistant runner are built ([ADR 0035](adr/0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md), [the chat](chat.md)); next for them: a second MCP server for the agent (Portarr, for what the infrastructure is today), Codex and Copilot adapters, a real provider for the OpenAI-compatible one. They come after the MVP, in the order the use shows.

@@ -82,8 +82,8 @@ public static class ConfigurationYaml
         Repository = source.Repository is null ? null : new RepositoryEntry { Url = source.Repository.Url, Branch = source.Repository.Branch, Credential = source.Repository.Credential },
     };
 
-    /// <summary>Reads the events of the document, without building anything: what is not allowed is refused before it can cost anything.</summary>
-    private static void CheckShape(string text)
+    /// <summary>Reads the events of the document, without building anything: what is not allowed is refused before it can cost anything. <paramref name="what"/> names the file in the messages.</summary>
+    internal static void CheckShape(string text, string what = "The configuration")
     {
         var parser = new Parser(new StringReader(text));
         var depth = 0;
@@ -93,14 +93,14 @@ public static class ConfigurationYaml
             switch (parser.Current)
             {
                 case DocumentStart when ++documents > 1:
-                    throw Invalid("The configuration is one YAML document.");
+                    throw Invalid($"{what} is one YAML document.");
                 case NodeEvent { Anchor.IsEmpty: false }:
                     // An alias needs an anchor first, so refusing the anchor refuses every alias.
-                    throw Invalid("The configuration has no anchors or aliases (&name, *name): write the value out.");
+                    throw Invalid($"{what} has no anchors or aliases (&name, *name): write the value out.");
                 case NodeEvent { Tag.IsEmpty: false }:
-                    throw Invalid("The configuration has no tags (!name): a value is what it looks like.");
+                    throw Invalid($"{what} has no tags (!name): a value is what it looks like.");
                 case MappingStart or SequenceStart when ++depth > MaxDepth:
-                    throw Invalid($"The configuration is nested more than {MaxDepth} levels deep.");
+                    throw Invalid($"{what} is nested more than {MaxDepth} levels deep.");
                 case MappingEnd or SequenceEnd:
                     depth--;
                     break;

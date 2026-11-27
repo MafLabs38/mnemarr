@@ -17,14 +17,20 @@ public sealed class RejectedFilter : IExceptionFilter
             return;
         }
 
+        context.Result = ResultOf(context.HttpContext, rejected);
+        context.ExceptionHandled = true;
+    }
+
+    /// <summary>The problem document of a refusal, with its <c>Retry-After</c> when it has one: also for a filter that refuses before the action runs.</summary>
+    public static ObjectResult ResultOf(HttpContext http, RejectedException rejected)
+    {
         var (status, kind) = Describe(rejected.Problem);
         if (rejected.RetryAfter is { } retryAfter)
         {
-            context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+            http.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
         }
 
-        context.Result = new ObjectResult(new ProblemDetails { Status = status, Title = rejected.Message, Type = $"urn:mnemarr:problem:{kind}" }) { StatusCode = status, ContentTypes = { "application/problem+json" } };
-        context.ExceptionHandled = true;
+        return new ObjectResult(new ProblemDetails { Status = status, Title = rejected.Message, Type = $"urn:mnemarr:problem:{kind}" }) { StatusCode = status, ContentTypes = { "application/problem+json" } };
     }
 
     /// <summary>

@@ -1,0 +1,102 @@
+.mic,
+.cancel,
+.stopRecording {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  border: var(--borderWidth) solid var(--hairline);
+  border-radius: var(--radiusSmall);
+  background-color: var(--paperCard);
+  color: var(--inkSoft);
+  font: inherit;
+  font-size: var(--fontSizeMeta);
+  cursor: pointer;
+}
+
+.recording {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stopRecording {
+  padding: 0 12px;
+  border-color: var(--dangerColor);
+  color: var(--dangerColor);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.mic:disabled {
+  color: var(--inkMuted);
+  cursor: default;
+}
+
+.mic:focus-visible,
+.cancel:focus-visible,
+.stopRecording:focus-visible {
+  outline: var(--borderWidth) solid var(--ink);
+  outline-offset: 2px;
+}
+
+.mic:hover:not(:disabled),
+.cancel:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--dangerColor);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+.problem {
+  flex: 1 1 100%;
+  color: var(--dangerColor);
+  font-size: var(--fontSizeMeta);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot,
+  .spin {
+    animation: none;
+  }
+}
+
+/* On a phone, the microphone is what the panel is opened for: a large target, a large icon. */
+@media (width <= 768px) {
+  .mic,
+  .cancel,
+  .stopRecording {
+    min-width: 48px;
+    height: 48px;
+    font-size: var(--fontSizeBody);
+  }
+
+  .mic svg {
+    width: 22px;
+    height: 22px;
+  }
+}

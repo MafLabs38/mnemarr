@@ -888,3 +888,70 @@ public sealed class FakeRunner : HttpMessageHandler
 
     private static HttpResponseMessage Json(HttpStatusCode status, string json) => new(status) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
 }
+
+/// <summary>An application where the dictation is on (ADR 0047), with a transcriber that answers what a test says and keeps what it was sent.</summary>
+public sealed class TranscriptionFactory : MnemarrFactoryBase
+{
+    public TranscriptionFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    public FakeTranscriber Transcriber { get; } = new();
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<Mnemarr.Core.Transcription.ITranscriber>(Transcriber);
+        services.PostConfigure<Mnemarr.Core.Transcription.TranscriptionOptions>(options =>
+        {
+            options.Provider = Mnemarr.Core.Transcription.TranscriptionProviders.OpenAiCompatible;
+            options.MaxMegabytes = 1;
+        });
+    }
+}
+
+/// <summary>An application where the dictation is on and a person may send one recording a day: what the cap answers through the API.</summary>
+public sealed class CappedTranscriptionFactory : MnemarrFactoryBase
+{
+    public CappedTranscriptionFactory()
+        : base(createFolder: true)
+    {
+    }
+
+    protected override void ConfigureServices(IServiceCollection services)
+    {
+        services.AddSingleton<Mnemarr.Core.Transcription.ITranscriber>(new FakeTranscriber());
+        services.PostConfigure<Mnemarr.Core.Transcription.TranscriptionOptions>(options =>
+        {
+            options.Provider = Mnemarr.Core.Transcription.TranscriptionProviders.OpenAiCompatible;
+            options.MaxPerPersonPerDay = 1;
+        });
+    }
+}
+
+/// <summary>A transcriber that sends nothing anywhere: it answers a text, fails with a reason a test sets, or refuses the recording.</summary>
+public sealed class FakeTranscriber : Mnemarr.Core.Transcription.ITranscriber
+{
+    public string? FailWith { get; set; }
+
+    public string? RefuseWith { get; set; }
+
+    public List<Mnemarr.Core.Transcription.TranscriptionRequest> Received { get; } = [];
+
+    public Task<Mnemarr.Core.Transcription.TranscriptionResult> TranscribeAsync(Mnemarr.Core.Transcription.TranscriptionRequest request, CancellationToken cancellationToken)
+    {
+        lock (Received)
+        {
+            Received.Add(request);
+        }
+
+        if (RefuseWith is { } refusal)
+        {
+            return Task.FromResult(Mnemarr.Core.Transcription.TranscriptionResult.Refused(refusal));
+        }
+
+        return Task.FromResult(FailWith is { } reason
+            ? Mnemarr.Core.Transcription.TranscriptionResult.Failed(reason)
+            : Mnemarr.Core.Transcription.TranscriptionResult.Done("Put this idea in the incubator.", 2));
+    }
+}
