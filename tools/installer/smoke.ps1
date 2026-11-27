@@ -20,7 +20,8 @@ function Wait-Until([scriptblock]$Condition, [string]$What, [int]$Seconds = 90) 
     throw "Timed out waiting for: $What"
 }
 
-$work = Join-Path $env:RUNNER_TEMP 'installer-smoke'
+# A runner gives its own temporary folder; a computer has the user's.
+$work = Join-Path ($env:RUNNER_TEMP ?? [IO.Path]::GetTempPath()) 'installer-smoke'
 Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $work -ItemType Directory | Out-Null
 $pack = Join-Path $PSScriptRoot 'pack.sh'
