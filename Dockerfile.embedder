@@ -25,7 +25,7 @@ RUN dotnet restore src/Mnemarr.Embedder/Mnemarr.Embedder.csproj
 COPY src ./src
 RUN dotnet publish src/Mnemarr.Embedder/Mnemarr.Embedder.csproj -c Release --no-restore -o /app -p:Version=${VERSION}
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble@sha256:bfd912c83295ce66d4b706ebb8541b9f14259b0e76fbb88b2751f58ce2399d2e
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble@sha256:aac50ceef10391e78a899e3d2ccd00bbafa2dcb56ccf4586cbccf00edb84fc21
 WORKDIR /app
 COPY --from=backend /app ./
 # The GPU build replaces the CPU library of the published output (it runs on the CPU too), and brings the provider that talks to CUDA.
