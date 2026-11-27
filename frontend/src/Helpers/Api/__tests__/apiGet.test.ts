@@ -23,6 +23,26 @@ describe('apiGet', () => {
 });
 
 describe('apiGet failures', () => {
+  it('says how long the server asks to wait after a 429', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'Retry-After': '5' }),
+        json: () => Promise.resolve({ title: 'Other recordings are being turned into text.' }),
+      }),
+    );
+
+    const failure = await apiGet('/busy').catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({
+      status: 429,
+      retryAfter: 5,
+      message: 'Other recordings are being turned into text.',
+    });
+  });
+
   it('gives the reason of the server when it sent a problem document', async () => {
     vi.stubGlobal(
       'fetch',

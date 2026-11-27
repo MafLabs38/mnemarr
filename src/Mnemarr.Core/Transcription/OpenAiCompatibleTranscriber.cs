@@ -66,9 +66,26 @@ public sealed class OpenAiCompatibleTranscriptionProvider : ITranscriptionProvid
     public string Setup(TranscriptionOptions options)
     {
         var settings = options.OpenAiCompatible;
-        var key = string.IsNullOrWhiteSpace(settings.KeyFile) ? null : new FileInfo(settings.KeyFile);
-        var changed = key is { Exists: true } ? key.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) : "none";
-        return $"{settings.BaseUrl}|{settings.KeyFile}|{changed}";
+        return $"{settings.BaseUrl}|{settings.KeyFile}|{KeyFileState(settings.KeyFile)}";
+    }
+
+    /// <summary>When the key file last changed and how long it is, never what it holds: "none" without one, "unreadable" for a path that cannot be looked at.</summary>
+    private static string KeyFileState(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "none";
+        }
+
+        try
+        {
+            var key = new FileInfo(path);
+            return key.Exists ? string.Create(CultureInfo.InvariantCulture, $"{key.LastWriteTimeUtc.Ticks}:{key.Length}") : "none";
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return "unreadable";
+        }
     }
 }
 

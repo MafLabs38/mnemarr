@@ -103,7 +103,6 @@ public sealed class TranscriptionServiceFixture : IDisposable
         File.SetLastWriteTimeUtc(key, new DateTime(2026, 11, 26, 0, 0, 0, DateTimeKind.Utc));
 
         (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "the operator put a new key in place");
-        new OpenAiCompatibleTranscriptionProvider().Setup(_options).Should().NotContain("sk-", "the key itself is never part of the fingerprint");
     }
 
     [Fact]
@@ -132,6 +131,31 @@ public sealed class TranscriptionServiceFixture : IDisposable
 
         _store.LastOfService()!.Setup.Should().BeNull();
         (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "it says nothing about the current setup");
+    }
+
+    [Fact]
+    public async Task should_see_a_new_key_copied_with_its_old_time_by_its_length_and_never_by_its_text()
+    {
+        var key = Path.Combine(_workspace.Root, "key");
+        var time = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        await File.WriteAllTextAsync(key, "SECRET-VALUE", Token);
+        File.SetLastWriteTimeUtc(key, time);
+        _options.OpenAiCompatible.KeyFile = key;
+        var provider = new OpenAiCompatibleTranscriptionProvider();
+        var before = provider.Setup(_options);
+
+        await File.WriteAllTextAsync(key, "ANOTHER-SECRET-VALUE", Token);
+        File.SetLastWriteTimeUtc(key, time);
+
+        provider.Setup(_options).Should().NotBe(before).And.NotContain("SECRET");
+    }
+
+    [Fact]
+    public void should_not_fail_on_a_key_file_path_that_cannot_be_looked_at()
+    {
+        _options.OpenAiCompatible.KeyFile = "bad\0path";
+
+        new OpenAiCompatibleTranscriptionProvider().Setup(_options).Should().EndWith("|unreadable");
     }
 
     [Theory]
