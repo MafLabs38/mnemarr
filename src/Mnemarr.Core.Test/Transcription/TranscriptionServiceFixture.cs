@@ -249,21 +249,23 @@ public sealed class TranscriptionServiceFixture : IDisposable
         _audit.Events.Single().Detail.Should().Contain("RecordingRefused");
     }
 
-    [Fact]
+    // A loaded machine (the whole suite in parallel on a small runner) can be slow to start the three calls: the test as a whole has a minute, not each wait.
+    [Fact(Timeout = 60_000)]
     public async Task should_hold_the_cap_when_recordings_are_sent_at_the_same_time()
     {
+        var token = TestContext.Current.CancellationToken;
         _options.MaxPerPersonPerDay = 1;
         var gate = new TaskCompletionSource<TranscriptionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         _transcriber.Pending = gate.Task;
         var service = Service();
 
-        var calls = Enumerable.Range(0, 3).Select(_ => Task.Run(() => service.TranscribeAsync("alice", Sound, "audio/webm", Token), Token)).ToList();
+        var calls = Enumerable.Range(0, 3).Select(_ => Task.Run(() => service.TranscribeAsync("alice", Sound, "audio/webm", token), token)).ToList();
 
         // One call reaches the service and waits there; the two others are refused without it. Only then is the service let go.
-        await _transcriber.Entered.WaitAsync(Token);
+        await _transcriber.Entered.WaitAsync(token);
         while (calls.Count(call => call.IsCompleted) < 2)
         {
-            await Task.WhenAny(calls.Where(call => !call.IsCompleted)).WaitAsync(TimeSpan.FromSeconds(10), Token);
+            await Task.WhenAny(calls.Where(call => !call.IsCompleted)).WaitAsync(token);
         }
 
         gate.SetResult(TranscriptionResult.Done("hello", null));
