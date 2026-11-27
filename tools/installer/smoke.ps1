@@ -2,9 +2,12 @@
 # does, and what the unit tests cannot: Velopack puts the program in place, the hooks make it start with the session and put it on the PATH, a newer version is
 # taken from the Mnemarr it sends to and replaces the running one, and the uninstaller leaves nothing that starts it again.
 #
-#   smoke.ps1 -Program <mnemarr-collector.exe>
-param([Parameter(Mandatory = $true)][string]$Program)
+#   smoke.ps1 -Program <mnemarr-collector.exe> [-OnThisComputer]
+param([Parameter(Mandatory = $true)][string]$Program, [switch]$OnThisComputer)
 $ErrorActionPreference = 'Stop'
+# It installs, replaces and removes the collector of the current user, and first removes one that is already there: a CI runner, or a computer whose
+# owner says so.
+if (-not $env:CI -and -not $OnThisComputer) { throw 'This test removes the collector of this user: run it in CI, or pass -OnThisComputer.' }
 $server = $null
 # Whatever fails, the little web server of the feed does not stay behind.
 trap { if ($server) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }; throw $_ }
@@ -17,7 +20,8 @@ function Wait-Until([scriptblock]$Condition, [string]$What, [int]$Seconds = 90) 
     throw "Timed out waiting for: $What"
 }
 
-$work = Join-Path $env:RUNNER_TEMP 'installer-smoke'
+# A runner gives its own temporary folder; a computer has the user's.
+$work = Join-Path ($env:RUNNER_TEMP ?? [IO.Path]::GetTempPath()) 'installer-smoke'
 Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $work -ItemType Directory | Out-Null
 $pack = Join-Path $PSScriptRoot 'pack.sh'
@@ -35,8 +39,33 @@ $stub = Join-Path $app 'Mnemarr collector.exe'
 $real = Join-Path $app 'current\mnemarr-collector.exe'
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 
+# The test can run again on the same computer: what an earlier run left (an installed collector, its entry in the session, the PATH) is removed first,
+# by the uninstaller itself, and waited for.
+function Wait-Program([string]$Path, [string[]]$Arguments) {
+    # The installer is not a console program: called with `&`, PowerShell would go on while it still works. Its last step stops every program in the folder,
+    # so a check made in that moment is stopped with it (a `--version` that answered nothing). Only that process is waited for, not the collector it starts.
+    $process = Start-Process -FilePath $Path -ArgumentList $Arguments -PassThru -WindowStyle Hidden
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) { throw "$Path $Arguments ended with exit code $($process.ExitCode)" }
+}
+$leftover = Join-Path $app 'Update.exe'
+if (Test-Path $leftover) {
+    Write-Host '--- an earlier run left a collector: uninstall it first'
+    Wait-Program $leftover @('uninstall', '--silent')
+    Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the earlier collector taken away' -Seconds 180
+}
+# What a run stopped midway can leave without its uninstaller: a running collector, the folder, the entry in the session, the folder on the PATH.
+Get-Process | Where-Object { $_.Path -like "$app\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Remove-Item $app -Recurse -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty $run -Name MnemarrCollector -ErrorAction SilentlyContinue
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if ($userPath) {
+    $kept = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $app }) -join ';'
+    if ($kept -ne $userPath) { [Environment]::SetEnvironmentVariable('Path', $kept, 'User') }
+}
+
 Write-Host '--- install 0.0.1 without a window'
-& (Join-Path $first 'MnemarrCollector-win-Setup.exe') --silent
+Wait-Program (Join-Path $first 'MnemarrCollector-win-Setup.exe') @('--silent')
 Wait-Until { Test-Path (Join-Path $app 'current\mnemarr-collector.exe') } 'the program in place'
 Wait-Until { Test-Path $stub } 'the program at the root, which an update does not change'
 Wait-Until { (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session'
@@ -45,8 +74,15 @@ Wait-Until { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') 
 $env:Path = $env:Path + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $typed = (cmd /c 'mnemarr-collector --version 2>&1') -join ' '
 if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a command in a terminal: '$typed'" }
-$said = (& $real --version) -join ' '
-if ($said -notmatch 'mnemarr-collector') { throw "The program does not answer: '$said'" }
+# The installer has ended (above); the program is still asked again for a while, the way the other checks wait, and what it said last is shown if it never answers.
+$said = ''
+$code = $null
+try {
+    # The condition runs in a scope of its own: what it saw is kept in the script's, to be shown if it never answers.
+    Wait-Until { $script:said = (& $real --version) -join ' '; $script:code = $LASTEXITCODE; $script:said -match '^mnemarr-collector \d' } 'the program to say its version' -Seconds 30
+} catch {
+    throw "The program does not answer: '$said' (exit code $code): $($_.Exception.Message)"
+}
 Write-Host "installed: $said"
 # The application the installer starts is a program of windows, not of a console (no window to close that would close the collector); the one for the
 # terminal is a console program. The subsystem is a field of the header of the file: 2 = windows, 3 = console.
@@ -94,7 +130,7 @@ Wait-Until { (Get-ItemProperty $run).MnemarrCollector -like "*$stub*" } 'the ent
 Wait-Until { ((& $real status) -join ' ') -match 'running: yes' } 'the collector running again after the update'
 
 Write-Host '--- uninstall'
-& (Join-Path $app 'Update.exe') uninstall --silent
+Wait-Program (Join-Path $app 'Update.exe') @('uninstall', '--silent')
 try {
     Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the program taken away' -Seconds 180
 } catch {
