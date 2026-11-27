@@ -341,6 +341,9 @@ public static class Schema
         );
         CREATE INDEX transcription_log_by_actor ON transcription_log (actor, at);
         """,
+        // 26: each attempt keeps a fingerprint of the setup it was made with (provider, address, key file, model; never the key), so that the readiness probe
+        // forgets a failure once the setup changes, and not because Mnemarr restarted. An attempt from before has none: it says nothing about the current setup.
+        "ALTER TABLE transcription_log ADD COLUMN setup TEXT;",
     ];
 
     /// <summary>The version of the schema this code expects: the number of steps.</summary>

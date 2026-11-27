@@ -25,11 +25,13 @@ public sealed class TranscriptionCapApiFixture : IClassFixture<CappedTranscripti
         var callers = await Callers.ForAsync(_factory);
 
         var first = await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
+        var sent = _factory.Transcriber.Received.Count;
         var second = await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
 
         first.StatusCode.Should().Be(HttpStatusCode.OK);
         second.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
         second.Headers.RetryAfter.Should().NotBeNull();
         second.Headers.RetryAfter!.Delta.Should().BeCloseTo(TimeSpan.FromDays(1), TimeSpan.FromMinutes(5), "a place frees one day after the first recording");
+        _factory.Transcriber.Received.Should().HaveCount(sent, "the refused recording is not sent");
     }
 }

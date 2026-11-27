@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -61,6 +62,31 @@ public sealed class OpenAiCompatibleTranscriptionProvider : ITranscriptionProvid
 
     public string? Destination(TranscriptionOptions options) =>
         Uri.TryCreate(options.OpenAiCompatible.BaseUrl, UriKind.Absolute, out var address) ? address.Host : null;
+
+    public string Setup(TranscriptionOptions options)
+    {
+        var settings = options.OpenAiCompatible;
+        return $"{settings.BaseUrl}|{settings.KeyFile}|{KeyFileState(settings.KeyFile)}";
+    }
+
+    /// <summary>When the key file last changed and how long it is, never what it holds: "none" without one, "unreadable" for a path that cannot be looked at.</summary>
+    private static string KeyFileState(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "none";
+        }
+
+        try
+        {
+            var key = new FileInfo(path);
+            return key.Exists ? string.Create(CultureInfo.InvariantCulture, $"{key.LastWriteTimeUtc.Ticks}:{key.Length}") : "none";
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return "unreadable";
+        }
+    }
 }
 
 /// <summary>Sends one recording as a multipart form and reads <c>{ "text": … }</c> back. No redirect is followed: the key must not be sent to another address.</summary>

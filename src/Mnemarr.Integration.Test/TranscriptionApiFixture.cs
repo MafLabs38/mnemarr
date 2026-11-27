@@ -100,6 +100,73 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
     }
 
     [Fact]
+    public async Task should_refuse_a_recording_sent_without_a_length_that_is_too_large_without_calling_the_service()
+    {
+        var callers = await Callers.ForAsync(_on);
+        var before = _on.Transcriber.Received.Count;
+        using var content = new WithoutLength(Recording(length: 2 * 1024 * 1024));
+
+        var response = await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", content, Token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+        _on.Transcriber.Received.Should().HaveCount(before);
+    }
+
+    [Fact]
+    public async Task should_transcribe_two_recordings_at_once_one_per_person_and_give_the_places_back()
+    {
+        var callers = await Callers.ForAsync(_on);
+
+        // Refused recordings, before and after their form is read, and a call that failed, hold no place.
+        (await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(length: 2 * 1024 * 1024), Token)).StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+        (await callers["Operator"].PostAsync("/api/v1/chat/transcriptions", Recording("text/plain"), Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _on.Transcriber.FailWith = "The transcription service cannot be reached.";
+        try
+        {
+            (await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token)).StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        }
+        finally
+        {
+            _on.Transcriber.FailWith = null;
+        }
+
+        var before = _on.Transcriber.ReceivedCount;
+        _on.Transcriber.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var first = callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
+            var second = callers["Operator"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
+            await WaitUntil(() => _on.Transcriber.ReceivedCount == before + 2);
+
+            var third = await callers.Admin.PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
+            var again = await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token);
+
+            third.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+            third.Headers.RetryAfter!.Delta.Should().Be(TimeSpan.FromSeconds(5));
+            again.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+            _on.Transcriber.Hold.SetResult();
+            (await first).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await second).StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            _on.Transcriber.Hold?.TrySetResult();
+            _on.Transcriber.Hold = null;
+        }
+
+        (await callers.Admin.PostAsync("/api/v1/chat/transcriptions", Recording(), Token)).StatusCode.Should().Be(HttpStatusCode.OK, "the places were given back");
+    }
+
+    private static async Task WaitUntil(Func<bool> condition)
+    {
+        for (var tries = 0; !condition(); tries++)
+        {
+            tries.Should().BeLessThan(250, "the recordings should reach the service within five seconds");
+            await Task.Delay(20, Token);
+        }
+    }
+
+    [Fact]
     public async Task should_answer_unprocessable_when_the_service_refused_the_recording_and_keep_the_probe_healthy()
     {
         var callers = await Callers.ForAsync(_on);
@@ -148,13 +215,19 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
         settings.GetProperty("destination").GetString().Should().Be("api.openai.com");
         settings.GetProperty("models").EnumerateArray().Select(model => model.GetProperty("id").GetString()).Should().Contain("whisper-1");
 
-        var chosen = await callers.Admin.PutAsJsonAsync("/api/v1/transcription/model", new { model = "whisper-1" }, Token);
-        (await chosen.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("modelLayer").GetString().Should().Be("interface");
+        try
+        {
+            var chosen = await callers.Admin.PutAsJsonAsync("/api/v1/transcription/model", new { model = "whisper-1" }, Token);
+            (await chosen.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("modelLayer").GetString().Should().Be("interface");
 
-        (await callers.Admin.PutAsJsonAsync("/api/v1/transcription/model", new { model = "made-up" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
-
-        var back = await callers.Admin.PutAsJsonAsync("/api/v1/transcription/model", new { model = (string?)null }, Token);
-        (await back.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("modelLayer").GetString().Should().Be("catalog");
+            (await callers.Admin.PutAsJsonAsync("/api/v1/transcription/model", new { model = "made-up" }, Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+        finally
+        {
+            // The factory is shared: the other tests expect the catalog's model.
+            var back = await callers.Admin.PutAsJsonAsync("/api/v1/transcription/model", new { model = (string?)null }, Token);
+            (await back.Content.ReadFromJsonAsync<JsonElement>(Token)).GetProperty("modelLayer").GetString().Should().Be("catalog");
+        }
     }
 
     [Theory]
@@ -167,5 +240,35 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
 
         (await callers[caller].GetAsync("/api/v1/transcription", Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await callers[caller].PutAsJsonAsync("/api/v1/transcription/model", new { model = "whisper-1" }, Token)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>A body whose length the client does not announce: whatever the server's own stack does with it, the recording is refused and not sent.</summary>
+    private sealed class WithoutLength : HttpContent
+    {
+        private readonly HttpContent _inner;
+
+        public WithoutLength(HttpContent inner)
+        {
+            _inner = inner;
+            Headers.ContentType = inner.Headers.ContentType;
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) => _inner.CopyToAsync(stream, context);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }

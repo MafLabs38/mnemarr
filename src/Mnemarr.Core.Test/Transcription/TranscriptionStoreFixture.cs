@@ -13,7 +13,7 @@ public sealed class TranscriptionStoreFixture : IDisposable
 
     public void Dispose() => _workspace.Dispose();
 
-    private long Reserve(string actor, DateTimeOffset at, int max = 100) => _store.Reserve(actor, at, 10, "gpt-transcribe", at - TimeSpan.FromDays(1), max)!.Value;
+    private long Reserve(string actor, DateTimeOffset at, int max = 100) => _store.Reserve(actor, at, 10, "gpt-transcribe", "setup-1", at - TimeSpan.FromDays(1), max)!.Value;
 
     [Fact]
     public void should_count_the_recordings_of_one_person_inside_the_window_only()
@@ -31,11 +31,11 @@ public sealed class TranscriptionStoreFixture : IDisposable
     [Fact]
     public void should_refuse_a_place_once_the_cap_is_reached()
     {
-        _store.Reserve("alice", Now, 10, "gpt-transcribe", Now - TimeSpan.FromDays(1), 2).Should().NotBeNull();
-        _store.Reserve("alice", Now, 10, "gpt-transcribe", Now - TimeSpan.FromDays(1), 2).Should().NotBeNull();
+        _store.Reserve("alice", Now, 10, "gpt-transcribe", "setup-1", Now - TimeSpan.FromDays(1), 2).Should().NotBeNull();
+        _store.Reserve("alice", Now, 10, "gpt-transcribe", "setup-1", Now - TimeSpan.FromDays(1), 2).Should().NotBeNull();
 
-        _store.Reserve("alice", Now, 10, "gpt-transcribe", Now - TimeSpan.FromDays(1), 2).Should().BeNull();
-        _store.Reserve("bob", Now, 10, "gpt-transcribe", Now - TimeSpan.FromDays(1), 2).Should().NotBeNull("the cap is per person");
+        _store.Reserve("alice", Now, 10, "gpt-transcribe", "setup-1", Now - TimeSpan.FromDays(1), 2).Should().BeNull();
+        _store.Reserve("bob", Now, 10, "gpt-transcribe", "setup-1", Now - TimeSpan.FromDays(1), 2).Should().NotBeNull("the cap is per person");
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class TranscriptionStoreFixture : IDisposable
         _store.Complete(Reserve("alice", Now), TranscriptionOutcome.Cancelled, null, null);
         Reserve("alice", Now);
 
-        _store.LastOfService().Should().Be(new TranscriptionAttempt("alice", Now, 10, "gpt-transcribe", TranscriptionOutcome.ServiceFailed, null, "The transcription service refused the key."));
+        _store.LastOfService().Should().Be(new TranscriptionAttempt("alice", Now, 10, "gpt-transcribe", TranscriptionOutcome.ServiceFailed, null, "The transcription service refused the key.", "setup-1"));
     }
 
     [Fact]

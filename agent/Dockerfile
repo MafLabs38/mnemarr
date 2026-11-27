@@ -4,8 +4,10 @@
 #   docker build -t mnemarr-agent agent/
 #
 # Node 22 runs the TypeScript sources directly (type stripping): no build step, no runtime dependency.
-# The base image is pinned by its digest alone (node 22.18, bookworm-slim); a change of it is a pull request like any other.
-FROM node@sha256:e18c3ccdf7d71619990b0e85639f506e2028a95410999cab24cc373cbd10e0ac
+# The base image is pinned by tag and digest: the digest makes the build reproducible, the tag is what Dependabot follows (with the digest
+# alone it moved to `node:latest`, the full image). An exception to SonarQube's docker:S8431 stated in ci.yml and ADR 0013: do not "fix" it.
+# tests/e2e/stack/docker-compose.yml runs the fake agent and the fake transcriber on the same image (Dependabot moves both).
+FROM node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
 
 # The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI, of its native binary and of
 # everything else are fixed there; adapters for other CLIs add theirs). No install script of any package runs. The one

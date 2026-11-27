@@ -65,7 +65,7 @@ public sealed record TranscriptionModelRequest(string? Model);
 public sealed class TranscriptionsController : ControllerBase
 {
     /// <summary>The ceiling of a request whatever the settings say (the largest the settings allow), with room for the form around the file.</summary>
-    private const long MaxRequestBytes = (TranscriptionOptions.LargestMegabytes * 1024L * 1024L) + (64 * 1024);
+    private const long MaxRequestBytes = (TranscriptionOptions.LargestMegabytes * 1024L * 1024L) + DictationAdmissionAttribute.FormRoom;
 
     private readonly TranscriptionService _transcription;
 

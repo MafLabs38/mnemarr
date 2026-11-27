@@ -39,7 +39,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
 
         result.Text.Should().Be("Put this idea in the incubator.");
         _transcriber.Last.Should().BeEquivalentTo(new { Model = "gpt-transcribe", ContentType = "audio/webm", Language = "fr" });
-        _store.LastOfService().Should().Be(new TranscriptionAttempt("alice", _time.GetUtcNow(), 4, "gpt-transcribe", TranscriptionOutcome.Succeeded, 3.5, null));
+        _store.LastOfService().Should().Be(new TranscriptionAttempt("alice", _time.GetUtcNow(), 4, "gpt-transcribe", TranscriptionOutcome.Succeeded, 3.5, null, Service().CurrentSetup()));
         _audit.Events.Should().ContainSingle().Which.Should().Be(("alice", "transcription.used", "gpt-transcribe", "4 bytes"));
         _audit.Events.Single().Detail.Should().NotContain("incubator", "the text is never audited");
     }
@@ -60,6 +60,138 @@ public sealed class TranscriptionServiceFixture : IDisposable
         _transcriber.Answer = TranscriptionResult.Done("hello", null);
         await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
         (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "a later success clears it");
+    }
+
+    [Fact]
+    public async Task should_keep_the_probe_degraded_after_a_restart_while_the_setup_is_the_same()
+    {
+        // Probe() builds a new service each time, as a restarted process does, over the same database.
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service refused the key.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        _time.Advance(TimeSpan.FromHours(1));
+
+        var health = await Probe().CheckHealthAsync(new HealthCheckContext(), Token);
+        health.Status.Should().Be(HealthStatus.Degraded, "a restart fixes nothing: the key is still the one that failed");
+        health.Data[HealthReasons.Key].Should().Be("transcription-failing");
+    }
+
+    [Fact]
+    public async Task should_forget_a_failure_once_the_setup_changes_so_that_a_fixed_setup_is_healthy_again()
+    {
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service cannot be reached.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+        var before = Service().CurrentSetup();
+
+        _options.OpenAiCompatible.BaseUrl = "https://speech.homelab.example/v1";
+
+        Service().CurrentSetup().Should().NotBe(before);
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "the operator fixed the address");
+    }
+
+    [Fact]
+    public async Task should_forget_a_failure_once_the_key_file_is_written_again()
+    {
+        var key = Path.Combine(_workspace.Root, "key");
+        await File.WriteAllTextAsync(key, "sk-old", Token);
+        File.SetLastWriteTimeUtc(key, new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc));
+        _options.OpenAiCompatible.KeyFile = key;
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service refused the key.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        await File.WriteAllTextAsync(key, "sk-new", Token);
+        File.SetLastWriteTimeUtc(key, new DateTime(2026, 11, 26, 0, 0, 0, DateTimeKind.Utc));
+
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "the operator put a new key in place");
+    }
+
+    [Fact]
+    public async Task should_forget_a_failure_once_an_administrator_chooses_another_model()
+    {
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service does not know the model.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        Service().ChooseModel("whisper-1", "admin");
+
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "a model the service does not know is fixed by another one");
+    }
+
+    [Fact]
+    public async Task should_not_count_a_failure_recorded_before_the_setup_was_kept()
+    {
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service refused the key.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+        using (var connection = _workspace.Database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            // A row written before schema step 26.
+            command.CommandText = "UPDATE transcription_log SET setup = NULL";
+            command.ExecuteNonQuery();
+        }
+
+        _store.LastOfService()!.Setup.Should().BeNull();
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "it says nothing about the current setup");
+    }
+
+    [Fact]
+    public async Task should_see_a_new_key_copied_with_its_old_time_by_its_length_and_never_by_its_text()
+    {
+        var key = Path.Combine(_workspace.Root, "key");
+        var time = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        await File.WriteAllTextAsync(key, "SECRET-VALUE", Token);
+        File.SetLastWriteTimeUtc(key, time);
+        _options.OpenAiCompatible.KeyFile = key;
+        var provider = new OpenAiCompatibleTranscriptionProvider();
+        var before = provider.Setup(_options);
+
+        await File.WriteAllTextAsync(key, "ANOTHER-SECRET-VALUE", Token);
+        File.SetLastWriteTimeUtc(key, time);
+
+        provider.Setup(_options).Should().NotBe(before).And.NotContain("SECRET");
+    }
+
+    [Fact]
+    public void should_not_fail_on_a_key_file_path_that_cannot_be_looked_at()
+    {
+        _options.OpenAiCompatible.KeyFile = "bad\0path";
+
+        new OpenAiCompatibleTranscriptionProvider().Setup(_options).Should().EndWith("|unreadable");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("missing")]
+    public void should_fingerprint_the_key_file_whether_or_not_it_is_there(string? file)
+    {
+        _options.OpenAiCompatible.KeyFile = file is null ? null : Path.Combine(_workspace.Root, file);
+        var provider = new OpenAiCompatibleTranscriptionProvider();
+
+        var setup = provider.Setup(_options);
+
+        setup.Should().EndWith("|none");
+        _options.OpenAiCompatible.KeyFile = Path.Combine(_workspace.Root, "other");
+        provider.Setup(_options).Should().NotBe(setup, "another key file is another setup");
+    }
+
+    [Fact]
+    public void should_transcribe_two_recordings_at_once_one_per_person_and_ask_the_next_one_to_wait_a_few_seconds()
+    {
+        var service = Service();
+        var alice = service.Enter("alice");
+        using var bob = service.Enter("bob");
+
+        var again = () => service.Enter("alice");
+        var third = () => service.Enter("carol");
+
+        again.Should().Throw<RejectedException>().Which.Message.Should().Contain("Your previous recording");
+        var refused = third.Should().Throw<RejectedException>().Which;
+        refused.Problem.Should().Be(Problem.Busy);
+        refused.RetryAfter.Should().Be(TimeSpan.FromSeconds(5));
+
+        alice.Dispose();
+        using var aliceAgain = service.Enter("alice");
+        alice.Dispose();
+        again.Should().Throw<RejectedException>("an old lease given back twice does not give back the new one").Which.Message.Should().Contain("Your previous recording");
     }
 
     [Fact]
@@ -310,7 +442,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
         new TranscriptionOptionsValidator(TranscriptionProviders.BuiltIn).Validate(null, _options).Succeeded.Should().BeTrue();
     }
 
-    private TranscriptionHealthCheck Probe() => new(Options.Create(_options), TranscriptionProviders.BuiltIn, _store);
+    private TranscriptionHealthCheck Probe() => new(Options.Create(_options), TranscriptionProviders.BuiltIn, _store, Service());
 
     private sealed class FakeTranscriber : ITranscriber
     {

@@ -51,6 +51,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // jsdom has no microphone: the one a test gave is taken back, so that no other test sees it.
+  Reflect.deleteProperty(navigator, 'mediaDevices');
   vi.useRealTimers();
 });
 

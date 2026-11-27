@@ -3,7 +3,8 @@ name: mnemarr-e2e
 services:
   # The assistant runner of the chat with a scripted model (tests/e2e/stack/fake-agent): the real runner, no CLI and no provider.
   agent:
-    image: node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+    # The image of agent/Dockerfile: change both together.
+    image: node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
     command: ['node', '/fake/main.ts']
     volumes:
       - ../../../agent:/app:ro
@@ -18,7 +19,8 @@ services:
       MNEMARR_AGENT_MAX_SESSIONS: '20'
   # The transcription service of the chat's dictation (tests/e2e/stack/fake-transcriber): OpenAI's API, a fixed sentence, nothing sent anywhere.
   transcriber:
-    image: node@sha256:752ea8a2f758c34002a0461bd9f1cee4f9a3c36d48494586f60ffce1fc708e0e
+    # The image of agent/Dockerfile: change both together.
+    image: node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
     command: ['node', '/fake/main.ts']
     volumes:
       - ./fake-transcriber:/fake:ro

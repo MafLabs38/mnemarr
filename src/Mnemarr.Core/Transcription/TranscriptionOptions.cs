@@ -20,7 +20,10 @@ public sealed class TranscriptionOptions
     /// <summary>A YAML file that lists the models to choose from (<c>models: [{ id, label, pricePerMinute }]</c>); without it, the provider's own list.</summary>
     public string? ModelsFile { get; set; }
 
-    /// <summary>The most <see cref="MaxMegabytes"/> can be: the limit of the transcription services.</summary>
+    /// <summary>
+    /// The most <see cref="MaxMegabytes"/> can be: Mnemarr's own guard on the memory a recording takes (it is held in memory, never written to disk), which is also the
+    /// limit of OpenAI's service. A local server that takes longer recordings still gets at most this much.
+    /// </summary>
     public const int LargestMegabytes = 25;
 
     /// <summary>The largest recording a person can send, in megabytes.</summary>
@@ -72,7 +75,7 @@ public sealed class TranscriptionOptionsValidator : IValidateOptions<Transcripti
         if (options.MaxMegabytes is < 1 or > TranscriptionOptions.LargestMegabytes || options.MaxPerPersonPerDay is < 1 or > 10_000)
         {
             return ValidateOptionsResult.Fail(
-                $"Transcription: MaxMegabytes is 1 to {TranscriptionOptions.LargestMegabytes} (the limit of the transcription services), MaxPerPersonPerDay 1 to 10000.");
+                $"Transcription: MaxMegabytes is 1 to {TranscriptionOptions.LargestMegabytes} (Mnemarr holds a recording in memory), MaxPerPersonPerDay 1 to 10000.");
         }
 
         return options.Language is { Length: > 0 } language && (language.Length != 2 || !language.All(char.IsAsciiLetterLower))
