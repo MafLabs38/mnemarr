@@ -7,7 +7,7 @@
 # The base image is pinned by tag and digest: the digest makes the build reproducible, the tag is what Dependabot follows (with the digest
 # alone it moved to `node:latest`, the full image). An exception to SonarQube's docker:S8431 stated in ci.yml and ADR 0013: do not "fix" it.
 # tests/e2e/stack/docker-compose.yml runs the fake agent and the fake transcriber on the same image (Dependabot moves both).
-FROM node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 
 # The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI, of its native binary and of
 # everything else are fixed there; adapters for other CLIs add theirs). No install script of any package runs. The one
