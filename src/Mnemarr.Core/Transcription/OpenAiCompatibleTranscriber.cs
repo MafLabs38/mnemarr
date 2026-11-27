@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -61,6 +62,14 @@ public sealed class OpenAiCompatibleTranscriptionProvider : ITranscriptionProvid
 
     public string? Destination(TranscriptionOptions options) =>
         Uri.TryCreate(options.OpenAiCompatible.BaseUrl, UriKind.Absolute, out var address) ? address.Host : null;
+
+    public string Setup(TranscriptionOptions options)
+    {
+        var settings = options.OpenAiCompatible;
+        var key = string.IsNullOrWhiteSpace(settings.KeyFile) ? null : new FileInfo(settings.KeyFile);
+        var changed = key is { Exists: true } ? key.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) : "none";
+        return $"{settings.BaseUrl}|{settings.KeyFile}|{changed}";
+    }
 }
 
 /// <summary>Sends one recording as a multipart form and reads <c>{ "text": … }</c> back. No redirect is followed: the key must not be sent to another address.</summary>

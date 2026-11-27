@@ -17,8 +17,19 @@ public enum TranscriptionOutcome
     Cancelled,
 }
 
-/// <summary>One attempt at a transcription: who, when, how big, with which model, what came of it. Never the text, never the sound.</summary>
-public sealed record TranscriptionAttempt(string Actor, DateTimeOffset At, long Bytes, string Model, TranscriptionOutcome Outcome, double? Seconds, string? Reason);
+/// <summary>
+/// One attempt at a transcription: who, when, how big, with which model, what came of it, and the fingerprint of the setup it was made with. Never the text, never the
+/// sound.
+/// </summary>
+public sealed record TranscriptionAttempt(
+    string Actor,
+    DateTimeOffset At,
+    long Bytes,
+    string Model,
+    TranscriptionOutcome Outcome,
+    double? Seconds,
+    string? Reason,
+    string? Setup);
 
 /// <summary>The model an administrator chose in the interface (null: the deployment's, then the catalog's first), and the attempts, which the daily cap counts.</summary>
 public interface ITranscriptionStore
@@ -31,7 +42,7 @@ public interface ITranscriptionStore
     /// Writes a pending attempt if this person sent fewer than <paramref name="max"/> recordings since <paramref name="since"/>, and returns its id; null when the cap is reached.
     /// The count and the write are one statement: recordings sent at the same time cannot all pass it.
     /// </summary>
-    long? Reserve(string actor, DateTimeOffset at, long bytes, string model, DateTimeOffset since, int max);
+    long? Reserve(string actor, DateTimeOffset at, long bytes, string model, string setup, DateTimeOffset since, int max);
 
     /// <summary>Writes what came of a reserved attempt.</summary>
     void Complete(long id, TranscriptionOutcome outcome, double? seconds, string? reason);
@@ -68,13 +79,13 @@ public sealed class SqliteTranscriptionStore : ITranscriptionStore
         Execute("INSERT INTO transcription_settings (id, model) VALUES (1, $model) ON CONFLICT (id) DO UPDATE SET model = excluded.model", command =>
             command.Parameters.AddWithValue("$model", (object?)model ?? DBNull.Value));
 
-    public long? Reserve(string actor, DateTimeOffset at, long bytes, string model, DateTimeOffset since, int max)
+    public long? Reserve(string actor, DateTimeOffset at, long bytes, string model, string setup, DateTimeOffset since, int max)
     {
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO transcription_log (actor, at, bytes, model, outcome)
-            SELECT $actor, $at, $bytes, $model, $outcome
+            INSERT INTO transcription_log (actor, at, bytes, model, outcome, setup)
+            SELECT $actor, $at, $bytes, $model, $outcome, $setup
             WHERE (SELECT COUNT(*) FROM transcription_log WHERE actor = $actor AND at >= $since) < $max
             RETURNING id
             """;
@@ -82,6 +93,7 @@ public sealed class SqliteTranscriptionStore : ITranscriptionStore
         command.Parameters.AddWithValue("$at", Stamp(at));
         command.Parameters.AddWithValue("$bytes", bytes);
         command.Parameters.AddWithValue("$model", model);
+        command.Parameters.AddWithValue("$setup", setup);
         command.Parameters.AddWithValue("$outcome", nameof(TranscriptionOutcome.Pending));
         command.Parameters.AddWithValue("$since", Stamp(since));
         command.Parameters.AddWithValue("$max", max);
@@ -122,7 +134,7 @@ public sealed class SqliteTranscriptionStore : ITranscriptionStore
         using var connection = _database.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT actor, at, bytes, model, outcome, seconds, reason FROM transcription_log
+            SELECT actor, at, bytes, model, outcome, seconds, reason, setup FROM transcription_log
             WHERE outcome IN ($succeeded, $failed) ORDER BY id DESC LIMIT 1
             """;
         command.Parameters.AddWithValue("$succeeded", nameof(TranscriptionOutcome.Succeeded));
@@ -142,7 +154,8 @@ public sealed class SqliteTranscriptionStore : ITranscriptionStore
             reader.GetString(3),
             Enum.Parse<TranscriptionOutcome>(reader.GetString(4)),
             seconds,
-            reason);
+            reason,
+            reader.IsDBNull(7) ? null : reader.GetString(7));
     }
 
     public void Prune(DateTimeOffset before) =>

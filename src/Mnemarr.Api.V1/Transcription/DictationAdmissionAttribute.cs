@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Mnemarr.Api.V1.Security;
 using Mnemarr.Core;
@@ -21,10 +23,14 @@ internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFil
     /// <summary>Room for the form around the recording: the boundaries, the headers of the part, the name of the file.</summary>
     internal const long FormRoom = 64 * 1024;
 
+    /// <summary>The slowest a recording may arrive: 4 KB a second, far below a phone on a poor network (Kestrel's own floor is 240 bytes a second).</summary>
+    private static readonly MinDataRate LeastRate = new(bytesPerSecond: 4096, gracePeriod: TimeSpan.FromSeconds(10));
+
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
     {
         var http = context.HttpContext;
         var transcription = http.RequestServices.GetRequiredService<TranscriptionService>();
+        IDisposable place;
         try
         {
             if (http.User.Person().Kind != AccountKind.User)
@@ -44,7 +50,7 @@ internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFil
             }
 
             // Last, so that a refused recording never holds a place.
-            transcription.Enter();
+            place = transcription.Enter(http.User.ActorName());
         }
         catch (RejectedException rejected)
         {
@@ -52,17 +58,16 @@ internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFil
             return;
         }
 
-        try
+        using (place)
         {
             await next();
         }
-        finally
-        {
-            transcription.Leave();
-        }
     }
 
-    /// <summary>Whether the body is not announced larger than the limit; the limit is also set on the request, for a body without a length.</summary>
+    /// <summary>
+    /// Whether the body is not announced larger than the limit. The limit is also set on the request, for a body without a length, and so is a least rate: a body sent
+    /// slowly on purpose cannot hold a place for hours.
+    /// </summary>
     private static bool Fits(HttpContext http, TranscriptionService transcription)
     {
         var limit = transcription.MaxBytes + FormRoom;
@@ -74,6 +79,11 @@ internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFil
         if (http.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } body)
         {
             body.MaxRequestBodySize = limit;
+        }
+
+        if (http.Features.Get<IHttpMinRequestBodyDataRateFeature>() is { } rate)
+        {
+            rate.MinDataRate = LeastRate;
         }
 
         return true;

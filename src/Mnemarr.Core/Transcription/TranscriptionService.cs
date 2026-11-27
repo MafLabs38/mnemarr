@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Audit;
 
@@ -43,13 +45,13 @@ public sealed class TranscriptionService
     private static readonly TimeSpan Kept = TimeSpan.FromDays(7);
 
     /// <summary>
-    /// How many recordings this Mnemarr transcribes at once, across all people. Each one is held in memory while it is read and sent (up to
+    /// How many recordings this Mnemarr transcribes at once, across all people, one per person. Each one is held in memory while it is read and sent (up to
     /// <c>Transcription:MaxMegabytes</c>, twice), so the brake keeps a burst of recordings from filling the memory of a small host; the next ones wait a few seconds.
+    /// A constant, like the other brakes on memory (the note reader's, the search's): a setting when a host needs another one.
     /// </summary>
     public const int InFlight = 2;
 
     private static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(5);
-    private int _inFlight;
     private readonly IOptions<TranscriptionOptions> _options;
     private readonly IEnumerable<ITranscriptionProvider> _providers;
     private readonly ITranscriber _transcriber;
@@ -57,6 +59,8 @@ public sealed class TranscriptionService
     private readonly ITranscriptionStore _store;
     private readonly IAuditLog _audit;
     private readonly TimeProvider _time;
+    private readonly Lock _places = new();
+    private readonly HashSet<string> _transcribing = new(StringComparer.Ordinal);
 
     public TranscriptionService(
         IOptions<TranscriptionOptions> options,
@@ -74,11 +78,7 @@ public sealed class TranscriptionService
         _store = store;
         _audit = audit;
         _time = time;
-        StartedAt = time.GetUtcNow();
     }
-
-    /// <summary>When this Mnemarr started: the probe looks only at the calls made since, so that a setup fixed and restarted is healthy again.</summary>
-    public DateTimeOffset StartedAt { get; }
 
     public bool Enabled => _options.Value.Enabled;
 
@@ -146,20 +146,41 @@ public sealed class TranscriptionService
     }
 
     /// <summary>
-    /// Takes one of the <see cref="InFlight"/> places for a recording, before its form is read, or refuses it for a few seconds when they are all taken. The place is given back
-    /// with <see cref="Leave"/>, whatever comes of the recording.
+    /// Takes one of the <see cref="InFlight"/> places for this person's recording, before its form is read, or refuses it for a few seconds: all the places are taken, or this
+    /// person already has one (so that one account cannot hold them all). The place is given back when the returned lease is disposed, whatever came of the recording.
     /// </summary>
-    public void Enter()
+    public IDisposable Enter(string actor)
     {
-        if (Interlocked.Increment(ref _inFlight) > InFlight)
+        lock (_places)
         {
-            Interlocked.Decrement(ref _inFlight);
-            throw new RejectedException(Problem.Busy, "Other recordings are being turned into text: try again in a few seconds.", SlotWait);
+            if (_transcribing.Contains(actor))
+            {
+                throw new RejectedException(Problem.Busy, "Your previous recording is still being turned into text: try again in a few seconds.", SlotWait);
+            }
+
+            if (_transcribing.Count >= InFlight)
+            {
+                throw new RejectedException(Problem.Busy, "Other recordings are being turned into text: try again in a few seconds.", SlotWait);
+            }
+
+            _transcribing.Add(actor);
         }
+
+        return new Place(this, actor);
     }
 
-    /// <summary>Gives back the place <see cref="Enter"/> took.</summary>
-    public void Leave() => Interlocked.Decrement(ref _inFlight);
+    /// <summary>
+    /// The fingerprint of what decides whether a call can work now: the provider, its own settings (an address, the key file and when it last changed) and the model in use.
+    /// Each attempt keeps it, and the readiness probe counts a failure only while the setup is still the one it was made with.
+    /// </summary>
+    public string CurrentSetup()
+    {
+        var options = _options.Value;
+        var (model, _, _) = Resolve(_models.Current(), options);
+        var provider = TranscriptionProviders.Find(_providers, options.Provider);
+        var text = $"{provider?.Name}|{provider?.Setup(options)}|{model.Id}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
+    }
 
     /// <summary>Turns one recording into text, or refuses it (off, a format it does not take, too big, the cap reached). A service that fails is a result, not an exception.</summary>
     public async Task<TranscriptionResult> TranscribeAsync(string actor, ReadOnlyMemory<byte> audio, string? contentType, CancellationToken cancellationToken)
@@ -169,9 +190,10 @@ public sealed class TranscriptionService
         var now = _time.GetUtcNow();
         _store.Prune(now - Kept);
         var (model, _, _) = Resolve(_models.Current(), options);
+        var setup = CurrentSetup();
 
         // The place in the cap is taken before the service is called, so that recordings sent at once cannot all pass, and a call that is cancelled still counts.
-        if (_store.Reserve(actor, now, audio.Length, model.Id, now - Day, options.MaxPerPersonPerDay) is not { } id)
+        if (_store.Reserve(actor, now, audio.Length, model.Id, setup, now - Day, options.MaxPerPersonPerDay) is not { } id)
         {
             throw Busy(options, actor, now);
         }
@@ -255,5 +277,35 @@ public sealed class TranscriptionService
         }
 
         return (catalog.Models[0], ModelLayer.Catalog, problem);
+    }
+
+    private void Leave(string actor)
+    {
+        lock (_places)
+        {
+            _transcribing.Remove(actor);
+        }
+    }
+
+    /// <summary>A place taken by <see cref="Enter"/>: disposing it gives the place back, once.</summary>
+    private sealed class Place : IDisposable
+    {
+        private readonly TranscriptionService _service;
+        private readonly string _actor;
+        private int _left;
+
+        public Place(TranscriptionService service, string actor)
+        {
+            _service = service;
+            _actor = actor;
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _left, 1) == 0)
+            {
+                _service.Leave(_actor);
+            }
+        }
     }
 }

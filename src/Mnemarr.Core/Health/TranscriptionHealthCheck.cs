@@ -7,7 +7,7 @@ namespace Mnemarr.Core.Health;
 
 /// <summary>
 /// Readiness of the dictation (ADR 0047): when it is on and cannot work (the key cannot be read, or the last call failed on the service's side: a key, a quota, an address, a
-/// timeout) since this Mnemarr started, it is degraded with the reason, never unhealthy. A recording the service refused says nothing about the setup and does not count. Off, it is always healthy.
+/// timeout) with the setup still in place, it is degraded with the reason, never unhealthy. A recording the service refused says nothing about the setup and does not count. Off, it is always healthy.
 /// </summary>
 public sealed class TranscriptionHealthCheck : IHealthCheck
 {
@@ -54,8 +54,9 @@ public sealed class TranscriptionHealthCheck : IHealthCheck
             return HealthReasons.Degraded("transcription-secret", secret);
         }
 
-        // A failure from before this start does not count: the operator who fixed the key or the address and restarted sees the probe healthy again.
-        return _store.LastOfService() is { Outcome: TranscriptionOutcome.ServiceFailed } failed && failed.At >= _transcription.StartedAt
+        // A failure counts while the setup is the one it was made with: once the operator fixes the key, the address or the model, the probe is healthy again; a restart alone
+        // changes nothing.
+        return _store.LastOfService() is { Outcome: TranscriptionOutcome.ServiceFailed } failed && failed.Setup == _transcription.CurrentSetup()
             ? HealthReasons.Degraded("transcription-failing", $"The last recording got no text: {failed.Reason}")
             : HealthCheckResult.Healthy();
     }

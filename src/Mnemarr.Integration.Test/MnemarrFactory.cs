@@ -940,20 +940,39 @@ public sealed class FakeTranscriber : Mnemarr.Core.Transcription.ITranscriber
 
     public List<Mnemarr.Core.Transcription.TranscriptionRequest> Received { get; } = [];
 
-    public Task<Mnemarr.Core.Transcription.TranscriptionResult> TranscribeAsync(Mnemarr.Core.Transcription.TranscriptionRequest request, CancellationToken cancellationToken)
+    /// <summary>When set, a call waits for it before it answers, as a slow service does: the recordings it holds keep their places.</summary>
+    public TaskCompletionSource? Hold { get; set; }
+
+    public int ReceivedCount
+    {
+        get
+        {
+            lock (Received)
+            {
+                return Received.Count;
+            }
+        }
+    }
+
+    public async Task<Mnemarr.Core.Transcription.TranscriptionResult> TranscribeAsync(Mnemarr.Core.Transcription.TranscriptionRequest request, CancellationToken cancellationToken)
     {
         lock (Received)
         {
             Received.Add(request);
         }
 
-        if (RefuseWith is { } refusal)
+        if (Hold is { } hold)
         {
-            return Task.FromResult(Mnemarr.Core.Transcription.TranscriptionResult.Refused(refusal));
+            await hold.Task.WaitAsync(cancellationToken);
         }
 
-        return Task.FromResult(FailWith is { } reason
+        if (RefuseWith is { } refusal)
+        {
+            return Mnemarr.Core.Transcription.TranscriptionResult.Refused(refusal);
+        }
+
+        return FailWith is { } reason
             ? Mnemarr.Core.Transcription.TranscriptionResult.Failed(reason)
-            : Mnemarr.Core.Transcription.TranscriptionResult.Done("Put this idea in the incubator.", 2));
+            : Mnemarr.Core.Transcription.TranscriptionResult.Done("Put this idea in the incubator.", 2);
     }
 }

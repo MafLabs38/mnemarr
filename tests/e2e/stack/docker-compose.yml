@@ -4,7 +4,7 @@ services:
   # The assistant runner of the chat with a scripted model (tests/e2e/stack/fake-agent): the real runner, no CLI and no provider.
   agent:
     # The image of agent/Dockerfile: change both together.
-    image: node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5
+    image: node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
     command: ['node', '/fake/main.ts']
     volumes:
       - ../../../agent:/app:ro
@@ -20,7 +20,7 @@ services:
   # The transcription service of the chat's dictation (tests/e2e/stack/fake-transcriber): OpenAI's API, a fixed sentence, nothing sent anywhere.
   transcriber:
     # The image of agent/Dockerfile: change both together.
-    image: node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5
+    image: node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
     command: ['node', '/fake/main.ts']
     volumes:
       - ./fake-transcriber:/fake:ro

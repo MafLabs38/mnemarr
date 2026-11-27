@@ -3,11 +3,11 @@
 #
 #   docker build -t mnemarr-agent agent/
 #
-# Node runs the TypeScript sources directly (type stripping): no build step, no runtime dependency.
+# Node 22 runs the TypeScript sources directly (type stripping): no build step, no runtime dependency.
 # The base image is pinned by tag and digest: the digest makes the build reproducible, the tag is what Dependabot follows (with the digest
 # alone it moved to `node:latest`, the full image). An exception to SonarQube's docker:S8431 stated in ci.yml and ADR 0013: do not "fix" it.
-# tests/e2e/stack/docker-compose.yml runs the fake transcriber on the same image: change both together.
-FROM node:26-trixie-slim@sha256:abe7e5a82b61a8ef67b315b85497c9e65173387ccf2f4a029248184b8e020be5
+# tests/e2e/stack/docker-compose.yml runs the fake agent and the fake transcriber on the same image (Dependabot moves both).
+FROM node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
 
 # The agent CLIs, installed from the lockfile in cli/ (the version and the integrity of the CLI, of its native binary and of
 # everything else are fixed there; adapters for other CLIs add theirs). No install script of any package runs. The one
