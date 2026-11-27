@@ -35,8 +35,24 @@ $stub = Join-Path $app 'Mnemarr collector.exe'
 $real = Join-Path $app 'current\mnemarr-collector.exe'
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 
+# The test can run again on the same computer: what an earlier run left (an installed collector, its entry in the session, the PATH) is removed first,
+# by the uninstaller itself, and waited for.
+function Wait-Program([string]$Path, [string[]]$Arguments) {
+    # The installer is not a console program: called with `&`, PowerShell would go on while it still works. Its last step stops every program in the folder,
+    # so a check made in that moment is stopped with it (a `--version` that answered nothing). Only that process is waited for, not the collector it starts.
+    $process = Start-Process -FilePath $Path -ArgumentList $Arguments -PassThru -WindowStyle Hidden
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) { throw "$Path $Arguments ended with exit code $($process.ExitCode)" }
+}
+$leftover = Join-Path $app 'Update.exe'
+if (Test-Path $leftover) {
+    Write-Host '--- an earlier run left a collector: uninstall it first'
+    Wait-Program $leftover @('uninstall', '--silent')
+    Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the earlier collector taken away' -Seconds 180
+}
+
 Write-Host '--- install 0.0.1 without a window'
-& (Join-Path $first 'MnemarrCollector-win-Setup.exe') --silent
+Wait-Program (Join-Path $first 'MnemarrCollector-win-Setup.exe') @('--silent')
 Wait-Until { Test-Path (Join-Path $app 'current\mnemarr-collector.exe') } 'the program in place'
 Wait-Until { Test-Path $stub } 'the program at the root, which an update does not change'
 Wait-Until { (Get-ItemProperty $run -ErrorAction SilentlyContinue).MnemarrCollector -like "*$stub*" } 'the entry that starts it with the session'
@@ -45,8 +61,7 @@ Wait-Until { ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') 
 $env:Path = $env:Path + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 $typed = (cmd /c 'mnemarr-collector --version 2>&1') -join ' '
 if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a command in a terminal: '$typed'" }
-# Right after the install, the hook has just started the collector in the background and the installer stopped it again: on a CI runner, the first call
-# of the program can come back empty in that moment. It is asked again, the way the other checks wait, and what it said last is shown if it never answers.
+# The installer has ended (above); the program is still asked again for a while, the way the other checks wait, and what it said last is shown if it never answers.
 $said = ''
 $code = $null
 try {
