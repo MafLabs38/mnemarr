@@ -146,8 +146,9 @@ internal sealed class OpenAiCompatibleTranscriber : ITranscriber
         {
             return TranscriptionResult.Failed("The transcription service did not answer in time.");
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException)
         {
+            // IOException: the connection broke while the answer was read.
             return TranscriptionResult.Failed("The transcription service cannot be reached.");
         }
     }

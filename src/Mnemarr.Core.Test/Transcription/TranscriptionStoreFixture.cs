@@ -50,6 +50,18 @@ public sealed class TranscriptionStoreFixture : IDisposable
     }
 
     [Fact]
+    public void should_keep_the_last_word_of_the_service_however_old_so_that_the_probe_does_not_forget_a_failure()
+    {
+        _store.Complete(Reserve("alice", Now - TimeSpan.FromDays(10)), TranscriptionOutcome.ServiceFailed, null, "The transcription service refused the key.");
+        _store.Complete(Reserve("alice", Now - TimeSpan.FromDays(9)), TranscriptionOutcome.RecordingRefused, null, "The transcription service refused the recording.");
+
+        _store.Prune(Now - TimeSpan.FromDays(7));
+
+        _store.LastOfService()!.Outcome.Should().Be(TranscriptionOutcome.ServiceFailed);
+        _store.CountSince("alice", Now - TimeSpan.FromDays(30)).Should().Be(1, "the refused recording is forgotten");
+    }
+
+    [Fact]
     public void should_give_the_probe_the_last_word_of_the_service_and_not_a_refused_or_cancelled_recording()
     {
         _store.LastOfService().Should().BeNull();

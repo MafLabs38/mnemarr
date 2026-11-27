@@ -56,7 +56,10 @@ public interface ITranscriptionStore
     /// <summary>The latest attempt that says something about the service (a text, or a failure on its side), or null: what the readiness probe looks at.</summary>
     TranscriptionAttempt? LastOfService();
 
-    /// <summary>Forgets the attempts older than <paramref name="before"/>: the cap looks back one day, the probe at the last one.</summary>
+    /// <summary>
+    /// Forgets the attempts older than <paramref name="before"/>, except the latest one that says something about the service: the cap looks back one day, and the probe
+    /// keeps a failure, however old, until a success or a change of the setup clears it.
+    /// </summary>
     void Prune(DateTimeOffset before);
 }
 
@@ -159,7 +162,17 @@ public sealed class SqliteTranscriptionStore : ITranscriptionStore
     }
 
     public void Prune(DateTimeOffset before) =>
-        Execute("DELETE FROM transcription_log WHERE at < $before", command => command.Parameters.AddWithValue("$before", Stamp(before)));
+        Execute(
+            """
+            DELETE FROM transcription_log WHERE at < $before AND id IS NOT (
+                SELECT id FROM transcription_log WHERE outcome IN ($succeeded, $failed) ORDER BY id DESC LIMIT 1)
+            """,
+            command =>
+            {
+                command.Parameters.AddWithValue("$before", Stamp(before));
+                command.Parameters.AddWithValue("$succeeded", nameof(TranscriptionOutcome.Succeeded));
+                command.Parameters.AddWithValue("$failed", nameof(TranscriptionOutcome.ServiceFailed));
+            });
 
     /// <summary>A sortable text in UTC, so that a comparison of texts is a comparison of times.</summary>
     private static string Stamp(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);

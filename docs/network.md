@@ -41,6 +41,10 @@ Rules of the proxy for those three paths: allow-list them by prefix (nothing els
 
 The hook ([connect Claude](user/connect-claude.md)) makes one `GET /api/v1/context` with a read key at the start of a session: it is the third path of the table above (D-67). What it returns is the most sensitive text Mnemarr gives (the thread and the end of the last conversation), so its key is a read key of its own, made for the hook, and revoked if a computer is lost.
 
+### The size of a recording
+
+With the dictation of the chat turned on, the proxy in front of the interface must accept a body as large as `Transcription:MaxMegabytes` plus 64 KB for the form (11 MB with the default of 10). nginx accepts 1 MB by default: set `client_max_body_size 11m;` (or more) on the interface's host name, or a recording longer than about a minute gets the proxy's own 413, which Mnemarr never sees nor audits.
+
 ### Without a single sign-on
 
 A Mnemarr whose interface is not behind a single sign-on is protected by its own password and its lockout. That is enough for notes; but with the dictation of the chat turned on ([ADR 0047](adr/0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)), whoever has a password can also spend the transcription key, within the cap per person per day: a single sign-on in front of the interface is recommended before turning it on. Mnemarr cannot check that it is there; the cap and the audit are what it holds itself.

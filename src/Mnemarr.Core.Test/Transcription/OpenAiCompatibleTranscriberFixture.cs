@@ -143,11 +143,13 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
         capture.Uri.Should().BeNull();
     }
 
-    [Fact]
-    public async Task should_say_that_a_service_that_cannot_be_reached_cannot_be_reached()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task should_say_that_a_service_that_cannot_be_reached_cannot_be_reached(bool brokenWhileRead)
     {
         var (transcriber, capture) = Make(HttpStatusCode.OK, "{}");
-        capture.Throw = true;
+        capture.Throw = brokenWhileRead ? new IOException("The connection was reset.") : new HttpRequestException("refused");
 
         var result = await transcriber.TranscribeAsync(Recording(), Token);
 
@@ -193,15 +195,15 @@ public sealed class OpenAiCompatibleTranscriberFixture : IDisposable
 
         public string Body { get; private set; } = string.Empty;
 
-        public bool Throw { get; set; }
+        public Exception? Throw { get; set; }
 
         public TimeSpan Delay { get; set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (Throw)
+            if (Throw is { } failure)
             {
-                throw new HttpRequestException("refused");
+                throw failure;
             }
 
             await Task.Delay(Delay, cancellationToken);
