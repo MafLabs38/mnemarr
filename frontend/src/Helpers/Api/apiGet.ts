@@ -11,6 +11,8 @@ export class ApiError extends Error {
     readonly problem?: string,
     /** The reasons, when the problem document lists them (a document that cannot be applied says every error). */
     readonly errors: ReadonlyArray<string> = [],
+    /** The seconds the server asks to wait before trying again (a 429's `Retry-After`), when it says. */
+    readonly retryAfter?: number,
   ) {
     super(problem ?? translate('ServerAnswered', { status }));
     this.name = 'ApiError';
@@ -27,16 +29,26 @@ export function apiUrl(path: string): string {
 /** The header the server requires on a write that does not carry an API key (docs/adr/0016): a browser cannot add it to a form. */
 const REQUEST_HEADER = 'X-Mnemarr-Request';
 
+/** The `Retry-After` of a 429, in seconds, when it is given as seconds. */
+function retryAfterOf(response: Response): number | undefined {
+  if (response.status !== 429) {
+    return undefined;
+  }
+  const value = Number(response.headers.get('Retry-After') ?? Number.NaN);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
 async function failure(response: Response): Promise<ApiError> {
+  const retryAfter = retryAfterOf(response);
   try {
     const body = (await response.json()) as { title?: unknown; errors?: unknown };
     const errors = Array.isArray(body.errors)
       ? body.errors.filter((error): error is string => typeof error === 'string')
       : [];
-    return new ApiError(response.status, typeof body.title === 'string' ? body.title : undefined, errors);
+    return new ApiError(response.status, typeof body.title === 'string' ? body.title : undefined, errors, retryAfter);
   } catch {
     // Not a problem document (a proxy's page, an empty body): the status is all there is to say.
-    return new ApiError(response.status);
+    return new ApiError(response.status, undefined, [], retryAfter);
   }
 }
 
@@ -69,11 +81,22 @@ export async function apiSend<T = void>(method: 'POST' | 'PUT' | 'DELETE', path:
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
-/** A write that carries a file (a multipart form, the field `file`): the browser sets the type of the body and its boundary, so none is given here. */
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
+/**
+ * A write that carries a file (a multipart form, the field `file`): the browser sets the type of the body and its boundary, so none is given here.
+ * A recording is a `Blob` without a name: `fileName` gives it one.
+ */
+export async function apiUpload<T>(
+  path: string,
+  file: Blob,
+  { method = 'PUT', fileName }: { method?: 'PUT' | 'POST'; fileName?: string } = {},
+): Promise<T> {
   const form = new FormData();
-  form.append('file', file);
-  const response = await fetch(`${API_BASE}${path}`, { method: 'PUT', headers: { [REQUEST_HEADER]: '1' }, body: form });
+  if (fileName === undefined) {
+    form.append('file', file);
+  } else {
+    form.append('file', file, fileName);
+  }
+  const response = await fetch(`${API_BASE}${path}`, { method, headers: { [REQUEST_HEADER]: '1' }, body: form });
   if (!response.ok) {
     throw await failure(response);
   }

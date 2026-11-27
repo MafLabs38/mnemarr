@@ -53,6 +53,8 @@ public sealed class EndpointsFixture
         "api/v1/chat/conversations/{id}/events",
         "api/v1/chat/conversations/{id}/messages",
         "api/v1/chat/conversations/{id}/permissions/{requestId}",
+        "api/v1/chat/transcriptions",
+        "api/v1/chat/transcriptions/status",
         "api/v1/collectors",
         "api/v1/collectors/{machine}",
         "api/v1/collectors/{machine}/consolidate",
@@ -124,6 +126,8 @@ public sealed class EndpointsFixture
         "api/v1/sources/{id:guid}/sync",
         "api/v1/sources/{sourceId:guid}/files/{**path}",
             "api/v1/system/status",
+        "api/v1/transcription",
+        "api/v1/transcription/model",
             "mcp",
             "mcp",
             "{*path:nonfile}");

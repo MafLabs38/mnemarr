@@ -49,3 +49,5 @@ An accepted ADR is never edited to change its decision: a new ADR supersedes it.
 | [0043](0043-a-long-note-stays-a-note-and-a-search-holds-each-note-to-its-share.md) | A long note stays a note, and a search holds each note to its share | D-64 |
 | [0044](0044-the-menu-says-which-environment-it-is-with-a-name-a-logo-and-the-version.md) | The menu says which environment it is: a name, a logo and the version | D-65 |
 | [0045](0045-the-embedding-server-gives-the-video-memory-back.md) | The embedding server gives the video memory back: after each batch, and entirely when nobody asks | D-66 |
+| [0046](0046-the-start-of-session-hook-is-published-like-ingestion-and-mcp.md) | The start-of-session hook is published like ingestion and MCP, and the interface stays behind the single sign-on | D-67 |
+| [0047](0047-the-chat-takes-dictation-through-a-swappable-transcriber.md) | The chat takes dictation through a swappable transcriber, with a catalog of models as configuration | D-68 |

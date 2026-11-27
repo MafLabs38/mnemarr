@@ -91,3 +91,17 @@
   outline: var(--borderWidth) solid var(--ink);
   outline-offset: 2px;
 }
+
+/* On a phone, everything in the composer is big enough for a finger. */
+@media (width <= 768px) {
+  .select {
+    min-height: 44px;
+    font-size: var(--fontSizeBody);
+  }
+
+  .send,
+  .stop {
+    min-height: 48px;
+    padding: 8px 18px;
+  }
+}

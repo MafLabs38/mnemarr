@@ -74,10 +74,22 @@ updates:
       prefix: "chore"
       include: "scope"
 
-  # The assistant runner (ADR 0035) is its own image: its base image is pinned by digest, and the agent CLI it carries by a lockfile.
+  # The assistant runner (ADR 0035) is its own image: its base image is pinned by tag and digest, and the agent CLI it carries by a lockfile.
   # It holds the credentials of the model, so a new version is not taken at once either.
   - package-ecosystem: "docker"
     directory: "/agent"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # The e2e stack runs the fake agent and the fake transcriber on the runner's base image: it follows it, so the tests run the Node that ships.
+  - package-ecosystem: "docker-compose"
+    directory: "/tests/e2e/stack"
     target-branch: "develop"
     schedule:
       interval: "weekly"

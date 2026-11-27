@@ -72,6 +72,7 @@ function isIdentity(body: unknown): boolean {
 export interface FakeResponse {
   ok: boolean;
   status: number;
+  headers?: Headers;
   json: () => Promise<unknown>;
   text?: () => Promise<string>;
 }
@@ -98,6 +99,7 @@ export function stubApi(handler: (method: string, path: string, init?: RequestIn
     return Promise.resolve({
       ok: code < 400,
       status: code,
+      headers: new Headers(),
       json: () => Promise.resolve(answer.body),
       text: () => Promise.resolve(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body)),
     });

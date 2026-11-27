@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           global-json-file: global.json
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           global-json-file: global.json
       - run: dotnet build src/Mnemarr.sln --configuration Release
@@ -63,7 +63,7 @@ jobs:
       # pinned version and checked by checksum, and the model (390 MB) is kept between runs.
       - name: Cache the model of the search by meaning
         id: model
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/model
           key: embeddings-model-${{ hashFiles('tools/native/fetch-model.sh') }}
@@ -201,14 +201,15 @@ jobs:
     name: sonarqube
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend]
-    # Runs once a SonarQube server is configured (repository variable + secret).
-    if: vars.SONAR_HOST_URL != ''
+    # Runs once a SonarQube server is configured (repository variable + secret). Skipped on a Dependabot pull request:
+    # GitHub gives its runs no repository secret (the token would be empty); the build and the tests still check it.
+    if: vars.SONAR_HOST_URL != '' && (github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           global-json-file: global.json
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -221,7 +222,7 @@ jobs:
       # The .NET scanner does not read SONAR_TOKEN for `begin`, so the token is an argument of `begin` and `end`. This job runs the
       # pull request's own code (the build): same-repository branch authors are trusted with this secret, and pull requests from
       # forks never get it.
-      # Documented exception (CLAUDE.md): docker:S8431 asks for the tag or the digest of a base image, not both. The Dockerfiles (Dockerfile, Dockerfile.embedder) keep
+      # Documented exception (CLAUDE.md): docker:S8431 asks for the tag or the digest of a base image, not both. The Dockerfiles (Dockerfile, Dockerfile.embedder, agent/Dockerfile) keep
       # both on purpose: the digest makes a build reproducible, the tag is what Dependabot follows to move the digest (ADR 0013).
       # agent/** is excluded from the coverage figure only (its issues are still analysed): the runner is tested by Node's own test runner, which
       # writes no lcov report here; its tests and gates (tsc, ESLint with SonarJS, Prettier) run in this workflow.
@@ -238,7 +239,7 @@ jobs:
           /d:sonar.qualitygate.wait=true
           /d:sonar.issue.ignore.multicriteria=e1
           /d:sonar.issue.ignore.multicriteria.e1.ruleKey="docker:S8431"
-          /d:sonar.issue.ignore.multicriteria.e1.resourceKey="Dockerfile*"
+          /d:sonar.issue.ignore.multicriteria.e1.resourceKey="**/Dockerfile*"
       - run: dotnet build src/Mnemarr.sln
       - name: End SonarQube analysis
         run: dotnet sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
@@ -352,7 +353,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: 8.0.x
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -389,7 +390,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6
         with:
           dotnet-version: 8.0.x
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8

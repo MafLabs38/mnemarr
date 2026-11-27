@@ -183,6 +183,39 @@ Whatever the provider, turning titles on sends the start and the end of conversa
 
 A person who holds `conversations.write` (`Admin`) changes a title, or asks the model to write it again, on the page of the note; the Machines page counts the titles and queues the first sentences for the model. What a person typed is never replaced by a model's.
 
+## Dictation in the chat (`Transcription`)
+
+The chat can take dictation: a microphone in the field where a person writes records in the browser, Mnemarr sends the sound to a transcription service and puts the text in the field, where the person reads it before sending ([ADR 0047](adr/0047-the-chat-takes-dictation-through-a-swappable-transcriber.md)). **It is off by default, and turning it on sends sound out of the host**: what a person dictates goes to the service named here, and nowhere else. The sound is never stored nor logged; the text goes back to the person only. A browser gives the microphone only to an HTTPS page (or `localhost`), and a paid key sits behind the interface: put the interface behind a single sign-on before turning it on ([network](network.md#without-a-single-sign-on)).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MNEMARR__TRANSCRIPTION__PROVIDER` | empty | The service: `OpenAiCompatible`, or empty for no dictation (the chat has no microphone: `GET /api/v1/chat/transcriptions/status` says `enabled: false` and a recording gets a 404). |
+| `MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__BASEURL` | `https://api.openai.com/v1` | Any service that answers `POST {BaseUrl}/audio/transcriptions` the way OpenAI does: OpenAI, a local Whisper server, a gateway. `http` only without a key, and then the sound crosses the network unencrypted: keep `http` to a server on this host or on a network you trust. |
+| `MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__KEYFILE` | none | A file that holds the key (a mounted secret), read at each recording so that it can be rotated. Empty for a local server without a key. |
+| `MNEMARR__TRANSCRIPTION__OPENAICOMPATIBLE__TIMEOUTSECONDS` | `120` | How long a recording may take to come back as text (5 to 600). |
+| `MNEMARR__TRANSCRIPTION__MODELSFILE` | none | A YAML file of the models to choose from (below); without it, the provider's own list. |
+| `MNEMARR__TRANSCRIPTION__MODEL` | none | The model of the deployment, used when an administrator chose none on the Settings page; one of the catalog, or the catalog's first applies. |
+| `MNEMARR__TRANSCRIPTION__LANGUAGE` | none | A language hint, an ISO 639-1 code in lower case (`fr`, `en`); without it the model detects the language. |
+| `MNEMARR__TRANSCRIPTION__MAXMEGABYTES` | `10` | The largest recording, 1 to 25 MB (about ten minutes of speech in the browser's format); a larger one is refused with a 413 and never sent to the service. A proxy in front must accept this size plus 64 KB ([network](network.md)). A recording is held in memory, so Mnemarr transcribes two at a time, one per person, and a body must arrive at 4 KB a second at least after its first 10 seconds; the next ones get a 429 for a few seconds. |
+| `MNEMARR__TRANSCRIPTION__MAXPERPERSONPERDAY` | `100` | How many recordings one person can send in 24 hours, whatever came of them; then a 429. |
+
+**The models are a file, so that a new one is a line and not a release.** Model names change every few months; `Transcription:ModelsFile` names a YAML file (a mounted ConfigMap, a file of a repository), read again whenever it changes:
+
+```yaml
+models:
+  - { id: gpt-transcribe, label: "GPT Transcribe", pricePerMinute: 0.0045 }
+  - { id: gpt-4o-mini-transcribe, label: "GPT-4o mini Transcribe", pricePerMinute: 0.003 }
+  - { id: whisper-large-v3, label: "Whisper on the GPU" }
+```
+
+`id` is the name the service knows (letters, digits and `. _ : - /`), `label` what a person reads, `pricePerMinute` (dollars) is shown next to it when it is given. The file is read strictly, like the configuration document: one document, no anchors or tags, no unknown key, at most 50 models and 64 KB. A file that cannot be used does not stop anything: Mnemarr's own list applies and the Settings page says why. Without the file, the list is `gpt-transcribe` (the default), `gpt-4o-mini-transcribe`, `gpt-4o-transcribe` and `whisper-1`.
+
+An administrator chooses the model on the **Settings** page, among the catalog's; that choice wins over `Transcription:Model`, which wins over the catalog's first. The card says where the sound goes (the host of the service), which model is used and why. Every recording is audited (`transcription.used`: who, the size, the model, what came of it, never the text). `/health/ready` is degraded with `transcription-secret` (the key file cannot be read) or `transcription-failing` (the last recording got no text); it is never unhealthy.
+
+### Another transcription service
+
+A service is one small interface, `ITranscriber` (a recording, its type, the model and a language in; a text or a short reason out); the name in `Transcription:Provider` selects the `ITranscriptionProvider` that checks its settings and builds it. Most services, local Whisper servers included, already speak OpenAI's API: change the address, not the code, **and name its model**: `Transcription:Model` (the model is then part of the catalog, first) or, to offer several, `Transcription:ModelsFile`. Without either the catalog is OpenAI's list, and a local server answers that it does not know `gpt-transcribe`. For one that does not, write a class that implements `ITranscriptionProvider` and register it with `services.AddSingleton<ITranscriptionProvider, MyProvider>()`; [OpenAiCompatibleTranscriber.cs](../src/Mnemarr.Core/Transcription/OpenAiCompatibleTranscriber.cs) is the built-in example.
+
 ## Notifications (`Notifications`)
 
 Mnemarr can write to one person when a machine asks for them: a satellite whose session ended and that needs a sign-in ([ADR 0042](adr/0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **It is off by default.** The mail says the name of the machine, a sentence of Mnemarr's own and where to look (the Machines page of this Mnemarr, from `Collectors:PublicUrl`); it never holds a token, a key, a conversation or an address that a machine gave.
