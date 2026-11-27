@@ -64,7 +64,8 @@ jobs:
   stryker-js:
     name: mutation (frontend)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # The whole frontend takes about an hour, too close to any limit for a pull request, which only proves that the configuration still runs.
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 30 || 330 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -75,7 +76,11 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - name: StrykerJS
-        run: yarn stryker run --concurrency 4 | tee stryker.txt
+        # On a pull request, a small part of the code (the helpers) is mutated: enough to prove the configuration and the tools, in minutes.
+        run: |
+          scope=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then scope=(--mutate 'frontend/src/Helpers/**/*.ts,!frontend/src/**/__tests__/**'); fi
+          yarn stryker run --concurrency 4 "${scope[@]}" | tee stryker.txt
       - name: Summary
         if: always()
         run: |
