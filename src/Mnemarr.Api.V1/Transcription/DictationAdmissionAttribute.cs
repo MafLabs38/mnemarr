@@ -18,8 +18,14 @@ namespace Mnemarr.Api.V1.Transcription;
 /// (<see cref="TranscriptionService.InFlight"/>). The limit is also set on the request itself, so that a body without a length stops being read at it.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
-internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFilter
+internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFilter, IOrderedFilter
 {
+    /// <summary>
+    /// After <c>[RequestSizeLimit]</c> and <c>[RequestFormLimits]</c> (900), whose ceiling is the largest the settings allow: the limit this filter sets on the request, the
+    /// size this Mnemarr takes, is the one that holds. Still before the form is read, which model binding does after every resource filter.
+    /// </summary>
+    public int Order => 1000;
+
     /// <summary>Room for the form around the recording: the boundaries, the headers of the part, the name of the file.</summary>
     internal const long FormRoom = 64 * 1024;
 

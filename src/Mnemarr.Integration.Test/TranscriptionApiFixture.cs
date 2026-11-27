@@ -167,6 +167,18 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
     }
 
     [Fact]
+    public void should_set_the_size_this_mnemarr_takes_after_the_ceiling_of_the_attributes_so_that_it_holds()
+    {
+        var admission = typeof(Mnemarr.Api.V1.Transcription.TranscriptionsController).Assembly
+            .GetType("Mnemarr.Api.V1.Transcription.DictationAdmissionAttribute", throwOnError: true)!;
+
+        var order = ((Microsoft.AspNetCore.Mvc.Filters.IOrderedFilter)Activator.CreateInstance(admission)!).Order;
+
+        order.Should().BeGreaterThan(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1).Order)
+            .And.BeGreaterThan(new Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute().Order);
+    }
+
+    [Fact]
     public async Task should_answer_unprocessable_when_the_service_refused_the_recording_and_keep_the_probe_healthy()
     {
         var callers = await Callers.ForAsync(_on);

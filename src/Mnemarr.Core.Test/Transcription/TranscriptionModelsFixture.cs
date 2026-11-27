@@ -94,6 +94,20 @@ public sealed class TranscriptionModelsFixture : IDisposable
         catalog.Models.Skip(1).Should().Equal(OpenAiCompatibleTranscriptionProvider.Models);
     }
 
+    [Theory]
+    [InlineData("models: [\n")]
+    [InlineData(null)]
+    public void should_keep_the_model_the_deployment_names_when_the_file_cannot_be_used(string? content)
+    {
+        var path = content is null ? Path.Combine(_workspace.Root, "absent.yaml") : File(content);
+        var options = Options.Create(new TranscriptionOptions { Provider = TranscriptionProviders.OpenAiCompatible, Model = "whisper-large-v3", ModelsFile = path });
+
+        var catalog = new TranscriptionModels(options, TranscriptionProviders.BuiltIn).Current();
+
+        catalog.Error.Should().NotBeNull();
+        catalog.Models[0].Id.Should().Be("whisper-large-v3", "a typo in the file must not send another model to the deployment's server");
+    }
+
     [Fact]
     public void should_offer_the_models_of_the_selected_provider_without_a_file()
     {
