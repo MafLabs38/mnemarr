@@ -2,9 +2,12 @@
 # does, and what the unit tests cannot: Velopack puts the program in place, the hooks make it start with the session and put it on the PATH, a newer version is
 # taken from the Mnemarr it sends to and replaces the running one, and the uninstaller leaves nothing that starts it again.
 #
-#   smoke.ps1 -Program <mnemarr-collector.exe>
-param([Parameter(Mandatory = $true)][string]$Program)
+#   smoke.ps1 -Program <mnemarr-collector.exe> [-OnThisComputer]
+param([Parameter(Mandatory = $true)][string]$Program, [switch]$OnThisComputer)
 $ErrorActionPreference = 'Stop'
+# It installs, replaces and removes the collector of the current user, and first removes one that is already there: a CI runner, or a computer whose
+# owner says so.
+if (-not $env:CI -and -not $OnThisComputer) { throw 'This test removes the collector of this user: run it in CI, or pass -OnThisComputer.' }
 $server = $null
 # Whatever fails, the little web server of the feed does not stay behind.
 trap { if ($server) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }; throw $_ }
