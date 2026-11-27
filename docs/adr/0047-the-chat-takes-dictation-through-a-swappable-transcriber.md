@@ -1,7 +1,7 @@
 # 0047 — The chat takes dictation through a swappable transcriber, with a catalog of models as configuration
 
 - **Status**: accepted
-- **Date**: 2026-11-26
+- **Date**: 2026-11-26; amended 2026-11-27 after the review of the release (points 2 and 6: the places, the 25 MB guard, the setup the probe looks at)
 - **Spec**: D-68; extends D-55 ([0035](0035-the-chat-is-a-panel-a-proxy-and-a-runner-with-adapters-for-any-model.md))
 
 ## Context
@@ -21,7 +21,10 @@ not be code.
 2. **One endpoint, for a person.** `POST /api/v1/chat/transcriptions` takes the recording (multipart, at most `Transcription:MaxMegabytes`, 10 by default, a 413 above) and returns `{ text }` or a reason. Permission
    `chat.use` and a session of a person: keys of services cannot transcribe. The sound is held in memory, sent to the transcriber and dropped: **never stored, never logged, never indexed**. The text is
    returned to the person only; it becomes part of a conversation only if they send it. What would be refused is refused **before the form is read**: dictation off, a key of a
-   service, a person past the cap, a body larger than `Transcription:MaxMegabytes` (the limit is set on the request itself).
+   service, a person past the cap, a body larger than `Transcription:MaxMegabytes` (the limit is set on the request itself). The setting goes up to 25 MB: that is
+   Mnemarr's own guard on memory (a recording is held in memory, never written to disk), which is also OpenAI's limit. Because each recording is held in memory, Mnemarr
+   transcribes **two at a time, one per person**: the place is taken before the form is read and given back whatever happens, a body must arrive at 4 KB a second at
+   least (HTTP/1.1), and a recording without a place gets a 429 for five seconds. A constant, like the other brakes on memory; a setting when a host needs another one.
 3. **A swappable transcriber.** `ITranscriber` (sound, its content type, an optional language → text, or a short reason; it never throws for a transcription that fails), chosen by `Transcription:Provider` like
    the notification sender ([ADR 0042](0042-mnemarr-writes-to-a-person-through-a-swappable-notification-sender.md)). **One provider first, `OpenAiCompatible`**: `POST {BaseUrl}/audio/transcriptions` with the model of
    the catalog, `BaseUrl` `https://api.openai.com/v1` by default. Any server that speaks the same API (a local Whisper server, a gateway) is the same provider with another address: no code to add. The key is a
@@ -49,8 +52,10 @@ not be code.
    can send in 24 hours, then a 429 with a sentence and a `Retry-After` that says when a place frees. The place is taken **before** the service is called, in the same statement
    that counts, so that recordings sent at once cannot all pass; a call that is cancelled while the service works still counts (the service may bill it). Every attempt is audited (who, size, model, the duration the provider reports when it reports one, the result), never with the text.
 6. **It is visible when it breaks.** The readiness probe `transcription` is degraded, never unhealthy, with `transcription-secret` (the key file cannot be read) or `transcription-failing` (the last call failed on the
-   service's side: the key refused, the quota spent, the address wrong, no answer in time); a recording the service refused says nothing about the setup and does not count, and
-   a later success clears it. Off, it is healthy. The API keeps the same line: a recording the service refused is a 422
+   service's side: the key refused, the quota spent, the address wrong, no answer in time); a recording the service refused says nothing about the setup and does not count.
+   A later success clears it, and so does a change of the setup it was made with: each attempt keeps a fingerprint of the provider, its address, its key file and when that
+   file last changed, and the model (never the key). A restart alone clears nothing: a probe that turned healthy because the process restarted would hide a key that is
+   still wrong. Off, it is healthy. The API keeps the same line: a recording the service refused is a 422
    (`recording-refused`: speak again), a failure on its side a 502 (`transcription-failed`: the operator has something to fix). In the panel, a failure is Mnemarr's sentence, never
    the provider's text.
 

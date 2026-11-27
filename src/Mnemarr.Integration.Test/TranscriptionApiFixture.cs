@@ -117,9 +117,18 @@ public sealed class TranscriptionApiFixture : IClassFixture<MnemarrFactory>, ICl
     {
         var callers = await Callers.ForAsync(_on);
 
-        // Refused recordings, before and after their form is read, hold no place.
+        // Refused recordings, before and after their form is read, and a call that failed, hold no place.
         (await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(length: 2 * 1024 * 1024), Token)).StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
         (await callers["Operator"].PostAsync("/api/v1/chat/transcriptions", Recording("text/plain"), Token)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _on.Transcriber.FailWith = "The transcription service cannot be reached.";
+        try
+        {
+            (await callers["Reader"].PostAsync("/api/v1/chat/transcriptions", Recording(), Token)).StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        }
+        finally
+        {
+            _on.Transcriber.FailWith = null;
+        }
 
         var before = _on.Transcriber.ReceivedCount;
         _on.Transcriber.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

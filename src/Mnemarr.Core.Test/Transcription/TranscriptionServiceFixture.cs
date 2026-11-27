@@ -65,6 +65,7 @@ public sealed class TranscriptionServiceFixture : IDisposable
     [Fact]
     public async Task should_keep_the_probe_degraded_after_a_restart_while_the_setup_is_the_same()
     {
+        // Probe() builds a new service each time, as a restarted process does, over the same database.
         _transcriber.Answer = TranscriptionResult.Failed("The transcription service refused the key.");
         await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
 
@@ -102,7 +103,50 @@ public sealed class TranscriptionServiceFixture : IDisposable
         File.SetLastWriteTimeUtc(key, new DateTime(2026, 11, 26, 0, 0, 0, DateTimeKind.Utc));
 
         (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "the operator put a new key in place");
-        Service().CurrentSetup().Should().NotContain("sk-", "the key itself is never part of the fingerprint");
+        new OpenAiCompatibleTranscriptionProvider().Setup(_options).Should().NotContain("sk-", "the key itself is never part of the fingerprint");
+    }
+
+    [Fact]
+    public async Task should_forget_a_failure_once_an_administrator_chooses_another_model()
+    {
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service does not know the model.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        Service().ChooseModel("whisper-1", "admin");
+
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "a model the service does not know is fixed by another one");
+    }
+
+    [Fact]
+    public async Task should_not_count_a_failure_recorded_before_the_setup_was_kept()
+    {
+        _transcriber.Answer = TranscriptionResult.Failed("The transcription service refused the key.");
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+        using (var connection = _workspace.Database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            // A row written before schema step 26.
+            command.CommandText = "UPDATE transcription_log SET setup = NULL";
+            command.ExecuteNonQuery();
+        }
+
+        _store.LastOfService()!.Setup.Should().BeNull();
+        (await Probe().CheckHealthAsync(new HealthCheckContext(), Token)).Status.Should().Be(HealthStatus.Healthy, "it says nothing about the current setup");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("missing")]
+    public void should_fingerprint_the_key_file_whether_or_not_it_is_there(string? file)
+    {
+        _options.OpenAiCompatible.KeyFile = file is null ? null : Path.Combine(_workspace.Root, file);
+        var provider = new OpenAiCompatibleTranscriptionProvider();
+
+        var setup = provider.Setup(_options);
+
+        setup.Should().EndWith("|none");
+        _options.OpenAiCompatible.KeyFile = Path.Combine(_workspace.Root, "other");
+        provider.Setup(_options).Should().NotBe(setup, "another key file is another setup");
     }
 
     [Fact]
@@ -121,9 +165,9 @@ public sealed class TranscriptionServiceFixture : IDisposable
         refused.RetryAfter.Should().Be(TimeSpan.FromSeconds(5));
 
         alice.Dispose();
+        using var aliceAgain = service.Enter("alice");
         alice.Dispose();
-        using var carol = service.Enter("carol");
-        again.Should().Throw<RejectedException>("a place given back twice is given back once: two places are still taken");
+        again.Should().Throw<RejectedException>("an old lease given back twice does not give back the new one").Which.Message.Should().Contain("Your previous recording");
     }
 
     [Fact]

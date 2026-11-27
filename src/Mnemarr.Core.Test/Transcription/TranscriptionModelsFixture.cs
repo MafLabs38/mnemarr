@@ -118,6 +118,8 @@ public sealed class TranscriptionModelsFixture : IDisposable
         public string? CheckSecrets(TranscriptionOptions options) => null;
 
         public string? Destination(TranscriptionOptions options) => "speech.homelab.example";
+
+        public string Setup(TranscriptionOptions options) => "speech.homelab.example";
     }
 
     [Fact]

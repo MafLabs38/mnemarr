@@ -49,9 +49,9 @@ public interface ITranscriptionProvider
 
     /// <summary>
     /// What, in the settings of this provider, decides whether a call can work (an address, the key file and when it last changed; never the key itself). The readiness
-    /// probe forgets a failure once it changes: the operator fixed something.
+    /// probe forgets a failure once it changes: the operator fixed something. Each provider says it: a key that is rotated must change it.
     /// </summary>
-    string Setup(TranscriptionOptions options) => Destination(options) ?? string.Empty;
+    string Setup(TranscriptionOptions options);
 
     /// <summary>The models this service offers when the deployment names none in <c>Transcription:ModelsFile</c>, the default first; at least one.</summary>
     IReadOnlyList<TranscriptionModel> DefaultModels { get; }

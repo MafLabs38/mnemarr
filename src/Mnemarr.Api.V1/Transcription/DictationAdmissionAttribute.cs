@@ -23,7 +23,7 @@ internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFil
     /// <summary>Room for the form around the recording: the boundaries, the headers of the part, the name of the file.</summary>
     internal const long FormRoom = 64 * 1024;
 
-    /// <summary>The slowest a recording may arrive: 4 KB a second, far below a phone on a poor network (Kestrel's own floor is 240 bytes a second).</summary>
+    /// <summary>The slowest a recording may arrive after its first 10 seconds: 4 KB a second, far below a phone on a poor network (Kestrel's own floor is 240 bytes a second).</summary>
     private static readonly MinDataRate LeastRate = new(bytesPerSecond: 4096, gracePeriod: TimeSpan.FromSeconds(10));
 
     public async Task OnResourceExecutionAsync(ResourceExecutingContext context, ResourceExecutionDelegate next)
@@ -81,7 +81,8 @@ internal sealed class DictationAdmissionAttribute : Attribute, IAsyncResourceFil
             body.MaxRequestBodySize = limit;
         }
 
-        if (http.Features.Get<IHttpMinRequestBodyDataRateFeature>() is { } rate)
+        // Kestrel takes a least rate per request over HTTP/1.1 only (it refuses one over HTTP/2 and 3, which have their own flow control).
+        if (HttpProtocol.IsHttp11(http.Request.Protocol) && http.Features.Get<IHttpMinRequestBodyDataRateFeature>() is { } rate)
         {
             rate.MinDataRate = LeastRate;
         }
