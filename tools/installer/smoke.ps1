@@ -50,6 +50,15 @@ if (Test-Path $leftover) {
     Wait-Program $leftover @('uninstall', '--silent')
     Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the earlier collector taken away' -Seconds 180
 }
+# What a run stopped midway can leave without its uninstaller: a running collector, the folder, the entry in the session, the folder on the PATH.
+Get-Process | Where-Object { $_.Path -like "$app\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+Remove-Item $app -Recurse -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty $run -Name MnemarrCollector -ErrorAction SilentlyContinue
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+if ($userPath) {
+    $kept = ($userPath -split ';' | Where-Object { $_ -and $_ -ne $app }) -join ';'
+    if ($kept -ne $userPath) { [Environment]::SetEnvironmentVariable('Path', $kept, 'User') }
+}
 
 Write-Host '--- install 0.0.1 without a window'
 Wait-Program (Join-Path $first 'MnemarrCollector-win-Setup.exe') @('--silent')
@@ -117,7 +126,7 @@ Wait-Until { (Get-ItemProperty $run).MnemarrCollector -like "*$stub*" } 'the ent
 Wait-Until { ((& $real status) -join ' ') -match 'running: yes' } 'the collector running again after the update'
 
 Write-Host '--- uninstall'
-& (Join-Path $app 'Update.exe') uninstall --silent
+Wait-Program (Join-Path $app 'Update.exe') @('uninstall', '--silent')
 try {
     Wait-Until { -not (Test-Path (Join-Path $app 'current')) } 'the program taken away' -Seconds 180
 } catch {
