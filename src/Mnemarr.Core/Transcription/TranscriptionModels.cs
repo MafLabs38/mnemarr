@@ -28,6 +28,9 @@ public sealed class TranscriptionModels
     private readonly Lock _gate = new();
     private (string? Path, DateTime Written, long Length, TranscriptionCatalog Catalog)? _cache;
 
+    /// <summary>The provider these settings select, or null.</summary>
+    public ITranscriptionProvider? Provider(TranscriptionOptions options) => TranscriptionProviders.Find(_providers, options.Provider);
+
     public TranscriptionModels(IOptions<TranscriptionOptions> options, IEnumerable<ITranscriptionProvider> providers)
     {
         _options = options;

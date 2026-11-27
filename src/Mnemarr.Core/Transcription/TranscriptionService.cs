@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Mnemarr.Core.Audit;
+using Mnemarr.Core.Storage;
 
 namespace Mnemarr.Core.Transcription;
 
@@ -33,7 +35,7 @@ public sealed record TranscriptionStatus(
 /// The dictation of the chat (ADR 0047): a person's recording goes to the transcriber with the model in use, under a cap per person per day, and every attempt is recorded and
 /// audited without its text. The sound is held in memory for the call and dropped; nothing of it is stored.
 /// </summary>
-public sealed class TranscriptionService
+public sealed partial class TranscriptionService
 {
     /// <summary>The media types a recording may have (without parameters such as <c>codecs</c>): what browsers record and the services read.</summary>
     public static readonly IReadOnlySet<string> AcceptedTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -53,31 +55,31 @@ public sealed class TranscriptionService
 
     private static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(5);
     private readonly IOptions<TranscriptionOptions> _options;
-    private readonly IEnumerable<ITranscriptionProvider> _providers;
     private readonly ITranscriber _transcriber;
     private readonly TranscriptionModels _models;
     private readonly ITranscriptionStore _store;
     private readonly IAuditLog _audit;
     private readonly TimeProvider _time;
+    private readonly ILogger<TranscriptionService> _logger;
     private readonly Lock _places = new();
     private readonly HashSet<string> _transcribing = new(StringComparer.Ordinal);
 
     public TranscriptionService(
         IOptions<TranscriptionOptions> options,
-        IEnumerable<ITranscriptionProvider> providers,
         ITranscriber transcriber,
         TranscriptionModels models,
         ITranscriptionStore store,
         IAuditLog audit,
-        TimeProvider time)
+        TimeProvider time,
+        ILogger<TranscriptionService> logger)
     {
         _options = options;
-        _providers = providers;
         _transcriber = transcriber;
         _models = models;
         _store = store;
         _audit = audit;
         _time = time;
+        _logger = logger;
     }
 
     public bool Enabled => _options.Value.Enabled;
@@ -95,7 +97,7 @@ public sealed class TranscriptionService
         return new TranscriptionStatus(
             options.Enabled,
             options.Enabled ? options.Provider!.Trim() : null,
-            options.Enabled ? TranscriptionProviders.Find(_providers, options.Provider)?.Destination(options) : null,
+            options.Enabled ? _models.Provider(options)?.Destination(options) : null,
             catalog,
             model,
             layer,
@@ -177,7 +179,7 @@ public sealed class TranscriptionService
     {
         var options = _options.Value;
         var (model, _, _) = Resolve(_models.Current(), options);
-        var provider = TranscriptionProviders.Find(_providers, options.Provider);
+        var provider = _models.Provider(options);
         var text = $"{provider?.Name}|{provider?.Setup(options)}|{model.Id}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
     }
@@ -214,10 +216,37 @@ public sealed class TranscriptionService
                 TranscriptionOutcome.ServiceFailed => "The transcription failed unexpectedly.",
                 _ => null,
             };
-            _store.Complete(id, outcome, result?.Seconds, reason);
-            _audit.Append(actor, "transcription.used", model.Id, outcome == TranscriptionOutcome.Succeeded ? $"{audio.Length} bytes" : $"{audio.Length} bytes; {outcome}: {reason}");
+            Record(id, actor, model.Id, audio.Length, outcome, result?.Seconds, reason);
         }
     }
+
+    /// <summary>
+    /// Writes what came of an attempt, then audits it, each on its own. A database that cannot be written to is logged (with who and which model) and does not take
+    /// the text from the person: the service already did the work, and it may be paid for. An attempt that cannot be completed stays pending, and the cap still counts it.
+    /// </summary>
+    private void Record(long id, string actor, string model, int bytes, TranscriptionOutcome outcome, double? seconds, string? reason)
+    {
+        try
+        {
+            _store.Complete(id, outcome, seconds, reason);
+        }
+        catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
+        {
+            LogNotRecorded(ex, "recorded", actor, model, outcome);
+        }
+
+        try
+        {
+            _audit.Append(actor, "transcription.used", model, outcome == TranscriptionOutcome.Succeeded ? $"{bytes} bytes" : $"{bytes} bytes; {outcome}: {reason}");
+        }
+        catch (Exception ex) when (StorageErrors.IsUnavailable(ex))
+        {
+            LogNotRecorded(ex, "audited", actor, model, outcome);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A recording of {Actor} with {Model} ended ({Outcome}) but could not be {Step}: the database cannot be written to.")]
+    private partial void LogNotRecorded(Exception exception, string step, string actor, string model, TranscriptionOutcome outcome);
 
     /// <summary>The media type of a recording Mnemarr takes, or a refusal: off, a format it does not take, empty or too big.</summary>
     private static string Check(TranscriptionOptions options, string? contentType, long length)

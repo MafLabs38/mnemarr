@@ -1,4 +1,6 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Mnemarr.Core.Audit;
@@ -27,8 +29,15 @@ public sealed class TranscriptionServiceFixture : IDisposable
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
 
-    private TranscriptionService Service() =>
-        new(Options.Create(_options), TranscriptionProviders.BuiltIn, _transcriber, new TranscriptionModels(Options.Create(_options), TranscriptionProviders.BuiltIn), _store, _audit, _time);
+    private TranscriptionService Service(ITranscriptionStore? store = null) =>
+        new(
+            Options.Create(_options),
+            _transcriber,
+            new TranscriptionModels(Options.Create(_options), TranscriptionProviders.BuiltIn),
+            store ?? _store,
+            _audit,
+            _time,
+            NullLogger<TranscriptionService>.Instance);
 
     [Fact]
     public async Task should_turn_a_recording_into_text_with_the_first_model_of_the_catalog_and_record_it_without_the_text()
@@ -192,6 +201,41 @@ public sealed class TranscriptionServiceFixture : IDisposable
         using var aliceAgain = service.Enter("alice");
         alice.Dispose();
         again.Should().Throw<RejectedException>("an old lease given back twice does not give back the new one").Which.Message.Should().Contain("Your previous recording");
+    }
+
+    [Fact]
+    public async Task should_give_the_text_even_when_the_attempt_cannot_be_recorded()
+    {
+        _transcriber.Answer = TranscriptionResult.Done("Put this idea in the incubator.", 2);
+        var service = Service(new FailingOnComplete(_store, new SqliteException("database is locked", 5)));
+
+        var result = await service.TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        _store.CountSince("alice", _time.GetUtcNow() - TimeSpan.FromDays(1)).Should().Be(1, "the cap still counts the attempt");
+        _audit.Events.Should().ContainSingle("the audit is written on its own");
+        result.Text.Should().Be("Put this idea in the incubator.", "the service did the work: a log that cannot be written does not take it away");
+    }
+
+    [Fact]
+    public async Task should_not_hide_an_error_that_is_not_the_database()
+    {
+        var service = Service(new FailingOnComplete(_store, new InvalidOperationException("a bug")));
+
+        var transcribe = () => service.TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        await transcribe.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task should_forget_the_attempts_older_than_a_week_when_a_recording_comes()
+    {
+        var weekAgo = _time.GetUtcNow() - TimeSpan.FromDays(8);
+        var old = _store.Reserve("bob", weekAgo, 4, "gpt-transcribe", "old", weekAgo - TimeSpan.FromDays(1), 100)!.Value;
+        _store.Complete(old, TranscriptionOutcome.Cancelled, null, null);
+
+        await Service().TranscribeAsync("alice", Sound, "audio/webm", Token);
+
+        _store.CountSince("bob", _time.GetUtcNow() - TimeSpan.FromDays(30)).Should().Be(0);
     }
 
     [Fact]
@@ -487,5 +531,26 @@ public sealed class TranscriptionServiceFixture : IDisposable
         public int Prune(DateTimeOffset before) => 0;
 
         public IReadOnlyList<AuditEvent> Recent(int limit, string? action = null, long? before = null) => [];
+    }
+
+    /// <summary>A store that throws when an attempt ends (a locked database, a bug): everything else is the real store.</summary>
+    private sealed class FailingOnComplete(ITranscriptionStore inner, Exception failure) : ITranscriptionStore
+    {
+        public string? ChosenModel() => inner.ChosenModel();
+
+        public void ChooseModel(string? model) => inner.ChooseModel(model);
+
+        public long? Reserve(string actor, DateTimeOffset at, long bytes, string model, string setup, DateTimeOffset since, int max) =>
+            inner.Reserve(actor, at, bytes, model, setup, since, max);
+
+        public void Complete(long id, TranscriptionOutcome outcome, double? seconds, string? reason) => throw failure;
+
+        public int CountSince(string actor, DateTimeOffset since) => inner.CountSince(actor, since);
+
+        public DateTimeOffset? OldestSince(string actor, DateTimeOffset since) => inner.OldestSince(actor, since);
+
+        public TranscriptionAttempt? LastOfService() => inner.LastOfService();
+
+        public void Prune(DateTimeOffset before) => inner.Prune(before);
     }
 }
