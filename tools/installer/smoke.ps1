@@ -50,9 +50,10 @@ if ($typed -notmatch 'mnemarr-collector') { throw "mnemarr-collector is not a co
 $said = ''
 $code = $null
 try {
-    Wait-Until { $script:said = (& $real --version 2>&1) -join ' '; $script:code = $LASTEXITCODE; $script:said -match 'mnemarr-collector' } 'the program to say its version' -Seconds 30
+    # The condition runs in a scope of its own: what it saw is kept in the script's, to be shown if it never answers.
+    Wait-Until { $script:said = (& $real --version) -join ' '; $script:code = $LASTEXITCODE; $script:said -match '^mnemarr-collector \d' } 'the program to say its version' -Seconds 30
 } catch {
-    throw "The program does not answer: '$said' (exit code $code)"
+    throw "The program does not answer: '$said' (exit code $code): $($_.Exception.Message)"
 }
 Write-Host "installed: $said"
 # The application the installer starts is a program of windows, not of a console (no window to close that would close the collector); the one for the

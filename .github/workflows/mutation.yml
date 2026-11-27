@@ -30,6 +30,7 @@ jobs:
     name: mutation (backend)
     runs-on: ubuntu-latest
     # The whole backend is some six thousand mutants: the weekly run needs hours. A pull request only proves that the configuration still runs.
+    # 330: under the 360 minutes a hosted runner allows at most.
     timeout-minutes: ${{ github.event_name == 'pull_request' && 30 || 330 }}
     strategy:
       fail-fast: false
@@ -50,7 +51,7 @@ jobs:
         run: |
           scope=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then scope=(--mutate '**/Health/*.cs'); fi
-          dotnet stryker --concurrency 4 "${scope[@]}" --reporter markdown --reporter html --reporter progress --output StrykerOutput
+          dotnet stryker "${scope[@]}" --reporter markdown --reporter html --reporter progress --output StrykerOutput
       - name: Summary
         if: always()
         run: cat src/${{ matrix.project }}/StrykerOutput/reports/mutation-report.md >> "$GITHUB_STEP_SUMMARY" || true
