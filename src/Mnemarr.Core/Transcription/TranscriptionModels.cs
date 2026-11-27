@@ -38,7 +38,7 @@ public sealed class TranscriptionModels
     }
 
     /// <summary>
-    /// Without a file, a model the deployment names (<c>Transcription:Model</c>) that the provider's list does not have is part of the catalog too, first: a local server
+    /// Without a usable file, a model the deployment names (<c>Transcription:Model</c>) that the provider's list does not have is part of the catalog too, first: a local server
     /// reached by changing the address and naming its model works without a file.
     /// </summary>
     private IReadOnlyList<TranscriptionModel> WithDeploymentModel(IReadOnlyList<TranscriptionModel> models)
@@ -54,16 +54,19 @@ public sealed class TranscriptionModels
     /// <summary>The catalog as it is now: the file is read again only when its time or size changed.</summary>
     public TranscriptionCatalog Current()
     {
+        // The deployment's model stays in the catalog whenever the file does not give it, a file that cannot be used included: a typo in the file does not send
+        // another model to the server the deployment named.
+        var defaults = WithDeploymentModel(Defaults);
         var path = _options.Value.ModelsFile;
         if (string.IsNullOrWhiteSpace(path))
         {
-            return new TranscriptionCatalog(WithDeploymentModel(Defaults), false, null);
+            return new TranscriptionCatalog(defaults, false, null);
         }
 
         var file = new FileInfo(path);
         if (!file.Exists)
         {
-            return new TranscriptionCatalog(Defaults, false, "The file of the transcription models cannot be read: the provider's own list applies.");
+            return new TranscriptionCatalog(defaults, false, "The file of the transcription models cannot be read: the provider's own list applies.");
         }
 
         lock (_gate)
@@ -73,7 +76,7 @@ public sealed class TranscriptionModels
                 return cached.Catalog;
             }
 
-            var catalog = Read(file, Defaults);
+            var catalog = Read(file, defaults);
             _cache = (path, file.LastWriteTimeUtc, file.Length, catalog);
             return catalog;
         }
